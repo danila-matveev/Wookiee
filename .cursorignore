@@ -1,0 +1,13 @@
+# .cursorignore — запрещает AI-агентам в Cursor доступ к секретам
+# Второй уровень трёхслойной защиты .env (git → AI agents → IDE)
+
+.env
+.env.*
+!.env.example
+bot/.env
+wookiee_sku_database/.env
+marketplace-data-pipeline/.env
+*.pem
+*.key
+credentials.json
+.claude/settings.local.json

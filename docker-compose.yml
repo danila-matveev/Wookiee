@@ -1,0 +1,46 @@
+services:
+  wookiee-bot:
+    build: .
+    container_name: wookiee_analytics_bot
+    restart: unless-stopped
+
+    env_file:
+      - .env
+
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TZ=Europe/Moscow
+
+    volumes:
+      # Persist data and logs
+      - ./oleg_bot/data:/app/oleg_bot/data
+      - ./oleg_bot/logs:/app/oleg_bot/logs
+      - ./reports:/app/reports
+
+      # Mount scripts directory for live updates if needed
+      - ./scripts:/app/scripts:ro
+
+    networks:
+      - n8n-docker-caddy_default
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+networks:
+  n8n-docker-caddy_default:
+    external: true
