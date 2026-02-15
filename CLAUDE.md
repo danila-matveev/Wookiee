@@ -8,13 +8,13 @@
 
 - Локальные разрешения: `.claude/settings.local.json`
 - Команды: `.claude/commands/`
-- Навигация по проекту: `agent_docs/index.md`
+- Навигация по проекту: `docs/index.md`
 
 ## Quick Reference (из AGENTS.md)
 
-- DB-запросы: только `scripts/data_layer.py`
-- Конфигурация: только `scripts/config.py` (читает из `.env`)
+- DB-запросы: только `shared/data_layer.py` (шим: `scripts/data_layer.py`)
+- Конфигурация: только `shared/config.py` (шим: `scripts/config.py`, читает из `.env`)
 - GROUP BY по модели: ВСЕГДА с `LOWER()`
 - Процентные метрики: ТОЛЬКО средневзвешенные
-- Проблемы качества данных: фиксировать в `database_docs/DATA_QUALITY_NOTES.md`
-- Supabase: RLS включён, новые таблицы — обязательно RLS + политики (см. `wookiee_sku_database/README.md`)
+- Проблемы качества данных: фиксировать в `docs/database/DATA_QUALITY_NOTES.md`
+- Supabase: RLS включён, новые таблицы — обязательно RLS + политики (см. `sku_database/README.md`)
