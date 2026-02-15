@@ -19,7 +19,7 @@ from statistics import median
 # Корень проекта
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from oleg_bot.services.data_layer import (
+from shared.data_layer import (
     to_float, format_num, format_pct,
     get_wb_by_article, get_ozon_by_article,
     get_wb_orders_by_article,

@@ -4,9 +4,9 @@
 
 ## Шаги
 
-1. Прочитай AGENTS.md и agent_docs/guides/dod.md
+1. Прочитай AGENTS.md и docs/guides/dod.md
 2. Проверь что все изменения закоммичены
-3. Обнови agent_docs/development-history.md
+3. Обнови docs/development-history.md
 4. Создай PR с описанием по формату:
    - Summary (что сделано и зачем)
    - Test plan (как проверить)

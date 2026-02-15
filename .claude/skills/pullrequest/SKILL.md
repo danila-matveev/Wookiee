@@ -7,13 +7,13 @@
 
 ### 1. Самопроверка
 - Прочитай AGENTS.md
-- Проверь DoD (agent_docs/guides/dod.md)
+- Проверь DoD (docs/guides/dod.md)
 - Убедись что нет секретов в трекаемых файлах
 
 ### 2. Подготовка
 - Создай feature branch если на main
 - Закоммить все изменения
-- Обнови agent_docs/development-history.md
+- Обнови docs/development-history.md
 
 ### 3. Создание PR
 - Создай PR через `gh pr create`
