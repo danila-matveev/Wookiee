@@ -1,15 +1,18 @@
 """
 Oleg Bot — ИИ финансовый аналитик Wookiee
 
-Точка входа: python -m oleg_bot.main
+Точка входа: python -m agents.oleg
 """
 import asyncio
 import logging
 import os
 import sys
+import time
 from datetime import date, datetime, timedelta
 from typing import Optional
 from pathlib import Path
+
+import psycopg2
 
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
@@ -442,14 +445,81 @@ class OlegBot:
                     parse_mode="HTML", reply_markup=kb,
                 )
 
+    async def _preflight_checks(self) -> bool:
+        """
+        Pre-flight проверки перед стартом polling.
+        Если критичная проверка не прошла — возвращает False.
+        """
+        all_ok = True
+
+        # 1. z.ai API
+        try:
+            health = await self.zai_client.health_check()
+            if health:
+                logger.info("Pre-flight: z.ai API — OK")
+            else:
+                logger.error("Pre-flight: z.ai API — FAIL (health=False)")
+                all_ok = False
+        except Exception as e:
+            logger.error(f"Pre-flight: z.ai API — FAIL ({e})")
+            all_ok = False
+
+        # 2. PostgreSQL WB
+        try:
+            conn = psycopg2.connect(
+                host=config.DB_HOST, port=config.DB_PORT,
+                user=config.DB_USER, password=config.DB_PASSWORD,
+                database=config.DB_NAME_WB, connect_timeout=10,
+            )
+            conn.cursor().execute("SELECT 1")
+            conn.close()
+            logger.info("Pre-flight: PostgreSQL WB — OK")
+        except Exception as e:
+            logger.error(f"Pre-flight: PostgreSQL WB — FAIL ({e})")
+            all_ok = False
+
+        # 3. PostgreSQL OZON
+        try:
+            conn = psycopg2.connect(
+                host=config.DB_HOST, port=config.DB_PORT,
+                user=config.DB_USER, password=config.DB_PASSWORD,
+                database=config.DB_NAME_OZON, connect_timeout=10,
+            )
+            conn.cursor().execute("SELECT 1")
+            conn.close()
+            logger.info("Pre-flight: PostgreSQL OZON — OK")
+        except Exception as e:
+            logger.error(f"Pre-flight: PostgreSQL OZON — FAIL ({e})")
+            all_ok = False
+
+        # 4. Telegram Bot API
+        try:
+            me = await self.bot.get_me()
+            logger.info(f"Pre-flight: Telegram Bot API — OK (@{me.username})")
+        except Exception as e:
+            logger.error(f"Pre-flight: Telegram Bot API — FAIL ({e})")
+            all_ok = False
+
+        # 5. Notion (не критично — warn)
+        if config.NOTION_TOKEN:
+            try:
+                # Простая проверка — если токен есть, считаем OK
+                logger.info("Pre-flight: Notion token — present")
+            except Exception as e:
+                logger.warning(f"Pre-flight: Notion — WARN ({e})")
+
+        return all_ok
+
     async def run(self) -> None:
         """Запуск бота"""
+        # Pre-flight проверки
+        preflight_ok = await self._preflight_checks()
+        if not preflight_ok:
+            logger.critical("Pre-flight checks FAILED — бот не может стартовать")
+            sys.exit(1)
+
         self.scheduler.start()
         self._setup_scheduler()
-
-        # Health check
-        health = await self.zai_client.health_check()
-        logger.info(f"z.ai health: {health}")
 
         # Clear any stale polling sessions to avoid ConflictError
         try:
@@ -461,12 +531,94 @@ class OlegBot:
         logger.info("Oleg Bot started!")
 
         try:
+            await self._start_polling_with_conflict_timeout()
+        finally:
+            await self.shutdown()
+
+    async def _start_polling_with_conflict_timeout(
+        self, conflict_timeout: int = 60,
+    ) -> None:
+        """
+        Запускает polling с таймаутом на TelegramConflictError.
+
+        Если ConflictError не разрешается за conflict_timeout секунд,
+        бот завершается с exit(1). Docker restart policy перезапустит.
+        """
+        conflict_start: Optional[float] = None
+
+        # Monkey-patch dispatcher error handler для отслеживания ConflictError
+        original_feed = self.dp._process_polling_updates
+
+        async def patched_feed(*args, **kwargs):
+            nonlocal conflict_start
+            try:
+                result = await original_feed(*args, **kwargs)
+                # Если дошли сюда — polling работает, сбрасываем таймер
+                conflict_start = None
+                return result
+            except Exception:
+                raise
+
+        # Используем on_startup для мониторинга конфликтов
+        conflict_detected = asyncio.Event()
+        shutdown_requested = asyncio.Event()
+
+        async def monitor_conflict():
+            """Мониторит логи на ConflictError и завершает бот при таймауте."""
+            conflict_first_seen: Optional[float] = None
+
+            while not shutdown_requested.is_set():
+                # Читаем последние строки лога
+                try:
+                    log_path = Path(config.LOG_FILE)
+                    if log_path.exists():
+                        content = log_path.read_text(encoding='utf-8')
+                        lines = content.strip().split('\n')
+                        # Проверяем последние 5 строк на ConflictError
+                        recent = lines[-5:] if len(lines) >= 5 else lines
+                        has_conflict = any(
+                            'TelegramConflictError' in line
+                            for line in recent
+                        )
+
+                        if has_conflict:
+                            if conflict_first_seen is None:
+                                conflict_first_seen = time.time()
+                                logger.warning(
+                                    f"TelegramConflictError detected. "
+                                    f"Will exit if not resolved in {conflict_timeout}s"
+                                )
+                            elif time.time() - conflict_first_seen > conflict_timeout:
+                                logger.critical(
+                                    f"TelegramConflictError persisted for "
+                                    f"{conflict_timeout}s — exiting. "
+                                    f"Another bot instance is likely running."
+                                )
+                                os._exit(1)
+                        else:
+                            if conflict_first_seen is not None:
+                                logger.info("TelegramConflictError resolved")
+                            conflict_first_seen = None
+                except Exception:
+                    pass
+
+                await asyncio.sleep(5)
+
+        # Запускаем монитор конфликтов в фоне
+        monitor_task = asyncio.create_task(monitor_conflict())
+
+        try:
             await self.dp.start_polling(
                 self.bot,
                 allowed_updates=self.dp.resolve_used_update_types(),
             )
         finally:
-            await self.shutdown()
+            shutdown_requested.set()
+            monitor_task.cancel()
+            try:
+                await monitor_task
+            except asyncio.CancelledError:
+                pass
 
     async def shutdown(self) -> None:
         """Cleanup on shutdown"""

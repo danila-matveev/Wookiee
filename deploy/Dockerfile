@@ -19,6 +19,7 @@ COPY shared/ /app/shared/
 COPY agents/__init__.py /app/agents/__init__.py
 COPY agents/oleg/ /app/agents/oleg/
 COPY scripts/ /app/scripts/
+COPY deploy/healthcheck.py /app/deploy/healthcheck.py
 
 # Create data, logs, and reports directories
 RUN mkdir -p /app/agents/oleg/data /app/agents/oleg/logs /app/reports
