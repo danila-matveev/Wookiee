@@ -15,6 +15,7 @@ roi_optimizer.py для расчёта ROI.
 """
 import logging
 from datetime import datetime, timedelta
+from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -31,7 +32,7 @@ MIN_DAYS_SEASONAL = 90
 def _make_result(
     hypothesis: str,
     result: str,
-    p_value: float | None,
+    p_value: Optional[float],
     n_observations: int,
     details: dict,
 ) -> dict:
@@ -45,7 +46,7 @@ def _make_result(
     }
 
 
-def _safe_log_log_regression(prices: np.ndarray, quantities: np.ndarray) -> dict | None:
+def _safe_log_log_regression(prices: np.ndarray, quantities: np.ndarray) -> Optional[dict]:
     """
     Безопасная log-log регрессия: ln(Q) = alpha + beta * ln(P).
 
@@ -747,6 +748,17 @@ def test_stock_hypotheses(
     """
     results = {}
 
+    if stock_daily_data is None:
+        for key in ('H4a', 'H4b'):
+            results[key] = _make_result(
+                hypothesis=f"Stock hypothesis {key}",
+                result='inconclusive',
+                p_value=None,
+                n_observations=0,
+                details={'reason': 'stock_daily_data не предоставлен'},
+            )
+        return results
+
     # --- H4a: низкий сток снижает продажи ---
     try:
         low_stock_sales = []
@@ -1314,6 +1326,17 @@ def test_roi_hypotheses(
     from agents.oleg.services.price_analysis.roi_optimizer import compute_annual_roi
 
     results = {}
+
+    if turnover_data is None:
+        for key in ('H7a', 'H7b'):
+            results[key] = _make_result(
+                hypothesis=f"ROI hypothesis {key}",
+                result='inconclusive',
+                p_value=None,
+                n_observations=0,
+                details={'reason': 'turnover_data не предоставлен'},
+            )
+        return results
 
     # --- H7a: ранжирование моделей по ROI ---
     try:
