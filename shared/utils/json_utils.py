@@ -90,4 +90,17 @@ def extract_json(text: str) -> Optional[dict]:
                         pass
                     break
 
+    # Strategy 4: Truncated JSON repair — try closing open strings/braces
+    if first_brace is not None and first_brace != -1:
+        candidate = text[first_brace:]
+        # Try progressively closing the JSON
+        for suffix in ['"}', '"}}', '"}}}', '"}]}}']:
+            try:
+                result = json.loads(candidate + suffix)
+                if isinstance(result, dict):
+                    logger.info("extract_json: repaired truncated JSON")
+                    return result
+            except json.JSONDecodeError:
+                continue
+
     return None

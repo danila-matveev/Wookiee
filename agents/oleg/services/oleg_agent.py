@@ -96,7 +96,7 @@ class OlegAgent:
             system_prompt=system_prompt,
             user_message=user_message,
             temperature=0.4,
-            max_tokens=4000,
+            max_tokens=16000,
         )
 
         logger.info(
@@ -126,7 +126,7 @@ class OlegAgent:
             system_prompt=system_prompt,
             user_message=user_message,
             temperature=0.4,
-            max_tokens=4000,
+            max_tokens=16000,
         )
 
         # Post-check: did agent call minimum required tools?
@@ -149,7 +149,7 @@ class OlegAgent:
                     f"(brief_summary с BBCode + detailed_report с Markdown)."
                 ),
                 temperature=0.4,
-                max_tokens=4000,
+                max_tokens=16000,
             )
 
             result = self._merge_results(result, continuation)
@@ -239,7 +239,7 @@ class OlegAgent:
             system_prompt=system_prompt,
             user_message=feedback_text,
             temperature=0.3,
-            max_tokens=2000,
+            max_tokens=8000,
         )
 
         parsed = extract_json(result.content)
@@ -418,6 +418,13 @@ class OlegAgent:
    - Логистика доля +1 п.п. → «Проверить локализацию WB / срок доставки OZON (агент Vasily)»
    - Хранение доля +0.5 п.п. → «Проверить замороженные остатки, неликвид»
 
+Шаг 3.5: ЦЕНОВАЯ АНАЛИТИКА (если weekly/monthly отчёт ИЛИ запрос о ценах)
+→ Вызови get_price_elasticity(model, channel) для топ-3 моделей по марже
+→ Вызови get_price_margin_correlation(channel, start_date, end_date) для общей картины
+→ Если эластичность значима (is_significant=true) → get_price_recommendation(model, channel)
+→ Если есть доступные акции → analyze_promotion(channel)
+→ get_price_trend(model, channel) для топ-3 моделей — растёт/падает/стабильна?
+
 Шаг 4: МОДЕЛИ — Драйверы и Анти-драйверы (drill-down)
 → Вызови get_model_breakdown("wb", ...) и get_model_breakdown("ozon", ...)
 → ОБЯЗАТЕЛЬНО: Применить маппинг артикулов → model_osnova:
@@ -549,23 +556,36 @@ class OlegAgent:
         """Return format instructions based on report type."""
         if report_type == "daily":
             return """ФОРМАТ:
-А. Краткая сводка: «Сводка за [дата]:», 30-40 строк, [b]...[/b] BBCode
+А. Краткая сводка: «Сводка за [дата]:», макс 45 строк, [b]...[/b] BBCode
 Б. Подробный отчёт: причинно-следственные цепочки, модели, 7-дневный контекст"""
 
         elif report_type == "weekly":
             return """ФОРМАТ:
-А. Краткая сводка: «Сводка за неделю [дата—дата]:», 30-40 строк, [b]...[/b]
+А. Краткая сводка: «Сводка за неделю [дата—дата]:», макс 45 строк, [b]...[/b]
 Б. Подробный отчёт: дневная динамика внутри недели, связка реклама→заказы"""
 
         elif report_type == "monthly":
             return """ФОРМАТ:
-А. Краткая сводка: «Сводка за [месяц год]:», 30-40 строк, [b]...[/b]
+А. Краткая сводка: «Сводка за [месяц год]:», макс 45 строк, [b]...[/b]
    Включить: статус vs бизнес-целей, ключевые победы/проблемы
 Б. Подробный отчёт: executive summary, понедельная динамика, vs целей"""
 
+        elif report_type == "price_review":
+            return """ФОРМАТ:
+А. Краткая сводка: «Ценовой обзор за [период]:», макс 45 строк, [b]...[/b]
+   Включить: эластичность по моделям, ценовые рекомендации, акции МП
+Б. Подробный отчёт:
+   - Эластичность по моделям (значение, интерпретация, значимость)
+   - Ценовые рекомендации с прогнозом финансового эффекта
+   - Корреляционная матрица цена ↔ маржа/объём/ДРР
+   - Ценовые тренды (растёт/падает/стабильна)
+   - Акции МП: рекомендация участвовать/пропустить с расчётом
+   - Сценарии: "что если цену изменить на ±5%, ±10%"
+   - История прошлых рекомендаций и их точность"""
+
         else:  # period
             return """ФОРМАТ:
-А. Краткая сводка: «Сводка за [период]:», 30-40 строк, [b]...[/b]
+А. Краткая сводка: «Сводка за [период]:», макс 45 строк, [b]...[/b]
    Адаптируй формат под длину периода
 Б. Подробный отчёт: причинно-следственные цепочки, модели"""
 
@@ -638,22 +658,40 @@ class OlegAgent:
             detailed = parts[1].strip() if len(parts) > 1 else ""
             return brief, detailed
 
-        # Safety: never return raw JSON to Telegram
-        stripped = content.strip()
-        if stripped.startswith('{') or stripped.startswith('```'):
-            # Try to parse JSON and emergency format
-            parsed = extract_json(content)
-            if parsed and isinstance(parsed, dict):
-                brief = self._safe_brief(parsed)
-                detailed = parsed.get("detailed_report", content)
-                return brief, detailed
+        # Always try extract_json — content may have text preamble before JSON
+        parsed = extract_json(content)
+        if parsed and isinstance(parsed, dict):
+            brief = self._safe_brief(parsed)
+            detailed = parsed.get("detailed_report", content)
+            return brief, detailed
 
-            # Can't parse — strip markdown fences at minimum
-            text = re.sub(r'```(?:json)?\s*\n?', '', content)
-            text = text.replace('```', '')
-            # Convert to basic BBCode
-            text = re.sub(r'\*\*(.+?)\*\*', r'[b]\1[/b]', text)
-            text = re.sub(r'^#{1,4}\s+(.+)$', r'[b]\1[/b]', text, flags=re.MULTILINE)
-            return text[:2000], content
+        # Regex fallback: extract brief_summary from partial/truncated JSON
+        brief_match = re.search(
+            r'"brief_summary"\s*:\s*"((?:[^"\\]|\\.)*)"',
+            content, re.DOTALL,
+        )
+        if brief_match:
+            raw_brief = brief_match.group(1)
+            # Unescape JSON string escapes
+            brief = raw_brief.replace('\\n', '\n').replace('\\"', '"').replace('\\\\', '\\')
+            logger.info("Extracted brief_summary via regex fallback")
 
-        return content[:2000], content
+            # Try to get detailed_report too
+            detail_match = re.search(
+                r'"detailed_report"\s*:\s*"((?:[^"\\]|\\.)*)"',
+                content, re.DOTALL,
+            )
+            if detail_match:
+                detailed = detail_match.group(1).replace('\\n', '\n').replace('\\"', '"').replace('\\\\', '\\')
+            else:
+                detailed = ""
+            return brief, detailed
+
+        # Last resort: strip markdown fences and convert
+        text = re.sub(r'```(?:json)?\s*\n?', '', content)
+        text = text.replace('```', '')
+        text = re.sub(r'\*\*(.+?)\*\*', r'[b]\1[/b]', text)
+        text = re.sub(r'^#{1,4}\s+(.+)$', r'[b]\1[/b]', text, flags=re.MULTILINE)
+        # Remove raw JSON artifacts
+        text = re.sub(r'\{[^}]*"brief_summary"[^}]*\}?', '', text, flags=re.DOTALL)
+        return text[:3000], content

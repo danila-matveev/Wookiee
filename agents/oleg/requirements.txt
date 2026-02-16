@@ -15,5 +15,18 @@ bcrypt==4.2.0
 APScheduler==3.10.4
 pytz==2024.1
 
+# Statistical Analysis (price regression)
+numpy>=1.24.0
+pandas>=2.0.0
+scipy>=1.12.0
+statsmodels>=0.14.1
+
+# OpenRouter API (OpenAI-compatible)
+openai>=1.30.0
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.23.0
+
 # Utilities
 python-dotenv==1.0.0

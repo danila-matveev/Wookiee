@@ -38,7 +38,10 @@ class ReportFormatter:
 
         # Add cost line
         if cost_info:
-            cost_line = ReportFormatter.format_cost_line(cost_info)
+            if isinstance(cost_info, str):
+                cost_line = cost_info
+            else:
+                cost_line = ReportFormatter.format_cost_line(cost_info)
             html += f"\n\n{cost_line}"
 
         return html
@@ -101,6 +104,7 @@ class ReportFormatter:
         provider_name = {
             "claude-opus-4-6": "Claude Opus",
             "claude-sonnet-4-5-20250929": "Claude Sonnet",
+            "moonshotai/kimi-k2.5": "Kimi K2.5",
             "glm-4-plus": "z.ai GLM Plus",
             "glm-4.5-flash": "z.ai GLM Flash",
         }.get(provider, provider)

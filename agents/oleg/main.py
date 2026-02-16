@@ -30,6 +30,9 @@ from agents.oleg.services.notion_service import NotionService
 from agents.oleg.services.scheduler_service import SchedulerService
 from agents.oleg.services.data_freshness_service import DataFreshnessService
 
+from agents.oleg.services.price_analysis.learning_store import LearningStore
+from agents.oleg.services.price_tools import set_learning_store
+
 from agents.oleg.handlers import auth, menu, scheduled_reports, custom_queries
 
 # ─── Logging ──────────────────────────────────────────────────
@@ -60,15 +63,29 @@ class OlegBot:
         self.dp = Dispatcher(storage=MemoryStorage())
 
         # Services
-        self.auth_service = AuthService(config.HASHED_PASSWORD)
+        self.auth_service = AuthService(
+            config.HASHED_PASSWORD,
+            persistence_path=config.USERS_FILE_PATH,
+        )
         self.zai_client = ZAIClient(
             api_key=config.ZAI_API_KEY,
             model=config.ZAI_MODEL,
         )
+        # For analytics (tool-use): prefer OpenRouter if available, fallback to z.ai
+        if config.OPENROUTER_API_KEY:
+            self.analytics_client = ZAIClient(
+                api_key=config.OPENROUTER_API_KEY,
+                model=config.OPENROUTER_MODEL,
+                base_url="https://openrouter.ai/api/v1",
+            )
+            logger.info(f"Analytics client: OpenRouter ({config.OPENROUTER_MODEL})")
+        else:
+            self.analytics_client = self.zai_client
+            logger.info("Analytics client: z.ai (no OpenRouter key)")
         self.oleg_agent = OlegAgent(
-            zai_client=self.zai_client,
+            zai_client=self.analytics_client,
             playbook_path=config.PLAYBOOK_PATH,
-            model=config.OLEG_MODEL,
+            model=config.OPENROUTER_MODEL if config.OPENROUTER_API_KEY else config.OLEG_MODEL,
         )
         # LLM-based query understanding (uses cheap glm-4.5-flash)
         from agents.oleg.services.query_understanding import QueryUnderstandingService
@@ -90,6 +107,11 @@ class OlegBot:
             db_name_wb=config.DB_NAME_WB,
             db_name_ozon=config.DB_NAME_OZON,
         )
+
+        # Price analysis: learning store
+        self.learning_store = LearningStore(config.SQLITE_DB_PATH)
+        set_learning_store(self.learning_store)
+        logger.info("LearningStore initialized and injected into price_tools")
 
         # Register middleware & routers
         self._setup_middleware()
@@ -129,6 +151,16 @@ class OlegBot:
 
         logger.info("Routers registered")
 
+    def _get_report_recipients(self) -> set:
+        """Return user IDs for scheduled reports, falling back to ADMIN_CHAT_ID."""
+        users = self.auth_service.authenticated_users
+        if users:
+            return users
+        if config.ADMIN_CHAT_ID:
+            return {config.ADMIN_CHAT_ID}
+        logger.warning("No report recipients: authenticated_users empty and ADMIN_CHAT_ID not set")
+        return set()
+
     def _setup_scheduler(self) -> None:
         """Schedule automatic reports: daily, weekly, monthly + data freshness"""
 
@@ -146,7 +178,7 @@ class OlegBot:
                         f"WB: {wb_detail}, OZON: {ozon_detail}"
                     )
                     # Уведомить пользователей что отчёт отложен
-                    for user_id in self.auth_service.authenticated_users:
+                    for user_id in self._get_report_recipients():
                         try:
                             await self.bot.send_message(
                                 chat_id=user_id,
@@ -178,7 +210,7 @@ class OlegBot:
                 if not result.get("brief_summary") or not result.get("success", True):
                     error_detail = result.get("error", "нет brief_summary")
                     logger.error(f"Daily report failed: {error_detail}")
-                    for user_id in self.auth_service.authenticated_users:
+                    for user_id in self._get_report_recipients():
                         try:
                             await self.bot.send_message(
                                 chat_id=user_id,
@@ -192,11 +224,15 @@ class OlegBot:
                             logger.error(f"Failed to notify {user_id} about report error: {e}")
                     return
 
-                # Sync to Notion
+                # Sync to Notion (validate content first)
+                report_md = result.get("detailed_report", "")
+                if '"brief_summary"' in report_md or '"detailed_report"' in report_md:
+                    logger.warning("Daily report: detailed_report contains raw JSON, skipping Notion")
+                    report_md = result.get("brief_summary", "")  # Use brief as fallback
                 notion_url = await self.notion_service.sync_report(
                     start_date=date_str,
                     end_date=date_str,
-                    report_md=result.get("detailed_report", ""),
+                    report_md=report_md,
                     source="Telegram Bot",
                 )
 
@@ -215,7 +251,7 @@ class OlegBot:
                 )
                 keyboard = ReportFormatter.create_report_keyboard("daily")
 
-                for user_id in self.auth_service.authenticated_users:
+                for user_id in self._get_report_recipients():
                     try:
                         self.report_storage.save_report(
                             user_id=user_id,
@@ -277,7 +313,7 @@ class OlegBot:
                 )
                 keyboard = ReportFormatter.create_report_keyboard("weekly")
 
-                for user_id in self.auth_service.authenticated_users:
+                for user_id in self._get_report_recipients():
                     try:
                         await self._send_html(user_id, html_text, keyboard)
                         logger.info(f"Sent weekly report to user {user_id}")
@@ -341,7 +377,7 @@ class OlegBot:
                 )
                 keyboard = ReportFormatter.create_report_keyboard("monthly")
 
-                for user_id in self.auth_service.authenticated_users:
+                for user_id in self._get_report_recipients():
                     try:
                         self.report_storage.save_report(
                             user_id=user_id,
@@ -382,7 +418,7 @@ class OlegBot:
 
                 self.data_freshness.mark_notified()
                 msg = self.data_freshness.format_notification(status)
-                for user_id in self.auth_service.authenticated_users:
+                for user_id in self._get_report_recipients():
                     try:
                         await self.bot.send_message(chat_id=user_id, text=msg)
                     except Exception as e:
@@ -419,25 +455,152 @@ class OlegBot:
         self.scheduler.scheduler.add_job(
             check_data_freshness,
             trigger=CronTrigger(
-                minute="*/5", hour="6-12",
+                minute="*/5", hour="6-14",
                 timezone=self.scheduler.timezone,
             ),
             id="data_freshness_check",
-            name="Data Freshness Check (every 5 min, 06:00–12:00)",
+            name="Data Freshness Check (every 5 min, 06:00–14:00)",
             replace_existing=True,
         )
 
-        logger.info("Scheduler configured: daily/weekly/monthly/freshness")
+        # ─── Weekly price review (Monday 11:00 MSK) ────────────
+        async def send_weekly_price_review():
+            logger.info("Sending scheduled weekly price review (Oleg)")
+            try:
+                end = datetime.now() - timedelta(days=1)
+                start = end - timedelta(days=6)
+                s, e = start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")
+
+                result = await self.oleg_agent.analyze(
+                    user_query="Еженедельный ценовой обзор: эластичность, рекомендации по ценам, тренды",
+                    params={
+                        "start_date": s,
+                        "end_date": e,
+                        "channels": ["wb", "ozon"],
+                        "report_type": "price_review",
+                    },
+                )
+
+                if not result.get("brief_summary") or not result.get("success", True):
+                    logger.error(f"Weekly price review failed: {result.get('error')}")
+                    return
+
+                notion_url = await self.notion_service.sync_report(
+                    start_date=s, end_date=e,
+                    report_md=result.get("detailed_report", ""),
+                    source="Price Review (auto)",
+                )
+
+                cost_parts = []
+                if result.get("cost_usd"):
+                    cost_parts.append(f"~${result['cost_usd']:.4f}")
+                if result.get("iterations"):
+                    cost_parts.append(f"{result['iterations']} шагов")
+                cost_info = " | ".join(cost_parts) if cost_parts else None
+
+                html_text = ReportFormatter.format_for_telegram(
+                    brief_summary=result["brief_summary"],
+                    notion_url=notion_url,
+                    cost_info=cost_info,
+                )
+
+                for user_id in self._get_report_recipients():
+                    try:
+                        await self._send_html(user_id, html_text)
+                        logger.info(f"Sent weekly price review to user {user_id}")
+                    except Exception as e:
+                        logger.error(f"Failed to send price review to {user_id}: {e}")
+            except Exception as e:
+                logger.error(f"Weekly price review job failed: {e}", exc_info=True)
+
+        self.scheduler.scheduler.add_job(
+            send_weekly_price_review,
+            trigger=CronTrigger(
+                day_of_week=0, hour=11, minute=0,
+                timezone=self.scheduler.timezone,
+            ),
+            id="weekly_price_review",
+            name="Weekly Price Review (Mon 11:00)",
+            replace_existing=True,
+        )
+
+        # ─── Outcome checker (Wednesday 09:00 MSK) ────────────
+        async def check_recommendation_outcomes():
+            logger.info("Checking recommendation outcomes")
+            try:
+                unchecked = self.learning_store.get_unchecked_recommendations(min_age_days=7)
+                if not unchecked:
+                    logger.info("No unchecked recommendations older than 7 days")
+                    return
+
+                for rec in unchecked:
+                    try:
+                        model = rec.get('model', '')
+                        channel = rec.get('channel', 'wb')
+                        rec_date = rec.get('created_at', '')[:10]
+
+                        # Получить фактические данные за 7 дней после рекомендации
+                        from shared.data_layer import (
+                            get_wb_price_margin_by_model_period,
+                            get_ozon_price_margin_by_model_period,
+                        )
+                        fact_start = rec_date
+                        fact_end = (datetime.strptime(rec_date, '%Y-%m-%d') + timedelta(days=7)).strftime('%Y-%m-%d')
+
+                        if channel == 'wb':
+                            facts = get_wb_price_margin_by_model_period(fact_start, fact_end)
+                        else:
+                            facts = get_ozon_price_margin_by_model_period(fact_start, fact_end)
+
+                        model_fact = next((f for f in facts if f.get('model', '').lower() == model.lower()), None)
+                        if model_fact:
+                            self.learning_store.record_outcome(
+                                recommendation_id=rec['id'],
+                                actual_margin_impact=model_fact.get('margin', 0),
+                                actual_volume_impact=model_fact.get('sales_count', 0),
+                            )
+                            logger.info(f"Recorded outcome for recommendation {rec['id']} ({model})")
+                    except Exception as e:
+                        logger.error(f"Failed to check outcome for rec {rec.get('id')}: {e}")
+            except Exception as e:
+                logger.error(f"Outcome checker failed: {e}", exc_info=True)
+
+        self.scheduler.scheduler.add_job(
+            check_recommendation_outcomes,
+            trigger=CronTrigger(
+                day_of_week=2, hour=9, minute=0,
+                timezone=self.scheduler.timezone,
+            ),
+            id="outcome_checker",
+            name="Recommendation Outcome Checker (Wed 09:00)",
+            replace_existing=True,
+        )
+
+        logger.info("Scheduler configured: daily/weekly/monthly/freshness/price_review/outcome_checker")
 
     async def _send_html(self, user_id: int, html_text: str, keyboard=None) -> None:
-        """Send HTML message, splitting into chunks if needed."""
-        if len(html_text) <= 4000:
+        """Send HTML message, splitting by paragraphs if needed."""
+        MAX_LEN = 4000
+        if len(html_text) <= MAX_LEN:
             await self.bot.send_message(
                 chat_id=user_id, text=html_text,
                 parse_mode="HTML", reply_markup=keyboard,
             )
         else:
-            chunks = [html_text[i:i + 4000] for i in range(0, len(html_text), 4000)]
+            # Split by paragraph breaks to avoid cutting HTML tags
+            paragraphs = html_text.split('\n\n')
+            chunks = []
+            current = ""
+            for p in paragraphs:
+                if len(current) + len(p) + 2 > MAX_LEN:
+                    if current:
+                        chunks.append(current)
+                    current = p[:MAX_LEN]  # safety trim
+                else:
+                    current = current + "\n\n" + p if current else p
+            if current:
+                chunks.append(current)
+
             for i, chunk in enumerate(chunks):
                 kb = keyboard if i == len(chunks) - 1 else None
                 await self.bot.send_message(
@@ -510,6 +673,87 @@ class OlegBot:
 
         return all_ok
 
+    async def _recover_missed_reports(self) -> None:
+        """Generate daily report if it was missed (e.g. bot was down at 10:05)."""
+        yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+        if self.report_storage.has_report_for_period("daily_auto", yesterday):
+            logger.info(f"Recovery: daily report for {yesterday} already exists, skip")
+            return
+
+        try:
+            freshness = self.data_freshness.check_freshness()
+            if not self.data_freshness.is_all_ready(freshness):
+                logger.info(f"Recovery: data for {yesterday} not ready yet, skip")
+                return
+        except Exception as e:
+            logger.warning(f"Recovery: freshness check failed ({e}), skip")
+            return
+
+        recipients = self._get_report_recipients()
+        if not recipients:
+            logger.warning("Recovery: no recipients, skip")
+            return
+
+        logger.info(f"Recovery: generating missed daily report for {yesterday}")
+        try:
+            result = await self.oleg_agent.analyze_deep(
+                user_query="Ежедневная аналитическая сводка",
+                params={
+                    "start_date": yesterday,
+                    "end_date": yesterday,
+                    "channels": ["wb", "ozon"],
+                    "report_type": "daily",
+                },
+            )
+            if not result.get("brief_summary") or not result.get("success", True):
+                logger.error(f"Recovery: report generation failed: {result.get('error')}")
+                return
+
+            report_md = result.get("detailed_report", "")
+            if '"brief_summary"' in report_md or '"detailed_report"' in report_md:
+                logger.warning("Recovery: detailed_report contains raw JSON, using brief as fallback")
+                report_md = result.get("brief_summary", "")
+            notion_url = await self.notion_service.sync_report(
+                start_date=yesterday, end_date=yesterday,
+                report_md=report_md,
+                source="Telegram Bot (recovery)",
+            )
+
+            cost_parts = []
+            if result.get("cost_usd"):
+                cost_parts.append(f"~${result['cost_usd']:.4f}")
+            if result.get("iterations"):
+                cost_parts.append(f"{result['iterations']} шагов")
+            cost_info = " | ".join(cost_parts) if cost_parts else None
+
+            html_text = ReportFormatter.format_for_telegram(
+                brief_summary=result["brief_summary"],
+                notion_url=notion_url,
+                cost_info=cost_info,
+            )
+            keyboard = ReportFormatter.create_report_keyboard("daily")
+
+            yd = datetime.strptime(yesterday, "%Y-%m-%d")
+            for user_id in recipients:
+                try:
+                    self.report_storage.save_report(
+                        user_id=user_id,
+                        report_type="daily_auto",
+                        title=f"Ежедневная сводка за {yd.strftime('%d.%m.%Y')}",
+                        content=result.get("detailed_report", ""),
+                        start_date=yd,
+                        end_date=yd,
+                    )
+                    await self._send_html(user_id, html_text, keyboard)
+                    logger.info(f"Recovery: sent daily report to user {user_id}")
+                except Exception as e:
+                    logger.error(f"Recovery: failed to send to {user_id}: {e}")
+
+            self._daily_report_sent_date = date.today()
+            logger.info(f"Recovery: daily report for {yesterday} done")
+        except Exception as e:
+            logger.error(f"Recovery: failed: {e}", exc_info=True)
+
     async def run(self) -> None:
         """Запуск бота"""
         # Pre-flight проверки
@@ -520,6 +764,12 @@ class OlegBot:
 
         self.scheduler.start()
         self._setup_scheduler()
+
+        # Recover missed reports before starting polling
+        try:
+            await self._recover_missed_reports()
+        except Exception as e:
+            logger.warning(f"Recovery check failed: {e}")
 
         # Clear any stale polling sessions to avoid ConflictError
         try:
@@ -544,67 +794,40 @@ class OlegBot:
         Если ConflictError не разрешается за conflict_timeout секунд,
         бот завершается с exit(1). Docker restart policy перезапустит.
         """
-        conflict_start: Optional[float] = None
-
-        # Monkey-patch dispatcher error handler для отслеживания ConflictError
-        original_feed = self.dp._process_polling_updates
-
-        async def patched_feed(*args, **kwargs):
-            nonlocal conflict_start
-            try:
-                result = await original_feed(*args, **kwargs)
-                # Если дошли сюда — polling работает, сбрасываем таймер
-                conflict_start = None
-                return result
-            except Exception:
-                raise
-
-        # Используем on_startup для мониторинга конфликтов
-        conflict_detected = asyncio.Event()
+        conflict_first_seen: Optional[float] = None
         shutdown_requested = asyncio.Event()
 
         async def monitor_conflict():
-            """Мониторит логи на ConflictError и завершает бот при таймауте."""
-            conflict_first_seen: Optional[float] = None
-
+            nonlocal conflict_first_seen
             while not shutdown_requested.is_set():
-                # Читаем последние строки лога
-                try:
-                    log_path = Path(config.LOG_FILE)
-                    if log_path.exists():
-                        content = log_path.read_text(encoding='utf-8')
-                        lines = content.strip().split('\n')
-                        # Проверяем последние 5 строк на ConflictError
-                        recent = lines[-5:] if len(lines) >= 5 else lines
-                        has_conflict = any(
-                            'TelegramConflictError' in line
-                            for line in recent
+                if conflict_first_seen is not None:
+                    elapsed = time.time() - conflict_first_seen
+                    if elapsed > conflict_timeout:
+                        logger.critical(
+                            f"TelegramConflictError persisted for {elapsed:.0f}s "
+                            f"— exiting. Another bot instance is likely running."
                         )
-
-                        if has_conflict:
-                            if conflict_first_seen is None:
-                                conflict_first_seen = time.time()
-                                logger.warning(
-                                    f"TelegramConflictError detected. "
-                                    f"Will exit if not resolved in {conflict_timeout}s"
-                                )
-                            elif time.time() - conflict_first_seen > conflict_timeout:
-                                logger.critical(
-                                    f"TelegramConflictError persisted for "
-                                    f"{conflict_timeout}s — exiting. "
-                                    f"Another bot instance is likely running."
-                                )
-                                os._exit(1)
-                        else:
-                            if conflict_first_seen is not None:
-                                logger.info("TelegramConflictError resolved")
-                            conflict_first_seen = None
-                except Exception:
-                    pass
-
+                        os._exit(1)
                 await asyncio.sleep(5)
 
-        # Запускаем монитор конфликтов в фоне
+        # Intercept ConflictError via aiogram's error handler
+        from aiogram.types import ErrorEvent
+        from aiogram.exceptions import TelegramConflictError
+
+        @self.dp.errors()
+        async def on_polling_error(event: ErrorEvent):
+            nonlocal conflict_first_seen
+            if isinstance(event.exception, TelegramConflictError):
+                if conflict_first_seen is None:
+                    conflict_first_seen = time.time()
+                    logger.warning(
+                        f"TelegramConflictError detected. "
+                        f"Will exit if not resolved in {conflict_timeout}s"
+                    )
+            else:
+                # Reset timer on non-conflict errors (polling is alive)
+                conflict_first_seen = None
+
         monitor_task = asyncio.create_task(monitor_conflict())
 
         try:

@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 load_dotenv(PROJECT_ROOT / '.env')
 
 # ============================================================================
@@ -23,16 +23,24 @@ HASHED_PASSWORD: str = os.getenv(
 )
 
 # ============================================================================
-# AI (z.ai — единственный провайдер)
+# AI Providers
 # ============================================================================
 ZAI_API_KEY: str = os.getenv("ZAI_API_KEY", "")
 ZAI_MODEL: str = "glm-4.5-flash"       # Для classify/clarify задач
 OLEG_MODEL: str = "glm-4-plus"          # Для аналитики (tool-use)
 
+# OpenRouter (для автоматических ценовых отчётов — quality-first)
+OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")
+OPENROUTER_MODEL: str = os.getenv(
+    "OPENROUTER_MODEL",
+    "moonshotai/kimi-k2.5",  # Kimi K2.5 — 262K context, хороший reasoning
+)
+
 # Pricing per 1K tokens (USD)
 PRICING: dict = {
     "claude-opus-4-6": {"input": 0.015, "output": 0.075},
     "claude-sonnet-4-5-20250929": {"input": 0.003, "output": 0.015},
+    "moonshotai/kimi-k2.5": {"input": 0.00045, "output": 0.00044},
     "glm-4-plus": {"input": 0.007, "output": 0.007},
     "glm-4.5-flash": {"input": 0.0001, "output": 0.0002},
 }
@@ -93,3 +101,9 @@ REPORT_RETENTION_DAYS: int = 90
 # ============================================================================
 LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 LOG_FILE: str = str(Path(__file__).parent / "logs" / "bot.log")
+
+# ============================================================================
+# Auth persistence
+# ============================================================================
+USERS_FILE_PATH: str = str(Path(__file__).parent / "data" / "authenticated_users.json")
+ADMIN_CHAT_ID: int = int(os.getenv("ADMIN_CHAT_ID", "0"))

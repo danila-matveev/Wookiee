@@ -973,6 +973,12 @@ TOOL_HANDLERS = {
     "calculate_metric": _handle_calculate_metric,
 }
 
+# ─── Price Analysis Tools ────────────────────────────────────
+from agents.oleg.services.price_tools import PRICE_TOOL_DEFINITIONS, PRICE_TOOL_HANDLERS
+
+TOOL_DEFINITIONS.extend(PRICE_TOOL_DEFINITIONS)
+TOOL_HANDLERS.update(PRICE_TOOL_HANDLERS)
+
 
 async def execute_tool(tool_name: str, arguments: dict) -> str:
     """

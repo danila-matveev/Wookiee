@@ -13,7 +13,32 @@ from decimal import Decimal
 import psycopg2
 from dotenv import load_dotenv
 
-from shared.config import DB_CONFIG, DB_WB, DB_OZON, SUPABASE_ENV_PATH
+from shared.config import DB_CONFIG, DB_WB, DB_OZON, SUPABASE_ENV_PATH, MARKETPLACE_DB_CONFIG
+
+# =============================================================================
+# CONNECTION FACTORY — переключение legacy / managed БД
+# =============================================================================
+_DATA_SOURCE = os.getenv('DATA_SOURCE', 'legacy')  # 'legacy' | 'managed'
+
+
+def _get_wb_connection():
+    """Get WB database connection (legacy or managed)."""
+    if _DATA_SOURCE == 'managed' and MARKETPLACE_DB_CONFIG.get('host'):
+        conn = psycopg2.connect(**MARKETPLACE_DB_CONFIG)
+        with conn.cursor() as cur:
+            cur.execute("SET search_path TO wb, public")
+        return conn
+    return psycopg2.connect(**DB_CONFIG, database=DB_WB)
+
+
+def _get_ozon_connection():
+    """Get Ozon database connection (legacy or managed)."""
+    if _DATA_SOURCE == 'managed' and MARKETPLACE_DB_CONFIG.get('host'):
+        conn = psycopg2.connect(**MARKETPLACE_DB_CONFIG)
+        with conn.cursor() as cur:
+            cur.execute("SET search_path TO ozon, public")
+        return conn
+    return psycopg2.connect(**DB_CONFIG, database=DB_OZON)
 
 
 # =============================================================================
@@ -77,7 +102,7 @@ WB_MARGIN_SQL = """
 
 def get_wb_finance(current_start, prev_start, current_end):
     """WB финансы с ПРАВИЛЬНОЙ формулой маржи (верифицировано против PowerBI)."""
-    conn = psycopg2.connect(**DB_CONFIG, database=DB_WB)
+    conn = _get_wb_connection()
     cur = conn.cursor()
 
     query = f"""
@@ -128,7 +153,7 @@ def get_wb_finance(current_start, prev_start, current_end):
 
 def get_wb_by_model(current_start, prev_start, current_end):
     """WB финансы по моделям. LOWER() на имени модели для корректной группировки."""
-    conn = psycopg2.connect(**DB_CONFIG, database=DB_WB)
+    conn = _get_wb_connection()
     cur = conn.cursor()
 
     # LOWER() — в БД встречаются артикулы с разным регистром ("wendy" и "Wendy"),
@@ -156,7 +181,7 @@ def get_wb_by_model(current_start, prev_start, current_end):
 
 def get_wb_traffic(current_start, prev_start, current_end):
     """WB воронка и рекламный трафик."""
-    conn = psycopg2.connect(**DB_CONFIG, database=DB_WB)
+    conn = _get_wb_connection()
     cur = conn.cursor()
 
     # Фильтруем content_analysis только по артикулам, которые есть в abc_date (финансовых данных).
@@ -203,7 +228,7 @@ def get_wb_traffic(current_start, prev_start, current_end):
 
 def get_wb_traffic_by_model(current_start, prev_start, current_end):
     """WB рекламный трафик по моделям через JOIN с nomenclature."""
-    conn = psycopg2.connect(**DB_CONFIG, database=DB_WB)
+    conn = _get_wb_connection()
     cur = conn.cursor()
 
     query = """
@@ -231,7 +256,7 @@ def get_wb_traffic_by_model(current_start, prev_start, current_end):
 
 def get_wb_orders_by_model(current_start, prev_start, current_end):
     """WB заказы по моделям для расчёта ДРР заказов. LOWER() на модели."""
-    conn = psycopg2.connect(**DB_CONFIG, database=DB_WB)
+    conn = _get_wb_connection()
     cur = conn.cursor()
 
     query = """
@@ -259,7 +284,7 @@ def get_wb_orders_by_model(current_start, prev_start, current_end):
 
 def get_ozon_finance(current_start, prev_start, current_end):
     """OZON финансы. Маржа = marga - nds (верифицировано)."""
-    conn = psycopg2.connect(**DB_CONFIG, database=DB_OZON)
+    conn = _get_ozon_connection()
     cur = conn.cursor()
 
     query = """
@@ -305,7 +330,7 @@ def get_ozon_finance(current_start, prev_start, current_end):
 
 def get_ozon_by_model(current_start, prev_start, current_end):
     """OZON финансы по моделям. LOWER() на имени модели для корректной группировки."""
-    conn = psycopg2.connect(**DB_CONFIG, database=DB_OZON)
+    conn = _get_ozon_connection()
     cur = conn.cursor()
 
     # LOWER() — OZON хранит артикулы с Capitalized ("Wendy"), WB — с lowercase ("wendy").
@@ -333,7 +358,7 @@ def get_ozon_by_model(current_start, prev_start, current_end):
 
 def get_ozon_orders_by_model(current_start, prev_start, current_end):
     """OZON заказы по моделям для расчёта ДРР заказов. LOWER() на модели."""
-    conn = psycopg2.connect(**DB_CONFIG, database=DB_OZON)
+    conn = _get_ozon_connection()
     cur = conn.cursor()
 
     query = """
@@ -357,7 +382,7 @@ def get_ozon_orders_by_model(current_start, prev_start, current_end):
 
 def get_ozon_traffic(current_start, prev_start, current_end):
     """OZON рекламный трафик."""
-    conn = psycopg2.connect(**DB_CONFIG, database=DB_OZON)
+    conn = _get_ozon_connection()
     cur = conn.cursor()
 
     query = """
@@ -438,7 +463,7 @@ def get_artikuly_statuses():
 
 def get_wb_by_article(start_date, end_date):
     """WB финансы по артикулам (не агрегировано по модели). LOWER() на артикуле и модели."""
-    conn = psycopg2.connect(**DB_CONFIG, database=DB_WB)
+    conn = _get_wb_connection()
     cur = conn.cursor()
 
     # LOWER(article) — в БД встречаются артикулы с разным регистром
@@ -484,7 +509,7 @@ def get_wb_by_article(start_date, end_date):
 
 def get_ozon_by_article(start_date, end_date):
     """OZON финансы по артикулам. OZON article содержит размер — агрегируем до уровня артикула."""
-    conn = psycopg2.connect(**DB_CONFIG, database=DB_OZON)
+    conn = _get_ozon_connection()
     cur = conn.cursor()
 
     # OZON abc_date.article = "Alice/black_L" (с размером).
@@ -548,7 +573,7 @@ def get_ozon_by_article(start_date, end_date):
 
 def get_wb_orders_by_article(start_date, end_date):
     """WB заказы по артикулам (для ср.чека заказов). LOWER() на артикуле."""
-    conn = psycopg2.connect(**DB_CONFIG, database=DB_WB)
+    conn = _get_wb_connection()
     cur = conn.cursor()
 
     query = """
@@ -575,7 +600,7 @@ def get_wb_orders_by_article(start_date, end_date):
 
 def get_wb_avg_stock(start_date, end_date):
     """Средние остатки WB на складах МП за период, по артикулам. LOWER() на артикуле."""
-    conn = psycopg2.connect(**DB_CONFIG, database=DB_WB)
+    conn = _get_wb_connection()
     cur = conn.cursor()
 
     query = """
@@ -598,7 +623,7 @@ def get_wb_avg_stock(start_date, end_date):
 
 def get_ozon_avg_stock(start_date, end_date):
     """Средние остатки OZON на складах МП за период, по артикулам. LOWER() на артикуле."""
-    conn = psycopg2.connect(**DB_CONFIG, database=DB_OZON)
+    conn = _get_ozon_connection()
     cur = conn.cursor()
 
     # OZON offer_id содержит размер — агрегируем до артикула
@@ -695,7 +720,7 @@ def validate_wb_data_quality(target_date):
     Известные проблемы:
     - retention == deduction (дубликация пайплайна) → маржа занижена на SUM(deduction)
     """
-    conn = psycopg2.connect(**DB_CONFIG, database=DB_WB)
+    conn = _get_wb_connection()
     cur = conn.cursor()
 
     warnings = []
@@ -748,7 +773,7 @@ def validate_wb_data_quality(target_date):
 
 def get_wb_daily_series(target_date, lookback_days=7):
     """Ежедневные метрики WB за N дней (для расчёта volatility, трендов и confidence)."""
-    conn = psycopg2.connect(**DB_CONFIG, database=DB_WB)
+    conn = _get_wb_connection()
     cur = conn.cursor()
 
     start = (datetime.strptime(target_date, '%Y-%m-%d') - timedelta(days=lookback_days)).strftime('%Y-%m-%d')
@@ -804,7 +829,7 @@ def get_wb_daily_series(target_date, lookback_days=7):
 
 def get_ozon_daily_series(target_date, lookback_days=7):
     """Ежедневные метрики OZON за N дней."""
-    conn = psycopg2.connect(**DB_CONFIG, database=DB_OZON)
+    conn = _get_ozon_connection()
     cur = conn.cursor()
 
     start = (datetime.strptime(target_date, '%Y-%m-%d') - timedelta(days=lookback_days)).strftime('%Y-%m-%d')
@@ -858,7 +883,7 @@ def get_ozon_daily_series(target_date, lookback_days=7):
 
 def get_wb_daily_series_range(start_date, end_date):
     """Ежедневные метрики WB за произвольный диапазон дат."""
-    conn = psycopg2.connect(**DB_CONFIG, database=DB_WB)
+    conn = _get_wb_connection()
     cur = conn.cursor()
 
     query = f"""
@@ -907,7 +932,7 @@ def get_wb_daily_series_range(start_date, end_date):
 
 def get_ozon_daily_series_range(start_date, end_date):
     """Ежедневные метрики OZON за произвольный диапазон дат."""
-    conn = psycopg2.connect(**DB_CONFIG, database=DB_OZON)
+    conn = _get_ozon_connection()
     cur = conn.cursor()
 
     query = """
@@ -958,7 +983,7 @@ def get_ozon_daily_series_range(start_date, end_date):
 
 def get_wb_weekly_breakdown(month_start, month_end):
     """WB финансы по неделям внутри месяца."""
-    conn = psycopg2.connect(**DB_CONFIG, database=DB_WB)
+    conn = _get_wb_connection()
     cur = conn.cursor()
 
     query = f"""
@@ -1022,9 +1047,413 @@ def get_wb_weekly_breakdown(month_start, month_end):
     return weeks
 
 
+# =============================================================================
+# ЦЕНОВАЯ АНАЛИТИКА — данные для регрессии и анализа цен
+# =============================================================================
+
+def get_wb_price_margin_daily(start_date, end_date, model=None):
+    """
+    WB ежедневные данные цена+маржа+объём по моделям — основной датасет для регрессии.
+
+    Цена = revenue_before_spp / sales_count (реализованная цена за единицу).
+    Все метрики агрегированы по дню и модели.
+    """
+    conn = _get_wb_connection()
+    cur = conn.cursor()
+
+    model_filter = ""
+    params = [start_date, end_date]
+    if model:
+        model_filter = "AND LOWER(SPLIT_PART(a.article, '/', 1)) = %s"
+        params.append(model.lower())
+
+    query = f"""
+    SELECT
+        a.date,
+        LOWER(SPLIT_PART(a.article, '/', 1)) as model,
+        -- Цена за единицу (реализованная)
+        CASE WHEN SUM(a.full_counts) > 0
+            THEN (SUM(a.revenue_spp) - COALESCE(SUM(a.revenue_return_spp), 0))
+                 / SUM(a.full_counts)
+            ELSE NULL END as price_per_unit,
+        -- Объём
+        SUM(a.full_counts) as sales_count,
+        SUM(a.count_orders) as orders_count,
+        -- Маржа
+        {WB_MARGIN_SQL} as margin,
+        CASE WHEN (SUM(a.revenue_spp) - COALESCE(SUM(a.revenue_return_spp), 0)) > 0
+            THEN ({WB_MARGIN_SQL}) /
+                 (SUM(a.revenue_spp) - COALESCE(SUM(a.revenue_return_spp), 0)) * 100
+            ELSE NULL END as margin_pct,
+        -- Выручка
+        SUM(a.revenue_spp) - COALESCE(SUM(a.revenue_return_spp), 0) as revenue_before_spp,
+        -- СПП %
+        CASE WHEN SUM(a.revenue_spp) > 0
+            THEN SUM(a.spp) / SUM(a.revenue_spp) * 100
+            ELSE NULL END as spp_pct,
+        -- ДРР %
+        CASE WHEN (SUM(a.revenue_spp) - COALESCE(SUM(a.revenue_return_spp), 0)) > 0
+            THEN SUM(a.reclama + a.reclama_vn) /
+                 (SUM(a.revenue_spp) - COALESCE(SUM(a.revenue_return_spp), 0)) * 100
+            ELSE NULL END as drr_pct,
+        -- Логистика на единицу
+        CASE WHEN SUM(a.full_counts) > 0
+            THEN SUM(a.logist) / SUM(a.full_counts)
+            ELSE NULL END as logistics_per_unit,
+        -- Себестоимость на единицу
+        CASE WHEN SUM(a.full_counts) > 0
+            THEN SUM(a.sebes) / SUM(a.full_counts)
+            ELSE NULL END as cogs_per_unit,
+        -- Реклама (абсолют)
+        SUM(a.reclama + a.reclama_vn) as adv_total,
+        SUM(a.reclama) as adv_internal,
+        SUM(a.reclama_vn) as adv_external
+    FROM abc_date a
+    WHERE a.date >= %s AND a.date < %s
+        {model_filter}
+    GROUP BY a.date, LOWER(SPLIT_PART(a.article, '/', 1))
+    HAVING SUM(a.full_counts) > 0
+    ORDER BY a.date, model;
+    """
+    cur.execute(query, params)
+    columns = [desc[0] for desc in cur.description]
+    results = [dict(zip(columns, row)) for row in cur.fetchall()]
+
+    cur.close()
+    conn.close()
+
+    for row in results:
+        for key, val in row.items():
+            if key != 'date' and key != 'model':
+                row[key] = to_float(val)
+
+    return results
+
+
+def get_ozon_price_margin_daily(start_date, end_date, model=None):
+    """
+    OZON ежедневные данные цена+маржа+объём по моделям — основной датасет для регрессии.
+
+    Цена = price_end / count_end (реализованная цена за единицу).
+    """
+    conn = _get_ozon_connection()
+    cur = conn.cursor()
+
+    model_filter = ""
+    params = [start_date, end_date]
+    if model:
+        model_filter = "AND LOWER(SPLIT_PART(a.article, '/', 1)) = %s"
+        params.append(model.lower())
+
+    query = f"""
+    SELECT
+        a.date,
+        LOWER(SPLIT_PART(a.article, '/', 1)) as model,
+        -- Цена за единицу
+        CASE WHEN SUM(a.count_end) > 0
+            THEN SUM(a.price_end) / SUM(a.count_end)
+            ELSE NULL END as price_per_unit,
+        -- Объём
+        SUM(a.count_end) as sales_count,
+        -- Маржа
+        SUM(a.marga) - SUM(a.nds) as margin,
+        CASE WHEN SUM(a.price_end) > 0
+            THEN (SUM(a.marga) - SUM(a.nds)) / SUM(a.price_end) * 100
+            ELSE NULL END as margin_pct,
+        -- Выручка
+        SUM(a.price_end) as revenue_before_spp,
+        -- СПП %
+        CASE WHEN SUM(a.price_end) > 0
+            THEN SUM(a.spp) / SUM(a.price_end) * 100
+            ELSE NULL END as spp_pct,
+        -- ДРР %
+        CASE WHEN SUM(a.price_end) > 0
+            THEN SUM(a.reclama_end + a.adv_vn) / SUM(a.price_end) * 100
+            ELSE NULL END as drr_pct,
+        -- Логистика на единицу
+        CASE WHEN SUM(a.count_end) > 0
+            THEN SUM(a.logist_end) / SUM(a.count_end)
+            ELSE NULL END as logistics_per_unit,
+        -- Себестоимость на единицу
+        CASE WHEN SUM(a.count_end) > 0
+            THEN SUM(a.sebes_end) / SUM(a.count_end)
+            ELSE NULL END as cogs_per_unit,
+        -- Реклама (абсолют)
+        SUM(a.reclama_end + a.adv_vn) as adv_total,
+        SUM(a.reclama_end) as adv_internal,
+        SUM(a.adv_vn) as adv_external
+    FROM abc_date a
+    WHERE a.date >= %s AND a.date < %s
+        {model_filter}
+    GROUP BY a.date, LOWER(SPLIT_PART(a.article, '/', 1))
+    HAVING SUM(a.count_end) > 0
+    ORDER BY a.date, model;
+    """
+    cur.execute(query, params)
+    columns = [desc[0] for desc in cur.description]
+    results = [dict(zip(columns, row)) for row in cur.fetchall()]
+
+    cur.close()
+    conn.close()
+
+    for row in results:
+        for key, val in row.items():
+            if key != 'date' and key != 'model':
+                row[key] = to_float(val)
+
+    return results
+
+
+def get_wb_price_changes(start_date, end_date, model=None):
+    """
+    WB: детекция значимых изменений цены (>3%) через LAG().
+    Возвращает дни, когда цена за единицу изменилась более чем на 3%.
+    """
+    conn = _get_wb_connection()
+    cur = conn.cursor()
+
+    model_filter = ""
+    params = [start_date, end_date]
+    if model:
+        model_filter = "AND LOWER(SPLIT_PART(article, '/', 1)) = %s"
+        params.append(model.lower())
+
+    query = f"""
+    WITH daily_prices AS (
+        SELECT
+            date,
+            LOWER(SPLIT_PART(article, '/', 1)) as model,
+            (SUM(revenue_spp) - COALESCE(SUM(revenue_return_spp), 0))
+                / NULLIF(SUM(full_counts), 0) as avg_price
+        FROM abc_date
+        WHERE date >= %s AND date < %s
+            {model_filter}
+        GROUP BY date, LOWER(SPLIT_PART(article, '/', 1))
+        HAVING SUM(full_counts) > 0
+    ),
+    with_lag AS (
+        SELECT
+            date, model, avg_price,
+            LAG(avg_price) OVER (PARTITION BY model ORDER BY date) as prev_price
+        FROM daily_prices
+    )
+    SELECT
+        date, model, avg_price, prev_price,
+        (avg_price - prev_price) / NULLIF(prev_price, 0) * 100 as change_pct
+    FROM with_lag
+    WHERE prev_price IS NOT NULL
+      AND ABS(avg_price - prev_price) / NULLIF(prev_price, 0) > 0.03
+    ORDER BY date, model;
+    """
+    cur.execute(query, params)
+    columns = [desc[0] for desc in cur.description]
+    results = [dict(zip(columns, row)) for row in cur.fetchall()]
+
+    cur.close()
+    conn.close()
+
+    for row in results:
+        for key, val in row.items():
+            if key != 'date' and key != 'model':
+                row[key] = to_float(val)
+
+    return results
+
+
+def get_ozon_price_changes(start_date, end_date, model=None):
+    """
+    OZON: детекция значимых изменений цены (>3%) через LAG().
+    """
+    conn = _get_ozon_connection()
+    cur = conn.cursor()
+
+    model_filter = ""
+    params = [start_date, end_date]
+    if model:
+        model_filter = "AND LOWER(SPLIT_PART(article, '/', 1)) = %s"
+        params.append(model.lower())
+
+    query = f"""
+    WITH daily_prices AS (
+        SELECT
+            date,
+            LOWER(SPLIT_PART(article, '/', 1)) as model,
+            SUM(price_end) / NULLIF(SUM(count_end), 0) as avg_price
+        FROM abc_date
+        WHERE date >= %s AND date < %s
+            {model_filter}
+        GROUP BY date, LOWER(SPLIT_PART(article, '/', 1))
+        HAVING SUM(count_end) > 0
+    ),
+    with_lag AS (
+        SELECT
+            date, model, avg_price,
+            LAG(avg_price) OVER (PARTITION BY model ORDER BY date) as prev_price
+        FROM daily_prices
+    )
+    SELECT
+        date, model, avg_price, prev_price,
+        (avg_price - prev_price) / NULLIF(prev_price, 0) * 100 as change_pct
+    FROM with_lag
+    WHERE prev_price IS NOT NULL
+      AND ABS(avg_price - prev_price) / NULLIF(prev_price, 0) > 0.03
+    ORDER BY date, model;
+    """
+    cur.execute(query, params)
+    columns = [desc[0] for desc in cur.description]
+    results = [dict(zip(columns, row)) for row in cur.fetchall()]
+
+    cur.close()
+    conn.close()
+
+    for row in results:
+        for key, val in row.items():
+            if key != 'date' and key != 'model':
+                row[key] = to_float(val)
+
+    return results
+
+
+def get_wb_spp_history_by_model(start_date, end_date, model=None):
+    """WB: динамика СПП% по модели по дням."""
+    conn = _get_wb_connection()
+    cur = conn.cursor()
+
+    model_filter = ""
+    params = [start_date, end_date]
+    if model:
+        model_filter = "AND LOWER(SPLIT_PART(article, '/', 1)) = %s"
+        params.append(model.lower())
+
+    query = f"""
+    SELECT
+        date,
+        LOWER(SPLIT_PART(article, '/', 1)) as model,
+        CASE WHEN SUM(revenue_spp) > 0
+            THEN SUM(spp) / SUM(revenue_spp) * 100
+            ELSE 0 END as spp_pct,
+        SUM(spp) as spp_amount,
+        SUM(revenue_spp) as revenue_gross
+    FROM abc_date
+    WHERE date >= %s AND date < %s
+        {model_filter}
+    GROUP BY date, LOWER(SPLIT_PART(article, '/', 1))
+    ORDER BY date, model;
+    """
+    cur.execute(query, params)
+    columns = [desc[0] for desc in cur.description]
+    results = [dict(zip(columns, row)) for row in cur.fetchall()]
+
+    cur.close()
+    conn.close()
+
+    for row in results:
+        for key, val in row.items():
+            if key != 'date' and key != 'model':
+                row[key] = to_float(val)
+
+    return results
+
+
+def get_wb_price_margin_by_model_period(start_date, end_date):
+    """
+    WB: агрегированные цена+маржа по моделям за весь период.
+    Используется для quick overview / сравнения моделей.
+    """
+    conn = _get_wb_connection()
+    cur = conn.cursor()
+
+    query = f"""
+    SELECT
+        LOWER(SPLIT_PART(article, '/', 1)) as model,
+        CASE WHEN SUM(full_counts) > 0
+            THEN (SUM(revenue_spp) - COALESCE(SUM(revenue_return_spp), 0))
+                 / SUM(full_counts)
+            ELSE NULL END as avg_price_per_unit,
+        SUM(full_counts) as sales_count,
+        {WB_MARGIN_SQL} as margin,
+        CASE WHEN (SUM(revenue_spp) - COALESCE(SUM(revenue_return_spp), 0)) > 0
+            THEN ({WB_MARGIN_SQL}) /
+                 (SUM(revenue_spp) - COALESCE(SUM(revenue_return_spp), 0)) * 100
+            ELSE NULL END as margin_pct,
+        SUM(revenue_spp) - COALESCE(SUM(revenue_return_spp), 0) as revenue,
+        CASE WHEN SUM(revenue_spp) > 0
+            THEN SUM(spp) / SUM(revenue_spp) * 100
+            ELSE NULL END as spp_pct,
+        CASE WHEN (SUM(revenue_spp) - COALESCE(SUM(revenue_return_spp), 0)) > 0
+            THEN SUM(reclama + reclama_vn) /
+                 (SUM(revenue_spp) - COALESCE(SUM(revenue_return_spp), 0)) * 100
+            ELSE NULL END as drr_pct
+    FROM abc_date
+    WHERE date >= %s AND date < %s
+    GROUP BY LOWER(SPLIT_PART(article, '/', 1))
+    HAVING SUM(full_counts) > 0
+    ORDER BY margin DESC;
+    """
+    cur.execute(query, (start_date, end_date))
+    columns = [desc[0] for desc in cur.description]
+    results = [dict(zip(columns, row)) for row in cur.fetchall()]
+
+    cur.close()
+    conn.close()
+
+    for row in results:
+        for key, val in row.items():
+            if key != 'model':
+                row[key] = to_float(val)
+
+    return results
+
+
+def get_ozon_price_margin_by_model_period(start_date, end_date):
+    """
+    OZON: агрегированные цена+маржа по моделям за весь период.
+    """
+    conn = _get_ozon_connection()
+    cur = conn.cursor()
+
+    query = """
+    SELECT
+        LOWER(SPLIT_PART(article, '/', 1)) as model,
+        CASE WHEN SUM(count_end) > 0
+            THEN SUM(price_end) / SUM(count_end)
+            ELSE NULL END as avg_price_per_unit,
+        SUM(count_end) as sales_count,
+        SUM(marga) - SUM(nds) as margin,
+        CASE WHEN SUM(price_end) > 0
+            THEN (SUM(marga) - SUM(nds)) / SUM(price_end) * 100
+            ELSE NULL END as margin_pct,
+        SUM(price_end) as revenue,
+        CASE WHEN SUM(price_end) > 0
+            THEN SUM(spp) / SUM(price_end) * 100
+            ELSE NULL END as spp_pct,
+        CASE WHEN SUM(price_end) > 0
+            THEN SUM(reclama_end + adv_vn) / SUM(price_end) * 100
+            ELSE NULL END as drr_pct
+    FROM abc_date
+    WHERE date >= %s AND date < %s
+    GROUP BY LOWER(SPLIT_PART(article, '/', 1))
+    HAVING SUM(count_end) > 0
+    ORDER BY margin DESC;
+    """
+    cur.execute(query, (start_date, end_date))
+    columns = [desc[0] for desc in cur.description]
+    results = [dict(zip(columns, row)) for row in cur.fetchall()]
+
+    cur.close()
+    conn.close()
+
+    for row in results:
+        for key, val in row.items():
+            if key != 'model':
+                row[key] = to_float(val)
+
+    return results
+
+
 def get_ozon_weekly_breakdown(month_start, month_end):
     """OZON финансы по неделям внутри месяца."""
-    conn = psycopg2.connect(**DB_CONFIG, database=DB_OZON)
+    conn = _get_ozon_connection()
     cur = conn.cursor()
 
     query = """
@@ -1087,3 +1516,324 @@ def get_ozon_weekly_breakdown(month_start, month_end):
             'orders_rub': om['rub'],
         })
     return weeks
+
+
+# =============================================================================
+# АРТИКУЛЬНЫЕ ДНЕВНЫЕ ДАННЫЕ (для поартикульного регрессионного анализа)
+# =============================================================================
+
+def get_wb_price_margin_daily_by_article(start_date, end_date, article=None, model=None):
+    """
+    WB ежедневные данные цена+маржа+объём по АРТИКУЛАМ (не по модели).
+
+    Для поартикульной эластичности: цветовые варианты внутри модели
+    могут иметь разную ценовую чувствительность.
+    """
+    conn = _get_wb_connection()
+    cur = conn.cursor()
+
+    filters = []
+    params = [start_date, end_date]
+    if article:
+        filters.append("AND LOWER(a.article) = %s")
+        params.append(article.lower())
+    if model:
+        filters.append("AND LOWER(SPLIT_PART(a.article, '/', 1)) = %s")
+        params.append(model.lower())
+
+    filter_sql = " ".join(filters)
+
+    query = f"""
+    SELECT
+        a.date,
+        LOWER(a.article) as article,
+        LOWER(SPLIT_PART(a.article, '/', 1)) as model,
+        CASE WHEN SUM(a.full_counts) > 0
+            THEN (SUM(a.revenue_spp) - COALESCE(SUM(a.revenue_return_spp), 0))
+                 / SUM(a.full_counts)
+            ELSE NULL END as price_per_unit,
+        SUM(a.full_counts) as sales_count,
+        SUM(a.count_orders) as orders_count,
+        {WB_MARGIN_SQL} as margin,
+        CASE WHEN (SUM(a.revenue_spp) - COALESCE(SUM(a.revenue_return_spp), 0)) > 0
+            THEN ({WB_MARGIN_SQL}) /
+                 (SUM(a.revenue_spp) - COALESCE(SUM(a.revenue_return_spp), 0)) * 100
+            ELSE NULL END as margin_pct,
+        SUM(a.revenue_spp) - COALESCE(SUM(a.revenue_return_spp), 0) as revenue_before_spp,
+        CASE WHEN SUM(a.revenue_spp) > 0
+            THEN SUM(a.spp) / SUM(a.revenue_spp) * 100
+            ELSE NULL END as spp_pct,
+        CASE WHEN (SUM(a.revenue_spp) - COALESCE(SUM(a.revenue_return_spp), 0)) > 0
+            THEN SUM(a.reclama + a.reclama_vn) /
+                 (SUM(a.revenue_spp) - COALESCE(SUM(a.revenue_return_spp), 0)) * 100
+            ELSE NULL END as drr_pct,
+        CASE WHEN SUM(a.full_counts) > 0
+            THEN SUM(a.logist) / SUM(a.full_counts)
+            ELSE NULL END as logistics_per_unit,
+        CASE WHEN SUM(a.full_counts) > 0
+            THEN SUM(a.sebes) / SUM(a.full_counts)
+            ELSE NULL END as cogs_per_unit,
+        SUM(a.reclama + a.reclama_vn) as adv_total
+    FROM abc_date a
+    WHERE a.date >= %s AND a.date < %s
+        AND a.article IS NOT NULL AND a.article != '' AND a.article != '0'
+        {filter_sql}
+    GROUP BY a.date, LOWER(a.article)
+    HAVING SUM(a.full_counts) > 0
+    ORDER BY a.date, article;
+    """
+    cur.execute(query, params)
+    columns = [desc[0] for desc in cur.description]
+    results = [dict(zip(columns, row)) for row in cur.fetchall()]
+
+    cur.close()
+    conn.close()
+
+    for row in results:
+        for key, val in row.items():
+            if key not in ('date', 'article', 'model'):
+                row[key] = to_float(val)
+
+    return results
+
+
+def get_ozon_price_margin_daily_by_article(start_date, end_date, article=None, model=None):
+    """
+    OZON ежедневные данные цена+маржа+объём по АРТИКУЛАМ.
+
+    OZON article содержит размер (_L, _M) — убираем суффикс.
+    """
+    conn = _get_ozon_connection()
+    cur = conn.cursor()
+
+    filters = []
+    params = [start_date, end_date]
+    if article:
+        filters.append("AND LOWER(REGEXP_REPLACE(a.article, '_[^_]+$', '')) = %s")
+        params.append(article.lower())
+    if model:
+        filters.append("AND LOWER(SPLIT_PART(a.article, '/', 1)) = %s")
+        params.append(model.lower())
+
+    filter_sql = " ".join(filters)
+
+    query = f"""
+    SELECT
+        a.date,
+        LOWER(REGEXP_REPLACE(a.article, '_[^_]+$', '')) as article,
+        LOWER(SPLIT_PART(a.article, '/', 1)) as model,
+        CASE WHEN SUM(a.count_end) > 0
+            THEN SUM(a.price_end) / SUM(a.count_end)
+            ELSE NULL END as price_per_unit,
+        SUM(a.count_end) as sales_count,
+        SUM(a.marga) - SUM(a.nds) as margin,
+        CASE WHEN SUM(a.price_end) > 0
+            THEN (SUM(a.marga) - SUM(a.nds)) / SUM(a.price_end) * 100
+            ELSE NULL END as margin_pct,
+        SUM(a.price_end) as revenue_before_spp,
+        CASE WHEN SUM(a.price_end) > 0
+            THEN SUM(a.spp) / SUM(a.price_end) * 100
+            ELSE NULL END as spp_pct,
+        CASE WHEN SUM(a.price_end) > 0
+            THEN SUM(a.reclama_end + a.adv_vn) / SUM(a.price_end) * 100
+            ELSE NULL END as drr_pct,
+        CASE WHEN SUM(a.count_end) > 0
+            THEN SUM(a.logist_end) / SUM(a.count_end)
+            ELSE NULL END as logistics_per_unit,
+        CASE WHEN SUM(a.count_end) > 0
+            THEN SUM(a.sebes_end) / SUM(a.count_end)
+            ELSE NULL END as cogs_per_unit,
+        SUM(a.reclama_end + a.adv_vn) as adv_total
+    FROM abc_date a
+    WHERE a.date >= %s AND a.date < %s
+        AND a.article IS NOT NULL AND a.article != ''
+        {filter_sql}
+    GROUP BY a.date, LOWER(REGEXP_REPLACE(a.article, '_[^_]+$', ''))
+    HAVING SUM(a.count_end) > 0
+    ORDER BY a.date, article;
+    """
+    cur.execute(query, params)
+    columns = [desc[0] for desc in cur.description]
+    results = [dict(zip(columns, row)) for row in cur.fetchall()]
+
+    cur.close()
+    conn.close()
+
+    for row in results:
+        for key, val in row.items():
+            if key not in ('date', 'article', 'model'):
+                row[key] = to_float(val)
+
+    return results
+
+
+# =============================================================================
+# ОБОРАЧИВАЕМОСТЬ ПО МОДЕЛЯМ
+# =============================================================================
+
+def get_wb_turnover_by_model(start_date, end_date):
+    """
+    WB оборачиваемость по моделям = avg_stock / daily_sales.
+
+    Композиция: get_wb_avg_stock() + get_wb_by_article() → агрегация по модели.
+    """
+    stock_by_article = get_wb_avg_stock(start_date, end_date)
+    articles = get_wb_by_article(start_date, end_date)
+
+    days = max(1, (datetime.strptime(end_date, '%Y-%m-%d') - datetime.strptime(start_date, '%Y-%m-%d')).days)
+
+    # Агрегация по модели
+    model_data = {}
+    for art in articles:
+        model_name = art['model']
+        if model_name not in model_data:
+            model_data[model_name] = {'sales_count': 0, 'stock_total': 0, 'revenue': 0, 'margin': 0}
+        model_data[model_name]['sales_count'] += art['sales_count']
+        model_data[model_name]['revenue'] += art['revenue']
+        model_data[model_name]['margin'] += art['margin']
+
+    # Добавить остатки (stock по артикулам → агрегация по модели)
+    for art_key, stock_val in stock_by_article.items():
+        model_name = art_key.split('/')[0] if '/' in art_key else art_key
+        if model_name in model_data:
+            model_data[model_name]['stock_total'] += stock_val
+
+    result = {}
+    for model_name, md in model_data.items():
+        daily_sales = md['sales_count'] / days if md['sales_count'] > 0 else 0
+        turnover_days = md['stock_total'] / daily_sales if daily_sales > 0 else 0
+        result[model_name] = {
+            'avg_stock': round(md['stock_total'], 0),
+            'daily_sales': round(daily_sales, 1),
+            'turnover_days': round(turnover_days, 1),
+            'sales_count': md['sales_count'],
+            'revenue': round(md['revenue'], 0),
+            'margin': round(md['margin'], 0),
+        }
+
+    return result
+
+
+def get_ozon_turnover_by_model(start_date, end_date):
+    """
+    OZON оборачиваемость по моделям = avg_stock / daily_sales.
+
+    Композиция: get_ozon_avg_stock() + get_ozon_by_article() → агрегация по модели.
+    """
+    stock_by_article = get_ozon_avg_stock(start_date, end_date)
+    articles = get_ozon_by_article(start_date, end_date)
+
+    days = max(1, (datetime.strptime(end_date, '%Y-%m-%d') - datetime.strptime(start_date, '%Y-%m-%d')).days)
+
+    model_data = {}
+    for art in articles:
+        model_name = art['model']
+        if model_name not in model_data:
+            model_data[model_name] = {'sales_count': 0, 'stock_total': 0, 'revenue': 0, 'margin': 0}
+        model_data[model_name]['sales_count'] += art['sales_count']
+        model_data[model_name]['revenue'] += art['revenue']
+        model_data[model_name]['margin'] += art['margin']
+
+    for art_key, stock_val in stock_by_article.items():
+        model_name = art_key.split('/')[0] if '/' in art_key else art_key
+        if model_name in model_data:
+            model_data[model_name]['stock_total'] += stock_val
+
+    result = {}
+    for model_name, md in model_data.items():
+        daily_sales = md['sales_count'] / days if md['sales_count'] > 0 else 0
+        turnover_days = md['stock_total'] / daily_sales if daily_sales > 0 else 0
+        result[model_name] = {
+            'avg_stock': round(md['stock_total'], 0),
+            'daily_sales': round(daily_sales, 1),
+            'turnover_days': round(turnover_days, 1),
+            'sales_count': md['sales_count'],
+            'revenue': round(md['revenue'], 0),
+            'margin': round(md['margin'], 0),
+        }
+
+    return result
+
+
+# =============================================================================
+# ДНЕВНЫЕ ОСТАТКИ ПО МОДЕЛЯМ
+# =============================================================================
+
+def get_wb_stock_daily_by_model(start_date, end_date, model=None):
+    """
+    WB ежедневные остатки по моделям из таблицы stocks.
+
+    Для анализа гипотезы H4: влияние остатков на продажи.
+    """
+    conn = _get_wb_connection()
+    cur = conn.cursor()
+
+    model_filter = ""
+    params = [start_date, end_date]
+    if model:
+        model_filter = "AND LOWER(SPLIT_PART(supplierarticle, '/', 1)) = %s"
+        params.append(model.lower())
+
+    query = f"""
+    SELECT
+        lastchangedate::date as date,
+        LOWER(SPLIT_PART(supplierarticle, '/', 1)) as model,
+        SUM(quantityfull) as total_stock
+    FROM stocks
+    WHERE lastchangedate >= %s AND lastchangedate < %s
+        AND supplierarticle IS NOT NULL AND supplierarticle != ''
+        {model_filter}
+    GROUP BY lastchangedate::date, LOWER(SPLIT_PART(supplierarticle, '/', 1))
+    ORDER BY date, model;
+    """
+    cur.execute(query, params)
+    columns = [desc[0] for desc in cur.description]
+    results = [dict(zip(columns, row)) for row in cur.fetchall()]
+
+    cur.close()
+    conn.close()
+
+    for row in results:
+        row['total_stock'] = to_float(row['total_stock'])
+
+    return results
+
+
+def get_ozon_stock_daily_by_model(start_date, end_date, model=None):
+    """
+    OZON ежедневные остатки по моделям из таблицы stocks.
+
+    Для анализа гипотезы H4: влияние остатков на продажи.
+    """
+    conn = _get_ozon_connection()
+    cur = conn.cursor()
+
+    model_filter = ""
+    params = [start_date, end_date]
+    if model:
+        model_filter = "AND LOWER(SPLIT_PART(offer_id, '/', 1)) = %s"
+        params.append(model.lower())
+
+    query = f"""
+    SELECT
+        dateupdate::date as date,
+        LOWER(SPLIT_PART(offer_id, '/', 1)) as model,
+        SUM(stockspresent) as total_stock
+    FROM stocks
+    WHERE dateupdate >= %s AND dateupdate < %s
+        AND offer_id IS NOT NULL AND offer_id != ''
+        {model_filter}
+    GROUP BY dateupdate::date, LOWER(SPLIT_PART(offer_id, '/', 1))
+    ORDER BY date, model;
+    """
+    cur.execute(query, params)
+    columns = [desc[0] for desc in cur.description]
+    results = [dict(zip(columns, row)) for row in cur.fetchall()]
+
+    cur.close()
+    conn.close()
+
+    for row in results:
+        row['total_stock'] = to_float(row['total_stock'])
+
+    return results

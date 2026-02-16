@@ -2,8 +2,10 @@
 Authentication Service for Wookiee Bot
 Handles password verification and user authorization
 """
+import json
 import bcrypt
-from typing import Dict, Set
+from pathlib import Path
+from typing import Optional, Set
 import logging
 
 logger = logging.getLogger(__name__)
@@ -12,15 +14,35 @@ logger = logging.getLogger(__name__)
 class AuthService:
     """Service for managing user authentication"""
 
-    def __init__(self, hashed_password: str):
-        """
-        Initialize auth service
-
-        Args:
-            hashed_password: bcrypt hashed password for bot access
-        """
+    def __init__(self, hashed_password: str, persistence_path: Optional[str] = None):
         self.hashed_password = hashed_password.encode() if isinstance(hashed_password, str) else hashed_password
+        self._persistence_path = Path(persistence_path) if persistence_path else None
         self.authenticated_users: Set[int] = set()
+        self._load_users()
+
+    def _load_users(self) -> None:
+        """Load authenticated users from disk."""
+        if not self._persistence_path or not self._persistence_path.exists():
+            return
+        try:
+            data = json.loads(self._persistence_path.read_text(encoding="utf-8"))
+            self.authenticated_users = set(data.get("user_ids", []))
+            logger.info(f"Loaded {len(self.authenticated_users)} authenticated users from disk")
+        except Exception as e:
+            logger.warning(f"Failed to load authenticated users: {e}")
+
+    def _save_users(self) -> None:
+        """Persist authenticated users to disk."""
+        if not self._persistence_path:
+            return
+        try:
+            self._persistence_path.parent.mkdir(parents=True, exist_ok=True)
+            self._persistence_path.write_text(
+                json.dumps({"user_ids": sorted(self.authenticated_users)}, indent=2),
+                encoding="utf-8",
+            )
+        except Exception as e:
+            logger.warning(f"Failed to save authenticated users: {e}")
 
     def verify_password(self, password: str) -> bool:
         """
@@ -51,6 +73,7 @@ class AuthService:
         """
         if self.verify_password(password):
             self.authenticated_users.add(user_id)
+            self._save_users()
             logger.info(f"User {user_id} authenticated successfully")
             return True
         else:
@@ -77,6 +100,7 @@ class AuthService:
             user_id: Telegram user ID
         """
         self.authenticated_users.discard(user_id)
+        self._save_users()
         logger.info(f"User {user_id} logged out")
 
     @staticmethod
