@@ -1087,11 +1087,11 @@ def get_wb_price_margin_daily(start_date, end_date, model=None):
             ELSE NULL END as margin_pct,
         -- Выручка
         SUM(a.revenue_spp) - COALESCE(SUM(a.revenue_return_spp), 0) as revenue_before_spp,
-        -- СПП %
+        -- СПП
         CASE WHEN SUM(a.revenue_spp) > 0
             THEN SUM(a.spp) / SUM(a.revenue_spp) * 100
             ELSE NULL END as spp_pct,
-        -- ДРР %
+        -- ДРР
         CASE WHEN (SUM(a.revenue_spp) - COALESCE(SUM(a.revenue_return_spp), 0)) > 0
             THEN SUM(a.reclama + a.reclama_vn) /
                  (SUM(a.revenue_spp) - COALESCE(SUM(a.revenue_return_spp), 0)) * 100
@@ -1104,7 +1104,7 @@ def get_wb_price_margin_daily(start_date, end_date, model=None):
         CASE WHEN SUM(a.full_counts) > 0
             THEN SUM(a.sebes) / SUM(a.full_counts)
             ELSE NULL END as cogs_per_unit,
-        -- Реклама (абсолют)
+        -- Реклама
         SUM(a.reclama + a.reclama_vn) as adv_total,
         SUM(a.reclama) as adv_internal,
         SUM(a.reclama_vn) as adv_external
@@ -1162,11 +1162,11 @@ def get_ozon_price_margin_daily(start_date, end_date, model=None):
             ELSE NULL END as margin_pct,
         -- Выручка
         SUM(a.price_end) as revenue_before_spp,
-        -- СПП %
+        -- СПП
         CASE WHEN SUM(a.price_end) > 0
             THEN SUM(a.spp) / SUM(a.price_end) * 100
             ELSE NULL END as spp_pct,
-        -- ДРР %
+        -- ДРР
         CASE WHEN SUM(a.price_end) > 0
             THEN SUM(a.reclama_end + a.adv_vn) / SUM(a.price_end) * 100
             ELSE NULL END as drr_pct,
