@@ -1,5 +1,7 @@
 # Oleg Bot -- Системная документация
 
+> **Последнее обновление:** 2026-02-16
+
 Oleg -- ИИ финансовый и бизнес-аналитик бренда Wookiee. Telegram-бот на aiogram 3.x с ReAct-агентом: LLM сам решает какие данные запросить, итеративно углубляется в проблему, проверяет расчёты и генерирует готовый отчёт.
 
 Бренд Wookiee продаёт одежду на маркетплейсах WB и OZON. Бот анализирует финансовые данные обоих каналов, строит причинно-следственные цепочки и даёт конкретные рекомендации.
@@ -8,22 +10,107 @@ Oleg -- ИИ финансовый и бизнес-аналитик бренда 
 
 ## 1. Архитектура
 
-### Общая схема
+### Блок-схема (Mermaid)
+
+```mermaid
+flowchart TB
+    subgraph TG["Telegram"]
+        User["Пользователь"]
+    end
+
+    subgraph Bot["OlegBot (main.py)"]
+        direction TB
+        Dispatcher["aiogram Dispatcher\n+ DI Middleware"]
+        Scheduler["APScheduler\n(Europe/Moscow)"]
+    end
+
+    subgraph Handlers["Handlers (aiogram Router)"]
+        Auth["auth.py\n/start, /logout"]
+        Menu["menu.py\nМеню навигации"]
+        SR["scheduled_reports.py\nDaily / Weekly / Period\nCalendar picker\nFeedback FSM"]
+        CQ["custom_queries.py\nСвободные запросы\nClarification FSM"]
+    end
+
+    subgraph Services["Services"]
+        direction TB
+        QU["QueryUnderstanding\n(glm-4.5-flash)"]
+        DF["DataFreshnessService\nadjust_dates()\ncheck_freshness()"]
+        OA["OlegAgent\nanalyze_deep()\nverify_feedback()"]
+        AE["AgentExecutor\nReAct Loop\nmax 10 iter"]
+    end
+
+    subgraph Tools["Tools (OpenAI function calling)"]
+        FT["agent_tools.py\n12 финансовых"]
+        PT["price_tools.py\n9 ценовых"]
+    end
+
+    subgraph Data["Data Layer"]
+        DL["shared/data_layer.py\n(единый источник SQL)"]
+    end
+
+    subgraph Storage["Хранилища"]
+        PGWB["PostgreSQL WB\n(read-only)"]
+        PGOZ["PostgreSQL OZON\n(read-only)"]
+        SB["Supabase\n(товарная матрица)"]
+        SQLite["SQLite\n(история отчётов)"]
+    end
+
+    subgraph Output["Выход"]
+        TGOut["Telegram\n(HTML, paragraph chunks)"]
+        Notion["Notion\n(Markdown -> blocks)"]
+    end
+
+    subgraph LLM["LLM-провайдеры"]
+        OR["OpenRouter\nkimi-k2.5\n(аналитика)"]
+        ZAI["z.ai\nglm-4.5-flash\n(classify)"]
+    end
+
+    User -->|"message / callback"| Dispatcher
+    Dispatcher -->|"DI inject"| Handlers
+    Scheduler -->|"cron jobs"| Bot
+
+    SR -->|"adjust_dates()"| DF
+    CQ -->|"parse()"| QU
+    SR -->|"analyze_deep()"| OA
+    CQ -->|"analyze_deep()"| OA
+    Scheduler -->|"analyze_deep()"| OA
+
+    OA --> AE
+    AE -->|"tool_calls"| Tools
+    Tools --> DL
+    DL --> PGWB
+    DL --> PGOZ
+    DL --> SB
+
+    DF -->|"MAX(date) check"| PGWB
+    DF -->|"MAX(date) check"| PGOZ
+
+    AE -->|"LLM calls"| OR
+    QU -->|"classify"| ZAI
+
+    OA -->|"brief_summary"| TGOut
+    OA -->|"detailed_report"| Notion
+    OA -->|"save"| SQLite
+```
+
+### Текстовая схема (для терминала)
 
 ```
-Telegram --> aiogram 3.x (Dispatcher)
+Telegram --> aiogram 3.x (Dispatcher + DI Middleware)
                 |
                 v
          Handlers (auth, menu, scheduled_reports, custom_queries)
                 |
-                v
-         OlegAgent.analyze() / analyze_deep()
+                +-- DataFreshnessService.adjust_dates() -- корректировка периода
                 |
                 v
-         AgentExecutor (ReAct loop: Think -> Act -> Observe)
+         OlegAgent.analyze_deep()  (все пути: ручные + авто)
                 |
                 v
-         agent_tools.py + price_tools.py (20 инструментов)
+         AgentExecutor (ReAct loop: Think -> Act -> Observe, max 10 iter)
+                |
+                v
+         agent_tools.py (12) + price_tools.py (9) = 21 инструмент
                 |
                 v
          shared/data_layer.py (SQL-запросы к PostgreSQL)
@@ -52,10 +139,11 @@ Telegram --> aiogram 3.x (Dispatcher)
 #### Ядро агента
 
 - **`services/oleg_agent.py`** -- класс `OlegAgent`:
-  - `analyze()` -- стандартный анализ с протоколом 7 шагов
-  - `analyze_deep()` -- глубокий анализ с post-check обязательных tool calls + retry
+  - `analyze_deep()` -- глубокий анализ с post-check обязательных tool calls + retry. **Используется ВЕЗДЕ** (ручные + автоматические отчёты)
+  - `analyze()` -- стандартный анализ с протоколом 7 шагов (legacy, не используется в текущих путях)
   - `verify_feedback()` -- перепроверка обратной связи через инструменты (не просто соглашается)
   - Формирует system prompt из playbook + feedback lessons + протокол анализа
+  - Поддержка `data_availability_note` в user message -- LLM знает про недостающие даты
 
 - **`services/agent_executor.py`** -- класс `AgentExecutor`:
   - ReAct loop: вызов LLM -> проверка tool_calls -> исполнение инструментов -> добавление результатов в контекст -> повтор
@@ -92,7 +180,7 @@ Telegram --> aiogram 3.x (Dispatcher)
 #### Обработка данных
 
 - **`shared/data_layer.py`** -- все SQL-запросы к PostgreSQL (WB и OZON). Единственное место для DB-запросов (правило из AGENTS.md)
-- **`services/data_freshness_service.py`** -- проверка готовности данных за вчера
+- **`services/data_freshness_service.py`** -- проверка готовности данных + smart date adjustment (см. раздел 2.9)
 - **`services/query_understanding.py`** -- LLM-парсинг запросов пользователя (glm-4.5-flash, ~$0.0001/call)
 
 #### Форматирование и хранение
@@ -112,7 +200,7 @@ Telegram --> aiogram 3.x (Dispatcher)
 
 - **`handlers/auth.py`** -- /start, /logout, ввод пароля
 - **`handlers/menu.py`** -- главное меню, подменю отчётов, ценового анализа, помощь
-- **`handlers/scheduled_reports.py`** -- шаблонные отчёты (daily, weekly, period), calendar picker, FSM для feedback
+- **`handlers/scheduled_reports.py`** -- шаблонные отчёты (daily, weekly, period), calendar picker, FSM для feedback. Все хендлеры используют `analyze_deep()` + smart date adjustment
 - **`handlers/custom_queries.py`** -- свободные запросы с LLM-парсингом, FSM (clarification -> confirmation -> execution)
 
 #### Конфигурация
@@ -123,6 +211,39 @@ Telegram --> aiogram 3.x (Dispatcher)
 ---
 
 ## 2. Workflow отчётов
+
+### Ключевой принцип: Smart Date Adjustment
+
+Все пути генерации отчётов (ручные и автоматические) используют **smart date adjustment** вместо блокировки:
+
+```
+Запрос: "отчёт за 09-15 февраля"
+                |
+                v
+    DataFreshnessService.adjust_dates("2026-02-09", "2026-02-15")
+                |
+                v
+    get_latest_data_date() -> MAX(date) из WB и OZON -> min(wb, ozon)
+                |
+                v
+    Последние данные: 2026-02-14
+                |
+                v
+    return ("2026-02-09", "2026-02-14",
+            "Данные доступны до 14.02.2026. Нет данных за 1 дн.
+             Период скорректирован: 09.02–14.02.2026.")
+                |
+                v
+    params["data_availability_note"] = note
+                |
+                v
+    OlegAgent._build_user_message() -> "⚠️ Данные доступны до 14.02.2026..."
+                |
+                v
+    LLM видит ограничение в user message -> упоминает в отчёте
+```
+
+**Исключение:** автоматический дневной отчёт (`send_daily_report()`) использует blocking freshness check, т.к. data freshness monitor позже дотриггерит генерацию.
 
 ### 2.1. Автоматический дневной отчёт
 
@@ -152,8 +273,17 @@ Telegram --> aiogram 3.x (Dispatcher)
 
 **Расписание:** понедельник, `WEEKLY_REPORT_TIME` (по умолчанию 10:15 MSK).
 
-- Период: последние 7 дней
-- Вызывает `analyze_deep()` с `report_type: "weekly"`
+```
+1. send_weekly_report()
+2. data_freshness.adjust_dates(start, end) -- smart date adjustment
+   - Если данные за end_date ещё не готовы -> end_date корректируется
+   - note передаётся в params["data_availability_note"]
+3. oleg_agent.analyze_deep() с report_type: "weekly"
+4. notion_service.sync_report() -> Notion
+5. Рассылка authenticated_users
+```
+
+- Период: последние 7 дней (с коррекцией по доступности данных)
 - Формат: дневная динамика внутри недели, связка реклама -> заказы
 
 ### 2.3. Ежемесячный отчёт
@@ -161,14 +291,16 @@ Telegram --> aiogram 3.x (Dispatcher)
 **Расписание:** каждый понедельник в `MONTHLY_REPORT_TIME` (по умолчанию 10:30 MSK), но **отправляется только если `today.day <= 7`** (первая неделя месяца).
 
 - Проверка `report_storage.has_report_for_period("monthly_auto", month_str)` -- не дублировать
-- Период: предыдущий полный календарный месяц
+- Smart date adjustment через `data_freshness.adjust_dates()`
+- `oleg_agent.analyze_deep()` с `report_type: "monthly"`
 - Формат: executive summary, понедельная динамика, vs целей
 
 ### 2.4. Ценовой обзор
 
 **Расписание:** понедельник 11:00 MSK.
 
-- Вызывает `oleg_agent.analyze()` (не deep) с `report_type: "price_review"`
+- Smart date adjustment через `data_freshness.adjust_dates()`
+- `oleg_agent.analyze_deep()` с `report_type: "price_review"`
 - Контент: эластичность, рекомендации по ценам, тренды
 
 ### 2.5. Outcome Checker
@@ -222,6 +354,73 @@ Telegram --> aiogram 3.x (Dispatcher)
 ```
 
 Макс. 3 раунда уточнений, потом `_force_interpretation()`.
+
+### 2.9. Smart Date Adjustment (DataFreshnessService)
+
+Механизм, гарантирующий что отчёты генерируются только по доступным данным, без блокировки:
+
+```python
+# DataFreshnessService.adjust_dates(start_date, end_date) -> (adj_start, adj_end, note)
+
+# 1. Определяет последнюю дату с данными в ОБЕИХ БД:
+get_latest_data_date()  # -> min(MAX(date) WB, MAX(date) OZON)
+
+# 2. Если end_date <= latest -> возвращает без изменений (note=None)
+# 3. Если end_date > latest -> корректирует end_date = latest, формирует note
+# 4. Если весь период за пределами данных -> note с предупреждением
+```
+
+**Где используется:**
+
+| Путь | Файл | Метод |
+|------|------|-------|
+| Ручной daily | `handlers/scheduled_reports.py` | `callback_daily_report()` |
+| Ручной weekly | `handlers/scheduled_reports.py` | `callback_weekly_report()` |
+| Ручной period (7/30 дн) | `handlers/scheduled_reports.py` | `callback_quick_period()` |
+| Ручной calendar | `handlers/scheduled_reports.py` | `callback_calendar()` |
+| Авто weekly | `main.py` | `send_weekly_report()` |
+| Авто monthly | `main.py` | `check_and_send_monthly()` |
+| Авто price review | `main.py` | `send_weekly_price_review()` |
+
+**Передача в LLM:**
+
+```python
+# В OlegAgent._build_user_message():
+if params.get("data_availability_note"):
+    parts.append(f"\n⚠️ {params['data_availability_note']}")
+```
+
+LLM видит ограничение в user message и упоминает его в отчёте.
+
+### 2.10. Ручные отчёты (через Telegram кнопки)
+
+Все 4 ручных хендлера работают по **единому паттерну** (идентичному авто-отчётам):
+
+```
+1. Пользователь нажимает кнопку (daily/weekly/period/calendar)
+2. auth_service.is_authenticated() -- проверка авторизации
+3. data_freshness.adjust_dates(s, e) -- smart date adjustment
+4. oleg_agent.analyze_deep() -- полный ReAct анализ с post-check
+5. report_storage.save_report() -- сохранение
+6. notion_service.sync_report() -- синхронизация в Notion
+7. _send_html_report() -- paragraph-based chunking + отправка в TG
+```
+
+**Paragraph-based chunking** (макс. 4000 символов на чанк):
+
+```python
+# Разбивка по параграфам (\n\n), чтобы не ломать HTML-теги
+paragraphs = html_text.split('\n\n')
+chunks = []
+current = ""
+for p in paragraphs:
+    if len(current) + len(p) + 2 > MAX_LEN:
+        if current:
+            chunks.append(current)
+        current = p[:MAX_LEN]
+    else:
+        current = current + "\n\n" + p if current else p
+```
 
 ---
 
@@ -395,7 +594,10 @@ data['report_storage'] = self.report_storage
 data['feedback_service'] = self.feedback_service
 data['notion_service'] = self.notion_service
 data['query_understanding'] = self.query_understanding
+data['data_freshness'] = self.data_freshness
 ```
+
+Middleware создаётся для обоих типов событий: `message` и `callback_query`.
 
 ---
 
@@ -460,7 +662,9 @@ if '"brief_summary"' in report_md or '"detailed_report"' in report_md:
 - WB: ~06:18 MSK
 - OZON: ~07:03 MSK
 
-**Data freshness monitor** проверяет каждые 5 минут с 06:00 до 14:00 MSK. Когда данные готовы -- уведомление + автогенерация отчёта.
+**Data freshness monitor** проверяет каждые 5 минут с 06:00 до 14:00 MSK. Когда данные готовы -- уведомление + автогенерация дневного отчёта.
+
+**Ручные и авто-отчёты (кроме daily):** не блокируются, а корректируют период через `adjust_dates()`.
 
 ### Ошибки подключения к PostgreSQL
 
@@ -590,7 +794,7 @@ agents/oleg/
     report_storage.py                    # SQLite + FTS5
     auth_service.py                      # bcrypt auth + JSON persistence
     scheduler_service.py                 # APScheduler wrapper
-    data_freshness_service.py            # Проверка готовности данных
+    data_freshness_service.py            # Проверка готовности + smart date adjustment
     feedback_service.py                  # Обработка обратной связи
     data_layer.py                        # (шим -> shared/data_layer.py)
     db_config.py                         # DB connection config
@@ -617,13 +821,22 @@ deploy/
 
 ## 9. Расписание задач (сводка)
 
-| Задача | Расписание | Job ID |
-|--------|-----------|--------|
-| Дневной отчёт | Ежедневно `DAILY_REPORT_TIME` (10:05) | `daily_report` |
-| Недельный отчёт | Пн `WEEKLY_REPORT_TIME` (10:15) | `weekly_report` |
-| Месячный отчёт | Пн `MONTHLY_REPORT_TIME` (10:30), day <= 7 | `monthly_check` |
-| Ценовой обзор | Пн 11:00 | `weekly_price_review` |
-| Outcome checker | Ср 09:00 | `outcome_checker` |
-| Data freshness | */5 мин, 06:00-14:00 | `data_freshness_check` |
+| Задача | Расписание | Job ID | Date Adjustment |
+|--------|-----------|--------|-----------------|
+| Дневной отчёт | Ежедневно `DAILY_REPORT_TIME` (10:05) | `daily_report` | Blocking (freshness check) |
+| Недельный отчёт | Пн `WEEKLY_REPORT_TIME` (10:15) | `weekly_report` | Smart (adjust_dates) |
+| Месячный отчёт | Пн `MONTHLY_REPORT_TIME` (10:30), day <= 7 | `monthly_check` | Smart (adjust_dates) |
+| Ценовой обзор | Пн 11:00 | `weekly_price_review` | Smart (adjust_dates) |
+| Outcome checker | Ср 09:00 | `outcome_checker` | N/A |
+| Data freshness | */5 мин, 06:00-14:00 | `data_freshness_check` | N/A (triggers daily) |
 
 Все времена -- Europe/Moscow (MSK).
+
+---
+
+## 10. Changelog
+
+| Дата | Изменение |
+|------|-----------|
+| 2026-02-16 | Smart date adjustment: все отчёты корректируют период по доступности данных. `analyze_deep()` везде. Paragraph-based chunking. `data_freshness` в DI middleware. Mermaid-схема архитектуры. |
+| 2026-02-14 | Первая версия SYSTEM.md |

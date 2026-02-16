@@ -34,6 +34,27 @@ REQUIRED_TOOLS_DEEP = {
     "get_margin_levers",
 }
 
+# Required tools for price-related queries
+REQUIRED_TOOLS_PRICE = {
+    "get_price_elasticity",
+    "get_price_management_plan",
+}
+
+# Keywords that indicate a price-related query
+_PRICE_KEYWORDS = (
+    "цен", "эластичн", "регрессион", "акци", "промо",
+    "roi", "маржа", "маржин", "price", "скидк", "оборачиваем",
+    "остатк", "stock", "стоимост",
+)
+
+
+def _is_price_query(user_query: str, params: dict) -> bool:
+    """Check if the query is about pricing / price analytics."""
+    if params.get("report_type") in ("price_review", "promotion_analysis", "price_scenario"):
+        return True
+    query_lower = user_query.lower()
+    return any(kw in query_lower for kw in _PRICE_KEYWORDS)
+
 
 class OlegAgent:
     """Олег — ИИ финансовый и бизнес-аналитик Wookiee с tool-use."""
@@ -131,7 +152,10 @@ class OlegAgent:
 
         # Post-check: did agent call minimum required tools?
         called_tools = {step.tool_name for step in result.steps}
-        missing = REQUIRED_TOOLS_DEEP - called_tools
+        required = REQUIRED_TOOLS_DEEP.copy()
+        if _is_price_query(user_query, params):
+            required |= REQUIRED_TOOLS_PRICE
+        missing = required - called_tools
 
         if missing and result.finish_reason != "error":
             logger.warning(
@@ -447,6 +471,14 @@ class OlegAgent:
 → ОБЯЗАТЕЛЬНО проверь: показы (ad_views), переходы (card_opens), корзины (add_to_cart)
 → Посчитай среднюю цену/ед: выручка_до_СПП / продажи_шт
 
+→ ПРОИЗВОДНЫЕ МАРКЕТИНГОВЫЕ МЕТРИКИ (автоматически в get_advertising_stats и get_model_advertising):
+  - CPM (стоимость 1000 показов), CPL (стоимость корзины), CPO (стоимость заказа)
+  - Конверсии: клик→корзина (cart_conversion_pct), корзина→заказ (order_from_cart_pct), клик→заказ (cr_full_pct)
+  - Бенчмарки: CTR < 1% нецелевой, 2-3% средний, 5%+ целевой; CPM < 100₽ хорошо, > 500₽ дорого
+  - CPO vs маржа/ед — если CPO > маржа/ед → реклама убыточна на этой модели
+  - Вызови get_model_advertising() → CPO по моделям, найди убыточные (CPO > маржа/ед)
+  - Органическая воронка WB: card_opens → cart → order → buyout с конверсиями на каждом шаге
+
 → ВНЕШНЯЯ РЕКЛАМА:
    - Определи ТИП: блогеры (несистемный) или VK/Яндекс (системный)?
    - Если блогер (всплеск adv_external): НЕ считать ДРР сегодня, «эффект отложенный 3-7 дней»
@@ -553,6 +585,9 @@ class OlegAgent:
         directions = params.get("suggested_directions", [])
         if directions:
             parts.append("Направления анализа: " + "; ".join(directions[:3]))
+
+        if params.get("data_availability_note"):
+            parts.append(f"\n⚠️ {params['data_availability_note']}")
 
         return "\n".join(parts)
 

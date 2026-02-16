@@ -21,7 +21,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from agents.oleg import config
 from agents.oleg.services.auth_service import AuthService
-from shared.clients.zai_client import ZAIClient
+from shared.clients.openrouter_client import OpenRouterClient
 from agents.oleg.services.oleg_agent import OlegAgent
 from agents.oleg.services.report_storage import ReportStorage
 from agents.oleg.services.report_formatter import ReportFormatter
@@ -67,30 +67,23 @@ class OlegBot:
             config.HASHED_PASSWORD,
             persistence_path=config.USERS_FILE_PATH,
         )
-        self.zai_client = ZAIClient(
-            api_key=config.ZAI_API_KEY,
-            model=config.ZAI_MODEL,
+        # Single provider: OpenRouter for everything
+        self.llm_client = OpenRouterClient(
+            api_key=config.OPENROUTER_API_KEY,
+            model=config.ANALYTICS_MODEL,
+            fallback_model=config.FALLBACK_MODEL,
         )
-        # For analytics (tool-use): prefer OpenRouter if available, fallback to z.ai
-        if config.OPENROUTER_API_KEY:
-            self.analytics_client = ZAIClient(
-                api_key=config.OPENROUTER_API_KEY,
-                model=config.OPENROUTER_MODEL,
-                base_url="https://openrouter.ai/api/v1",
-            )
-            logger.info(f"Analytics client: OpenRouter ({config.OPENROUTER_MODEL})")
-        else:
-            self.analytics_client = self.zai_client
-            logger.info("Analytics client: z.ai (no OpenRouter key)")
+        logger.info(f"LLM: OpenRouter (main={config.ANALYTICS_MODEL}, classify={config.CLASSIFY_MODEL})")
         self.oleg_agent = OlegAgent(
-            zai_client=self.analytics_client,
+            zai_client=self.llm_client,
             playbook_path=config.PLAYBOOK_PATH,
-            model=config.OPENROUTER_MODEL if config.OPENROUTER_API_KEY else config.OLEG_MODEL,
+            model=config.ANALYTICS_MODEL,
         )
-        # LLM-based query understanding (uses cheap glm-4.5-flash)
+        # LLM-based query understanding (uses LIGHT model)
         from agents.oleg.services.query_understanding import QueryUnderstandingService
         self.query_understanding = QueryUnderstandingService(
-            zai_client=self.zai_client,
+            zai_client=self.llm_client,
+            model=config.CLASSIFY_MODEL,
         )
         self.report_storage = ReportStorage(config.SQLITE_DB_PATH)
         self.feedback_service = FeedbackService(notion_token=config.NOTION_TOKEN)
@@ -130,6 +123,7 @@ class OlegBot:
             data['feedback_service'] = self.feedback_service
             data['notion_service'] = self.notion_service
             data['query_understanding'] = self.query_understanding
+            data['data_freshness'] = self.data_freshness
             return await handler(event, data)
 
         @self.dp.callback_query.middleware()
@@ -140,6 +134,7 @@ class OlegBot:
             data['feedback_service'] = self.feedback_service
             data['notion_service'] = self.notion_service
             data['query_understanding'] = self.query_understanding
+            data['data_freshness'] = self.data_freshness
             return await handler(event, data)
 
     def _register_routers(self) -> None:
@@ -280,14 +275,21 @@ class OlegBot:
                 start = end - timedelta(days=6)
                 s, e = start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")
 
+                s, e, note = self.data_freshness.adjust_dates(s, e)
+
+                params = {
+                    "start_date": s,
+                    "end_date": e,
+                    "channels": ["wb", "ozon"],
+                    "report_type": "weekly",
+                }
+                if note:
+                    params["data_availability_note"] = note
+                    logger.info(f"Weekly report: dates adjusted — {note}")
+
                 result = await self.oleg_agent.analyze_deep(
                     user_query="Еженедельная аналитическая сводка",
-                    params={
-                        "start_date": s,
-                        "end_date": e,
-                        "channels": ["wb", "ozon"],
-                        "report_type": "weekly",
-                    },
+                    params=params,
                 )
 
                 if not result.get("brief_summary") or not result.get("success", True):
@@ -344,14 +346,21 @@ class OlegBot:
                 s = last_month_start.strftime("%Y-%m-%d")
                 e = last_month_end.strftime("%Y-%m-%d")
 
+                s, e, note = self.data_freshness.adjust_dates(s, e)
+
+                params = {
+                    "start_date": s,
+                    "end_date": e,
+                    "channels": ["wb", "ozon"],
+                    "report_type": "monthly",
+                }
+                if note:
+                    params["data_availability_note"] = note
+                    logger.info(f"Monthly report: dates adjusted — {note}")
+
                 result = await self.oleg_agent.analyze_deep(
                     user_query=f"Месячный аналитический отчёт за {month_str}",
-                    params={
-                        "start_date": s,
-                        "end_date": e,
-                        "channels": ["wb", "ozon"],
-                        "report_type": "monthly",
-                    },
+                    params=params,
                 )
 
                 if not result.get("brief_summary") or not result.get("success", True):
@@ -471,14 +480,21 @@ class OlegBot:
                 start = end - timedelta(days=6)
                 s, e = start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")
 
-                result = await self.oleg_agent.analyze(
+                s, e, note = self.data_freshness.adjust_dates(s, e)
+
+                params = {
+                    "start_date": s,
+                    "end_date": e,
+                    "channels": ["wb", "ozon"],
+                    "report_type": "price_review",
+                }
+                if note:
+                    params["data_availability_note"] = note
+                    logger.info(f"Price review: dates adjusted — {note}")
+
+                result = await self.oleg_agent.analyze_deep(
                     user_query="Еженедельный ценовой обзор: эластичность, рекомендации по ценам, тренды",
-                    params={
-                        "start_date": s,
-                        "end_date": e,
-                        "channels": ["wb", "ozon"],
-                        "report_type": "price_review",
-                    },
+                    params=params,
                 )
 
                 if not result.get("brief_summary") or not result.get("success", True):
@@ -886,8 +902,8 @@ def main():
         print("ERROR: TELEGRAM_BOT_TOKEN not set in .env")
         sys.exit(1)
 
-    if not config.ZAI_API_KEY:
-        print("ERROR: ZAI_API_KEY not set in .env")
+    if not config.OPENROUTER_API_KEY:
+        print("ERROR: OPENROUTER_API_KEY not set in .env")
         sys.exit(1)
 
     lock = _acquire_pid_lock()

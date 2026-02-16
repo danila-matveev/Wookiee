@@ -1,5 +1,9 @@
 """
-МОЗГ Людмилы — ZAI API (GLM-4.5-flash) для структурирования задач и встреч
+МОЗГ Людмилы — OpenRouter API для структурирования задач и встреч.
+
+Model tiers:
+- LIGHT (glm-4.7-flash): intent detection
+- MAIN (glm-4.7): structuring, digests, summaries
 """
 import json
 import logging
@@ -21,14 +25,14 @@ from agents.lyudmila.persona import (
 from agents.lyudmila.models.task import TaskStructure
 from agents.lyudmila.models.meeting import MeetingStructure
 
-from shared.clients.zai_client import ZAIClient
+from shared.clients.openrouter_client import OpenRouterClient
 
 logger = logging.getLogger(__name__)
 
 
 class LyudaAI:
     """
-    ZAI API клиент для Людмилы.
+    OpenRouter клиент для Людмилы.
 
     Все взаимодействия проходят через ИИ:
     - Структурирование задач (с оргструктурой и подсказками)
@@ -38,10 +42,16 @@ class LyudaAI:
     - Еженедельные сводки (персональная + командная)
     """
 
-    def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
-        self.api_key = api_key or config.ZAI_API_KEY
-        self.model = model or config.ZAI_MODEL
-        self.zai = ZAIClient(api_key=self.api_key, model=self.model)
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        light_model: Optional[str] = None,
+        main_model: Optional[str] = None,
+    ):
+        self.api_key = api_key or config.OPENROUTER_API_KEY
+        self.light_model = light_model or config.LIGHT_MODEL
+        self.main_model = main_model or config.MAIN_MODEL
+        self.llm = OpenRouterClient(api_key=self.api_key, model=self.main_model)
 
     async def structure_task(
         self,
@@ -161,12 +171,15 @@ class LyudaAI:
     async def detect_intent(self, user_text: str) -> str:
         """
         Быстрое определение intent по тексту пользователя.
+        Uses LIGHT model for speed and cost.
 
         Returns:
             'task', 'meeting', или 'unknown'
         """
         prompt = INTENT_DETECTION_PROMPT.format(user_text=user_text[:500])
-        response = await self._complete(LYUDA_SYSTEM_PROMPT, prompt, max_tokens=50)
+        response = await self._complete(
+            LYUDA_SYSTEM_PROMPT, prompt, max_tokens=50, model=self.light_model,
+        )
         data = self._parse_json(response)
         intent = data.get("intent", "unknown")
         if intent not in ("task", "meeting", "unknown"):
@@ -176,17 +189,24 @@ class LyudaAI:
 
     # ─── Private ──────────────────────────────────────────────────
 
-    async def _complete(self, system_message: str, user_message: str, max_tokens: int = 1000) -> str:
-        """Отправить запрос в ZAI API"""
+    async def _complete(
+        self,
+        system_message: str,
+        user_message: str,
+        max_tokens: int = 1000,
+        model: Optional[str] = None,
+    ) -> str:
+        """Отправить запрос в OpenRouter API"""
         messages = [
             {"role": "system", "content": system_message},
             {"role": "user", "content": user_message},
         ]
 
-        result = await self.zai.complete(
+        result = await self.llm.complete(
             messages=messages,
             temperature=0.4,
             max_tokens=max_tokens,
+            model=model or self.main_model,
         )
 
         content = result.get("content")
@@ -194,12 +214,14 @@ class LyudaAI:
             error = result.get("error", "unknown error")
             if not error:
                 error = "API вернул пустой ответ"
-            logger.error(f"ZAI API error: {error}")
+            logger.error(f"LLM API error: {error}")
             raise RuntimeError(f"Ошибка ИИ: {error}")
 
         usage = result.get("usage", {})
         logger.info(
-            f"LyudaAI: {usage.get('prompt_tokens', '?')}+{usage.get('completion_tokens', '?')} tokens"
+            f"LyudaAI [{model or self.main_model}]: "
+            f"{usage.get('input_tokens', usage.get('prompt_tokens', '?'))}+"
+            f"{usage.get('output_tokens', usage.get('completion_tokens', '?'))} tokens"
         )
         return content
 

@@ -60,30 +60,28 @@ SUPABASE_ENV_PATH: str = os.getenv(
 )
 
 # ============================================================================
-# AI providers
+# AI providers — единый провайдер OpenRouter
 # ============================================================================
-# z.ai (primary, cost-effective)
-ZAI_API_KEY: str = os.getenv('ZAI_API_KEY', '')
-ZAI_MODEL: str = 'glm-4.5-flash'
-
-# Claude (secondary)
-CLAUDE_API_KEY: str = os.getenv('CLAUDE_API_KEY', '')
-ANALYTICS_LLM_MODEL: str = os.getenv('ANALYTICS_LLM_MODEL', 'claude-sonnet-4-5-20250929')
-
-# OpenRouter (Kimi 2.5 for Ибрагим)
 OPENROUTER_API_KEY: str = os.getenv('OPENROUTER_API_KEY', '')
-IBRAHIM_LLM_MODEL: str = os.getenv('IBRAHIM_LLM_MODEL', 'moonshotai/kimi-k2')
+
+# Model tiers (все через OpenRouter)
+MODEL_LIGHT: str = os.getenv('MODEL_LIGHT', 'z-ai/glm-4.7-flash')
+MODEL_MAIN: str = os.getenv('MODEL_MAIN', 'z-ai/glm-4.7')
+MODEL_HEAVY: str = os.getenv('MODEL_HEAVY', 'google/gemini-3-flash-preview')
+MODEL_FREE: str = os.getenv('MODEL_FREE', 'openrouter/free')
+
+# Backward-compatible alias for Ibrahim
+IBRAHIM_LLM_MODEL: str = os.getenv('IBRAHIM_LLM_MODEL', MODEL_MAIN)
 
 # ETL schedule
 SYNC_SCHEDULE: str = os.getenv('SYNC_SCHEDULE', '05:00')
 
-# Pricing per 1K tokens (USD)
+# Pricing per 1K tokens (USD) — OpenRouter pricing
 PRICING: dict = {
-    'claude-opus-4-6': {'input': 0.015, 'output': 0.075},
-    'claude-sonnet-4-5-20250929': {'input': 0.003, 'output': 0.015},
-    'glm-4-plus': {'input': 0.007, 'output': 0.007},
-    'glm-4.5-flash': {'input': 0.0001, 'output': 0.0002},
-    'moonshotai/kimi-k2': {'input': 0.0006, 'output': 0.002},
+    'z-ai/glm-4.7-flash': {'input': 0.00007, 'output': 0.0003},
+    'z-ai/glm-4.7': {'input': 0.00006, 'output': 0.0004},
+    'google/gemini-3-flash-preview': {'input': 0.0005, 'output': 0.003},
+    'openrouter/free': {'input': 0.0, 'output': 0.0},
 }
 
 # ============================================================================

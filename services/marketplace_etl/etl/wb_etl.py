@@ -38,7 +38,7 @@ class WildberriesETL:
         Extract data from all WB API endpoints.
 
         Returns:
-            dict with keys: report_detail, sales, orders, stocks, nomenclature, adv
+            dict with keys: report_detail, sales, orders, stocks, nomenclature, adv, content_analysis
         """
         logger.info(f"[{self.lk}] Extracting WB data {date_from} — {date_to}")
 
@@ -61,6 +61,9 @@ class WildberriesETL:
 
         # Advertising statistics
         data['adv'] = self.client.get_adv_statistics(date_from, date_to)
+
+        # Content analysis (organic funnel: card views -> cart -> order -> buyout)
+        data['content_analysis'] = self.client.get_nm_report(date_from, date_to)
 
         for key, records in data.items():
             logger.info(f"[{self.lk}] Extracted {key}: {len(records)} records")
@@ -87,6 +90,7 @@ class WildberriesETL:
             'stocks': self._transform_stocks(raw_data.get('stocks', [])),
             'nomenclature': self._transform_nomenclature(raw_data.get('nomenclature', [])),
             'wb_adv': self._transform_adv(raw_data.get('adv', [])),
+            'content_analysis': self._transform_content_analysis(raw_data.get('content_analysis', [])),
         }
 
         for key, records in transformed.items():
@@ -379,6 +383,28 @@ class WildberriesETL:
                         result.append(row)
         return result
 
+    def _transform_content_analysis(self, records):
+        """Transform nm-report API response to wb.content_analysis rows."""
+        result = []
+        for item in records:
+            stats = item.get('statistics', {}).get('selectedPeriod', {})
+            conversions = stats.get('conversions', {})
+            row = {
+                'date': stats.get('begin', '')[:10] if stats.get('begin') else '',
+                'vendorcode': item.get('vendorCode', ''),
+                'nmid': item.get('nmID', 0),
+                'opencardcount': stats.get('openCardCount', 0),
+                'addtocartcount': stats.get('addToCartCount', 0),
+                'orderscount': stats.get('ordersCount', 0),
+                'buyoutscount': stats.get('buyoutsCount', 0),
+                'addtocartpercent': conversions.get('addToCartPercent', 0),
+                'carttoorderpercent': conversions.get('cartToOrderPercent', 0),
+                'buyoutspercent': conversions.get('buyoutsPercent', 0),
+                'lk': self.lk,
+            }
+            result.append(row)
+        return result
+
     # ================================================================
     # LOAD
     # ================================================================
@@ -403,6 +429,8 @@ class WildberriesETL:
                              conflict_columns=['nmid', 'barcod', 'lk'])
             self._load_table(cursor, 'wb.wb_adv', transformed_data.get('wb_adv', []),
                              conflict_columns=['date', 'nmid', 'advertid', 'lk'])
+            self._load_table(cursor, 'wb.content_analysis', transformed_data.get('content_analysis', []),
+                             conflict_columns=['date', 'nmid', 'lk'])
 
             conn.commit()
             logger.info(f"[{self.lk}] WB data loaded successfully")

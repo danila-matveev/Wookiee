@@ -60,6 +60,7 @@ async def callback_daily_report(
     report_storage,
     notion_service,
     auth_service,
+    data_freshness,
 ):
     if not auth_service.is_authenticated(callback.from_user.id):
         await callback.answer("Вы не авторизованы", show_alert=True)
@@ -71,14 +72,20 @@ async def callback_daily_report(
     yesterday = datetime.now() - timedelta(days=1)
     date_str = yesterday.strftime("%Y-%m-%d")
 
-    result = await oleg_agent.analyze(
+    s, e, note = data_freshness.adjust_dates(date_str, date_str)
+
+    params = {
+        "start_date": s,
+        "end_date": e,
+        "channels": ["wb", "ozon"],
+        "report_type": "daily",
+    }
+    if note:
+        params["data_availability_note"] = note
+
+    result = await oleg_agent.analyze_deep(
         user_query="Ежедневная аналитическая сводка",
-        params={
-            "start_date": date_str,
-            "end_date": date_str,
-            "channels": ["wb", "ozon"],
-            "report_type": "daily",
-        },
+        params=params,
     )
 
     if not result.get("brief_summary") or not result.get("success", True):
@@ -130,6 +137,7 @@ async def callback_weekly_report(
     report_storage,
     notion_service,
     auth_service,
+    data_freshness,
 ):
     if not auth_service.is_authenticated(callback.from_user.id):
         await callback.answer("Вы не авторизованы", show_alert=True)
@@ -142,14 +150,20 @@ async def callback_weekly_report(
     start = end - timedelta(days=6)
     s, e = start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")
 
-    result = await oleg_agent.analyze(
+    s, e, note = data_freshness.adjust_dates(s, e)
+
+    params = {
+        "start_date": s,
+        "end_date": e,
+        "channels": ["wb", "ozon"],
+        "report_type": "weekly",
+    }
+    if note:
+        params["data_availability_note"] = note
+
+    result = await oleg_agent.analyze_deep(
         user_query="Еженедельная аналитическая сводка",
-        params={
-            "start_date": s,
-            "end_date": e,
-            "channels": ["wb", "ozon"],
-            "report_type": "weekly",
-        },
+        params=params,
     )
 
     if not result.get("brief_summary") or not result.get("success", True):
@@ -205,6 +219,7 @@ async def callback_quick_period(
     report_storage,
     notion_service,
     auth_service,
+    data_freshness,
 ):
     if not auth_service.is_authenticated(callback.from_user.id):
         await callback.answer("Вы не авторизованы", show_alert=True)
@@ -215,17 +230,23 @@ async def callback_quick_period(
     start_date = end_date - timedelta(days=days - 1)
     s, e = start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")
 
+    s, e, note = data_freshness.adjust_dates(s, e)
+
     await callback.message.edit_text(f"⏳ Олег готовит отчёт за {days} дней...")
     await callback.answer()
 
-    result = await oleg_agent.analyze(
+    params = {
+        "start_date": s,
+        "end_date": e,
+        "channels": ["wb", "ozon"],
+        "report_type": "period",
+    }
+    if note:
+        params["data_availability_note"] = note
+
+    result = await oleg_agent.analyze_deep(
         user_query=f"Аналитическая сводка за {days} дней",
-        params={
-            "start_date": s,
-            "end_date": e,
-            "channels": ["wb", "ozon"],
-            "report_type": "period",
-        },
+        params=params,
     )
 
     if not result.get("brief_summary") or not result.get("success", True):
@@ -284,6 +305,7 @@ async def callback_calendar(
     oleg_agent,
     report_storage,
     notion_service,
+    data_freshness,
 ):
     calendar = SimpleCalendar()
     selected, date = await calendar.process_selection(callback, callback_data)
@@ -317,18 +339,24 @@ async def callback_calendar(
             return
 
         s, e = start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")
+        s, e, note = data_freshness.adjust_dates(s, e)
+
         await callback.message.edit_text(
             f"⏳ Олег готовит отчёт за {start_date.strftime('%d.%m.%Y')}–{end_date.strftime('%d.%m.%Y')}..."
         )
 
-        result = await oleg_agent.analyze(
+        params = {
+            "start_date": s,
+            "end_date": e,
+            "channels": ["wb", "ozon"],
+            "report_type": "period",
+        }
+        if note:
+            params["data_availability_note"] = note
+
+        result = await oleg_agent.analyze_deep(
             user_query=f"Аналитическая сводка за период {s} — {e}",
-            params={
-                "start_date": s,
-                "end_date": e,
-                "channels": ["wb", "ozon"],
-                "report_type": "period",
-            },
+            params=params,
         )
 
         if not result.get("brief_summary"):
@@ -508,7 +536,22 @@ async def _send_html_report(
         )
         return
 
-    chunks = [html_text[i:i + MAX_LEN] for i in range(0, len(html_text), MAX_LEN)]
+    # Paragraph-based splitting to avoid cutting HTML tags
+    paragraphs = html_text.split('\n\n')
+    chunks = []
+    current = ""
+    for p in paragraphs:
+        if len(current) + len(p) + 2 > MAX_LEN:
+            if current:
+                chunks.append(current)
+            current = p[:MAX_LEN]
+        else:
+            current = current + "\n\n" + p if current else p
+    if current:
+        chunks.append(current)
+
+    if not chunks:
+        chunks = [html_text[:MAX_LEN]]
 
     await callback.message.edit_text(chunks[0], parse_mode="HTML")
 

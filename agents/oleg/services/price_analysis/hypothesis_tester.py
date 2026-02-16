@@ -1227,7 +1227,12 @@ def test_temporal_hypotheses(models_daily_data: dict) -> dict:
             X_restricted = np.column_stack([np.ones(len(log_sales)), log_price])
             try:
                 coeffs_r, _, _, _ = np.linalg.lstsq(X_restricted, log_sales, rcond=None)
-                sse_restricted = np.sum((log_sales - X_restricted @ coeffs_r) ** 2)
+                if not np.all(np.isfinite(coeffs_r)):
+                    continue
+                with np.errstate(over='ignore', invalid='ignore'):
+                    sse_restricted = np.sum((log_sales - X_restricted @ coeffs_r) ** 2)
+                if not np.isfinite(sse_restricted):
+                    continue
             except np.linalg.LinAlgError:
                 continue
 
@@ -1239,7 +1244,12 @@ def test_temporal_hypotheses(models_daily_data: dict) -> dict:
             ])
             try:
                 coeffs_f, _, _, _ = np.linalg.lstsq(X_full, log_sales, rcond=None)
-                sse_full = np.sum((log_sales - X_full @ coeffs_f) ** 2)
+                if not np.all(np.isfinite(coeffs_f)):
+                    continue
+                with np.errstate(over='ignore', invalid='ignore'):
+                    sse_full = np.sum((log_sales - X_full @ coeffs_f) ** 2)
+                if not np.isfinite(sse_full):
+                    continue
             except np.linalg.LinAlgError:
                 continue
 

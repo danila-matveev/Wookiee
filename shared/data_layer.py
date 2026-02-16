@@ -234,16 +234,18 @@ def get_wb_traffic_by_model(current_start, prev_start, current_end):
     query = """
     SELECT
         CASE WHEN w.date >= %s THEN 'current' ELSE 'previous' END as period,
-        SPLIT_PART(n.vendorcode, '/', 1) as model,
+        LOWER(SPLIT_PART(n.vendorcode, '/', 1)) as model,
         SUM(w.views) as ad_views,
         SUM(w.clicks) as ad_clicks,
         SUM(w.sum) as ad_spend,
+        SUM(w.atbs) as ad_to_cart,
+        SUM(w.orders) as ad_orders,
         CASE WHEN SUM(w.views) > 0 THEN SUM(w.clicks)::float / SUM(w.views) * 100 ELSE 0 END as ctr,
         CASE WHEN SUM(w.clicks) > 0 THEN SUM(w.sum) / SUM(w.clicks) ELSE 0 END as cpc
     FROM wb_adv w
     JOIN nomenclature n ON w.nmid = n.nmid
     WHERE w.date >= %s AND w.date < %s
-    GROUP BY 1, 2
+    GROUP BY 1, LOWER(SPLIT_PART(n.vendorcode, '/', 1))
     ORDER BY 1, 5 DESC;
     """
     cur.execute(query, (current_start, prev_start, current_end))
