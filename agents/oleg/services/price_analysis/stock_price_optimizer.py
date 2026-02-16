@@ -18,6 +18,7 @@ Stock Price Optimizer — наложение складских ограниче
 """
 import logging
 from copy import deepcopy
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -313,7 +314,7 @@ def generate_stock_price_matrix(
     models_metrics: list[dict],
     stock_data: dict,
     turnover_data: dict,
-    elasticities: dict | None = None,
+    elasticities: Optional[dict] = None,
 ) -> dict:
     """
     Построение матрицы «остатки × цена» по всем моделям.

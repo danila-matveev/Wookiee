@@ -418,12 +418,16 @@ class OlegAgent:
    - Логистика доля +1 п.п. → «Проверить локализацию WB / срок доставки OZON (агент Vasily)»
    - Хранение доля +0.5 п.п. → «Проверить замороженные остатки, неликвид»
 
-Шаг 3.5: ЦЕНОВАЯ АНАЛИТИКА (если weekly/monthly отчёт ИЛИ запрос о ценах)
+Шаг 3.5: ЦЕНОВАЯ АНАЛИТИКА И ОПТИМИЗАЦИЯ (если weekly/monthly отчёт ИЛИ запрос о ценах)
+→ get_model_roi_dashboard(channel) — ROI по моделям (маржа% × 365/оборачиваемость)
+→ get_stock_price_matrix(channel) — матрица остатки × ценовое действие
+→ get_price_management_plan(channel) — полный ценовой план с приоритизацией
 → Вызови get_price_elasticity(model, channel) для топ-3 моделей по марже
 → Вызови get_price_margin_correlation(channel, start_date, end_date) для общей картины
 → Если эластичность значима (is_significant=true) → get_price_recommendation(model, channel)
-→ Если есть доступные акции → analyze_promotion(channel)
+→ Если есть доступные акции → get_promotion_plan(channel)
 → get_price_trend(model, channel) для топ-3 моделей — растёт/падает/стабильна?
+→ Если weekly/monthly → test_price_hypothesis(channel) — проверка гипотез H1-H7
 
 Шаг 4: МОДЕЛИ — Драйверы и Анти-драйверы (drill-down)
 → Вызови get_model_breakdown("wb", ...) и get_model_breakdown("ozon", ...)
@@ -580,6 +584,9 @@ class OlegAgent:
    - Корреляционная матрица цена ↔ маржа/объём/ДРР
    - Ценовые тренды (растёт/падает/стабильна)
    - Акции МП: рекомендация участвовать/пропустить с расчётом
+   - ROI дашборд: маржа% × оборачиваемость по моделям
+   - Матрица остатки × цена: stock constraints
+   - Гипотезы H1-H7 (если weekly/monthly)
    - Сценарии: "что если цену изменить на ±5%, ±10%"
    - История прошлых рекомендаций и их точность"""
 
