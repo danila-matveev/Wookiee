@@ -1,23 +1,25 @@
-# AGENTS.md — Wookiee Analytics
+# AGENTS.md — Wookiee
 
 > Универсальные правила для ВСЕХ AI-агентов, работающих с этим проектом.
 > Это единственный источник истины. Все agent-specific файлы (CLAUDE.md, .cursorrules и т.д.) ссылаются на этот файл.
 
 ## Описание проекта
 
-**Wookiee Analytics** — аналитическая система для бренда Wookiee. Работает с данными маркетплейсов Wildberries и OZON, генерирует отчёты и синхронизирует их с Notion.
+**Wookiee** — система AI-агентов для управления бизнесом бренда Wookiee. Данные поступают из маркетплейсов, CRM, Google Sheets, МойСклад, Telegram. Каждый агент автономно решает конкретную бизнес-задачу. Боты (Telegram) — это интерфейсы для взаимодействия с агентами, а не сами агенты.
 
-Компоненты:
-- `agents/oleg/` — **Олег**, Telegram-бот (ReAct agent)
-- `scripts/` — аналитические скрипты (ABC analysis, Notion sync)
-- `agents/lyudmila/` — **Людмила**, CRM-ассистент
-- `agents/vasily/` — **Василий**, оптимизация логистики WB
-- `agents/ibrahim/` — **Ибрагим**, автономный дата-инженер (marketplace ETL, managed DB)
-- `sku_database/` — товарная матрица (Supabase)
+AI-агенты:
+- `agents/oleg/` — **Олег**, финансовый AI-агент (ReAct, интерфейс: Telegram)
+- `agents/lyudmila/` — **Людмила**, CRM AI-агент (Bitrix24, интерфейс: Telegram)
+- `agents/ibrahim/` — **Ибрагим**, дата-инженер (ETL маркетплейсов, управление БД)
+- `agents/vasily/` — **Василий**, логистический AI-агент (оптимизация WB/OZON)
+
+Инфраструктура:
 - `shared/` — общая библиотека (data_layer, API-клиенты, конфиг)
-- `services/marketplace_etl/` — ETL-пайплайн WB/Ozon API → PostgreSQL
+- `services/marketplace_etl/` — ETL-пайплайн WB/OZON API → PostgreSQL
 - `services/sheets_sync/` — синхронизация Google Sheets
 - `services/ozon_delivery/` — оптимизация доставки OZON
+- `sku_database/` — товарная матрица (Supabase)
+- `scripts/` — CLI-скрипты аналитики (ABC analysis, Notion sync)
 
 ## Старт работы
 
@@ -33,6 +35,7 @@
 - При добавлении нового скрипта — добавь его описание в README
 - При изменении CLI-флагов — обнови примеры использования в README
 - При изменении структуры проекта — обнови секцию "Структура проекта" в README
+- **При архитектурных изменениях** (новый агент, новый сервис, новый источник данных) — обязательно обновить: `README.md`, `docs/agents/README.md`, `docs/index.md`, `docs/architecture.md`
 
 ### Код
 - Все DB-запросы и утилиты живут в `shared/data_layer.py` (shim `scripts/data_layer.py` существует для обратной совместимости). Не дублировать в других скриптах.
@@ -56,6 +59,17 @@
 ### Бизнес-логика
 - Бизнес-правила Wookiee — это гибкие ориентиры, а не жёсткие ограничения.
 - Рекомендации должны содержать "что если" сценарии с расчётом эффекта в рублях.
+
+### Экономика агентов
+- **Единый провайдер: OpenRouter.** Все LLM-вызовы проходят через OpenRouter API. Нет прямых подключений к z.ai, Anthropic и др.
+- **4 тира моделей:**
+  - **LIGHT** (`z-ai/glm-4.7-flash`, $0.07/$0.30 за 1M) — классификация, intent detection, роутинг
+  - **MAIN** (`z-ai/glm-4.7`, $0.06/$0.40 за 1M) — аналитика, tool-use, отчёты, структурирование
+  - **HEAVY** (`google/gemini-3-flash-preview`, $0.50/$3.00 за 1M) — сложный reasoning, fallback при ошибках MAIN
+  - **FREE** (`openrouter/free`, $0) — last-resort fallback, авто-роутер бесплатных моделей
+- **Стратегия ошибок:** MAIN → retry 1x → HEAVY → FREE; LIGHT → retry 1x → MAIN → FREE.
+- **Confidence-based routing:** если confidence > 0.8 на дешёвой модели — не эскалировать на дорогую.
+- При добавлении нового агента — оценить стоимость на 1000 запросов и зафиксировать в AGENT_SPEC.md.
 
 ### Безопасность
 - Секреты (пароли, токены, ключи) — ТОЛЬКО в `.env` файлах. Никогда не хардкодить в коде.

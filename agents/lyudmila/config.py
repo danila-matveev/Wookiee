@@ -20,13 +20,11 @@ LYUDMILA_BOT_TOKEN: str = os.getenv("LYUDMILA_BOT_TOKEN", "")
 BITRIX_WEBHOOK_URL: str = os.getenv("Bitrix_rest_api", "")
 
 # ============================================================================
-# AI Configuration — ZAI (primary) + Claude (fallback)
+# AI Configuration — OpenRouter (единый провайдер)
 # ============================================================================
-ZAI_API_KEY: str = os.getenv("ZAI_API_KEY", "")
-ZAI_MODEL: str = "glm-4.5-flash"
-
-CLAUDE_API_KEY: str = os.getenv("CLAUDE_API_KEY", "")
-CLAUDE_MODEL: str = "claude-sonnet-4-5-20250929"
+OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")
+LIGHT_MODEL: str = os.getenv("LYUDMILA_LIGHT_MODEL", "z-ai/glm-4.7-flash")
+MAIN_MODEL: str = os.getenv("LYUDMILA_MAIN_MODEL", "z-ai/glm-4.7")
 
 # ============================================================================
 # Database Configuration

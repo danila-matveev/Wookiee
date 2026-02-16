@@ -1,4 +1,4 @@
-# Wookiee Analytics — Documentation Index
+# Wookiee — Documentation Index
 
 ## Quick Navigation
 
@@ -6,21 +6,21 @@
 |----------|-----------|
 | [AGENTS.md](../AGENTS.md) | Универсальные правила (ЕДИНСТВЕННЫЙ ИСТОЧНИК ИСТИНЫ) |
 | [README.md](../README.md) | Обзор проекта и быстрый старт |
-| [architecture.md](architecture.md) | Архитектура системы |
+| [architecture.md](architecture.md) | Архитектура системы AI-агентов |
 | [adr.md](adr.md) | Лог архитектурных решений |
 | [development-history.md](development-history.md) | Журнал последних изменений |
 
-## Агенты проекта
+## AI-агенты
 
-Бизнес-описания и техническая документация модулей проекта. Каждый агент — автономный модуль, решающий конкретную бизнес-задачу.
+Каждый агент — автономная система с LLM, playbook, tools и memory. Бот — это интерфейс, агент — мозг.
 
 | Агент | Статус | Документация |
 |-------|--------|-------------|
-| Telegram Bot (Олег) | Активен | [agents/telegram-bot.md](agents/telegram-bot.md) |
+| Олег (финансовый AI-агент) | Активен | [agents/telegram-bot.md](agents/telegram-bot.md) |
+| Людмила (CRM AI-агент) | Активен | [agents/lyudmila-bot.md](agents/lyudmila-bot.md) |
+| Ибрагим (дата-инженер) | Активен | [agents/ibrahim.md](agents/ibrahim.md) |
+| Василий (логистический AI-агент) | В разработке | [agents/mp-localization.md](agents/mp-localization.md) |
 | Analytics Engine | Активен | [agents/analytics-engine.md](agents/analytics-engine.md) |
-| Людмила (CRM-бот) | Активен | [agents/lyudmila-bot.md](agents/lyudmila-bot.md) |
-| MP Localization (Василий) | Активен | [agents/mp-localization.md](agents/mp-localization.md) |
-| Bitrix CRM | Планируется | [agents/bitrix-crm.md](agents/bitrix-crm.md) |
 
 Обзор агентной архитектуры: [agents/README.md](agents/README.md)
 
@@ -29,6 +29,7 @@
 | Guide | Назначение |
 |-------|-----------|
 | [dod.md](guides/dod.md) | Чеклист Definition of Done |
+| [agent-principles.md](guides/agent-principles.md) | Принципы построения AI-агентов |
 | [environment-setup.md](guides/environment-setup.md) | Настройка локального окружения |
 | [logging.md](guides/logging.md) | Конвенции логирования |
 | [archiving-and-temp.md](guides/archiving-and-temp.md) | Политика архивации и временных файлов |

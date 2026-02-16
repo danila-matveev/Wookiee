@@ -23,26 +23,34 @@ HASHED_PASSWORD: str = os.getenv(
 )
 
 # ============================================================================
-# AI Providers
+# AI Providers — всё через OpenRouter
 # ============================================================================
-ZAI_API_KEY: str = os.getenv("ZAI_API_KEY", "")
-ZAI_MODEL: str = "glm-4.5-flash"       # Для classify/clarify задач
-OLEG_MODEL: str = "glm-4-plus"          # Для аналитики (tool-use)
-
-# OpenRouter (для автоматических ценовых отчётов — quality-first)
 OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")
-OPENROUTER_MODEL: str = os.getenv(
-    "OPENROUTER_MODEL",
-    "moonshotai/kimi-k2.5",  # Kimi K2.5 — 262K context, хороший reasoning
-)
+
+# Model tiers
+CLASSIFY_MODEL: str = os.getenv("OLEG_CLASSIFY_MODEL", "z-ai/glm-4.7-flash")   # LIGHT
+ANALYTICS_MODEL: str = os.getenv("OLEG_ANALYTICS_MODEL", "z-ai/glm-4.7")       # MAIN
+FALLBACK_MODEL: str = os.getenv("OLEG_FALLBACK_MODEL", "google/gemini-3-flash-preview")  # HEAVY
+
+# ============================================================================
+# AI API (OpenRouter — primary provider)
+# ============================================================================
+AI_BASE_URL: str = os.getenv("AI_BASE_URL", "https://openrouter.ai/api/v1")
+AI_API_KEY: str = OPENROUTER_API_KEY
+AI_MODEL: str = ANALYTICS_MODEL  # "z-ai/glm-4.7" (for tool-use / analytics)
+AI_CLASSIFY_MODEL: str = CLASSIFY_MODEL  # "z-ai/glm-4.7-flash" (for classification)
+
+# Backward-compatible aliases
+ZAI_API_KEY: str = AI_API_KEY
+ZAI_MODEL: str = AI_CLASSIFY_MODEL
+OLEG_MODEL: str = AI_MODEL
 
 # Pricing per 1K tokens (USD)
 PRICING: dict = {
-    "claude-opus-4-6": {"input": 0.015, "output": 0.075},
-    "claude-sonnet-4-5-20250929": {"input": 0.003, "output": 0.015},
-    "moonshotai/kimi-k2.5": {"input": 0.00045, "output": 0.00044},
-    "glm-4-plus": {"input": 0.007, "output": 0.007},
-    "glm-4.5-flash": {"input": 0.0001, "output": 0.0002},
+    "z-ai/glm-4.7-flash": {"input": 0.00007, "output": 0.0003},
+    "z-ai/glm-4.7": {"input": 0.00006, "output": 0.0004},
+    "google/gemini-3-flash-preview": {"input": 0.0005, "output": 0.003},
+    "openrouter/free": {"input": 0.0, "output": 0.0},
 }
 
 # ============================================================================

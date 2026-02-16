@@ -115,8 +115,10 @@ TOOL_DEFINITIONS = [
             "name": "get_advertising_stats",
             "description": (
                 "Рекламная статистика канала: показы, клики, CTR, CPC, расход, "
-                "заказы через рекламу, корзины. Для WB также воронка: "
-                "переходы на карточку → корзина → заказы → выкупы."
+                "заказы через рекламу, корзины + производные: CPM, CPL, CPO, "
+                "конверсии по шагам воронки (рекламной и органической). "
+                "Для WB также органическая воронка: "
+                "переходы на карточку → корзина → заказы → выкупы с конверсиями."
             ),
             "parameters": {
                 "type": "object",
@@ -134,7 +136,9 @@ TOOL_DEFINITIONS = [
         "function": {
             "name": "get_model_advertising",
             "description": (
-                "Рекламная статистика WB по моделям: показы, клики, расход, CTR, CPC. "
+                "Рекламная статистика WB по моделям: показы, клики, расход, "
+                "корзины (atbs), заказы, CTR, CPC + производные: CPM, CPL, CPO, "
+                "конверсии (клик→корзина, корзина→заказ, клик→заказ). "
                 "Доступно только для WB (для OZON нет разбивки по моделям)."
             ),
             "parameters": {
@@ -306,6 +310,23 @@ def _pct_change(current, previous):
     if not previous:
         return 0.0
     return round(((current - previous) / abs(previous)) * 100, 1)
+
+
+def _enrich_ad_metrics(ads: dict) -> dict:
+    """Add derived marketing metrics: CPM, CPL, CPO, funnel conversions."""
+    views = ads.get("ad_views", 0)
+    clicks = ads.get("ad_clicks", 0)
+    to_cart = ads.get("ad_to_cart", 0)
+    orders = ads.get("ad_orders", 0)
+    spend = ads.get("ad_spend", 0)
+
+    ads["cpm_rub"] = round(_safe_div(spend, views) * 1000, 1)
+    ads["cpl_rub"] = round(_safe_div(spend, to_cart), 1)
+    ads["cpo_rub"] = round(_safe_div(spend, orders), 1)
+    ads["cart_conversion_pct"] = round(_safe_div(to_cart, clicks) * 100, 2)
+    ads["order_from_cart_pct"] = round(_safe_div(orders, to_cart) * 100, 2)
+    ads["cr_full_pct"] = round(_safe_div(orders, clicks) * 100, 2)
+    return ads
 
 
 # =============================================================================
@@ -627,18 +648,26 @@ async def _handle_advertising_stats(channel: str, start_date: str, end_date: str
             get_wb_traffic, current_start, prev_start, current_end
         )
 
-        # Parse content (funnel)
+        # Parse content (funnel) with conversions
         funnel = {"current": {}, "previous": {}}
         for row in content_results:
             period = row[0]
+            card_opens = to_float(row[1])
+            add_to_cart = to_float(row[2])
+            funnel_orders = to_float(row[3])
+            buyouts = to_float(row[4])
             funnel[period] = {
-                "card_opens": to_float(row[1]),
-                "add_to_cart": to_float(row[2]),
-                "funnel_orders": to_float(row[3]),
-                "buyouts": to_float(row[4]),
+                "card_opens": card_opens,
+                "add_to_cart": add_to_cart,
+                "funnel_orders": funnel_orders,
+                "buyouts": buyouts,
+                "card_to_cart_pct": round(_safe_div(add_to_cart, card_opens) * 100, 2),
+                "cart_to_order_pct": round(_safe_div(funnel_orders, add_to_cart) * 100, 2),
+                "order_to_buyout_pct": round(_safe_div(buyouts, funnel_orders) * 100, 2),
+                "full_conversion_pct": round(_safe_div(buyouts, card_opens) * 100, 2),
             }
 
-        # Parse ads
+        # Parse ads + enrich with derived metrics (CPM, CPL, CPO, conversions)
         ads = {"current": {}, "previous": {}}
         for row in adv_results:
             period = row[0]
@@ -651,6 +680,7 @@ async def _handle_advertising_stats(channel: str, start_date: str, end_date: str
                 "ctr_pct": round(to_float(row[6]), 2),
                 "cpc_rub": round(to_float(row[7]), 1),
             }
+            ads[period] = _enrich_ad_metrics(ads[period])
 
         return {
             "channel": "WB",
@@ -673,7 +703,9 @@ async def _handle_advertising_stats(channel: str, start_date: str, end_date: str
                 "ad_spend": to_float(row[4]),
                 "ctr_pct": round(to_float(row[5]), 2),
                 "cpc_rub": round(to_float(row[6]), 1),
+                "ad_to_cart": 0,  # OZON не предоставляет atbs
             }
+            ads[period] = _enrich_ad_metrics(ads[period])
 
         return {
             "channel": "OZON",
@@ -690,7 +722,7 @@ async def _handle_model_advertising(start_date: str, end_date: str) -> dict:
         get_wb_traffic_by_model, current_start, prev_start, current_end
     )
 
-    # Parse: (period, model, ad_views, ad_clicks, ad_spend, ctr, cpc)
+    # Parse: (period, model, ad_views, ad_clicks, ad_spend, ad_to_cart, ad_orders, ctr, cpc)
     current_models = {}
     previous_models = {}
     for row in results:
@@ -700,9 +732,12 @@ async def _handle_model_advertising(start_date: str, end_date: str) -> dict:
             "ad_views": to_float(row[2]),
             "ad_clicks": to_float(row[3]),
             "ad_spend": to_float(row[4]),
-            "ctr_pct": round(to_float(row[5]), 2),
-            "cpc_rub": round(to_float(row[6]), 1),
+            "ad_to_cart": to_float(row[5]),
+            "ad_orders": to_float(row[6]),
+            "ctr_pct": round(to_float(row[7]), 2),
+            "cpc_rub": round(to_float(row[8]), 1),
         }
+        data = _enrich_ad_metrics(data)
         if period == "current":
             current_models[model] = data
         else:
@@ -714,6 +749,9 @@ async def _handle_model_advertising(start_date: str, end_date: str) -> dict:
         entry = {**curr}
         if prev:
             entry["spend_change_pct"] = _pct_change(curr["ad_spend"], prev.get("ad_spend", 0))
+            entry["ctr_change_pp"] = round(curr.get("ctr_pct", 0) - prev.get("ctr_pct", 0), 2)
+            entry["cpm_change_pct"] = _pct_change(curr.get("cpm_rub", 0), prev.get("cpm_rub", 0))
+            entry["cpo_change_pct"] = _pct_change(curr.get("cpo_rub", 0), prev.get("cpo_rub", 0))
         models_list.append(entry)
 
     return {

@@ -1,10 +1,12 @@
 """
-OpenRouter API Client — OpenAI-совместимый клиент для автоматических запусков бота.
+OpenRouter API Client — единый LLM-клиент для всех агентов Wookiee.
 
 Использует OpenAI Python SDK с base_url = https://openrouter.ai/api/v1.
-Рекомендуемые модели:
-- Claude Sonnet 4.5 (anthropic/claude-sonnet-4-5-20250929) — для ценовых отчётов (quality-first)
-- DeepSeek V3.2 (deepseek/deepseek-chat-v3-0324) — fallback для быстрых/дешёвых запросов
+Модельные тиры:
+- LIGHT: z-ai/glm-4.7-flash — классификация, intent detection
+- MAIN: z-ai/glm-4.7 — аналитика, tool-use, отчёты
+- HEAVY: google/gemini-3-flash-preview — сложный reasoning
+- FREE: openrouter/free — last-resort fallback
 """
 import json
 import logging
@@ -13,8 +15,8 @@ from typing import Dict, Any, Optional, List
 logger = logging.getLogger(__name__)
 
 # Default models
-DEFAULT_MODEL = "anthropic/claude-sonnet-4-5-20250929"
-FALLBACK_MODEL = "deepseek/deepseek-chat-v3-0324"
+DEFAULT_MODEL = "z-ai/glm-4.7"
+DEFAULT_FALLBACK = "openrouter/free"
 
 
 class OpenRouterClient:
@@ -24,16 +26,19 @@ class OpenRouterClient:
         self,
         api_key: str,
         model: str = DEFAULT_MODEL,
+        fallback_model: str = DEFAULT_FALLBACK,
         site_name: str = "Wookiee Analytics",
     ):
         """
         Args:
             api_key: OpenRouter API key
             model: Default model (OpenRouter model ID)
+            fallback_model: Model to use when primary fails
             site_name: App name for OpenRouter analytics
         """
         self.api_key = api_key
         self.model = model
+        self.fallback_model = fallback_model
         self.site_name = site_name
 
         try:
@@ -98,13 +103,13 @@ class OpenRouterClient:
         except Exception as e:
             logger.error(f"OpenRouter API error: {type(e).__name__}: {e}")
             # Try fallback model
-            if use_model != FALLBACK_MODEL:
-                logger.info(f"Trying fallback model: {FALLBACK_MODEL}")
+            if use_model != self.fallback_model:
+                logger.info(f"Trying fallback model: {self.fallback_model}")
                 return await self.complete(
                     messages=messages,
                     temperature=temperature,
                     max_tokens=max_tokens,
-                    model=FALLBACK_MODEL,
+                    model=self.fallback_model,
                     response_format=response_format,
                 )
             return {
@@ -183,6 +188,17 @@ class OpenRouterClient:
 
         except Exception as e:
             logger.error(f"OpenRouter tool-use error: {type(e).__name__}: {e}")
+            # Try fallback model
+            if use_model != self.fallback_model:
+                logger.info(f"Tool-use fallback: {self.fallback_model}")
+                return await self.complete_with_tools(
+                    messages=messages,
+                    tools=tools,
+                    tool_choice=tool_choice,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    model=self.fallback_model,
+                )
             return {
                 "content": None,
                 "tool_calls": None,

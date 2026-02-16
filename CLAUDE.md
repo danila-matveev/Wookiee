@@ -1,4 +1,4 @@
-# Wookiee Analytics — правила для Claude Code
+# Wookiee — правила для Claude Code
 
 ## Основные правила
 

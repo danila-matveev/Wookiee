@@ -2,7 +2,7 @@
 LLM-based Query Understanding Service for Oleg bot.
 
 Replaces regex-based _basic_parse() with intelligent natural language understanding.
-Uses cheap glm-4.5-flash model for cost-efficient query parsing (~$0.0001/call).
+Uses LIGHT model (glm-4.7-flash) for cost-efficient query parsing.
 
 Three response modes:
 - "ready": Query fully understood → structured params + proposed_query
@@ -31,12 +31,12 @@ _MAX_CLARIFICATION_ROUNDS = 3
 class QueryUnderstandingService:
     """LLM-based natural language query understanding for Wookiee analytics."""
 
-    PARSE_MODEL = "glm-4.5-flash"
     PARSE_TIMEOUT = 10.0
     PARSE_MAX_TOKENS = 800
 
-    def __init__(self, zai_client):
+    def __init__(self, zai_client, model: str = None):
         self.zai = zai_client
+        self.PARSE_MODEL = model or "z-ai/glm-4.7-flash"
 
     async def parse(
         self,

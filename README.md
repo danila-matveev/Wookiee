@@ -1,55 +1,71 @@
-# Wookiee Analytics — Data Hub
+# Wookiee — AI Agent System
 
-Централизованный хаб по работе с данными бренда нижнего белья **Wookiee**. Объединяет финансовую аналитику маркетплейсов, товарную матрицу, оптимизацию логистики и CRM — в единую экосистему с AI-агентами.
+Система AI-агентов для управления бизнесом бренда **Wookiee**. Агенты работают с данными из PostgreSQL, Supabase, МойСклад, Wildberries, OZON, Google Sheets, Bitrix24, Telegram — и принимают решения на основе данных.
 
 ---
 
 ## Визия
 
-**Проблема:** Данные бренда разбросаны по маркетплейсам (Wildberries, OZON), CRM (Bitrix24), Google Sheets, Notion. Каждый источник требует ручной работы для извлечения инсайтов.
+**Проблема:** Данные бренда разбросаны по маркетплейсам (Wildberries, OZON), CRM (Bitrix24), Google Sheets, МойСклад, Notion. Каждый источник требует ручной работы для извлечения инсайтов и принятия решений.
 
-**Решение:** Wookiee Analytics — единая точка доступа ко всем данным компании. Каждый модуль проекта — это автономный **агент**, который решает конкретную бизнес-задачу: от ежедневных финансовых отчётов до оптимизации распределения товаров по складам.
+**Решение:** Экосистема AI-агентов, где каждый агент автономно решает конкретную бизнес-задачу: финансовая аналитика, управление CRM, оптимизация логистики, инженерия данных. Боты (Telegram, WhatsApp) — это только интерфейсы взаимодействия с агентами.
 
-**Будущее:** Полная автоматизация рутинных аналитических задач через AI-агентов. Один Telegram-бот как интерфейс ко всем данным и процессам компании.
+**Будущее:** Полная структура AI-агентов для data-driven управления бизнесом. Каждый бизнес-процесс покрыт агентом, который анализирует, рекомендует и действует.
 
 ---
 
 ## Архитектура
 
-### Поток данных
-
 ```mermaid
 graph LR
-    WB[Wildberries API] --> ETL[Data Pipeline]
-    OZ[OZON API] --> ETL
-    ETL --> PG[(PostgreSQL)]
-    PG --> AE[Analytics Engine]
-    PG --> BOT[Telegram Bot]
-    AE --> MD[Markdown Reports]
-    MD --> NOT[Notion]
-    BOT --> TG[Telegram Users]
-    BOT --> NOT
-    GS[Google Sheets] --> SB[(Supabase)]
-    SB --> AE
-    SB --> BOT
-    SB --> VAS[Vasily Agent]
-    B24[Bitrix24] --> LYU[Lyudmila Agent]
+    subgraph sources["Источники данных"]
+        WB[Wildberries API]
+        OZ[OZON API]
+        B24[Bitrix24]
+        GS[Google Sheets]
+        MS[МойСклад]
+        TGC[Telegram чаты]
+    end
+
+    subgraph infra["Инфраструктура"]
+        PG[(PostgreSQL)]
+        SB[(Supabase)]
+        SH[shared/ — data_layer, clients, config]
+    end
+
+    subgraph agents["AI-агенты"]
+        OLEG["Олег — финансовый аналитик"]
+        LYU["Людмила — CRM-ассистент"]
+        VAS["Василий — логистика"]
+        IBR["Ибрагим — дата-инженер"]
+    end
+
+    subgraph interfaces["Интерфейсы"]
+        TG[Telegram боты]
+        NOT[Notion]
+        MD[Markdown Reports]
+        GSH[Google Sheets]
+    end
+
+    sources --> infra
+    infra --> SH
+    SH --> agents
+    agents --> interfaces
 ```
 
-### Агенты проекта
+### AI-агенты
 
 ```mermaid
 graph TB
-    HUB[Wookiee Analytics Hub]
+    HUB[Wookiee AI Agent System]
     HUB --> ACTIVE[Активные]
     HUB --> DEV[В разработке]
 
-    ACTIVE --> A1[Олег — Telegram Bot Agent]
-    ACTIVE --> A2[Analytics Engine]
-    ACTIVE --> A3[SKU Database]
+    ACTIVE --> A1["Олег — финансовый AI-агент"]
+    ACTIVE --> A2["Людмила — CRM AI-агент"]
+    ACTIVE --> A3["Ибрагим — дата-инженер"]
 
-    DEV --> D1[Василий — MP Localization Agent]
-    DEV --> D2[Людмила — CRM Agent]
+    DEV --> D1["Василий — логистический AI-агент"]
 ```
 
 Подробное описание каждого агента: [`docs/agents/`](docs/agents/)
@@ -58,19 +74,27 @@ graph TB
 
 ## Компоненты проекта
 
-| Папка | Назначение | Статус | Описание |
-|-------|-----------|--------|----------|
-| [`agents/oleg/`](agents/oleg/) | Олег, Telegram-бот (ReAct AI-agent) | Активен | Финансовый ассистент: отчёты, NL-запросы, мониторинг |
-| [`agents/lyudmila/`](agents/lyudmila/) | Людмила, CRM-ассистент | В разработке | Bitrix24, управление задачами |
-| [`agents/vasily/`](agents/vasily/) | Василий, оптимизация логистики WB | В разработке | Индекс локализации, перемещения между складами |
-| [`scripts/`](scripts/) | Аналитический движок | Активен | Daily/period/monthly отчёты, Notion-синхронизация |
-| [`sku_database/`](sku_database/) | Товарная матрица (Supabase) | Активен | 22 модели, 478 артикулов, 1450 SKU |
-| [`shared/`](shared/) | Общая библиотека | Активен | config, data_layer, API-клиенты, утилиты |
-| [`services/sheets_sync/`](services/sheets_sync/) | Синхронизация Google Sheets | Активен | Google Sheets <-> МП |
-| [`docs/`](docs/) | Вся документация | Справочник | Архитектура, ADR, руководства, шаблоны, БД |
-| [`docs/database/`](docs/database/) | Документация по БД | Справочник | Схемы, формулы, качество данных |
-| [`deploy/`](deploy/) | Docker конфигурация | Инфраструктура | Dockerfile, docker-compose.yml |
-| [`reports/`](reports/) | Сгенерированные отчёты | git-ignored | Markdown-файлы аналитики |
+### AI-агенты
+
+| Агент | Папка | Статус | Назначение |
+|-------|-------|--------|------------|
+| **Олег** | [`agents/oleg/`](agents/oleg/) | Активен | Финансовый AI-агент: ReAct-аналитик, отчёты, NL-запросы, мониторинг. Интерфейс: Telegram |
+| **Людмила** | [`agents/lyudmila/`](agents/lyudmila/) | Активен | CRM AI-агент: задачи, встречи, дайджесты через Bitrix24. Интерфейс: Telegram |
+| **Ибрагим** | [`agents/ibrahim/`](agents/ibrahim/) | Активен | Дата-инженер: ETL маркетплейсов, reconciliation, управление схемой БД |
+| **Василий** | [`agents/vasily/`](agents/vasily/) | В разработке | Логистический AI-агент: индекс локализации, перемещения между складами WB/OZON |
+
+### Инфраструктура и сервисы
+
+| Папка | Назначение | Статус |
+|-------|-----------|--------|
+| [`shared/`](shared/) | Общая библиотека: config, data_layer, API-клиенты | Активен |
+| [`services/marketplace_etl/`](services/marketplace_etl/) | ETL-пайплайн WB/OZON API → PostgreSQL | Активен |
+| [`services/sheets_sync/`](services/sheets_sync/) | Синхронизация Google Sheets ↔ МП | Активен |
+| [`services/ozon_delivery/`](services/ozon_delivery/) | Оптимизация доставки OZON | Активен |
+| [`sku_database/`](sku_database/) | Товарная матрица (Supabase): 22 модели, 478 артикулов, 1450 SKU | Активен |
+| [`scripts/`](scripts/) | CLI-скрипты аналитики (ABC, Notion sync) | Активен |
+| [`deploy/`](deploy/) | Docker конфигурация | Инфраструктура |
+| [`docs/`](docs/) | Документация: архитектура, ADR, руководства, БД | Справочник |
 
 ---
 
@@ -91,9 +115,10 @@ Wookiee/
 │   └── utils/                  — утилиты
 │
 ├── agents/                      — AI-агенты
-│   ├── oleg/                   — Олег: ReAct-агент, финансовая аналитика
-│   ├── lyudmila/               — Людмила: CRM-ассистент, Bitrix24
-│   └── vasily/                 — Василий: оптимизация логистики WB
+│   ├── oleg/                   — Олег: финансовый AI-агент (ReAct)
+│   ├── lyudmila/               — Людмила: CRM AI-агент (Bitrix24)
+│   ├── vasily/                 — Василий: логистический AI-агент (WB/OZON)
+│   └── ibrahim/                — Ибрагим: дата-инженер (ETL, reconciliation)
 │
 ├── scripts/                     — CLI-скрипты аналитики
 │   ├── abc_analysis.py         — ABC-анализ
@@ -101,6 +126,7 @@ Wookiee/
 │   └── ...
 │
 ├── services/                    — доменные сервисы
+│   ├── marketplace_etl/        — ETL-пайплайн WB/OZON → PostgreSQL
 │   ├── sheets_sync/            — синхронизация Google Sheets ↔ МП
 │   └── ozon_delivery/          — оптимизация доставки OZON
 │
@@ -175,9 +201,9 @@ docker compose -f deploy/docker-compose.yml up -d
 
 ---
 
-## Telegram-бот
+## Олег — финансовый AI-агент
 
-AI-ассистент финансового менеджера с доступом ко всем данным бренда.
+AI-агент финансового аналитика с доступом ко всем данным бренда. Telegram-бот — это интерфейс, Олег — автономный ReAct-агент с LLM, набором инструментов и playbook'ом.
 
 **Возможности:**
 - Шаблонные отчёты (daily, period, ABC) с интерактивным выбором периодов
@@ -262,11 +288,14 @@ python scripts/notion_sync.py --file reports/2026-02-01_2026-02-07_analytics.md
 
 ## Источники данных
 
-| Источник | БД | Что хранит | Обновление |
-|----------|-------|------------|------------|
+| Источник | БД / API | Что хранит | Обновление |
+|----------|----------|------------|------------|
 | Wildberries | `pbi_wb_wookiee` (PostgreSQL) | Финансы, трафик, заказы, реклама (853K+ строк) | Ежедневно ~06:18 МСК |
 | OZON | `pbi_ozon_wookiee` (PostgreSQL) | Финансы, трафик, заказы, реклама (156K+ строк) | Ежедневно ~07:03 МСК |
 | Товарная матрица | Supabase | Модели, артикулы, SKU, статусы, цвета | По запросу |
+| МойСклад | API | Остатки, себестоимость, номенклатура | По запросу |
+| Bitrix24 | API | Задачи, встречи, контакты, CRM | Реальное время |
+| Google Sheets | API | Оперативные данные, контроль цен/остатков | Синхронизация |
 | Notion | API | Хранение отчётов | При генерации |
 
 Базы WB/OZON предоставляются подрядчиком (доступ только на чтение). Данные обновляются автоматически.
@@ -294,9 +323,9 @@ python scripts/notion_sync.py --file reports/2026-02-01_2026-02-07_analytics.md
 |-----------|-----------|
 | Язык | Python 3.11+ |
 | Базы данных | PostgreSQL (финансы WB/OZON), Supabase (товарная матрица), SQLite FTS5 (история отчётов) |
-| Бот | aiogram 3.15, APScheduler 3.10.4 |
-| AI | z.ai API (GLM-4.5-flash), Claude API (Sonnet 4.5) |
-| Интеграции | Notion API, Bitrix24 API (планируется) |
+| Интерфейсы | aiogram 3.15, APScheduler 3.10.4 |
+| AI / LLM | z.ai API (GLM-4-plus, GLM-4.5-flash), Claude API (Opus 4.6, Sonnet 4.5) via OpenRouter |
+| Интеграции | Notion API, Bitrix24 API, Wildberries API, OZON API, МойСклад API, Google Sheets API |
 | Инфраструктура | Docker, docker-compose |
 | Безопасность | bcrypt (пароли), .env (секреты), .cursorignore (защита от AI) |
 
@@ -304,30 +333,29 @@ python scripts/notion_sync.py --file reports/2026-02-01_2026-02-07_analytics.md
 
 ## Roadmap
 
-### Активные компоненты
-- Telegram Bot Agent — ежедневные отчёты, AI-запросы, мониторинг данных
-- Analytics Engine — daily/period/monthly аналитика с confidence scoring
-- SKU Database — товарная матрица на Supabase (22 модели, 1450 SKU)
+### Активные AI-агенты
+- **Олег** — финансовый AI-агент: отчёты, NL-запросы, мониторинг данных, ценовая аналитика
+- **Людмила** — CRM AI-агент: задачи, встречи, дайджесты через Bitrix24
+- **Ибрагим** — дата-инженер: ETL маркетплейсов, reconciliation, управление схемой БД
 
 ### В разработке
-- Василий (MP Localization Agent) — автоматизация перемещений между складами (WB/OZON)
-- Людмила (CRM Agent) — постановка задач, анализ процессов, работа с Bitrix24
-- Расширение AI-возможностей бота (более глубокий анализ, прогнозирование)
+- **Василий** — логистический AI-агент: автоматизация перемещений между складами (WB/OZON)
+- Расширение AI-возможностей агентов (прогнозирование, inter-agent коммуникация)
 
 ### Планируемые
 - AB-тестирование и ценовые эксперименты
-- Единый дашборд с real-time данными
+- Мульти-агентная координация (агенты обмениваются контекстом)
 
 ---
 
-## Для AI-агентов
+## Для AI-агентов разработки (Claude Code, Cursor)
 
 Все правила проекта: [`AGENTS.md`](AGENTS.md) (единственный источник истины).
 
 Навигация по документации: [`docs/index.md`](docs/index.md).
 
 **Обязательные правила:**
-- DB-запросы: только `scripts/data_layer.py`
+- DB-запросы: только `shared/data_layer.py`
 - GROUP BY по модели: ВСЕГДА с `LOWER()`
 - Процентные метрики: ТОЛЬКО средневзвешенные
 - Проблемы качества данных: фиксировать в `docs/database/DATA_QUALITY_NOTES.md`

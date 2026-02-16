@@ -153,6 +153,80 @@ class DataQuality:
 
         return {"date": date, "checks": checks}
 
+    def check_adv_freshness(self) -> dict:
+        """Check wb_adv and content_analysis freshness.
+
+        Returns:
+            dict with table -> row count and freshness status.
+        """
+        yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+        tables = ["wb.wb_adv", "wb.content_analysis"]
+        result = {"date": yesterday, "tables": {}}
+
+        try:
+            conn = get_db_connection()
+            with conn.cursor() as cur:
+                for table in tables:
+                    try:
+                        cur.execute(
+                            f"SELECT COUNT(*) FROM {table} WHERE date = %s",
+                            (yesterday,),
+                        )
+                        count = cur.fetchone()[0]
+                        result["tables"][table] = {
+                            "rows": count,
+                            "fresh": count > 0,
+                        }
+                    except Exception as e:
+                        result["tables"][table] = {"error": str(e)}
+                        conn.rollback()
+            conn.close()
+        except Exception as e:
+            result["error"] = str(e)
+            logger.error("check_adv_freshness failed: %s", e)
+
+        return result
+
+    def check_adv_consistency(self, date: str | None = None) -> dict:
+        """Cross-validate wb_adv.sum totals vs abc_date.reclama.
+
+        Args:
+            date: Date to check (default: yesterday).
+
+        Returns:
+            dict with comparison results and ok flag (diff < 5%).
+        """
+        if date is None:
+            date = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+
+        try:
+            conn = get_db_connection()
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT COALESCE(SUM(sum), 0) FROM wb.wb_adv WHERE date = %s",
+                    (date,),
+                )
+                adv_total = cur.fetchone()[0]
+
+                cur.execute(
+                    "SELECT COALESCE(SUM(reclama), 0) FROM wb.abc_date WHERE date = %s",
+                    (date,),
+                )
+                abc_total = cur.fetchone()[0]
+            conn.close()
+
+            diff_pct = abs(adv_total - abc_total) / max(abc_total, 1) * 100
+            return {
+                "date": date,
+                "wb_adv_sum": float(adv_total),
+                "abc_reclama": float(abc_total),
+                "diff_pct": round(diff_pct, 2),
+                "ok": diff_pct < 5,
+            }
+        except Exception as e:
+            logger.error("check_adv_consistency failed: %s", e)
+            return {"date": date, "error": str(e)}
+
     def run_all(self) -> dict:
         """Run all quality checks.
 
@@ -163,4 +237,6 @@ class DataQuality:
             "freshness": self.check_freshness(),
             "completeness": self.check_completeness(),
             "consistency": self.check_consistency(),
+            "adv_freshness": self.check_adv_freshness(),
+            "adv_consistency": self.check_adv_consistency(),
         }

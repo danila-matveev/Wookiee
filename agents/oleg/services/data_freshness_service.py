@@ -74,6 +74,68 @@ class DataFreshnessService:
             status = self.check_freshness()
         return status['wb']['ready'] and status['ozon']['ready']
 
+    def get_latest_data_date(self) -> Optional[date]:
+        """Последняя дата, за которую есть данные в ОБЕИХ БД (WB и OZON)."""
+        wb_date = self._get_max_date(self._db_wb)
+        ozon_date = self._get_max_date(self._db_ozon)
+        if wb_date and ozon_date:
+            return min(wb_date, ozon_date)
+        return wb_date or ozon_date
+
+    def _get_max_date(self, db_name: str) -> Optional[date]:
+        """MAX(date) из abc_date для конкретной БД."""
+        try:
+            conn = psycopg2.connect(**self._db_config, database=db_name)
+            cur = conn.cursor()
+            cur.execute("SELECT MAX(date) FROM abc_date")
+            row = cur.fetchone()
+            conn.close()
+            if row and row[0]:
+                d = row[0]
+                return d.date() if isinstance(d, datetime) else d
+            return None
+        except Exception as e:
+            logger.error(f"_get_max_date({db_name}): {e}")
+            return None
+
+    def adjust_dates(self, start_date: str, end_date: str) -> tuple:
+        """Скорректировать период по доступности данных.
+
+        Returns:
+            (adjusted_start, adjusted_end, note_or_None)
+        """
+        try:
+            latest = self.get_latest_data_date()
+        except Exception as e:
+            logger.warning(f"get_latest_data_date failed: {e}")
+            return start_date, end_date, None
+
+        if latest is None:
+            return start_date, end_date, "Не удалось определить доступность данных."
+
+        req_end = datetime.strptime(end_date, "%Y-%m-%d").date()
+        req_start = datetime.strptime(start_date, "%Y-%m-%d").date()
+
+        if req_end <= latest:
+            return start_date, end_date, None
+
+        adjusted_end = latest.strftime("%Y-%m-%d")
+        missing_days = (req_end - latest).days
+
+        if latest < req_start:
+            return start_date, end_date, (
+                f"Данные доступны только до {latest.strftime('%d.%m.%Y')}. "
+                f"Запрошенный период ({req_start.strftime('%d.%m')}–{req_end.strftime('%d.%m')}) "
+                f"не покрыт данными."
+            )
+
+        note = (
+            f"Данные доступны до {latest.strftime('%d.%m.%Y')} включительно. "
+            f"Нет данных за последние {missing_days} дн. "
+            f"Период скорректирован: {req_start.strftime('%d.%m')}–{latest.strftime('%d.%m.%Y')}."
+        )
+        return start_date, adjusted_end, note
+
     def format_notification(self, status: dict) -> str:
         from datetime import timedelta
 

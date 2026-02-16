@@ -1,59 +1,73 @@
-# Wookiee Analytics — Архитектура системы
+# Wookiee — Архитектура системы AI-агентов
 
 ## Обзор
 
-Аналитическая система для бренда Wookiee, работающая с маркетплейсами Wildberries и OZON. Генерирует ежедневные, периодные и месячные отчёты с confidence scoring и AI-powered запросами.
+Система AI-агентов для управления бизнесом бренда Wookiee. Каждый агент автономно решает конкретную бизнес-задачу, работая с данными из маркетплейсов, CRM, Google Sheets и других источников. Боты (Telegram) — интерфейсы для взаимодействия с агентами, а не самостоятельные сущности.
 
 ## Компоненты
 
-### 1. Analytics Scripts (`scripts/`)
-- **Назначение:** Аналитический движок — генерация отчётов
-- **Стек:** Python, psycopg2, python-dotenv
-- **Ключевые файлы:** config.py, data_layer.py, daily_analytics.py, period_analytics.py, monthly_analytics.py, notion_sync.py
-- **Data flow:** PostgreSQL -> data_layer.py -> analytics scripts -> Markdown -> Notion
+### 1. AI-агенты (`agents/`)
 
-### 2. Telegram Bot (`bot/`)
-- **Назначение:** Пользовательский интерфейс для аналитики + AI-запросы
-- **Стек:** Python, aiogram 3.15, APScheduler, SQLite (FTS5), bcrypt
-- **Подкомпоненты:** handlers/ (auth, menu, reports), services/ (AI agents, report generators, storage)
-- **AI routing:** z.ai (95% запросов) + Claude API (5% fallback)
+| Агент | Путь | Назначение | Интерфейс | LLM |
+|-------|------|-----------|-----------|-----|
+| **Олег** | `agents/oleg/` | Финансовый AI-агент: ReAct-аналитик, отчёты, NL-запросы, ценовая аналитика | Telegram | z.ai (GLM-4-plus), Claude (fallback) |
+| **Людмила** | `agents/lyudmila/` | CRM AI-агент: задачи, встречи, дайджесты через Bitrix24 | Telegram | z.ai |
+| **Ибрагим** | `agents/ibrahim/` | Дата-инженер: ETL маркетплейсов, reconciliation, управление схемой БД | CLI | z.ai (для analyze-api/schema) |
+| **Василий** | `agents/vasily/` | Логистический AI-агент: индекс локализации, перемещения между складами | CLI / Bitrix24 | — |
 
-### 3. SKU Database (`sku_database/`)
-- **Назначение:** Товарная матрица (модели, цвета, размеры, статусы)
-- **Стек:** Python, Supabase (PostgreSQL), Bitrix24 интеграция
-- **Иерархия:** modeli_osnova -> modeli -> artikuly -> tovary
+### Классификация по роли
 
-### 4. Marketplace Data Pipeline (`marketplace-data-pipeline/`)
-- **Назначение:** Загрузка данных из API WB/OZON
-- **Стек:** Python, WB API, OZON API, PostgreSQL
-- **Подкомпоненты:** api_clients/, etl/, database/, tests/
+| Слой | Роль | Агенты |
+|------|------|--------|
+| **Сенсоры** | Сбор и структурирование данных | Ибрагим (ETL, reconciliation) |
+| **Аналитики** | Синтез данных, генерация инсайтов | Олег (финансовый анализ, гипотезы) |
+| **Исполнители** | Действия по заданию | Людмила (задачи в Bitrix24), Василий (перемещения) |
 
-### 5. MP Scripts (`MP scripts/`)
-- **Назначение:** Скрипты локализации для Wildberries
+Агент может совмещать роли. Олег — аналитик, но также исполнитель (отправка отчётов). Подробнее об уровнях автономии: [agent-principles.md](guides/agent-principles.md), секция 2.5.
+
+### 2. Shared-инфраструктура (`shared/`)
+- **`config.py`** — единый источник конфигурации (читает `.env`)
+- **`data_layer.py`** — слой данных (ВСЕ DB-запросы, 65KB+)
+- **`clients/`** — API-клиенты: WB, OZON, МойСклад, Google Sheets, Bitrix24 OAuth, z.ai, OpenRouter
+- **`utils/`** — общие утилиты (JSON-сериализация)
+
+### 3. Сервисы (`services/`)
+- **`marketplace_etl/`** — ETL-пайплайн: WB/OZON API → PostgreSQL (загрузка, валидация, reconciliation)
+- **`sheets_sync/`** — синхронизация Google Sheets ↔ маркетплейсы (цены, остатки, бандлы, отзывы)
+- **`ozon_delivery/`** — оптимизация доставки OZON
+
+### 4. SKU Database (`sku_database/`)
+- Товарная матрица на Supabase (PostgreSQL): 22 модели, 478 артикулов, 1450 SKU
+- RLS включён на всех таблицах
+- Интеграция с Bitrix24 для синхронизации номенклатуры
 
 ## Источники данных
 
-| Источник | БД | Содержимое |
-|----------|-------|------------|
+| Источник | Хранилище | Содержимое |
+|----------|-----------|------------|
 | Wildberries | `pbi_wb_wookiee` (PostgreSQL) | Финансы, трафик, заказы, реклама |
 | OZON | `pbi_ozon_wookiee` (PostgreSQL) | Финансы, трафик, заказы, реклама |
-| Supabase | товарная матрица | Статусы артикулов, модели, цвета |
-| Notion | Фин аналитика | Хранение отчётов |
+| Supabase | товарная матрица | Модели, артикулы, SKU, статусы, цвета |
+| МойСклад | API | Остатки, себестоимость, номенклатура |
+| Bitrix24 | API | Задачи, встречи, контакты, CRM |
+| Google Sheets | API | Оперативные данные, контроль цен/остатков |
+| Notion | API | Хранение отчётов |
 
 ## Инфраструктура
 
-- **Docker:** бот контейнеризирован (Dockerfile + docker-compose.yml)
-- **Отчёты:** Markdown в reports/ + синхронизация с Notion
-- **Расписание:** APScheduler (ежедневные отчёты в 10:05 МСК)
+- **Docker:** агенты контейнеризированы (`deploy/Dockerfile` + `deploy/docker-compose.yml`)
+- **Отчёты:** Markdown → `reports/` + синхронизация с Notion
+- **Расписание:** APScheduler (ежедневные отчёты, проверка данных)
 - **Мониторинг данных:** проверка каждые 5 мин с 06:00 до 12:00 МСК
 
 ## Технологии
 
 - Python 3.11+
-- PostgreSQL (финансовые данные)
-- Supabase (товарная матрица)
-- aiogram 3.15 (Telegram bot)
+- PostgreSQL (финансовые данные WB/OZON)
+- Supabase (товарная матрица, пользовательская память)
+- SQLite FTS5 (история отчётов)
+- aiogram 3.15 (Telegram-интерфейс)
 - Docker / docker-compose
 - APScheduler
-- Notion API
-- z.ai API + Claude API
+- z.ai API (GLM-4-plus, GLM-4.5-flash) + Claude API (Opus 4.6, Sonnet 4.5) via OpenRouter
+- Notion API, Bitrix24 API, WB API, OZON API, МойСклад API, Google Sheets API

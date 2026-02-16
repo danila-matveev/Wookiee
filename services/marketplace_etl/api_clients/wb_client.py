@@ -24,6 +24,7 @@ class WildberriesAPIClient(BaseAPIClient):
         'statistics': 'https://statistics-api.wildberries.ru/api/v1',
         'content': 'https://content-api.wildberries.ru',
         'advert': 'https://advert-api.wildberries.ru/api/v2',
+        'analytics': 'https://seller-analytics-api.wildberries.ru/api/v2',
     }
 
     # sales/orders: 5 req/min = 12s interval; others: 60 req/min = 1s
@@ -295,6 +296,55 @@ class WildberriesAPIClient(BaseAPIClient):
 
         logger.info(f"get_adv_statistics: {len(all_stats)} campaign stat entries")
         return all_stats
+
+    # --- Content analysis (organic funnel: card views -> cart -> order -> buyout) ---
+
+    def get_nm_report(self, date_from, date_to):
+        """
+        Get card analytics (content_analysis): views, add_to_cart, orders, buyouts per SKU per day.
+        WB Seller Analytics API: /api/v2/nm-report/detail
+
+        Args:
+            date_from: Start date (YYYY-MM-DD or datetime).
+            date_to: End date (YYYY-MM-DD or datetime).
+
+        Returns:
+            list: Card analytics records.
+        """
+        url = f"{self.BASE_URLS['analytics']}/nm-report/detail"
+        all_cards = []
+        page = 1
+
+        begin = str(date_from)[:10] if not isinstance(date_from, str) else date_from[:10]
+        end = str(date_to)[:10] if not isinstance(date_to, str) else date_to[:10]
+
+        while True:
+            body = {
+                "period": {"begin": begin, "end": end},
+                "page": page,
+            }
+            try:
+                resp = self._post(url, json_data=body)
+            except Exception as e:
+                logger.warning(f"get_nm_report page {page} error: {e}")
+                break
+
+            if not resp:
+                break
+
+            cards = resp.get('data', {}).get('cards', [])
+            if not cards:
+                break
+
+            all_cards.extend(cards)
+            logger.info(f"get_nm_report: page {page}, {len(cards)} cards (total {len(all_cards)})")
+
+            if not resp.get('data', {}).get('isNextPage', False):
+                break
+            page += 1
+
+        logger.info(f"get_nm_report: total {len(all_cards)} cards for {begin} — {end}")
+        return all_cards
 
     def _get_adv_campaigns(self):
         """Get list of all advertising campaigns."""
