@@ -33,6 +33,9 @@ def create_main_menu_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="🤔 Кастомный запрос", callback_data="menu_custom_query")
             ],
             [
+                InlineKeyboardButton(text="💰 Ценовой анализ", callback_data="menu_price_analysis")
+            ],
+            [
                 InlineKeyboardButton(text="📚 История отчетов", callback_data="menu_history")
             ],
             [
@@ -256,6 +259,112 @@ async def callback_help_menu(callback: CallbackQuery, auth_service):
 
     await callback.message.edit_text(
         help_text,
+        parse_mode="HTML",
+        reply_markup=create_back_to_main_keyboard()
+    )
+    await callback.answer()
+
+
+# ─── Price Analysis Menu ─────────────────────────────────────
+
+def create_price_analysis_keyboard() -> InlineKeyboardMarkup:
+    """Keyboard for price analysis submenu."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📈 Ценовой обзор", callback_data="price_review")
+            ],
+            [
+                InlineKeyboardButton(text="🏷 Анализ акций МП", callback_data="price_promotions")
+            ],
+            [
+                InlineKeyboardButton(text="🔮 Сценарий цены", callback_data="price_scenario")
+            ],
+            [
+                InlineKeyboardButton(text="🔙 Главное меню", callback_data="menu_main")
+            ]
+        ]
+    )
+
+
+@router.callback_query(F.data == "menu_price_analysis")
+async def callback_price_analysis_menu(callback: CallbackQuery, auth_service):
+    """Handle price analysis menu callback."""
+    if not auth_service.is_authenticated(callback.from_user.id):
+        await callback.answer("Вы не авторизованы", show_alert=True)
+        return
+
+    await callback.message.edit_text(
+        "💰 <b>Ценовой анализ</b>\n\n"
+        "Выберите тип анализа:\n\n"
+        "• <b>Ценовой обзор</b> — эластичность, тренды, рекомендации по ценам\n"
+        "• <b>Анализ акций МП</b> — сканирование акций WB/OZON, расчёт эффекта\n"
+        "• <b>Сценарий цены</b> — моделирование \"что если цену изменить на X%\"",
+        parse_mode="HTML",
+        reply_markup=create_price_analysis_keyboard()
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "price_review")
+async def callback_price_review(callback: CallbackQuery, state: FSMContext, auth_service):
+    """Trigger price review via custom query flow."""
+    if not auth_service.is_authenticated(callback.from_user.id):
+        await callback.answer("Вы не авторизованы", show_alert=True)
+        return
+
+    from agents.oleg.handlers.custom_queries import QueryStates
+    await state.set_state(QueryStates.waiting_for_query)
+    await state.update_data(prefilled_query="Ценовой обзор за последнюю неделю: эластичность, рекомендации по ценам, тренды")
+
+    await callback.message.edit_text(
+        "📈 <b>Ценовой обзор</b>\n\n"
+        "Запрос сформирован: <i>Ценовой обзор за последнюю неделю</i>\n\n"
+        "Отправьте любое сообщение для запуска или напишите свой запрос.",
+        parse_mode="HTML",
+        reply_markup=create_back_to_main_keyboard()
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "price_promotions")
+async def callback_price_promotions(callback: CallbackQuery, state: FSMContext, auth_service):
+    """Trigger promotion analysis via custom query flow."""
+    if not auth_service.is_authenticated(callback.from_user.id):
+        await callback.answer("Вы не авторизованы", show_alert=True)
+        return
+
+    from agents.oleg.handlers.custom_queries import QueryStates
+    await state.set_state(QueryStates.waiting_for_query)
+    await state.update_data(prefilled_query="Проанализируй текущие акции на WB и OZON, рекомендуй участие")
+
+    await callback.message.edit_text(
+        "🏷 <b>Анализ акций МП</b>\n\n"
+        "Запрос сформирован: <i>Анализ текущих акций WB и OZON</i>\n\n"
+        "Отправьте любое сообщение для запуска или напишите свой запрос.",
+        parse_mode="HTML",
+        reply_markup=create_back_to_main_keyboard()
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "price_scenario")
+async def callback_price_scenario(callback: CallbackQuery, state: FSMContext, auth_service):
+    """Trigger price scenario via custom query flow."""
+    if not auth_service.is_authenticated(callback.from_user.id):
+        await callback.answer("Вы не авторизованы", show_alert=True)
+        return
+
+    from agents.oleg.handlers.custom_queries import QueryStates
+    await state.set_state(QueryStates.waiting_for_query)
+
+    await callback.message.edit_text(
+        "🔮 <b>Сценарий цены</b>\n\n"
+        "Напишите запрос в формате:\n\n"
+        "• <i>Что будет если поднять цену Wendy на WB на 10%?</i>\n"
+        "• <i>Смоделируй снижение цены Ruby на 5% на OZON</i>\n"
+        "• <i>Что было бы если мы подняли цену на 7% на прошлой неделе?</i>\n\n"
+        "✍️ Введите запрос:",
         parse_mode="HTML",
         reply_markup=create_back_to_main_keyboard()
     )

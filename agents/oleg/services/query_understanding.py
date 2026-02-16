@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 # Known valid values for validation
 _VALID_CHANNELS = {"wb", "ozon"}
-_VALID_REPORT_TYPES = {"daily", "period", "weekly", "monthly", "comparison"}
+_VALID_REPORT_TYPES = {"daily", "period", "weekly", "monthly", "comparison", "price_review", "promotion_analysis", "price_scenario"}
 _KNOWN_MODELS = [
     "wendy", "ruby", "set_vuki", "joy", "vuki", "moon", "audrey", "bella",
 ]
@@ -132,6 +132,14 @@ class QueryUnderstandingService:
 - weekly — неделя (7 дней)
 - monthly — календарный месяц
 - comparison — сравнение двух периодов
+- price_review — ценовой обзор: эластичность, рекомендации по ценам, сценарии
+- promotion_analysis — анализ акций маркетплейсов (WB/OZON), рекомендации участвовать/нет
+- price_scenario — моделирование "что если цену изменить на X%"
+
+КЛЮЧЕВЫЕ СЛОВА для ценовых запросов:
+- "цена", "ценовой", "эластичность", "рекомендация по цене" → price_review
+- "акция", "акции", "промо", "участвовать" → promotion_analysis
+- "что если", "сценарий", "смоделируй", "если поднять/снизить цену" → price_scenario
 
 ПРАВИЛА ДАТ:
 - "вчера" = {yesterday}

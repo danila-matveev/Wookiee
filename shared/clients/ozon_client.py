@@ -124,6 +124,60 @@ class OzonClient:
             logger.error("[%s] Check report error: %s", self.cabinet_name, e)
             return None
 
+    # ---- Promotions ----
+
+    def get_promotions(self) -> list[dict]:
+        """POST /v1/actions — список доступных акций.
+
+        Returns list of promotions with id, title, date_start, date_end.
+        """
+        url = f"{self.BASE_URL}/v1/actions"
+        try:
+            resp = self.client.post(url, json={})
+            if resp.status_code == 200:
+                data = resp.json()
+                return data.get("result", [])
+            logger.error("[%s] GET promotions HTTP %d", self.cabinet_name, resp.status_code)
+        except httpx.RequestError as e:
+            logger.error("[%s] GET promotions error: %s", self.cabinet_name, e)
+        return []
+
+    def get_promotion_candidates(self, action_id: int, offset: int = 0, limit: int = 100) -> list[dict]:
+        """POST /v1/actions/candidates — товары, которые можно добавить в акцию.
+
+        Returns list of product candidates with action_price, max_action_price, stock.
+        """
+        url = f"{self.BASE_URL}/v1/actions/candidates"
+        payload = {"action_id": action_id, "offset": offset, "limit": limit}
+        try:
+            resp = self.client.post(url, json=payload)
+            if resp.status_code == 200:
+                data = resp.json()
+                return data.get("result", {}).get("products", [])
+            logger.error("[%s] GET promo candidates HTTP %d", self.cabinet_name, resp.status_code)
+        except httpx.RequestError as e:
+            logger.error("[%s] GET promo candidates error: %s", self.cabinet_name, e)
+        return []
+
+    def get_promotion_products(self, action_id: int, offset: int = 0, limit: int = 100) -> list[dict]:
+        """POST /v1/actions/products — товары, уже участвующие в акции.
+
+        Returns list of products currently in the promotion.
+        """
+        url = f"{self.BASE_URL}/v1/actions/products"
+        payload = {"action_id": action_id, "offset": offset, "limit": limit}
+        try:
+            resp = self.client.post(url, json=payload)
+            if resp.status_code == 200:
+                data = resp.json()
+                return data.get("result", {}).get("products", [])
+            logger.error("[%s] GET promo products HTTP %d", self.cabinet_name, resp.status_code)
+        except httpx.RequestError as e:
+            logger.error("[%s] GET promo products error: %s", self.cabinet_name, e)
+        return []
+
+    # ---- CSV Reports ----
+
     def _download_and_parse_csv(self, url: str) -> list[list[str]]:
         """Download CSV from URL, parse semicolon-delimited with BOM handling.
 

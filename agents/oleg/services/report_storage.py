@@ -322,17 +322,28 @@ class ReportStorage:
 
     def has_report_for_period(self, report_type: str, period_key: str) -> bool:
         """
-        Check if a report of given type with period_key in title already exists.
+        Check if a report of given type for given period already exists.
+
+        Uses start_date column for reliable matching, falls back to title LIKE.
 
         Args:
-            report_type: Report type (e.g. 'monthly_auto')
-            period_key: Period identifier to search in title (e.g. '2026-01')
+            report_type: Report type (e.g. 'daily_auto', 'monthly_auto')
+            period_key: Date string (e.g. '2026-02-14') or month ('2026-01')
 
         Returns:
             True if report exists
         """
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
+            # Try exact date match first (reliable)
+            cursor.execute("""
+                SELECT COUNT(*) FROM reports
+                WHERE report_type = ? AND DATE(start_date) = DATE(?)
+            """, (report_type, period_key))
+            count = cursor.fetchone()[0]
+            if count > 0:
+                return True
+            # Fallback to title LIKE for backward compatibility (month keys etc)
             cursor.execute("""
                 SELECT COUNT(*) FROM reports
                 WHERE report_type = ? AND title LIKE ?

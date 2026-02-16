@@ -1,0 +1,15 @@
+{
+  "wb": [
+    {
+      "lk": "WB ИП Медведева П.В.",
+      "api_key": "YOUR_WB_API_KEY_HERE"
+    }
+  ],
+  "ozon": [
+    {
+      "lk": "Ozon ИП Медведева П.В.",
+      "client_id": "YOUR_OZON_CLIENT_ID",
+      "api_key": "YOUR_OZON_API_KEY_HERE"
+    }
+  ]
+}

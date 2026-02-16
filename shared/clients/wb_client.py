@@ -214,6 +214,47 @@ class WBClient:
         logger.info("[%s] Total orders: %d", self.cabinet_name, len(all_orders))
         return all_orders
 
+    # ---- Promotions (Seller API) ----
+
+    PROMOTIONS_BASE = "https://dp-calendar-api.wildberries.ru"
+
+    def get_promotions_list(self) -> list[dict]:
+        """GET /api/v1/calendar/promotions — список доступных акций.
+
+        Returns list of promotions with id, name, startDate, endDate, type.
+        """
+        url = f"{self.PROMOTIONS_BASE}/api/v1/calendar/promotions"
+        resp = self._request("GET", url)
+        if resp and isinstance(resp, dict):
+            return resp.get("data", {}).get("promotions", [])
+        if isinstance(resp, list):
+            return resp
+        return []
+
+    def get_promotion_details(self, promotion_id: int) -> dict | None:
+        """GET /api/v1/calendar/promotions/details — детали конкретной акции.
+
+        Returns promotion details with conditions, required discounts.
+        """
+        url = f"{self.PROMOTIONS_BASE}/api/v1/calendar/promotions/details?id={promotion_id}"
+        resp = self._request("GET", url)
+        if resp and isinstance(resp, dict):
+            return resp.get("data", resp)
+        return None
+
+    def get_promotion_nomenclatures(self, promotion_id: int) -> list[dict]:
+        """POST /api/v1/calendar/promotions/nomenclatures — товары, участвующие в акции.
+
+        Returns list of nomenclatures in the promotion.
+        """
+        url = f"{self.PROMOTIONS_BASE}/api/v1/calendar/promotions/nomenclatures"
+        resp = self._request("POST", url, json={"id": promotion_id})
+        if resp and isinstance(resp, dict):
+            return resp.get("data", {}).get("nomenclatures", [])
+        if isinstance(resp, list):
+            return resp
+        return []
+
     # ---- Common request handler ----
 
     def _request(self, method: str, url: str, retries: int = 3, **kwargs) -> dict | list | None:

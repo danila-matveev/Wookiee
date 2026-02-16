@@ -13,17 +13,10 @@ logger = logging.getLogger(__name__)
 class ZAIClient:
     """Client for z.ai API"""
 
-    def __init__(self, api_key: str, model: str = "jlm"):
-        """
-        Initialize z.ai client
-
-        Args:
-            api_key: z.ai API key
-            model: Model name (default: jlm)
-        """
+    def __init__(self, api_key: str, model: str = "jlm", base_url: str = "https://api.z.ai/api/paas/v4"):
         self.api_key = api_key
         self.model = model
-        self.base_url = "https://api.z.ai/api/paas/v4"
+        self.base_url = base_url
 
     async def complete(
         self,

@@ -367,15 +367,10 @@ class AgentExecutor:
         )
 
     def _calc_cost(self, usage: dict) -> float:
-        """Calculate cost based on model pricing."""
-        pricing = {
-            "claude-opus-4-6": {"input": 0.015, "output": 0.075},
-            "claude-sonnet-4-5-20250929": {"input": 0.003, "output": 0.015},
-            "glm-4-plus": {"input": 0.007, "output": 0.007},
-            "glm-4.5-flash": {"input": 0.0001, "output": 0.0002},
-        }
-
-        rates = pricing.get(self.model, pricing.get("glm-4.5-flash"))
+        """Calculate cost based on model pricing from config."""
+        from agents.oleg import config
+        default_rate = {"input": 0.001, "output": 0.001}
+        rates = config.PRICING.get(self.model, default_rate)
         input_tokens = usage.get("input_tokens", 0)
         output_tokens = usage.get("output_tokens", 0)
 

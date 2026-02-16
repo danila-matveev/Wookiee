@@ -12,8 +12,10 @@
 - `scripts/` — аналитические скрипты (ABC analysis, Notion sync)
 - `agents/lyudmila/` — **Людмила**, CRM-ассистент
 - `agents/vasily/` — **Василий**, оптимизация логистики WB
+- `agents/ibrahim/` — **Ибрагим**, автономный дата-инженер (marketplace ETL, managed DB)
 - `sku_database/` — товарная матрица (Supabase)
 - `shared/` — общая библиотека (data_layer, API-клиенты, конфиг)
+- `services/marketplace_etl/` — ETL-пайплайн WB/Ozon API → PostgreSQL
 - `services/sheets_sync/` — синхронизация Google Sheets
 - `services/ozon_delivery/` — оптимизация доставки OZON
 
