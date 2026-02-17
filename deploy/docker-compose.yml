@@ -84,6 +84,37 @@ services:
           cpus: '0.25'
           memory: 128M
 
+  # ── Sheets Sync: ежедневная синхронизация данных в Google Sheets ──
+  sheets-sync:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.sheets_sync
+    container_name: wookiee_sheets_sync
+    restart: unless-stopped
+
+    env_file:
+      - ../.env
+
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TZ=Europe/Moscow
+      - SYNC_TEST_MODE=true
+
+    volumes:
+      - ../services/sheets_sync/credentials:/app/services/sheets_sync/credentials:ro
+
+    networks:
+      - n8n-docker-caddy_default
+
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
 networks:
   n8n-docker-caddy_default:
     external: true
