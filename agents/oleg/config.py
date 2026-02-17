@@ -20,7 +20,7 @@ TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
 HASHED_PASSWORD: str = os.getenv(
     "BOT_PASSWORD_HASH",
     "$2b$12$LQ3fPZJ5ZqX5ZqX5ZqX5ZeX5ZqX5ZqX5ZqX5ZqX5ZqX5ZqX5ZqX5Zq"  # PLACEHOLDER
-)
+).strip("'\"")
 
 # ============================================================================
 # AI Providers — всё через OpenRouter

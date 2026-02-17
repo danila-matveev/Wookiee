@@ -100,6 +100,32 @@ class ReportStorage:
                 ON reports(created_at DESC)
             """)
 
+            # ── WAL mode for concurrent access (agent + bot processes) ──
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA busy_timeout=5000")
+
+            # ── Delivery queue (agent enqueues, bot delivers to Telegram) ──
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS delivery_queue (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    report_id INTEGER NOT NULL DEFAULT 0,
+                    user_id INTEGER NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    html_text TEXT NOT NULL,
+                    keyboard_json TEXT,
+                    attempts INTEGER DEFAULT 0,
+                    last_attempt_at TIMESTAMP,
+                    sent_at TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    error_message TEXT
+                )
+            """)
+
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_dq_status
+                ON delivery_queue(status)
+            """)
+
             conn.commit()
             logger.info("Report storage initialized")
 
@@ -349,6 +375,70 @@ class ReportStorage:
                 WHERE report_type = ? AND title LIKE ?
             """, (report_type, f"%{period_key}%"))
             return cursor.fetchone()[0] > 0
+
+    # ── Delivery queue methods (agent ↔ bot communication) ──────
+
+    def enqueue_delivery(
+        self,
+        report_id: int,
+        user_id: int,
+        html_text: str,
+        keyboard_json: Optional[str] = None,
+    ) -> int:
+        """Queue a report for Telegram delivery. Called by agent process."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO delivery_queue (report_id, user_id, html_text, keyboard_json) "
+                "VALUES (?, ?, ?, ?)",
+                (report_id, user_id, html_text, keyboard_json),
+            )
+            queue_id = cursor.lastrowid
+            conn.commit()
+            logger.info(f"Enqueued delivery: queue_id={queue_id}, report={report_id}, user={user_id}")
+            return queue_id
+
+    def enqueue_notification(self, user_id: int, text: str) -> int:
+        """Queue a simple notification (no report). Used for freshness alerts etc."""
+        return self.enqueue_delivery(report_id=0, user_id=user_id, html_text=text)
+
+    def get_pending_deliveries(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Get pending deliveries for the bot to send."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM delivery_queue "
+                "WHERE status = 'pending' AND attempts < 5 "
+                "ORDER BY created_at ASC LIMIT ?",
+                (limit,),
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
+    def mark_delivered(self, queue_id: int) -> None:
+        """Mark delivery as successfully sent."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.cursor().execute(
+                "UPDATE delivery_queue SET status = 'sent', sent_at = CURRENT_TIMESTAMP "
+                "WHERE id = ?",
+                (queue_id,),
+            )
+            conn.commit()
+
+    def mark_delivery_failed(self, queue_id: int, error: str) -> None:
+        """Record a failed delivery attempt. After 5 attempts, mark as 'failed'."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.cursor().execute(
+                "UPDATE delivery_queue "
+                "SET attempts = attempts + 1, last_attempt_at = CURRENT_TIMESTAMP, "
+                "    error_message = ?, "
+                "    status = CASE WHEN attempts + 1 >= 5 THEN 'failed' ELSE 'pending' END "
+                "WHERE id = ?",
+                (error[:500], queue_id),
+            )
+            conn.commit()
+
+    # ── Helpers ───────────────────────────────────────────────────
 
     def _row_to_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
         """

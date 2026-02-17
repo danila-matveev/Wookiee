@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# deploy.sh — единая точка входа для деплоя Oleg Bot
+# deploy.sh — единая точка входа для деплоя Oleg (Agent + Bot)
 #
 # Использование:
 #   cd deploy && bash deploy.sh          # стандартный деплой
@@ -11,8 +11,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
-CONTAINER_NAME="wookiee_analytics_bot"
-PID_FILE="$PROJECT_ROOT/agents/oleg/logs/oleg_bot.pid"
+CONTAINER_AGENT="wookiee_analytics_agent"
+CONTAINER_BOT="wookiee_analytics_bot"
+PID_FILE_BOT="$PROJECT_ROOT/agents/oleg/logs/oleg_bot.pid"
+PID_FILE_AGENT="$PROJECT_ROOT/agents/oleg/logs/oleg_agent.pid"
 
 # Цвета для вывода
 RED='\033[0;31m'
@@ -24,45 +26,47 @@ log()   { echo -e "${GREEN}[deploy]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[deploy]${NC} $*"; }
 error() { echo -e "${RED}[deploy]${NC} $*"; }
 
-# ─── 1. Остановить старый контейнер ──────────────────────────
-log "Останавливаю старый контейнер..."
-if docker ps -q -f name="$CONTAINER_NAME" | grep -q .; then
+# ─── 1. Остановить старые контейнеры ─────────────────────────
+log "Останавливаю старые контейнеры..."
+if docker ps -q -f name="$CONTAINER_AGENT" -f name="$CONTAINER_BOT" | grep -q .; then
     docker-compose -f "$COMPOSE_FILE" down --timeout 30
-    log "Контейнер остановлен"
+    log "Контейнеры остановлены"
 else
-    log "Контейнер не запущен, пропускаю"
+    log "Контейнеры не запущены, пропускаю"
 fi
 
-# ─── 2. Убить локальные процессы бота ────────────────────────
-log "Проверяю локальные процессы бота..."
-if pgrep -f "agents.oleg" > /dev/null 2>&1; then
-    warn "Найдены локальные процессы бота, завершаю..."
-    pkill -f "agents.oleg" || true
-    sleep 2
-    # Если не завершились — SIGKILL
-    if pgrep -f "agents.oleg" > /dev/null 2>&1; then
-        warn "Процессы не завершились, принудительно убиваю..."
-        pkill -9 -f "agents.oleg" || true
+# ─── 2. Убить локальные процессы бота/агента ──────────────────
+log "Проверяю локальные процессы..."
+# Убиваем ОБА паттерна: agents.oleg И oleg_bot (старый процесс-призрак)
+for pattern in "agents.oleg" "oleg_bot"; do
+    if pgrep -f "$pattern" > /dev/null 2>&1; then
+        warn "Найдены процессы '$pattern', завершаю..."
+        pkill -f "$pattern" || true
+        sleep 2
+        if pgrep -f "$pattern" > /dev/null 2>&1; then
+            warn "Процессы '$pattern' не завершились, принудительно убиваю..."
+            pkill -9 -f "$pattern" || true
+        fi
+        log "Процессы '$pattern' завершены"
     fi
-    log "Локальные процессы завершены"
-else
-    log "Локальных процессов нет"
-fi
+done
 
-# ─── 3. Удалить stale PID-lock ──────────────────────────────
-if [ -f "$PID_FILE" ]; then
-    warn "Удаляю stale PID-lock: $PID_FILE"
-    rm -f "$PID_FILE"
-fi
+# ─── 3. Удалить stale PID-locks ──────────────────────────────
+for pid_file in "$PID_FILE_BOT" "$PID_FILE_AGENT"; do
+    if [ -f "$pid_file" ]; then
+        warn "Удаляю stale PID-lock: $pid_file"
+        rm -f "$pid_file"
+    fi
+done
 
-# ─── 4. Проверить .env ──────────────────────────────────────
+# ─── 4. Проверить .env ───────────────────────────────────────
 if [ ! -f "$PROJECT_ROOT/.env" ]; then
     error "Файл .env не найден в $PROJECT_ROOT"
     exit 1
 fi
 
 # Проверяем обязательные переменные
-for var in TELEGRAM_BOT_TOKEN ZAI_API_KEY DB_HOST DB_PASSWORD; do
+for var in TELEGRAM_BOT_TOKEN OPENROUTER_API_KEY DB_HOST DB_PASSWORD; do
     if ! grep -q "^${var}=" "$PROJECT_ROOT/.env"; then
         error "Переменная $var не найдена в .env"
         exit 1
@@ -70,41 +74,42 @@ for var in TELEGRAM_BOT_TOKEN ZAI_API_KEY DB_HOST DB_PASSWORD; do
 done
 log "Конфигурация .env валидна"
 
-# ─── 5. Собрать образ ───────────────────────────────────────
+# ─── 5. Собрать образ ────────────────────────────────────────
 log "Собираю Docker-образ..."
 docker-compose -f "$COMPOSE_FILE" build --no-cache
 log "Образ собран"
 
-# ─── 6. Запустить контейнер ──────────────────────────────────
-log "Запускаю контейнер..."
+# ─── 6. Запустить контейнеры ─────────────────────────────────
+log "Запускаю контейнеры (agent + bot)..."
 docker-compose -f "$COMPOSE_FILE" up -d
-log "Контейнер запущен"
+log "Контейнеры запущены"
 
 # ─── 7. Ожидание и проверка ──────────────────────────────────
 log "Жду 15 секунд для инициализации..."
 sleep 15
 
-# Проверяем что контейнер жив
-if ! docker ps -q -f name="$CONTAINER_NAME" | grep -q .; then
-    error "Контейнер не запустился!"
-    echo ""
-    error "Последние логи:"
-    docker-compose -f "$COMPOSE_FILE" logs --tail=30
-    exit 1
-fi
+# Проверяем что оба контейнера живы
+for container in "$CONTAINER_AGENT" "$CONTAINER_BOT"; do
+    if ! docker ps -q -f name="$container" | grep -q .; then
+        error "Контейнер $container не запустился!"
+        echo ""
+        error "Последние логи:"
+        docker-compose -f "$COMPOSE_FILE" logs --tail=30
+        exit 1
+    fi
 
-# Проверяем healthcheck (если доступен)
-HEALTH=$(docker inspect --format='{{.State.Health.Status}}' "$CONTAINER_NAME" 2>/dev/null || echo "no-healthcheck")
-if [ "$HEALTH" = "healthy" ]; then
-    log "Healthcheck: HEALTHY"
-elif [ "$HEALTH" = "starting" ]; then
-    warn "Healthcheck: ещё стартует (start_period=40s). Проверьте через 30 сек"
-elif [ "$HEALTH" = "unhealthy" ]; then
-    error "Healthcheck: UNHEALTHY!"
-    docker inspect --format='{{range .State.Health.Log}}{{.Output}}{{end}}' "$CONTAINER_NAME" 2>/dev/null
-fi
+    HEALTH=$(docker inspect --format='{{.State.Health.Status}}' "$container" 2>/dev/null || echo "no-healthcheck")
+    if [ "$HEALTH" = "healthy" ]; then
+        log "$container — Healthcheck: HEALTHY"
+    elif [ "$HEALTH" = "starting" ]; then
+        warn "$container — Healthcheck: ещё стартует (start_period=60s)"
+    elif [ "$HEALTH" = "unhealthy" ]; then
+        error "$container — Healthcheck: UNHEALTHY!"
+        docker inspect --format='{{range .State.Health.Log}}{{.Output}}{{end}}' "$container" 2>/dev/null
+    fi
+done
 
-# ─── 8. Показать логи ───────────────────────────────────────
+# ─── 8. Показать логи ────────────────────────────────────────
 echo ""
 log "Последние логи:"
 echo "─────────────────────────────────────────"
@@ -112,5 +117,5 @@ docker-compose -f "$COMPOSE_FILE" logs --tail=20 --no-log-prefix
 echo "─────────────────────────────────────────"
 
 echo ""
-log "Деплой завершён. Контейнер: $CONTAINER_NAME"
+log "Деплой завершён. Контейнеры: $CONTAINER_AGENT + $CONTAINER_BOT"
 log "Логи: docker-compose -f $COMPOSE_FILE logs -f"
