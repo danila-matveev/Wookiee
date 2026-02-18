@@ -29,7 +29,7 @@ error() { echo -e "${RED}[deploy]${NC} $*"; }
 # ─── 1. Остановить старые контейнеры ─────────────────────────
 log "Останавливаю старые контейнеры..."
 if docker ps -q -f name="$CONTAINER_AGENT" -f name="$CONTAINER_BOT" | grep -q .; then
-    docker-compose -f "$COMPOSE_FILE" down --timeout 30
+    docker compose -f "$COMPOSE_FILE" down --timeout 30
     log "Контейнеры остановлены"
 else
     log "Контейнеры не запущены, пропускаю"
@@ -76,12 +76,12 @@ log "Конфигурация .env валидна"
 
 # ─── 5. Собрать образ ────────────────────────────────────────
 log "Собираю Docker-образ..."
-docker-compose -f "$COMPOSE_FILE" build --no-cache
+docker compose -f "$COMPOSE_FILE" build --no-cache
 log "Образ собран"
 
 # ─── 6. Запустить контейнеры ─────────────────────────────────
 log "Запускаю контейнеры (agent + bot)..."
-docker-compose -f "$COMPOSE_FILE" up -d
+docker compose -f "$COMPOSE_FILE" up -d
 log "Контейнеры запущены"
 
 # ─── 7. Ожидание и проверка ──────────────────────────────────
@@ -94,7 +94,7 @@ for container in "$CONTAINER_AGENT" "$CONTAINER_BOT"; do
         error "Контейнер $container не запустился!"
         echo ""
         error "Последние логи:"
-        docker-compose -f "$COMPOSE_FILE" logs --tail=30
+        docker compose -f "$COMPOSE_FILE" logs --tail=30
         exit 1
     fi
 
@@ -113,9 +113,9 @@ done
 echo ""
 log "Последние логи:"
 echo "─────────────────────────────────────────"
-docker-compose -f "$COMPOSE_FILE" logs --tail=20 --no-log-prefix
+docker compose -f "$COMPOSE_FILE" logs --tail=20 --no-log-prefix
 echo "─────────────────────────────────────────"
 
 echo ""
 log "Деплой завершён. Контейнеры: $CONTAINER_AGENT + $CONTAINER_BOT"
-log "Логи: docker-compose -f $COMPOSE_FILE logs -f"
+log "Логи: docker compose -f $COMPOSE_FILE logs -f"
