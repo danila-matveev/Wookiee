@@ -7,6 +7,7 @@
 
 import os
 import sys
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from decimal import Decimal
 
@@ -39,6 +40,26 @@ def _get_ozon_connection():
             cur.execute("SET search_path TO ozon, public")
         return conn
     return psycopg2.connect(**DB_CONFIG, database=DB_OZON)
+
+
+@contextmanager
+def _db_cursor(conn_factory):
+    """Context manager: гарантирует закрытие cursor и connection при исключении.
+
+    Использование::
+
+        with _db_cursor(_get_wb_connection) as (conn, cur):
+            cur.execute(...)
+            results = cur.fetchall()
+        # cur и conn закрываются автоматически, даже при исключении
+    """
+    conn = conn_factory()
+    cur = conn.cursor()
+    try:
+        yield conn, cur
+    finally:
+        cur.close()
+        conn.close()
 
 
 # =============================================================================
@@ -137,6 +158,7 @@ def get_wb_finance(current_start, prev_start, current_end):
     orders_query = """
     SELECT
         CASE WHEN date >= %s THEN 'current' ELSE 'previous' END as period,
+        COUNT(*) as orders_count,
         SUM(pricewithdisc) as orders_rub
     FROM orders
     WHERE date >= %s AND date < %s
