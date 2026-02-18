@@ -8,16 +8,19 @@
 
 Критерии готовности:
 1. abc_date.dateupdate (или date_update) обновлена сегодня
-2. Есть данные за вчера
-3. Кол-во строк за вчера >= 80% от позавчера (защита от неполного обновления)
-4. Финансовые данные заполнены:
-   a. SUM(выручка) за вчера >= 50% от позавчера (защита от частичной загрузки)
-   b. SUM(marga) != 0
-   c. Количество строк с marga != 0 >= 50% от предыдущего дня
+2. MAX(date) = вчера (данные за вчера присутствуют в таблице)
+3. Есть данные за вчера
+4. Кол-во строк за вчера >= 80% от позавчера (защита от неполного обновления)
+5. Финансовые данные заполнены:
+   a. SUM(выручка) за вчера >= 70% от позавчера
+   b. Строк с marga != 0 >= 90% от предыдущего дня
+   c. Строк с marga != 0 >= 90% от общего числа строк за вчера
+   d. SUM(marga) != 0
+   e. |SUM(marga)| / SUM(выручка) >= 5% (санитарная проверка)
 """
 
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 import psycopg2
@@ -137,8 +140,6 @@ class DataFreshnessService:
         return start_date, adjusted_end, note
 
     def format_notification(self, status: dict) -> str:
-        from datetime import timedelta
-
         # Данные проверяются за ВЧЕРА (yesterday), а не сегодня!
         yesterday = (date.today() - timedelta(days=1)).strftime('%d.%m.%Y')
         lines = [f"✅ Данные за {yesterday} готовы\n"]
@@ -147,7 +148,8 @@ class DataFreshnessService:
             s = status[mp]
             if s['ready']:
                 rev_info = f", выручка {s.get('rev_vs_before_pct', 0):.0f}% от пред. дня" if s.get('rev_vs_before_pct') else ""
-                lines.append(f"{label}: {s['rows_yesterday']} артикулов (обновлено {s['updated_at']}{rev_info})")
+                marga_info = f", маржа {s.get('marga_abs_fill_pct', 0):.0f}%" if s.get('marga_abs_fill_pct') else ""
+                lines.append(f"{label}: {s['rows_yesterday']} артикулов (обновлено {s['updated_at']}{rev_info}{marga_info})")
             else:
                 lines.append(f"{label}: НЕ готово — {s['details']}")
 
@@ -190,6 +192,24 @@ class DataFreshnessService:
 
             if update_date != date.today():
                 result['details'] = f'abc_date не обновлялась сегодня (последнее: {update_date})'
+                conn.close()
+                return result
+
+            # 1b. MAX(date) должна быть = вчера
+            cur.execute("SELECT MAX(date) FROM abc_date WHERE date < CURRENT_DATE")
+            max_data_row = cur.fetchone()[0]
+            if max_data_row is None:
+                result['details'] = 'нет данных в abc_date'
+                conn.close()
+                return result
+
+            expected_date = date.today() - timedelta(days=1)
+            actual_max = max_data_row.date() if isinstance(max_data_row, datetime) else max_data_row
+            if actual_max < expected_date:
+                result['details'] = (
+                    f'MAX(date) = {actual_max.strftime("%d.%m.%Y")}, '
+                    f'ожидается {expected_date.strftime("%d.%m.%Y")}'
+                )
                 conn.close()
                 return result
 
@@ -236,20 +256,30 @@ class DataFreshnessService:
             rev_pct = (rev_yesterday / rev_before * 100) if rev_before > 0 else 0
             marga_fill_pct = (rows_with_marga / rows_with_marga_before * 100) if rows_with_marga_before > 0 else 0
 
-            # 3a. SUM(выручка) за вчера >= 50% от позавчера
-            if rev_before > 0 and rev_pct < 50:
+            # 3a. SUM(выручка) за вчера >= 70% от позавчера
+            if rev_before > 0 and rev_pct < 70:
                 result['details'] = (
                     f'выручка за вчера подозрительно низкая: '
-                    f'{rev_yesterday:,.0f}₽ vs позавчера {rev_before:,.0f}₽ ({rev_pct:.0f}%, порог 50%)'
+                    f'{rev_yesterday:,.0f}₽ vs позавчера {rev_before:,.0f}₽ ({rev_pct:.0f}%, порог 70%)'
                 )
                 return result
 
-            # 3b. Строк с marga != 0 за вчера >= 50% от позавчера
-            if rows_with_marga_before > 0 and marga_fill_pct < 50:
+            # 3b. Строк с marga != 0 за вчера >= 90% от позавчера
+            if rows_with_marga_before > 0 and marga_fill_pct < 90:
                 result['details'] = (
                     f'маржа загружена частично: '
                     f'{rows_with_marga} строк с marga != 0 '
-                    f'(позавчера: {rows_with_marga_before}, {marga_fill_pct:.0f}%, порог 50%)'
+                    f'(позавчера: {rows_with_marga_before}, {marga_fill_pct:.0f}%, порог 90%)'
+                )
+                return result
+
+            # 3b2. Абсолютное заполнение маржи: rows_with_marga / rows_yesterday >= 90%
+            marga_abs_fill_pct = (rows_with_marga / rows_yesterday * 100) if rows_yesterday > 0 else 0
+            if marga_abs_fill_pct < 90:
+                result['details'] = (
+                    f'маржа загружена не полностью: '
+                    f'{rows_with_marga}/{rows_yesterday} строк с marga != 0 '
+                    f'({marga_abs_fill_pct:.0f}%, порог 90%)'
                 )
                 return result
 
@@ -261,11 +291,27 @@ class DataFreshnessService:
                 )
                 return result
 
+            # 3d. Маржа к выручке: |SUM(marga)| / SUM(revenue) >= 5%
+            if rev_yesterday > 0:
+                marga_rev_ratio = abs(marga_yesterday) / rev_yesterday * 100
+                if marga_rev_ratio < 5:
+                    result['details'] = (
+                        f'маржа подозрительно низкая относительно выручки: '
+                        f'{marga_yesterday:,.0f}₽ / {rev_yesterday:,.0f}₽ = {marga_rev_ratio:.1f}% '
+                        f'(порог 5%)'
+                    )
+                    return result
+
             result['has_financial_data'] = True
             result['rev_vs_before_pct'] = rev_pct
             result['marga_fill_pct'] = marga_fill_pct
+            result['marga_abs_fill_pct'] = marga_abs_fill_pct
             result['ready'] = True
-            result['details'] = f'OK (выручка {rev_pct:.0f}% от пред. дня, маржа {marga_fill_pct:.0f}% строк)'
+            result['details'] = (
+                f'OK (выручка {rev_pct:.0f}% от пред. дня, '
+                f'маржа {marga_fill_pct:.0f}% строк, '
+                f'заполнение {marga_abs_fill_pct:.0f}%)'
+            )
             return result
 
         except Exception as e:
