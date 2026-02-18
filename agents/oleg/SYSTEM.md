@@ -796,7 +796,6 @@ agents/oleg/
     scheduler_service.py                 # APScheduler wrapper
     data_freshness_service.py            # Проверка готовности + smart date adjustment
     feedback_service.py                  # Обработка обратной связи
-    data_layer.py                        # (шим -> shared/data_layer.py)
     db_config.py                         # DB connection config
     json_utils.py                        # JSON parsing utilities
     zai_client.py                        # (шим -> shared/clients/zai_client.py)
