@@ -11,6 +11,7 @@ import json
 import logging
 import sqlite3
 from datetime import datetime, timedelta
+from agents.oleg.services.time_utils import get_now_msk, get_today_msk
 from pathlib import Path
 from typing import Optional
 
@@ -249,7 +250,7 @@ class LearningStore:
             user_rating = ?,
             feedback_at = ?
         WHERE id = ?
-        """, (feedback, rating, datetime.now().isoformat(), rec_id))
+        """, (feedback, rating, get_now_msk().isoformat(), rec_id))
 
         conn.commit()
         conn.close()
@@ -288,7 +289,7 @@ class LearningStore:
         conn = self._get_conn()
         cur = conn.cursor()
 
-        cutoff = (datetime.now() - timedelta(days=min_age_days)).isoformat()
+        cutoff = (get_now_msk() - timedelta(days=min_age_days)).isoformat()
 
         cur.execute("""
         SELECT * FROM price_recommendations
@@ -354,7 +355,7 @@ class LearningStore:
         conn = self._get_conn()
         cur = conn.cursor()
 
-        cutoff = (datetime.now() - timedelta(days=max_age_days)).isoformat()
+        cutoff = (get_now_msk() - timedelta(days=max_age_days)).isoformat()
 
         cur.execute("""
         SELECT full_result FROM model_elasticity_cache

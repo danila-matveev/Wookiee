@@ -1057,30 +1057,56 @@ def get_wb_price_margin_daily(start_date, end_date, model=None):
     """
     WB ежедневные данные цена+маржа+объём по моделям — основной датасет для регрессии.
 
-    Цена = revenue_before_spp / sales_count (реализованная цена за единицу).
-    Все метрики агрегированы по дню и модели.
+    Гибридный источник:
+    - Заказы (qty, суммы, цены) — из таблицы orders (первоисточник API).
+    - Расходы, реклама, маржа — из abc_date (таблица подрядчика).
+
+    Для эластичности использовать: orders_count, orders_price_after_spp,
+    adv_internal, adv_external.
     """
     conn = _get_wb_connection()
     cur = conn.cursor()
 
-    model_filter = ""
-    params = [start_date, end_date]
+    model_filter_abc = ""
+    model_filter_orders = ""
+    params = [start_date, end_date, start_date, end_date]
     if model:
-        model_filter = "AND LOWER(SPLIT_PART(a.article, '/', 1)) = %s"
-        params.append(model.lower())
+        model_filter_abc = "AND LOWER(SPLIT_PART(a.article, '/', 1)) = %s"
+        model_filter_orders = "AND LOWER(SPLIT_PART(supplierarticle, '/', 1)) = %s"
+        # Добавляем дважды: первый %s — в CTE raw_orders, второй %s — в основном WHERE
+        params.append(model.lower())  # для CTE
+        params.append(model.lower())  # для abc_date
 
     query = f"""
+    WITH raw_orders AS (
+        SELECT
+            date::date as dt,
+            LOWER(SPLIT_PART(supplierarticle, '/', 1)) as model,
+            COUNT(*) as qty_orders,
+            SUM(pricewithdisc::numeric) as sum_before_spp,
+            SUM(finishedprice::numeric) as sum_after_spp
+        FROM orders
+        WHERE date >= %s AND date < %s
+            {model_filter_orders}
+        GROUP BY 1, 2
+    )
     SELECT
         a.date,
         LOWER(SPLIT_PART(a.article, '/', 1)) as model,
-        -- Цена за единицу (реализованная)
+        -- Цена за единицу (реализованная, из abc_date для обратной совместимости)
         CASE WHEN SUM(a.full_counts) > 0
             THEN (SUM(a.revenue_spp) - COALESCE(SUM(a.revenue_return_spp), 0))
                  / SUM(a.full_counts)
             ELSE NULL END as price_per_unit,
-        -- Объём
+        -- Продажи (выкупы) из abc_date
         SUM(a.full_counts) as sales_count,
-        SUM(a.count_orders) as orders_count,
+        -- Заказы из ПЕРВОИСТОЧНИКА (orders)
+        COALESCE(MAX(o.qty_orders), 0) as orders_count,
+        COALESCE(MAX(o.sum_before_spp), 0) as orders_sum_before_spp,
+        COALESCE(MAX(o.sum_after_spp), 0) as orders_sum_after_spp,
+        CASE WHEN COALESCE(MAX(o.qty_orders), 0) > 0
+            THEN MAX(o.sum_after_spp) / MAX(o.qty_orders)
+            ELSE NULL END as orders_price_after_spp,
         -- Маржа
         {WB_MARGIN_SQL} as margin,
         CASE WHEN (SUM(a.revenue_spp) - COALESCE(SUM(a.revenue_return_spp), 0)) > 0
@@ -1106,13 +1132,16 @@ def get_wb_price_margin_daily(start_date, end_date, model=None):
         CASE WHEN SUM(a.full_counts) > 0
             THEN SUM(a.sebes) / SUM(a.full_counts)
             ELSE NULL END as cogs_per_unit,
-        -- Реклама
+        -- Реклама (из abc_date подрядчика)
         SUM(a.reclama + a.reclama_vn) as adv_total,
         SUM(a.reclama) as adv_internal,
         SUM(a.reclama_vn) as adv_external
     FROM abc_date a
+    LEFT JOIN raw_orders o
+        ON a.date = o.dt
+        AND LOWER(SPLIT_PART(a.article, '/', 1)) = o.model
     WHERE a.date >= %s AND a.date < %s
-        {model_filter}
+        {model_filter_abc}
     GROUP BY a.date, LOWER(SPLIT_PART(a.article, '/', 1))
     HAVING SUM(a.full_counts) > 0
     ORDER BY a.date, model;
@@ -1136,27 +1165,49 @@ def get_ozon_price_margin_daily(start_date, end_date, model=None):
     """
     OZON ежедневные данные цена+маржа+объём по моделям — основной датасет для регрессии.
 
-    Цена = price_end / count_end (реализованная цена за единицу).
+    Гибридный источник:
+    - Заказы (qty, суммы) — из таблицы orders (первоисточник, in_process_at).
+    - Расходы, реклама, маржа — из abc_date.
+
+    Для эластичности использовать: orders_count (заказы), sales_count (выкупы).
     """
     conn = _get_ozon_connection()
     cur = conn.cursor()
 
-    model_filter = ""
-    params = [start_date, end_date]
+    model_filter_abc = ""
+    model_filter_orders = ""
+    params = [start_date, end_date, start_date, end_date]
     if model:
-        model_filter = "AND LOWER(SPLIT_PART(a.article, '/', 1)) = %s"
-        params.append(model.lower())
+        model_filter_abc = "AND LOWER(SPLIT_PART(a.article, '/', 1)) = %s"
+        model_filter_orders = "AND LOWER(SPLIT_PART(offer_id, '/', 1)) = %s"
+        # Добавляем дважды: первый %s — в CTE raw_orders, второй %s — в основном WHERE
+        params.append(model.lower())  # для CTE
+        params.append(model.lower())  # для abc_date
 
     query = f"""
+    WITH raw_orders AS (
+        SELECT
+            in_process_at::date as dt,
+            LOWER(SPLIT_PART(offer_id, '/', 1)) as model,
+            COUNT(*) as qty_orders,
+            SUM(price::numeric) as sum_orders
+        FROM orders
+        WHERE in_process_at::date >= %s AND in_process_at::date < %s
+            {model_filter_orders}
+        GROUP BY 1, 2
+    )
     SELECT
         a.date,
         LOWER(SPLIT_PART(a.article, '/', 1)) as model,
-        -- Цена за единицу
+        -- Цена за единицу (реализованная, из abc_date)
         CASE WHEN SUM(a.count_end) > 0
             THEN SUM(a.price_end) / SUM(a.count_end)
             ELSE NULL END as price_per_unit,
-        -- Объём
+        -- Продажи (выкупы) из abc_date
         SUM(a.count_end) as sales_count,
+        -- Заказы из ПЕРВОИСТОЧНИКА (orders)
+        COALESCE(MAX(o.qty_orders), 0) as orders_count,
+        COALESCE(MAX(o.sum_orders), 0) as orders_sum,
         -- Маржа
         SUM(a.marga) - SUM(a.nds) as margin,
         CASE WHEN SUM(a.price_end) > 0
@@ -1185,8 +1236,11 @@ def get_ozon_price_margin_daily(start_date, end_date, model=None):
         SUM(a.reclama_end) as adv_internal,
         SUM(a.adv_vn) as adv_external
     FROM abc_date a
+    LEFT JOIN raw_orders o
+        ON o.dt = a.date
+        AND o.model = LOWER(SPLIT_PART(a.article, '/', 1))
     WHERE a.date >= %s AND a.date < %s
-        {model_filter}
+        {model_filter_abc}
     GROUP BY a.date, LOWER(SPLIT_PART(a.article, '/', 1))
     HAVING SUM(a.count_end) > 0
     ORDER BY a.date, model;
@@ -1528,58 +1582,98 @@ def get_wb_price_margin_daily_by_article(start_date, end_date, article=None, mod
     """
     WB ежедневные данные цена+маржа+объём по АРТИКУЛАМ (не по модели).
 
+    Гибридный источник:
+    - Заказы (qty, суммы, цены) — из таблицы orders (первоисточник API).
+    - Расходы, реклама, маржа — из abc_date (таблица подрядчика).
+
     Для поартикульной эластичности: цветовые варианты внутри модели
     могут иметь разную ценовую чувствительность.
     """
     conn = _get_wb_connection()
     cur = conn.cursor()
 
-    filters = []
-    params = [start_date, end_date]
+    filters_abc = []
+    filters_orders = []
+    params = [start_date, end_date, start_date, end_date]
     if article:
-        filters.append("AND LOWER(a.article) = %s")
+        filters_abc.append("AND LOWER(a.article) = %s")
+        filters_orders.append("AND LOWER(supplierarticle) = %s")
         params.append(article.lower())
     if model:
-        filters.append("AND LOWER(SPLIT_PART(a.article, '/', 1)) = %s")
+        filters_abc.append("AND LOWER(SPLIT_PART(a.article, '/', 1)) = %s")
+        filters_orders.append("AND LOWER(SPLIT_PART(supplierarticle, '/', 1)) = %s")
         params.append(model.lower())
 
-    filter_sql = " ".join(filters)
+    filter_abc_sql = " ".join(filters_abc)
+    filter_orders_sql = " ".join(filters_orders)
 
     query = f"""
+    WITH raw_orders AS (
+        SELECT
+            date::date as dt,
+            LOWER(supplierarticle) as article,
+            COUNT(*) as qty_orders,
+            SUM(pricewithdisc::numeric) as sum_before_spp,
+            SUM(finishedprice::numeric) as sum_after_spp
+        FROM orders
+        WHERE date >= %s AND date < %s
+            {filter_orders_sql}
+        GROUP BY 1, 2
+    )
     SELECT
         a.date,
         LOWER(a.article) as article,
         LOWER(SPLIT_PART(a.article, '/', 1)) as model,
+        -- Цена за единицу (реализованная, из abc_date)
         CASE WHEN SUM(a.full_counts) > 0
             THEN (SUM(a.revenue_spp) - COALESCE(SUM(a.revenue_return_spp), 0))
                  / SUM(a.full_counts)
             ELSE NULL END as price_per_unit,
+        -- Продажи (выкупы) из abc_date
         SUM(a.full_counts) as sales_count,
-        SUM(a.count_orders) as orders_count,
+        -- Заказы из ПЕРВОИСТОЧНИКА (orders)
+        COALESCE(MAX(o.qty_orders), 0) as orders_count,
+        COALESCE(MAX(o.sum_before_spp), 0) as orders_sum_before_spp,
+        COALESCE(MAX(o.sum_after_spp), 0) as orders_sum_after_spp,
+        CASE WHEN COALESCE(MAX(o.qty_orders), 0) > 0
+            THEN MAX(o.sum_after_spp) / MAX(o.qty_orders)
+            ELSE NULL END as orders_price_after_spp,
+        -- Маржа
         {WB_MARGIN_SQL} as margin,
         CASE WHEN (SUM(a.revenue_spp) - COALESCE(SUM(a.revenue_return_spp), 0)) > 0
             THEN ({WB_MARGIN_SQL}) /
                  (SUM(a.revenue_spp) - COALESCE(SUM(a.revenue_return_spp), 0)) * 100
             ELSE NULL END as margin_pct,
+        -- Выручка
         SUM(a.revenue_spp) - COALESCE(SUM(a.revenue_return_spp), 0) as revenue_before_spp,
+        -- СПП
         CASE WHEN SUM(a.revenue_spp) > 0
             THEN SUM(a.spp) / SUM(a.revenue_spp) * 100
             ELSE NULL END as spp_pct,
+        -- ДРР
         CASE WHEN (SUM(a.revenue_spp) - COALESCE(SUM(a.revenue_return_spp), 0)) > 0
             THEN SUM(a.reclama + a.reclama_vn) /
                  (SUM(a.revenue_spp) - COALESCE(SUM(a.revenue_return_spp), 0)) * 100
             ELSE NULL END as drr_pct,
+        -- Логистика на единицу
         CASE WHEN SUM(a.full_counts) > 0
             THEN SUM(a.logist) / SUM(a.full_counts)
             ELSE NULL END as logistics_per_unit,
+        -- Себестоимость на единицу
         CASE WHEN SUM(a.full_counts) > 0
             THEN SUM(a.sebes) / SUM(a.full_counts)
             ELSE NULL END as cogs_per_unit,
-        SUM(a.reclama + a.reclama_vn) as adv_total
+        -- Реклама (из abc_date подрядчика)
+        SUM(a.reclama + a.reclama_vn) as adv_total,
+        SUM(a.reclama) as adv_internal,
+        SUM(a.reclama_vn) as adv_external
     FROM abc_date a
+    LEFT JOIN raw_orders o
+        ON a.date = o.dt
+        AND LOWER(a.article) = o.article
     WHERE a.date >= %s AND a.date < %s
         AND a.article IS NOT NULL AND a.article != '' AND a.article != '0'
-        {filter_sql}
+        {filter_abc_sql}
     GROUP BY a.date, LOWER(a.article)
     HAVING SUM(a.full_counts) > 0
     ORDER BY a.date, article;
@@ -1603,23 +1697,43 @@ def get_ozon_price_margin_daily_by_article(start_date, end_date, article=None, m
     """
     OZON ежедневные данные цена+маржа+объём по АРТИКУЛАМ.
 
+    Гибридный источник:
+    - Заказы (qty) — из таблицы orders (первоисточник, in_process_at).
+    - Расходы, маржа — из abc_date.
+
     OZON article содержит размер (_L, _M) — убираем суффикс.
     """
     conn = _get_ozon_connection()
     cur = conn.cursor()
 
-    filters = []
-    params = [start_date, end_date]
+    filters_abc = []
+    filters_orders = []
+    params = [start_date, end_date, start_date, end_date]
     if article:
-        filters.append("AND LOWER(REGEXP_REPLACE(a.article, '_[^_]+$', '')) = %s")
+        filters_abc.append("AND LOWER(REGEXP_REPLACE(a.article, '_[^_]+$', '')) = %s")
+        filters_orders.append("AND LOWER(REGEXP_REPLACE(offer_id, '_[^_]+$', '')) = %s")
         params.append(article.lower())
     if model:
-        filters.append("AND LOWER(SPLIT_PART(a.article, '/', 1)) = %s")
+        filters_abc.append("AND LOWER(SPLIT_PART(a.article, '/', 1)) = %s")
+        filters_orders.append("AND LOWER(SPLIT_PART(offer_id, '/', 1)) = %s")
         params.append(model.lower())
 
-    filter_sql = " ".join(filters)
+    filter_abc_sql = " ".join(filters_abc)
+    filter_orders_sql = " ".join(filters_orders)
 
     query = f"""
+    WITH raw_orders AS (
+        SELECT
+            in_process_at::date as dt,
+            LOWER(REGEXP_REPLACE(offer_id, '_[^_]+$', '')) as article,
+            COUNT(*) as qty_orders,
+            SUM(price::numeric) as sum_orders
+        FROM orders
+        WHERE in_process_at::date >= %s AND in_process_at::date < %s
+            AND offer_id IS NOT NULL AND offer_id != ''
+            {filter_orders_sql}
+        GROUP BY 1, 2
+    )
     SELECT
         a.date,
         LOWER(REGEXP_REPLACE(a.article, '_[^_]+$', '')) as article,
@@ -1628,6 +1742,9 @@ def get_ozon_price_margin_daily_by_article(start_date, end_date, article=None, m
             THEN SUM(a.price_end) / SUM(a.count_end)
             ELSE NULL END as price_per_unit,
         SUM(a.count_end) as sales_count,
+        -- Заказы из ПЕРВОИСТОЧНИКА (orders)
+        COALESCE(MAX(o.qty_orders), 0) as orders_count,
+        COALESCE(MAX(o.sum_orders), 0) as orders_sum,
         SUM(a.marga) - SUM(a.nds) as margin,
         CASE WHEN SUM(a.price_end) > 0
             THEN (SUM(a.marga) - SUM(a.nds)) / SUM(a.price_end) * 100
@@ -1647,9 +1764,12 @@ def get_ozon_price_margin_daily_by_article(start_date, end_date, article=None, m
             ELSE NULL END as cogs_per_unit,
         SUM(a.reclama_end + a.adv_vn) as adv_total
     FROM abc_date a
+    LEFT JOIN raw_orders o
+        ON o.dt = a.date
+        AND o.article = LOWER(REGEXP_REPLACE(a.article, '_[^_]+$', ''))
     WHERE a.date >= %s AND a.date < %s
         AND a.article IS NOT NULL AND a.article != ''
-        {filter_sql}
+        {filter_abc_sql}
     GROUP BY a.date, LOWER(REGEXP_REPLACE(a.article, '_[^_]+$', ''))
     HAVING SUM(a.count_end) > 0
     ORDER BY a.date, article;
