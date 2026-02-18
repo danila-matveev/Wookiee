@@ -15,6 +15,7 @@ roi_optimizer.py для расчёта ROI.
 """
 import logging
 from datetime import datetime, timedelta
+from agents.oleg.services.time_utils import get_now_msk
 from typing import Optional
 
 import numpy as np
@@ -1632,7 +1633,7 @@ def run_all_hypotheses(
     logger.info("Hypothesis testing complete: %s", summary)
 
     return {
-        'tested_at': datetime.now().isoformat(),
+        'tested_at': get_now_msk().isoformat(),
         'total_hypotheses': total,
         'confirmed': confirmed,
         'rejected': rejected,

@@ -1,8 +1,8 @@
 # Олег — Активный контекст
 
 ## Текущее состояние
-**Дата:** 2026-02-17  
-**Статус:** Production (85%) - Business Logic Refined  
+**Дата:** 2026-02-18  
+**Статус:** Production (92%) - Global MSK Compliance + Data Freshness Hardening  
 **Развёртывание:** Docker на сервере, production Telegram
 
 ## Что работает
@@ -12,9 +12,10 @@
 ✅ Ежедневные/недельные/месячные автоматические отчёты  
 ✅ Произвольные аналитические запросы через Telegram  
 ✅ Финансовая аналитика (12 tools)  
-✅ Ценовая аналитика (9 tools)  
+✅ Ценовая аналитика (Advanced Elasticity: контроль рекламы, гибридные источники заказов)  
 ✅ Маркетинговая воронка (CPO, CTR, CR)  
-✅ Мониторинг свежести данных  
+✅ Мониторинг свежести данных: кросс-чек источников + 50% revenue gate + logistics check (logist/logist_end > 0)  
+✅ Глобальный Moscow Timezone: синхронизация времени во всех аналитических модулях  
 ✅ Smart date adjustment (корректировка периодов)  
 ✅ Синхронизация отчётов с Notion  
 ✅ Верификация данных vs OneScreen/PowerBI  
@@ -84,6 +85,42 @@
    - Статус: Задокументировано в `DATA_QUALITY_NOTES.md`  
 
 ## Последние изменения
+
+### 2026-02-18 (Moscow Timezone Compliance + Data Freshness Hardening)
+- **Глобальная синхронизация (MSK)**: 
+    - Создан `time_utils.py` с функцией `get_now_msk()`.
+    - Рефакторинг всех модулей (`agent_runner`, `scheduled_reports`, `query_understanding`, `price_tools`, `learning_store`, `promotion_analyzer`, `hypothesis_tester`): удалены прямые вызовы `datetime.now()` и `date.today()`.
+    - Все отчеты и аналитика теперь жестко привязаны к "Europe/Moscow", что гарантирует консистентность "вчера" и "сегодня" между сервером, БД и Telegram-ботом.
+- **Hardening `DataFreshnessService`**:
+    - **Source Cross-Check**: Новая проверка: `sum(count_orders)` в `abc_date` должна совпадать с реальным количеством строк в `orders` (допуск 5%). Защита от неполного ETL.
+    - **Financial Quality Gates**: 
+        - Выручка (revenue): порог снижен до 50% от 7-дневного среднего (адаптация под реальные просадки).
+        - Логистика (logistics): введена обязательная проверка `SUM > 0` отдельно для WB (`logist`) и Ozon (`logist_end`).
+- **UI/UX**: В Telegram-хендлерах исправлена логика определения вчерашнего дня, учитывающая смещение часовых поясов.
+
+### 2026-02-18 (Model Selector + Rolling Backtest)
+- **`estimate_price_elasticity` → оркестратор**:
+    - Функция переписана: теперь вызывает `_select_best_model` (Linear vs Quadratic).
+    - Backward-compatible: все старые ключи (`elasticity`, `r_squared`, `p_value`, `confidence_interval_95`) сохранены в корне ответа.
+    - Новые ключи: `selected_model`, `selection_status`, `reason_code`, `backtest_results`.
+- **Rolling Walk-Forward Backtesting** (`_backtest_single_model`):
+    - 3 скользящих окна, метрики: WAPE и MAE на out-of-sample.
+    - Сравнение с Naive (t-1) и MA-7 baseline: модель должна превосходить на ≥10% WAPE.
+    - Overfit detection: `test_wape / train_wape > 1.5` → отбраковка.
+    - Score = `median_test_wape + λ * (n_params / n_obs)` (complexity penalty).
+- **Strict Pipeline** (`_select_best_model`): Sufficiency → Validity → Quality → Score.
+    - Tie-breaking: Linear предпочитается если `score_quad - score_linear < 0.01`.
+    - `reason_code`: `insufficient_data` / `low_price_variation` / `positive_elasticity` / `low_predictive_power`.
+- **`recommendation_engine.py`**: Quality Gates делегированы к `selection_status` из оркестратора. Legacy-fallback сохранён.
+- **Жёсткое требование `orders_count`**:
+    - `sales_count` (выкупы) **полностью исключён** из расчёта эластичности.
+    - Если `orders_count` отсутствует в данных → `error: missing_orders_count`.
+
+### 2026-02-18 (Advanced Price Analysis — ранее)
+- **Гибридный источник**: Заказы из `orders` (первоисточник API), расходы/реклама из `abc_date`.
+- **Мультифакторная эластичность**: `ln(orders) ~ ln(price) + ln(adv_internal) + ln(adv_external)`.
+- **HAC ковариация**: `cov_type='HAC'` с динамическим `maxlags` для устойчивости к автокорреляции.
+- **Блокирующая логика (Strict Priority)**: INSUFFICIENT_DATA → FAIL → CONFOUNDED → PASS.
 
 ### 2026-02-17
 - **Архитектурный сплит**: Проект разделен на `agent_runner.py` (Producer) и `main.py` (Consumer).
