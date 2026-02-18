@@ -8,6 +8,7 @@
 | [README.md](../README.md) | Обзор проекта и быстрый старт |
 | [architecture.md](architecture.md) | Архитектура системы AI-агентов |
 | [adr.md](adr.md) | Лог архитектурных решений |
+| [infrastructure.md](infrastructure.md) | Production-сервер: подключение, деплой, мониторинг |
 | [development-history.md](development-history.md) | Журнал последних изменений |
 
 ## AI-агенты

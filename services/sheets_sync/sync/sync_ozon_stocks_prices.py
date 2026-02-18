@@ -124,13 +124,10 @@ def sync() -> int:
         headers=HEADERS,
         data=normalized,
         meta_cells=[
-            (1, 1, "Дата составления отчёта"),
-            (1, 2, date_str),
-            (2, 1, "Время отчёта"),
-            (2, 2, time_str),
+            (1, 1, f"Обновлено: {date_str} {time_str}"),
         ],
-        header_row=3,
-        data_start_row=4,
+        header_row=2,
+        data_start_row=3,
     )
 
     # Checkbox for refresh

@@ -55,6 +55,7 @@
 
 ## Инфраструктура
 
+- **Сервер:** DigitalOcean Droplet (`167.99.12.42`), подробности → [infrastructure.md](infrastructure.md)
 - **Docker:** агенты контейнеризированы (`deploy/Dockerfile` + `deploy/docker-compose.yml`)
 - **Отчёты:** Markdown → `reports/` + синхронизация с Notion
 - **Расписание:** APScheduler (ежедневные отчёты, проверка данных)
