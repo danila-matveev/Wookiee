@@ -20,11 +20,15 @@ from typing import Dict, Any, Optional, List
 
 from agents.oleg.services.agent_executor import AgentExecutor, AgentResult
 from agents.oleg.services.agent_tools import TOOL_DEFINITIONS
+from agents.oleg.services.time_utils import get_current_time_msk
 from shared.utils.json_utils import extract_json
 
 logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
+
+# Current report structure version
+REPORT_VERSION = "2.0 (Financial Protocol)"
 
 # Minimum required tools for a deep analysis
 REQUIRED_TOOLS_DEEP = {
@@ -407,9 +411,13 @@ class OlegAgent:
         format_instructions = self._get_format_instructions(report_type)
         feedback_lessons = self._load_feedback_lessons()
 
-        return f"""Ты — Олег, ИИ финансовый и бизнес-аналитик компании Wookiee.
+        return f"""{self.playbook}
 
-{self.playbook}
+---
+
+ТЕКУЩИЕ МЕТАДАННЫЕ:
+- Текущее время (MSK): {get_current_time_msk()}
+- Версия отчёта: {REPORT_VERSION}
 
 ---
 
