@@ -22,20 +22,31 @@ def estimate_price_elasticity(
     data: list[dict],
     min_observations: int = 14,
     half_life_days: int = 30,
+    min_price_range_pct: float = 0.05,
+    min_price_changes: int = 2,
+    price_round_step: float = 1.0,
 ) -> dict:
     """
-    Оценка ценовой эластичности спроса через log-log OLS регрессию.
+    Оценка ценовой эластичности спроса.
 
-    ln(Q) = α + β·ln(P) + ε
-    β = эластичность (ожидание: от -0.3 до -4.0 для fashion)
+    Оркестратор: запускает селектор моделей (Linear vs Quadratic) с rolling
+    walk-forward бэктестингом на orders_count. Возвращает лучшую валидную модель
+    или статус блокировки с reason_code.
+
+    Backward-compatible: ключи elasticity, r_squared, p_value, n_observations,
+    quality_metrics, confidence_interval_95 сохранены в корне словаря.
 
     Args:
-        data: список dict с ключами 'date', 'price_per_unit', 'sales_count'
+        data: список dict с ключами 'date', 'price_per_unit', 'orders_count'
         min_observations: минимум наблюдений для регрессии
         half_life_days: период полураспада для экспоненциального взвешивания
+        min_price_range_pct: минимальный диапазон цены (доля от средней)
+        min_price_changes: минимальное количество изменений цены
+        price_round_step: шаг округления цены для подавления микро-шума
 
     Returns:
-        dict с elasticity, r_squared, p_value, is_significant, interpretation
+        dict с elasticity, r_squared, p_value, quality_metrics, selected_model,
+        backtest_results, selection_status и т.д.
     """
     if len(data) < min_observations:
         return {
@@ -45,7 +56,15 @@ def estimate_price_elasticity(
         }
 
     df = pd.DataFrame(data)
-    mask = (df['price_per_unit'] > 0) & (df['sales_count'] > 0)
+    # Целевая переменная спроса — только orders_count (заказы)
+    if 'orders_count' not in df.columns:
+        return {
+            'error': 'missing_orders_count',
+            'n_observations': len(df),
+            'note': 'orders_count column is required; sales_count (выкупы) не используется для эластичности',
+        }
+    demand_col = 'orders_count'
+    mask = (df['price_per_unit'] > 0) & (df[demand_col] > 0)
     df = df[mask].copy()
 
     if len(df) < min_observations:
@@ -55,52 +74,71 @@ def estimate_price_elasticity(
             'min_required': min_observations,
         }
 
-    log_p = np.log(df['price_per_unit'].values)
-    log_q = np.log(df['sales_count'].values)
+    # --- Расчет quality_metrics ---
+    prices = df['price_per_unit'].values
+    rounded_prices = np.round(prices / price_round_step) * price_round_step
 
-    # Экспоненциальные веса (свежие данные важнее)
+    n_unique_prices = int(len(np.unique(rounded_prices)))
+    rp_min, rp_max, rp_mean = float(rounded_prices.min()), float(rounded_prices.max()), float(rounded_prices.mean())
+    price_range_pct = (rp_max - rp_min) / rp_mean if rp_mean > 0 else 0.0
+
     if 'date' in df.columns:
-        dates = pd.to_datetime(df['date'])
-        max_date = dates.max()
-        days_ago = (max_date - dates).dt.days.values.astype(float)
-        weights = np.exp(-np.log(2) * days_ago / half_life_days)
+        df_sorted = df.sort_values('date')
+        sorted_rounded = np.round(df_sorted['price_per_unit'].values / price_round_step) * price_round_step
     else:
-        weights = np.ones(len(df))
+        sorted_rounded = rounded_prices
+    n_price_changes = int(np.sum(sorted_rounded[1:] != sorted_rounded[:-1]))
 
-    # Взвешенная OLS: ln(Q) = α + β·ln(P)
-    try:
-        import statsmodels.api as sm
-        X = sm.add_constant(log_p)
-        model = sm.WLS(log_q, X, weights=weights).fit()
+    date_coverage = 1.0
+    if 'date' in df.columns:
+        dates = pd.to_datetime(df['date']).dt.date
+        min_date, max_date = dates.min(), dates.max()
+        span_days = (max_date - min_date).days + 1
+        date_coverage = len(df) / span_days if span_days > 0 else 1.0
 
-        beta = float(model.params[1])
+    n_obs = len(df)
+
+    quality_metrics = {
+        'n_unique_prices': n_unique_prices,
+        'price_range_pct': round(price_range_pct, 4),
+        'n_price_changes': n_price_changes,
+        'date_coverage': round(date_coverage, 3),
+        'insufficient_unique_prices': n_unique_prices < 3,
+        'low_price_range': price_range_pct < min_price_range_pct,
+        'insufficient_price_changes': n_price_changes < min_price_changes,
+        'low_date_coverage': date_coverage < 0.7,
+    }
+    # --- Конец расчета quality_metrics ---
+
+    # --- Оркестрация: запуск селектора моделей ---
+    selection_result = _select_best_model(
+        df=df,
+        demand_col=demand_col,
+        half_life_days=half_life_days,
+        quality_metrics=quality_metrics,
+        n_obs=n_obs,
+    )
+
+    # Если селектор вернул блокировку — возвращаем с quality_metrics
+    if selection_result.get('selection_status') != 'PASS':
         return {
-            'elasticity': round(beta, 3),
-            'elasticity_se': round(float(model.bse[1]), 3),
-            'r_squared': round(float(model.rsquared), 3),
-            'p_value': round(float(model.pvalues[1]), 4),
-            'n_observations': int(mask.sum()),
-            'is_significant': float(model.pvalues[1]) < 0.05,
-            'interpretation': _interpret_elasticity(beta),
-            'confidence_interval_95': [
-                round(float(model.conf_int()[1][0]), 3),
-                round(float(model.conf_int()[1][1]), 3),
-            ],
+            'error': selection_result.get('reason_code', 'model_selection_failed'),
+            'n_observations': n_obs,
+            'quality_metrics': quality_metrics,
+            'selected_model': 'none',
+            'selection_status': selection_result.get('selection_status'),
+            'reason_code': selection_result.get('reason_code'),
+            'backtest_results': selection_result.get('backtest_results', {}),
         }
-    except Exception as e:
-        logger.error(f"Elasticity estimation failed: {e}")
-        # Fallback: scipy linregress (без весов)
-        slope, intercept, r_value, p_value, std_err = stats.linregress(log_p, log_q)
-        return {
-            'elasticity': round(slope, 3),
-            'elasticity_se': round(std_err, 3),
-            'r_squared': round(r_value ** 2, 3),
-            'p_value': round(p_value, 4),
-            'n_observations': len(df),
-            'is_significant': p_value < 0.05,
-            'interpretation': _interpret_elasticity(slope),
-            'note': 'fallback_scipy_no_weights',
-        }
+
+    # Возвращаем результат лучшей модели + мета-данные (backward-compatible)
+    best = selection_result['best_result']
+    best['quality_metrics'] = quality_metrics
+    best['selected_model'] = selection_result['selected_model']
+    best['selection_status'] = 'PASS'
+    best['backtest_results'] = selection_result.get('backtest_results', {})
+    return best
+
 
 
 def _interpret_elasticity(beta: float) -> str:
@@ -116,6 +154,371 @@ def _interpret_elasticity(beta: float) -> str:
         return 'elastic'
     else:
         return 'highly_elastic'
+
+
+def _compute_wape_mae(actual: np.ndarray, predicted: np.ndarray) -> dict:
+    """
+    Расчет WAPE и MAE.
+
+    WAPE = sum(|actual - predicted|) / sum(|actual|)
+    Устойчив к нулям и малым значениям (в отличие от MAPE).
+    """
+    actual = np.asarray(actual, dtype=float)
+    predicted = np.asarray(predicted, dtype=float)
+    abs_errors = np.abs(actual - predicted)
+    mae = float(np.mean(abs_errors))
+    sum_actual = float(np.sum(np.abs(actual)))
+    wape = float(np.sum(abs_errors) / sum_actual) if sum_actual > 1e-10 else 1.0
+    return {'mae': mae, 'wape': wape}
+
+
+def _backtest_single_model(
+    df: pd.DataFrame,
+    demand_col: str,
+    half_life_days: int,
+    model_type: str,
+    n_windows: int = 3,
+    min_train_size: int = 20,
+    overfit_ratio_threshold: float = 1.5,
+    wape_spread_threshold: float = 0.2,
+    wape_soft_limit: float = 0.70,
+    baseline_lift_threshold: float = 0.10,
+) -> dict:
+    """
+    Rolling walk-forward бэктестинг для одной модели.
+
+    Для каждого окна:
+      - train: [0..t], test: [t+1..t+h]
+      - train_error: in-sample (на обучающих данных)
+      - test_error: out-of-sample (на отложенных данных)
+
+    Бенчмарки:
+      - Naive (t-1): последнее известное значение
+      - MA-7: скользящее среднее за 7 дней
+
+    Returns:
+        dict с median_test_wape, median_overfit_ratio, is_reliable, reason
+    """
+    try:
+        import statsmodels.api as sm
+    except ImportError:
+        return {'is_reliable': False, 'reason': 'statsmodels_unavailable'}
+
+    n = len(df)
+    # Минимальный размер тренировочного окна + хотя бы 5 точек для теста
+    min_total = min_train_size + 5
+    if n < min_total:
+        return {'is_reliable': False, 'reason': 'insufficient_data_for_backtest'}
+
+    # Определяем точки разреза: равномерно от 60% до 85% данных
+    step = max(1, (n - min_train_size - 5) // (n_windows + 1))
+    cutpoints = [
+        min_train_size + step * (i + 1)
+        for i in range(n_windows)
+        if min_train_size + step * (i + 1) < n - 3
+    ]
+    if not cutpoints:
+        cutpoints = [n * 2 // 3]
+
+    window_results = []
+
+    for t in cutpoints:
+        train_df = df.iloc[:t].copy()
+        test_df = df.iloc[t:].copy()
+
+        if len(train_df) < min_train_size or len(test_df) < 3:
+            continue
+
+        # Подготовка данных
+        train_mask = (train_df['price_per_unit'] > 0) & (train_df[demand_col] > 0)
+        test_mask = (test_df['price_per_unit'] > 0) & (test_df[demand_col] > 0)
+        train_clean = train_df[train_mask]
+        test_clean = test_df[test_mask]
+
+        if len(train_clean) < min_train_size or len(test_clean) < 2:
+            continue
+
+        log_p_train = np.log(train_clean['price_per_unit'].values)
+        log_q_train = np.log(train_clean[demand_col].values)
+        log_p_test = np.log(test_clean['price_per_unit'].values)
+        q_test_actual = test_clean[demand_col].values
+
+        # Веса для обучения
+        if 'date' in train_clean.columns:
+            dates_ts = pd.to_datetime(train_clean['date'])
+            max_date_ts = dates_ts.max()
+            days_ago = (max_date_ts - dates_ts).dt.days.values.astype(float)
+            weights = np.exp(-np.log(2) * days_ago / half_life_days)
+        else:
+            weights = np.ones(len(train_clean))
+
+        try:
+            if model_type == 'linear':
+                X_train = sm.add_constant(log_p_train)
+                X_test = sm.add_constant(log_p_test)
+                n_params = 2
+            else:  # quadratic
+                X_train = sm.add_constant(np.column_stack([log_p_train, log_p_train ** 2]))
+                X_test = sm.add_constant(np.column_stack([log_p_test, log_p_test ** 2]))
+                n_params = 3
+
+            maxlags = max(1, int(min(7, len(train_clean) // 5)))
+            fitted = sm.WLS(log_q_train, X_train, weights=weights).fit(
+                cov_type='HAC', cov_kwds={'maxlags': maxlags}
+            )
+
+            # In-sample (train) predictions
+            log_q_train_pred = fitted.predict(X_train)
+            q_train_pred = np.exp(log_q_train_pred)
+            q_train_actual = np.exp(log_q_train)
+            train_metrics = _compute_wape_mae(q_train_actual, q_train_pred)
+
+            # Out-of-sample (test) predictions
+            log_q_test_pred = fitted.predict(X_test)
+            q_test_pred = np.exp(log_q_test_pred)
+            test_metrics = _compute_wape_mae(q_test_actual, q_test_pred)
+
+            # Naive baselines на тестовом окне
+            # Naive (t-1): последнее значение из трейна
+            naive_pred = np.full(len(q_test_actual), np.exp(log_q_train[-1]))
+            naive_metrics = _compute_wape_mae(q_test_actual, naive_pred)
+
+            # MA-7: среднее последних 7 значений трейна
+            ma7_val = float(np.mean(np.exp(log_q_train[-7:])))
+            ma7_pred = np.full(len(q_test_actual), ma7_val)
+            ma7_metrics = _compute_wape_mae(q_test_actual, ma7_pred)
+
+            best_baseline_wape = min(naive_metrics['wape'], ma7_metrics['wape'])
+
+            window_results.append({
+                'train_mae': train_metrics['mae'],
+                'train_wape': train_metrics['wape'],
+                'test_mae': test_metrics['mae'],
+                'test_wape': test_metrics['wape'],
+                'naive_wape': naive_metrics['wape'],
+                'ma7_wape': ma7_metrics['wape'],
+                'best_baseline_wape': best_baseline_wape,
+                'overfit_ratio': test_metrics['mae'] / (train_metrics['mae'] + 1e-10),
+                'wape_spread': test_metrics['wape'] - train_metrics['wape'],
+                'n_params': n_params,
+                'n_obs': len(train_clean),
+            })
+
+        except Exception as e:
+            logger.warning(f"Backtest window failed ({model_type}): {e}")
+            continue
+
+    if not window_results:
+        return {'is_reliable': False, 'reason': 'all_windows_failed'}
+
+    # Агрегация: медиана по окнам
+    median_test_wape = float(np.median([w['test_wape'] for w in window_results]))
+    median_train_wape = float(np.median([w['train_wape'] for w in window_results]))
+    median_overfit_ratio = float(np.median([w['overfit_ratio'] for w in window_results]))
+    median_wape_spread = float(np.median([w['wape_spread'] for w in window_results]))
+    median_best_baseline_wape = float(np.median([w['best_baseline_wape'] for w in window_results]))
+    n_params = window_results[0]['n_params']
+    n_obs_median = float(np.median([w['n_obs'] for w in window_results]))
+
+    # Complexity penalty score
+    lam = 0.5
+    score = median_test_wape + lam * (n_params / max(n_obs_median, 1))
+
+    # Проверка критериев блокировки
+    reason = None
+    if median_overfit_ratio > overfit_ratio_threshold:
+        reason = f'overfit_ratio={median_overfit_ratio:.2f} > {overfit_ratio_threshold}'
+    elif median_wape_spread > wape_spread_threshold:
+        reason = f'wape_spread={median_wape_spread:.2f} > {wape_spread_threshold}'
+    elif median_test_wape > wape_soft_limit:
+        reason = f'wape={median_test_wape:.2f} > {wape_soft_limit} (soft limit)'
+    elif median_best_baseline_wape > 0 and (
+        (median_best_baseline_wape - median_test_wape) / median_best_baseline_wape < baseline_lift_threshold
+    ):
+        reason = (
+            f'no_baseline_lift: model_wape={median_test_wape:.2f}, '
+            f'baseline_wape={median_best_baseline_wape:.2f} '
+            f'(lift < {baseline_lift_threshold:.0%})'
+        )
+
+    return {
+        'is_reliable': reason is None,
+        'reason': reason,
+        'score': round(score, 4),
+        'median_test_wape': round(median_test_wape, 4),
+        'median_train_wape': round(median_train_wape, 4),
+        'median_overfit_ratio': round(median_overfit_ratio, 3),
+        'median_wape_spread': round(median_wape_spread, 4),
+        'median_best_baseline_wape': round(median_best_baseline_wape, 4),
+        'n_windows': len(window_results),
+        'window_details': window_results,
+    }
+
+
+def _select_best_model(
+    df: pd.DataFrame,
+    demand_col: str,
+    half_life_days: int,
+    quality_metrics: dict,
+    n_obs: int,
+    simplicity_delta: float = 0.01,
+) -> dict:
+    """
+    Strict Pipeline: Sufficiency → Validity → Quality → Score.
+
+    1. Sufficiency: проверяем достаточность данных и вариацию цены.
+    2. Validity: отбрасываем модели с положительной эластичностью.
+    3. Quality: бэктестинг + сравнение с Naive Baselines.
+    4. Score: выбираем лучшую модель; предпочитаем Linear при близких Score.
+
+    Returns:
+        dict с selection_status, reason_code, selected_model, best_result, backtest_results
+    """
+    try:
+        import statsmodels.api as sm
+    except ImportError:
+        return {
+            'selection_status': 'FAIL',
+            'reason_code': 'statsmodels_unavailable',
+        }
+
+    # ── 1. Sufficiency ──────────────────────────────────────────────────────
+    if n_obs < 30 or quality_metrics.get('low_date_coverage', False):
+        return {
+            'selection_status': 'INSUFFICIENT_DATA',
+            'reason_code': 'insufficient_data',
+        }
+    if (
+        quality_metrics.get('insufficient_unique_prices', False)
+        or quality_metrics.get('low_price_range', False)
+        or quality_metrics.get('insufficient_price_changes', False)
+    ):
+        return {
+            'selection_status': 'FAIL',
+            'reason_code': 'low_price_variation',
+        }
+
+    # ── Обучение обеих моделей на полном датасете (для коэффициентов) ───────
+    log_p = np.log(df['price_per_unit'].values)
+    log_q = np.log(df[demand_col].values)
+
+    if 'date' in df.columns:
+        dates_ts = pd.to_datetime(df['date'])
+        max_date_ts = dates_ts.max()
+        days_ago = (max_date_ts - dates_ts).dt.days.values.astype(float)
+        weights = np.exp(-np.log(2) * days_ago / half_life_days)
+    else:
+        weights = np.ones(len(df))
+
+    maxlags = max(1, int(min(7, n_obs // 5)))
+
+    candidates = {}  # model_type -> (fit_result_dict, backtest_dict)
+
+    for model_type in ('linear', 'quadratic'):
+        try:
+            if model_type == 'linear':
+                X = sm.add_constant(log_p)
+                fitted = sm.WLS(log_q, X, weights=weights).fit(
+                    cov_type='HAC', cov_kwds={'maxlags': maxlags}
+                )
+                beta = float(fitted.params[1])
+                fit_result = {
+                    'elasticity': round(beta, 3),
+                    'elasticity_se': round(float(fitted.bse[1]), 3),
+                    'r_squared': round(float(fitted.rsquared), 3),
+                    'p_value': round(float(fitted.pvalues[1]), 4),
+                    'n_observations': n_obs,
+                    'is_significant': float(fitted.pvalues[1]) < 0.05,
+                    'interpretation': _interpret_elasticity(beta),
+                    'confidence_interval_95': [
+                        round(float(fitted.conf_int()[1][0]), 3),
+                        round(float(fitted.conf_int()[1][1]), 3),
+                    ],
+                }
+            else:  # quadratic
+                log_p_sq = log_p ** 2
+                X = sm.add_constant(np.column_stack([log_p, log_p_sq]))
+                fitted = sm.WLS(log_q, X, weights=weights).fit(
+                    cov_type='HAC', cov_kwds={'maxlags': maxlags}
+                )
+                b1 = float(fitted.params[1])
+                b2 = float(fitted.params[2])
+                quadratic_p = float(fitted.pvalues[2])
+                is_nonlinear = quadratic_p < 0.05
+                optimal_price = None
+                if is_nonlinear and abs(b2) > 1e-10:
+                    opt_log_p = -b1 / (2 * b2)
+                    optimal_price = round(float(np.exp(opt_log_p)), 2)
+                fit_result = {
+                    'elasticity': round(b1, 3),
+                    'elasticity_se': round(float(fitted.bse[1]), 3),
+                    'r_squared': round(float(fitted.rsquared), 3),
+                    'p_value': round(float(fitted.pvalues[1]), 4),
+                    'n_observations': n_obs,
+                    'is_significant': float(fitted.pvalues[1]) < 0.05,
+                    'interpretation': _interpret_elasticity(b1),
+                    'confidence_interval_95': [
+                        round(float(fitted.conf_int()[1][0]), 3),
+                        round(float(fitted.conf_int()[1][1]), 3),
+                    ],
+                    'quadratic_term': round(b2, 4),
+                    'quadratic_p_value': round(quadratic_p, 4),
+                    'is_nonlinear': is_nonlinear,
+                    'optimal_price': optimal_price,
+                }
+
+            # ── 2. Validity: отбрасываем модели с β > 0 ──────────────────
+            if fit_result['elasticity'] > 0:
+                logger.info(f"Model '{model_type}' rejected: positive elasticity ({fit_result['elasticity']})")
+                continue
+
+            # ── 3. Quality: бэктестинг ────────────────────────────────────
+            bt = _backtest_single_model(
+                df=df,
+                demand_col=demand_col,
+                half_life_days=half_life_days,
+                model_type=model_type,
+            )
+            fit_result['is_confounded'] = False
+
+            if bt['is_reliable']:
+                candidates[model_type] = (fit_result, bt)
+            else:
+                logger.info(f"Model '{model_type}' rejected by backtest: {bt.get('reason')}")
+
+        except Exception as e:
+            logger.warning(f"Model '{model_type}' failed: {e}")
+            continue
+
+    if not candidates:
+        return {
+            'selection_status': 'FAIL',
+            'reason_code': 'low_predictive_power',
+            'backtest_results': {},
+        }
+
+    # ── 4. Score: выбираем победителя ────────────────────────────────────────
+    # Предпочитаем Linear при Score_quad - Score_linear < simplicity_delta
+    backtest_results = {k: v[1] for k, v in candidates.items()}
+
+    if 'linear' in candidates and 'quadratic' in candidates:
+        score_lin = candidates['linear'][1]['score']
+        score_quad = candidates['quadratic'][1]['score']
+        if score_quad - score_lin < simplicity_delta:
+            winner = 'linear'
+        else:
+            winner = 'quadratic'
+    else:
+        winner = next(iter(candidates))
+
+    best_result, best_bt = candidates[winner]
+
+    return {
+        'selection_status': 'PASS',
+        'selected_model': winner,
+        'best_result': best_result,
+        'backtest_results': backtest_results,
+    }
 
 
 def margin_factor_regression(data: list[dict]) -> dict:

@@ -12,6 +12,7 @@ from aiogram_calendar import SimpleCalendar, SimpleCalendarCallback
 from datetime import datetime, timedelta
 import logging
 
+from agents.oleg.services.time_utils import get_now_msk, get_today_msk
 from agents.oleg.services.report_formatter import ReportFormatter
 
 logger = logging.getLogger(__name__)
@@ -69,7 +70,7 @@ async def callback_daily_report(
     await callback.message.edit_text("⏳ Олег готовит ежедневную сводку...")
     await callback.answer()
 
-    yesterday = datetime.now() - timedelta(days=1)
+    yesterday = get_now_msk() - timedelta(days=1)
     date_str = yesterday.strftime("%Y-%m-%d")
 
     s, e, note = data_freshness.adjust_dates(date_str, date_str)
@@ -146,7 +147,7 @@ async def callback_weekly_report(
     await callback.message.edit_text("⏳ Олег готовит еженедельную сводку...")
     await callback.answer()
 
-    end = datetime.now() - timedelta(days=1)
+    end = get_now_msk() - timedelta(days=1)
     start = end - timedelta(days=6)
     s, e = start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")
 
@@ -226,7 +227,7 @@ async def callback_quick_period(
         return
 
     days = 7 if callback.data == "period_last_7" else 30
-    end_date = datetime.now() - timedelta(days=1)
+    end_date = get_now_msk() - timedelta(days=1)
     start_date = end_date - timedelta(days=days - 1)
     s, e = start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")
 

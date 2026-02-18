@@ -14,6 +14,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
 
+from agents.oleg.services.time_utils import get_now_msk, get_today_msk
 from shared.utils.json_utils import extract_json
 
 logger = logging.getLogger(__name__)
@@ -97,9 +98,10 @@ class QueryUnderstandingService:
             return self._fallback_regex_parse(query)
 
     def _build_system_prompt(self) -> str:
-        today = datetime.now().strftime("%Y-%m-%d")
-        yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-        day_before = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
+        now_msk = get_now_msk()
+        today = now_msk.strftime("%Y-%m-%d")
+        yesterday = (now_msk - timedelta(days=1)).strftime("%Y-%m-%d")
+        day_before = (now_msk - timedelta(days=2)).strftime("%Y-%m-%d")
 
         return f"""Ты — парсер запросов аналитики бренда Wookiee (одежда, маркетплейсы WB и OZON).
 
@@ -147,7 +149,7 @@ class QueryUnderstandingService:
 - "сегодня" — данных нет, используй {yesterday}
 - "прошлая неделя" = пн-вс предыдущей недели
 - Одна дата (напр. "10 февраля") = daily, start_date = end_date
-- Если год не указан — текущий ({datetime.now().year})
+- Если год не указан — текущий ({get_now_msk().year})
 
 ФОРМАТ ОТВЕТА — строго JSON, один из трёх:
 
@@ -190,14 +192,17 @@ class QueryUnderstandingService:
     def _validate_and_normalize(self, parsed: dict, original_query: str) -> dict:
         """Validate LLM output and normalize to format expected by oleg_agent.analyze()."""
         # Validate dates
+        now_msk = get_now_msk()
+        yesterday = (now_msk - timedelta(days=1)).strftime("%Y-%m-%d")
+
+        # Извлекаем из parsed ДО блоков try/except — иначе UnboundLocalError
         start_date = parsed.get("start_date", "")
         end_date = parsed.get("end_date", "")
-        yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
 
         try:
             if start_date:
                 sd = datetime.strptime(start_date, "%Y-%m-%d")
-                if sd > datetime.now():
+                if sd > now_msk:
                     start_date = yesterday
                 if sd < datetime(2024, 1, 1):
                     start_date = _DATA_START_DATE
@@ -207,7 +212,7 @@ class QueryUnderstandingService:
         try:
             if end_date:
                 ed = datetime.strptime(end_date, "%Y-%m-%d")
-                if ed > datetime.now():
+                if ed > now_msk:
                     end_date = yesterday
                 if ed < datetime(2024, 1, 1):
                     end_date = _DATA_START_DATE
