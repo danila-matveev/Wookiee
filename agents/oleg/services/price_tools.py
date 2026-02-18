@@ -8,6 +8,8 @@ import logging
 from datetime import datetime, timedelta
 from typing import Dict, Any
 
+from agents.oleg.services.time_utils import get_now_msk, get_today_msk
+
 from shared.data_layer import (
     get_wb_price_margin_daily,
     get_ozon_price_margin_daily,
@@ -433,8 +435,9 @@ async def _handle_price_elasticity(model: str, channel: str, lookback_days: int 
     """Обработчик get_price_elasticity."""
     model = model.lower()
 
-    end_date = datetime.now().strftime('%Y-%m-%d')
-    start_date = (datetime.now() - timedelta(days=lookback_days)).strftime('%Y-%m-%d')
+    now_msk = get_now_msk()
+    end_date = now_msk.strftime('%Y-%m-%d')
+    start_date = (now_msk - timedelta(days=lookback_days)).strftime('%Y-%m-%d')
 
     # Проверить кэш
     if _learning_store:
@@ -477,8 +480,9 @@ async def _handle_price_recommendation(model: str, channel: str) -> dict:
     """Обработчик get_price_recommendation."""
     model = model.lower()
 
-    end_date = datetime.now().strftime('%Y-%m-%d')
-    start_date = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d')
+    now_msk = get_now_msk()
+    end_date = now_msk.strftime('%Y-%m-%d')
+    start_date = (now_msk - timedelta(days=90)).strftime('%Y-%m-%d')
 
     data = _get_data(channel, start_date, end_date, model)
     if not data:
@@ -498,8 +502,9 @@ async def _handle_simulate_price_change(model: str, channel: str, price_change_p
     """Обработчик simulate_price_change."""
     model = model.lower()
 
-    end_date = datetime.now().strftime('%Y-%m-%d')
-    start_date = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d')
+    now_msk = get_now_msk()
+    end_date = now_msk.strftime('%Y-%m-%d')
+    start_date = (now_msk - timedelta(days=90)).strftime('%Y-%m-%d')
 
     data = _get_data(channel, start_date, end_date, model)
     if not data:
@@ -523,8 +528,9 @@ async def _handle_price_counterfactual(model: str, channel: str, price_change_pc
 
 async def _handle_analyze_promotion(channel: str) -> dict:
     """Обработчик analyze_promotion."""
-    end_date = datetime.now().strftime('%Y-%m-%d')
-    start_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+    now_msk = get_now_msk()
+    end_date = now_msk.strftime('%Y-%m-%d')
+    start_date = (now_msk - timedelta(days=30)).strftime('%Y-%m-%d')
 
     # Текущие метрики по моделям
     if channel == 'wb':
@@ -550,8 +556,9 @@ async def _handle_price_trend(model: str, channel: str, lookback_days: int = 30)
     """Обработчик get_price_trend."""
     model = model.lower()
 
-    end_date = datetime.now().strftime('%Y-%m-%d')
-    start_date = (datetime.now() - timedelta(days=lookback_days)).strftime('%Y-%m-%d')
+    now_msk = get_now_msk()
+    end_date = now_msk.strftime('%Y-%m-%d')
+    start_date = (now_msk - timedelta(days=lookback_days)).strftime('%Y-%m-%d')
 
     data = _get_data(channel, start_date, end_date, model)
     if not data:
@@ -620,8 +627,9 @@ async def _handle_price_management_plan(channel: str, period_start: str = None, 
 
 async def _handle_model_roi_dashboard(channel: str) -> dict:
     """Обработчик get_model_roi_dashboard."""
-    end_date = datetime.now().strftime('%Y-%m-%d')
-    start_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+    now_msk = get_now_msk()
+    end_date = now_msk.strftime('%Y-%m-%d')
+    start_date = (now_msk - timedelta(days=30)).strftime('%Y-%m-%d')
 
     if channel == 'wb':
         models = get_wb_price_margin_by_model_period(start_date, end_date)
@@ -644,8 +652,9 @@ async def _handle_model_roi_dashboard(channel: str) -> dict:
 
 async def _handle_test_hypothesis(channel: str, lookback_days: int = 180) -> dict:
     """Обработчик test_price_hypothesis."""
-    end_date = datetime.now().strftime('%Y-%m-%d')
-    start_date = (datetime.now() - timedelta(days=lookback_days)).strftime('%Y-%m-%d')
+    now_msk = get_now_msk()
+    end_date = now_msk.strftime('%Y-%m-%d')
+    start_date = (now_msk - timedelta(days=lookback_days)).strftime('%Y-%m-%d')
 
     # Получить данные по всем моделям
     if channel == 'wb':
@@ -712,8 +721,9 @@ async def _handle_test_hypothesis(channel: str, lookback_days: int = 180) -> dic
 
 async def _handle_stock_price_matrix(channel: str) -> dict:
     """Обработчик get_stock_price_matrix."""
-    end_date = datetime.now().strftime('%Y-%m-%d')
-    start_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+    now_msk = get_now_msk()
+    end_date = now_msk.strftime('%Y-%m-%d')
+    start_date = (now_msk - timedelta(days=30)).strftime('%Y-%m-%d')
 
     if channel == 'wb':
         models = get_wb_price_margin_by_model_period(start_date, end_date)
@@ -746,8 +756,9 @@ async def _handle_optimize_price_for_roi(model: str, channel: str) -> dict:
     """Обработчик optimize_price_for_roi."""
     model = model.lower()
 
-    end_date = datetime.now().strftime('%Y-%m-%d')
-    start_date = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d')
+    now_msk = get_now_msk()
+    end_date = now_msk.strftime('%Y-%m-%d')
+    start_date = (now_msk - timedelta(days=90)).strftime('%Y-%m-%d')
 
     data = _get_data(channel, start_date, end_date, model)
     if not data:
@@ -805,8 +816,9 @@ async def _handle_cross_model_effects(channel: str, lookback_days: int = 90) -> 
     """Обработчик analyze_cross_model_effects."""
     from agents.oleg.services.price_analysis.hypothesis_tester import test_cross_model_hypotheses
 
-    end_date = datetime.now().strftime('%Y-%m-%d')
-    start_date = (datetime.now() - timedelta(days=lookback_days)).strftime('%Y-%m-%d')
+    now_msk = get_now_msk()
+    end_date = now_msk.strftime('%Y-%m-%d')
+    start_date = (now_msk - timedelta(days=lookback_days)).strftime('%Y-%m-%d')
 
     if channel == 'wb':
         models_period = get_wb_price_margin_by_model_period(start_date, end_date)
@@ -834,8 +846,9 @@ async def _handle_promotion_plan(channel: str) -> dict:
     """Обработчик get_promotion_plan."""
     from agents.oleg.services.price_analysis.promotion_analyzer import PromotionAnalyzer
 
-    end_date = datetime.now().strftime('%Y-%m-%d')
-    start_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+    now_msk = get_now_msk()
+    end_date = now_msk.strftime('%Y-%m-%d')
+    start_date = (now_msk - timedelta(days=30)).strftime('%Y-%m-%d')
 
     if channel == 'wb':
         models = get_wb_price_margin_by_model_period(start_date, end_date)
