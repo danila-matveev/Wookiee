@@ -10,7 +10,7 @@ Usage:
 Examples:
     python -m services.sheets_sync.runner wb_stocks
     python -m services.sheets_sync.runner all
-    python -m services.sheets_sync.runner search_analytics --start 01.01.2026 --end 07.01.2026
+    python -m services.sheets_sync.runner fin_data --start 01.01.2026 --end 07.01.2026
 """
 
 import argparse
@@ -68,20 +68,25 @@ SYNC_REGISTRY: dict[str, dict] = {
         "sheet": "Отзывы ООО / Отзывы ИП",
         "description": "WB feedbacks rating aggregation",
     },
+    "fin_data": {
+        "module": "services.sheets_sync.sync.sync_fin_data",
+        "sheet": "Фин данные",
+        "description": "Financial data (WB+OZON) per barcode for period",
+    },
     "wb_bundles": {
         "module": "services.sheets_sync.sync.sync_wb_bundles",
         "sheet": "Склейки WB",
-        "description": "WB bundle prices (S-V columns)",
+        "description": "WB bundle prices update",
     },
     "ozon_bundles": {
         "module": "services.sheets_sync.sync.sync_ozon_bundles",
         "sheet": "Склейки Озон",
-        "description": "OZON bundle prices & stock (R, S, V columns)",
+        "description": "OZON bundle prices update",
     },
     "search_analytics": {
         "module": "services.sheets_sync.sync.sync_search_analytics",
         "sheet": "Аналитика по запросам",
-        "description": "WB search analytics (keywords + per-artikul)",
+        "description": "WB search analytics (keywords + per-article)",
     },
 }
 
@@ -102,8 +107,8 @@ def run_sync(name: str, start_date: str | None = None, end_date: str | None = No
         mod = __import__(module_path, fromlist=["sync"])
         sync_fn = mod.sync
 
-        # Pass date arguments for search_analytics
-        if name == "search_analytics" and (start_date or end_date):
+        # Pass date arguments for scripts that support period selection
+        if name == "fin_data" and (start_date or end_date):
             rows = sync_fn(start_date=start_date, end_date=end_date)
         else:
             rows = sync_fn()
@@ -133,8 +138,8 @@ def main():
     parser.add_argument("sync_name", nargs="?", help="Sync name or 'all'")
     parser.add_argument("--list", action="store_true", help="List available syncs")
     parser.add_argument("--test", action="store_true", help="Force test mode")
-    parser.add_argument("--start", help="Start date DD.MM.YYYY (for search_analytics)")
-    parser.add_argument("--end", help="End date DD.MM.YYYY (for search_analytics)")
+    parser.add_argument("--start", help="Start date DD.MM.YYYY (for fin_data)")
+    parser.add_argument("--end", help="End date DD.MM.YYYY (for fin_data)")
 
     args = parser.parse_args()
 
