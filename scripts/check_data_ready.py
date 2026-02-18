@@ -113,6 +113,12 @@ def check_db(db_name: str, label: str, target_date: str, dateupdate_col: str):
                 marga_ratio = with_marga / prev_with_marga * 100
                 print(f"  Строк с маржой vs предыдущий: {marga_ratio:.0f}%")
 
+        # Доп. метрики
+        marga_abs_fill_pct = (with_marga / total * 100) if total > 0 else 0
+        marga_rev_ratio = (abs(sum_marga) / sum_rev * 100) if sum_rev > 0 else 0
+        print(f"\n  Маржа заполнение (абс.): {marga_abs_fill_pct:.0f}% ({with_marga}/{total})")
+        print(f"  Маржа/выручка ratio: {marga_rev_ratio:.1f}%")
+
         # Вердикт (те же критерии что в DataFreshnessService)
         print(f"\n  --- ВЕРДИКТ ---")
         issues = []
@@ -120,12 +126,16 @@ def check_db(db_name: str, label: str, target_date: str, dateupdate_col: str):
             issues.append("НЕТ ДАННЫХ")
         if prev_total > 0 and total < prev_total * 0.8:
             issues.append(f"строк {total} < 80% от {prev_total}")
-        if prev_rev > 0 and sum_rev / prev_rev < 0.5:
-            issues.append(f"выручка {sum_rev:,.0f} < 50% от {prev_rev:,.0f}")
-        if prev_with_marga > 0 and with_marga / prev_with_marga < 0.5:
-            issues.append(f"строк с маржой {with_marga} < 50% от {prev_with_marga}")
+        if prev_rev > 0 and sum_rev / prev_rev < 0.7:
+            issues.append(f"выручка {sum_rev:,.0f} < 70% от {prev_rev:,.0f}")
+        if prev_with_marga > 0 and with_marga / prev_with_marga < 0.9:
+            issues.append(f"строк с маржой {with_marga} < 90% от {prev_with_marga}")
+        if marga_abs_fill_pct < 90:
+            issues.append(f"маржа заполнена {marga_abs_fill_pct:.0f}% < 90% от общего")
         if sum_marga == 0:
             issues.append("SUM(marga) = 0")
+        if sum_rev > 0 and marga_rev_ratio < 5:
+            issues.append(f"маржа/выручка {marga_rev_ratio:.1f}% < 5%")
 
         if issues:
             print(f"  ❌ НЕ ГОТОВО: {'; '.join(issues)}")
