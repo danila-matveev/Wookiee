@@ -14,7 +14,7 @@
 5. Финансовые данные заполнены:
    a. SUM(выручка) за вчера >= 70% от позавчера
    b. Строк с marga != 0 >= 90% от предыдущего дня
-   c. Строк с marga != 0 >= 90% от общего числа строк за вчера
+   c. Строк с marga != 0 >= 80% от общего числа строк за вчера
    d. SUM(marga) != 0
    e. |SUM(marga)| / SUM(выручка) >= 5% (санитарная проверка)
 """
@@ -273,13 +273,14 @@ class DataFreshnessService:
                 )
                 return result
 
-            # 3b2. Абсолютное заполнение маржи: rows_with_marga / rows_yesterday >= 90%
+            # 3b2. Абсолютное заполнение маржи: rows_with_marga / rows_yesterday >= 80%
+            # Порог 80% (не 90%): часть артикулов без активности имеет marga=0 — это норма
             marga_abs_fill_pct = (rows_with_marga / rows_yesterday * 100) if rows_yesterday > 0 else 0
-            if marga_abs_fill_pct < 90:
+            if marga_abs_fill_pct < 80:
                 result['details'] = (
                     f'маржа загружена не полностью: '
                     f'{rows_with_marga}/{rows_yesterday} строк с marga != 0 '
-                    f'({marga_abs_fill_pct:.0f}%, порог 90%)'
+                    f'({marga_abs_fill_pct:.0f}%, порог 80%)'
                 )
                 return result
 
