@@ -68,22 +68,14 @@ def sync() -> int:
             # Clear entire sheet
             ws.clear()
 
-            # Write meta rows
+            # Row 1: update timestamp
             date_str, time_str = get_moscow_datetime()
-            write_range(ws, 1, 1, [["Дата составления отчёта", date_str]])
-            write_range(ws, 2, 1, [["Время отчёта", time_str]])
+            write_range(ws, 1, 1, [[f"Обновлено: {date_str} {time_str} | Период: 01.01.2020 — {date_str}"]])
 
-            # Row 4-5: date range
-            write_range(ws, 4, 1, [["С"]])
-            write_range(ws, 5, 1, [["01.01.2020", date_str]])
+            # Row 2: column headers
+            write_range(ws, 2, 1, [["Кабинет", "nmID", "Рейтинг", "5\u2605", "4\u2605", "3\u2605", "2\u2605", "1\u2605"]])
 
-            # Row 11: section header
-            write_range(ws, 11, 4, [["Отзывы, в штуках"]])
-
-            # Row 12: column headers
-            write_range(ws, 12, 3, [["Рейтинг", "5\u2605", "4\u2605", "3\u2605", "2\u2605", "1\u2605"]])
-
-            # Row 13+: data
+            # Row 3+: data
             data_rows = []
             for nm_id in sorted_nm_ids:
                 stats = agg[nm_id]
@@ -100,7 +92,7 @@ def sync() -> int:
                 ])
 
             if data_rows:
-                write_range(ws, 13, 1, data_rows)
+                write_range(ws, 3, 1, data_rows)
 
             # Checkbox for refresh
             set_checkbox(ws, "C1")

@@ -62,10 +62,10 @@ def sync() -> int:
         headers=headers,
         data=all_rows,
         meta_cells=[
-            (1, 1, f"{date_str} {time_str} | Два кабинета"),
+            (1, 1, f"Обновлено: {date_str} {time_str}"),
         ],
-        header_row=4,
-        data_start_row=5,
+        header_row=2,
+        data_start_row=3,
     )
 
     # Checkbox for refresh

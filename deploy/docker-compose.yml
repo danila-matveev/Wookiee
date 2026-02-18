@@ -98,7 +98,6 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - TZ=Europe/Moscow
-      - SYNC_TEST_MODE=true
 
     volumes:
       - ../services/sheets_sync/credentials:/app/services/sheets_sync/credentials:ro
