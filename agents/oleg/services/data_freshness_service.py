@@ -6,15 +6,12 @@
 - WB: к ~06:18 МСК
 - OZON: к ~07:03 МСК
 
-Критерии готовности:
-1. abc_date.dateupdate (или date_update) обновлена сегодня
-2. MAX(date) = вчера (данные за вчера присутствуют в таблице)
-3. Есть данные за вчера
-4. Финансовые данные заполнены:
-   a. SUM(выручка) за вчера >= 50% от среднего за неделю (защита от частичной загрузки)
-   b. SUM(marga) != 0
-   c. SUM(logistics) > 0
-   d. Кол-во заказов в abc_date соответствует таблице orders (расхождение < 5%)
+Критерии готовности (5 ортогональных гейтов):
+1. abc_date.dateupdate обновлена сегодня (ETL прошёл)
+2. MAX(date) = вчера (данные за вчера присутствуют)
+3. Orders cross-check: abc_date vs orders (≤ 5% расхождение)
+4. Revenue ≥ 70% от 7-day rolling average
+5. Строк с marga ≠ 0 ≥ 80% от total (маржа рассчитана)
 """
 
 import logging
@@ -42,6 +39,12 @@ LOGISTICS_COL = {
 ORDERS_DATE_COL = {
     'pbi_wb_wookiee': 'date',
     'pbi_ozon_wookiee': 'in_process_at',
+}
+
+# Колонка кол-ва заказов в abc_date: WB = count_orders, OZON = count_end
+ORDERS_COUNT_COL = {
+    'pbi_wb_wookiee': 'count_orders',
+    'pbi_ozon_wookiee': 'count_end',
 }
 
 
@@ -142,8 +145,9 @@ class DataFreshnessService:
         for mp, label in [('wb', 'WB'), ('ozon', 'OZON')]:
             s = status[mp]
             if s['ready']:
-                rev_info = f", выручка {s.get('rev_vs_avg_pct', 0):.0f}% от средней" if s.get('rev_vs_avg_pct') else ""
-                lines.append(f"{label}: {s['rows_yesterday']} артикулов (обновлено {s['updated_at']}{rev_info})")
+                rev_info = f", выручка {s.get('rev_vs_avg_pct', 0):.0f}% от avg" if s.get('rev_vs_avg_pct') else ""
+                marga_info = f", маржа {s.get('marga_fill_pct', 0):.0f}%" if s.get('marga_fill_pct') else ""
+                lines.append(f"{label}: {s['rows_yesterday']} артикулов (обновлено {s['updated_at']}{rev_info}{marga_info})")
             else:
                 lines.append(f"{label}: НЕ готово — {s['details']}")
 
@@ -211,140 +215,146 @@ class DataFreshnessService:
             return 0.0
 
     def _check_mp(self, db_name: str, dateupdate_col: str) -> dict[str, Any]:
+        """Проверка готовности данных маркетплейса.
+
+        6 ортогональных гейтов, каждый ловит свой класс сбоя:
+        1. dateupdate = сегодня          → ETL не запускался
+        2. MAX(date) = вчера             → данных за вчера нет
+        3. orders cross-check ≤ 5%       → частичная загрузка abc_date
+        4. revenue ≥ 70% от 7-day avg    → пустые/обнулённые строки
+        5. logistics != 0                → данные о расходах отсутствуют
+        6. rows с marga ≠ 0 ≥ 80% total  → маржа не рассчитана
+        """
         result: dict[str, Any] = {
             'ready': False,
             'updated_at': None,
             'rows_yesterday': 0,
-            'has_financial_data': False,
             'details': '',
         }
 
-        # Определяем колонки по имени БД
         rev_col = REVENUE_COL.get(db_name, 'revenue_spp')
+        orders_col = ORDERS_COUNT_COL.get(db_name, 'count_orders')
         log_col = LOGISTICS_COL.get(db_name, 'logist')
+        yesterday = get_today_msk() - timedelta(days=1)
 
         try:
             conn = psycopg2.connect(**self._db_config, database=db_name)
             cur = conn.cursor()
 
-            # 1. Когда abc_date была пересоздана?
+            # ── Gate 1: ETL обновил abc_date сегодня? ──
             cur.execute(f"SELECT MAX({dateupdate_col}) FROM abc_date")
             max_update = cur.fetchone()[0]
 
             if max_update is None:
-                result['details'] = 'abc_date пуста'
                 conn.close()
+                result['details'] = 'abc_date пуста'
                 return result
 
             update_date = max_update.date() if isinstance(max_update, datetime) else max_update
             result['updated_at'] = max_update.strftime('%H:%M') if isinstance(max_update, datetime) else str(max_update)
 
             if update_date != get_today_msk():
+                conn.close()
                 result['details'] = f'abc_date не обновлялась сегодня (последнее: {update_date})'
-                conn.close()
                 return result
 
-            # 1b. MAX(date) должна быть = вчера
-            yesterday = get_today_msk() - timedelta(days=1)
-            actual_max = self._get_max_date(db_name)
-            
+            # ── Gate 2: MAX(date) = вчера? ──
+            cur.execute("SELECT MAX(date) FROM abc_date")
+            max_date_row = cur.fetchone()[0]
+            if max_date_row is not None:
+                actual_max = max_date_row.date() if isinstance(max_date_row, datetime) else max_date_row
+            else:
+                actual_max = None
+
             if actual_max is None or actual_max < yesterday:
-                result['details'] = (
-                    f'MAX(date) в abc_date ({actual_max}) меньше ожидаемого ({yesterday}). '
-                    f'Данные за вчера еще не загружены.'
-                )
                 conn.close()
+                result['details'] = (
+                    f'MAX(date)={actual_max}, ожидается {yesterday}. '
+                    f'Данные за вчера ещё не загружены.'
+                )
                 return result
 
-            # 2. Кол-во строк + финансовые суммы за вчера
-            query = f"""
+            # ── Собираем метрики за вчера одним запросом ──
+            cur.execute(f"""
                 SELECT
-                    COALESCE(SUM(CASE WHEN date = %s THEN 1 ELSE 0 END), 0) as rows_yesterday,
-                    COALESCE(SUM(CASE WHEN date = %s THEN {rev_col} ELSE 0 END), 0) as rev_yesterday,
-                    COALESCE(SUM(CASE WHEN date = %s THEN marga ELSE 0 END), 0) as marga_yesterday,
-                    COALESCE(SUM(CASE WHEN date = %s THEN {log_col} ELSE 0 END), 0) as logist_yesterday,
-                    COALESCE(SUM(CASE WHEN date = %s AND marga != 0 THEN 1 ELSE 0 END), 0) as rows_with_marga
+                    COUNT(*) as rows_total,
+                    COALESCE(SUM({rev_col}), 0) as revenue,
+                    COUNT(CASE WHEN marga != 0 THEN 1 END) as rows_with_marga,
+                    COALESCE(SUM({orders_col}), 0) as abc_orders,
+                    COALESCE(SUM({log_col}), 0) as logist_sum
                 FROM abc_date
                 WHERE date = %s
-            """
-            cur.execute(query, (
-                yesterday,
-                yesterday,
-                yesterday,
-                yesterday,
-                yesterday,
-                yesterday
-            ))
+            """, (yesterday,))
             row = cur.fetchone()
-            rows_yesterday = row[0]
+            rows_total = row[0]
             rev_yesterday = float(row[1])
-            marga_yesterday = float(row[2])
-            logist_yesterday = float(row[3])
-            rows_with_marga = row[4]
+            rows_with_marga = row[2]
+            abc_orders_count = float(row[3])
+            logist_sum = float(row[4])
 
-            result['rows_yesterday'] = rows_yesterday
-            conn.close()
+            result['rows_yesterday'] = rows_total
 
-            if rows_yesterday == 0:
+            if rows_total == 0:
+                conn.close()
                 result['details'] = 'нет данных за вчера'
                 return result
 
-            # 🛡️ HARDENING 1: Cross-Check with Source Orders
-            conn = psycopg2.connect(**self._db_config, database=db_name)
-            cur = conn.cursor()
-            cur.execute("SELECT SUM(count_orders) FROM abc_date WHERE date = %s", (yesterday,))
-            abc_orders_count = cur.fetchone()[0] or 0
-            conn.close()
+            # ── Gate 3: Logistics Check (обязательно) ──
+            if logist_sum == 0:
+                conn.close()
+                result['details'] = 'сумма логистики = 0 (данные неполные)'
+                return result
 
-            source_orders_count = self._get_source_orders_count(db_name, yesterday)
-            
-            if source_orders_count == 0:
-                 result['details'] = f'0 заказов в таблице orders (source) за вчера. Сбой импорта?'
-                 return result
+            # ── Gate 3: Orders cross-check (abc_date vs orders table, ≤ 5%) ──
+            conn.close()
+            source_orders = self._get_source_orders_count(db_name, yesterday)
 
             diff_pct = 0.0
-            if source_orders_count > 0:
-                diff_pct = abs(source_orders_count - abc_orders_count) / source_orders_count * 100
-                if diff_pct > 5.0:  # Порог 5%
-                    result['details'] = (
-                        f'рассинхрон данных: orders={source_orders_count}, '
-                        f'abc_date={abc_orders_count} (diff {diff_pct:.1f}% > 5%). '
-                        f'ETL не завершен.'
-                    )
-                    return result
-
-            # 🛡️ HARDENING 2: Strict Revenue Check (vs 7-day Average)
-            avg_rev_7d = self._get_avg_revenue_last_7_days(db_name, rev_col, yesterday)
-            rev_pct_vs_avg = (rev_yesterday / avg_rev_7d * 100) if avg_rev_7d > 0 else 0
-            
-            if avg_rev_7d > 0 and rev_pct_vs_avg < 50:
+            if source_orders == 0:
+                result['details'] = '0 заказов в таблице orders за вчера — сбой импорта?'
+                return result
+            diff_pct = abs(source_orders - abc_orders_count) / source_orders * 100
+            if diff_pct > 5.0:
                 result['details'] = (
-                    f'выручка подозрительно низкая: '
-                    f'{rev_yesterday:,.0f}₽ vs средняя {avg_rev_7d:,.0f}₽ '
-                    f'({rev_pct_vs_avg:.0f}%, порог 50%)'
+                    f'рассинхрон: orders={source_orders}, '
+                    f'abc_date={abc_orders_count:.0f} (diff {diff_pct:.1f}% > 5%)'
                 )
                 return result
 
-            # 3. Финальные проверки маржи и логистики
-            if rows_with_marga == 0:
-                 result['details'] = 'есть строки, но нет маржи (0 строк с marga != 0)'
-                 return result
-            
-            if logist_yesterday == 0:
-                 result['details'] = 'есть строки, но сумма логистики = 0. Возможно, данные неполные.'
-                 return result
+            # ── Gate 4: Revenue ≥ 70% от 7-day avg ──
+            avg_rev = self._get_avg_revenue_last_7_days(db_name, rev_col, yesterday)
+            rev_vs_avg = (rev_yesterday / avg_rev * 100) if avg_rev > 0 else 100.0
 
-            if marga_yesterday == 0:
-                 result['details'] = 'есть строки, но SUM(marga) = 0'
-                 return result
+            if avg_rev > 0 and rev_vs_avg < 70:
+                result['details'] = (
+                    f'выручка {rev_yesterday:,.0f}₽ = {rev_vs_avg:.0f}% '
+                    f'от средней {avg_rev:,.0f}₽ (порог 70%)'
+                )
+                return result
 
-            result['has_financial_data'] = True
-            result['rev_vs_avg_pct'] = rev_pct_vs_avg
+            # ── Gate 5: Margin fill ≥ 80% total rows ──
+            marga_fill = (rows_with_marga / rows_total * 100) if rows_total > 0 else 0
+
+            if marga_fill < 80:
+                result['details'] = (
+                    f'маржа: {rows_with_marga}/{rows_total} строк '
+                    f'({marga_fill:.0f}%, порог 80%)'
+                )
+                return result
+
+            # ── Всё ок ──
             result['ready'] = True
-            result['details'] = f'OK (выручка {rev_pct_vs_avg:.0f}% от средней, source/abc расхождение {diff_pct:.1f}%)'
+            result['rev_vs_avg_pct'] = rev_vs_avg
+            result['marga_fill_pct'] = marga_fill
+            result['details'] = (
+                f'OK (выручка {rev_vs_avg:.0f}% от avg, '
+                f'маржа {marga_fill:.0f}%, '
+                f'orders diff {diff_pct:.1f}%)'
+            )
             return result
 
         except Exception as e:
             logger.error(f"Ошибка проверки {db_name}: {e}")
-            result['details'] = f'ошибка подключения/проверки: {e}'
+            result['details'] = f'ошибка: {e}'
             return result
+

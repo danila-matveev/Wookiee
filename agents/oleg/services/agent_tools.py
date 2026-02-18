@@ -4,9 +4,11 @@ Agent Tools — инструменты агента Олег для доступ
 Обёртки над scripts/data_layer.py в формате OpenAI function calling.
 Все SQL-запросы остаются в data_layer.py — здесь только парсинг и агрегация.
 """
+import ast
 import asyncio
 import json
 import logging
+import operator
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
 
@@ -299,15 +301,15 @@ def _split_periods(rows: list, field_count: int) -> dict:
 
 
 def _safe_div(a, b, default=0.0):
-    """Safe division, returns default if divisor is 0."""
-    if not b:
+    """Safe division, returns default if divisor is 0 or None."""
+    if b is None or b == 0:
         return default
     return a / b
 
 
 def _pct_change(current, previous):
     """Calculate percentage change."""
-    if not previous:
+    if previous is None or previous == 0:
         return 0.0
     return round(((current - previous) / abs(previous)) * 100, 1)
 
@@ -376,14 +378,20 @@ def _parse_ozon_finance_row(row) -> dict:
         "commission": to_float(row[10]),
         "spp_amount": to_float(row[11]),
         "nds": to_float(row[12]),
+        # OZON abc_date не содержит penalty/retention/deduction,
+        # но waterfall (_handle_margin_levers) обращается к ним — без этих ключей
+        # waterfall не балансируется (сумма компонентов ≠ margin_change_total).
+        "penalty": 0.0,
+        "retention": 0.0,
+        "deduction": 0.0,
     }
 
 
 def _parse_orders_row_wb(row) -> dict:
-    """Parse WB orders row: (period, orders_rub)."""
+    """Parse WB orders row: (period, orders_count, orders_rub)."""
     if not row:
-        return {"orders_rub": 0}
-    return {"orders_rub": to_float(row[1])}
+        return {"orders_count": 0, "orders_rub": 0}
+    return {"orders_count": to_float(row[1]), "orders_rub": to_float(row[2])}
 
 
 def _parse_orders_row_ozon(row) -> dict:
@@ -446,7 +454,7 @@ async def _handle_brand_finance(start_date: str, end_date: str) -> dict:
 
     # Parse WB
     wb_periods = _split_periods(wb_results, 19)
-    wb_orders_periods = _split_periods(wb_orders, 2)
+    wb_orders_periods = _split_periods(wb_orders, 3)
     wb_current = _parse_wb_finance_row(wb_periods["current"])
     wb_previous = _parse_wb_finance_row(wb_periods["previous"])
     wb_orders_curr = _parse_orders_row_wb(wb_orders_periods.get("current"))
@@ -476,8 +484,10 @@ async def _handle_brand_finance(start_date: str, end_date: str) -> dict:
     brand_current = _sum_channels(wb_current, ozon_current)
     brand_previous = _sum_channels(wb_previous, ozon_previous)
 
-    # Add orders
+    # Add orders (count + rub)
+    brand_current["orders_count"] = wb_orders_curr.get("orders_count", 0) + ozon_orders_curr.get("orders_count", 0)
     brand_current["orders_rub"] = wb_orders_curr.get("orders_rub", 0) + ozon_orders_curr.get("orders_rub", 0)
+    brand_previous["orders_count"] = wb_orders_prev.get("orders_count", 0) + ozon_orders_prev.get("orders_count", 0)
     brand_previous["orders_rub"] = wb_orders_prev.get("orders_rub", 0) + ozon_orders_prev.get("orders_rub", 0)
 
     # Enrich with derived metrics
@@ -496,6 +506,7 @@ async def _handle_brand_finance(start_date: str, end_date: str) -> dict:
             "margin": wb_current.get("margin", 0),
             "margin_pct": wb_current.get("margin_pct", 0),
             "revenue": wb_current.get("revenue_before_spp", 0),
+            "orders_count": wb_orders_curr.get("orders_count", 0),
             "orders_rub": wb_orders_curr.get("orders_rub", 0),
         },
         "ozon_summary": {
@@ -516,12 +527,14 @@ async def _handle_channel_finance(channel: str, start_date: str, end_date: str) 
             get_wb_finance, current_start, prev_start, current_end
         )
         periods = _split_periods(results, 19)
-        orders_periods = _split_periods(orders, 2)
+        orders_periods = _split_periods(orders, 3)
         current = _parse_wb_finance_row(periods["current"])
         previous = _parse_wb_finance_row(periods["previous"])
         orders_curr = _parse_orders_row_wb(orders_periods.get("current"))
         orders_prev = _parse_orders_row_wb(orders_periods.get("previous"))
+        current["orders_count"] = orders_curr.get("orders_count", 0)
         current["orders_rub"] = orders_curr.get("orders_rub", 0)
+        previous["orders_count"] = orders_prev.get("orders_count", 0)
         previous["orders_rub"] = orders_prev.get("orders_rub", 0)
     else:
         results, orders = await asyncio.to_thread(
@@ -967,19 +980,45 @@ async def _handle_product_statuses() -> dict:
         return {"error": f"Supabase unavailable: {e}"}
 
 
+# Безопасные операторы для AST-калькулятора (вместо eval)
+_SAFE_OPS = {
+    ast.Add: operator.add,
+    ast.Sub: operator.sub,
+    ast.Mult: operator.mul,
+    ast.Div: operator.truediv,
+    ast.USub: operator.neg,
+    ast.UAdd: operator.pos,
+}
+
+
+def _safe_eval_ast(node):
+    """Рекурсивный AST-калькулятор: только числа и +-*/."""
+    if isinstance(node, ast.Expression):
+        return _safe_eval_ast(node.body)
+    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+        return node.value
+    if isinstance(node, ast.BinOp):
+        op_fn = _SAFE_OPS.get(type(node.op))
+        if op_fn is None:
+            raise ValueError(f"Unsupported operator: {type(node.op).__name__}")
+        return op_fn(_safe_eval_ast(node.left), _safe_eval_ast(node.right))
+    if isinstance(node, ast.UnaryOp):
+        op_fn = _SAFE_OPS.get(type(node.op))
+        if op_fn is None:
+            raise ValueError(f"Unsupported unary operator: {type(node.op).__name__}")
+        return op_fn(_safe_eval_ast(node.operand))
+    raise ValueError(f"Unsupported AST node: {type(node).__name__}")
+
+
 async def _handle_calculate_metric(formula: str, values: dict) -> dict:
-    """Safe calculator for metric verification."""
+    """Safe AST-based calculator for metric verification (no eval)."""
     try:
         expr = formula
         for name, val in sorted(values.items(), key=lambda x: -len(x[0])):
             expr = expr.replace(name, str(float(val)))
 
-        # Only allow numbers and basic operators for safety
-        allowed = set('0123456789.+-*/() ')
-        if not all(c in allowed for c in expr):
-            return {"error": f"Unsafe characters in formula after substitution: {expr}"}
-
-        result = eval(expr)
+        tree = ast.parse(expr, mode='eval')
+        result = _safe_eval_ast(tree)
         return {
             "formula": formula,
             "values": values,
