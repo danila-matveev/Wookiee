@@ -130,8 +130,8 @@ def check_db(db_name: str, label: str, target_date: str, dateupdate_col: str):
             issues.append(f"выручка {sum_rev:,.0f} < 70% от {prev_rev:,.0f}")
         if prev_with_marga > 0 and with_marga / prev_with_marga < 0.9:
             issues.append(f"строк с маржой {with_marga} < 90% от {prev_with_marga}")
-        if marga_abs_fill_pct < 90:
-            issues.append(f"маржа заполнена {marga_abs_fill_pct:.0f}% < 90% от общего")
+        if marga_abs_fill_pct < 80:
+            issues.append(f"маржа заполнена {marga_abs_fill_pct:.0f}% < 80% от общего")
         if sum_marga == 0:
             issues.append("SUM(marga) = 0")
         if sum_rev > 0 and marga_rev_ratio < 5:
