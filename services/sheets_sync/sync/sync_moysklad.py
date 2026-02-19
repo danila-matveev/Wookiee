@@ -13,7 +13,7 @@ from shared.clients.sheets_client import (
     set_checkbox,
     write_range,
 )
-from services.sheets_sync.config import GOOGLE_SA_FILE, MOYSKLAD_TOKEN, SPREADSHEET_ID, get_sheet_name
+from services.sheets_sync.config import GOOGLE_SA_FILE, MOYSKLAD_TOKEN, get_active_spreadsheet_id, get_sheet_name
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +75,7 @@ def sync() -> int:
         # 5. Write to Google Sheet
         sheet_name = get_sheet_name(SHEET_NAME)
         gc = get_client(GOOGLE_SA_FILE)
-        spreadsheet = gc.open_by_key(SPREADSHEET_ID)
+        spreadsheet = gc.open_by_key(get_active_spreadsheet_id())
         ws = get_or_create_worksheet(spreadsheet, sheet_name)
 
         # Clear from row 3 down (preserve row 1: meta, row 2: headers)
