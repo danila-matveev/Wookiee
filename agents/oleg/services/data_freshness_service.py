@@ -6,12 +6,13 @@
 - WB: к ~06:18 МСК
 - OZON: к ~07:03 МСК
 
-Критерии готовности (5 ортогональных гейтов):
+Критерии готовности (6 ортогональных гейтов):
 1. abc_date.dateupdate обновлена сегодня (ETL прошёл)
 2. MAX(date) = вчера (данные за вчера присутствуют)
 3. Orders cross-check: abc_date vs orders (≤ 5% расхождение)
-4. Revenue ≥ 70% от 7-day rolling average
-5. Строк с marga ≠ 0 ≥ 80% от total (маржа рассчитана)
+4. Logistics check: abc_date.logist > 0
+5. Revenue ≥ 70% от 7-day rolling average
+6. Строк с marga ≠ 0 ≥ 80% от total (маржа рассчитана)
 """
 
 import logging
