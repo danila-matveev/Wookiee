@@ -71,6 +71,7 @@ class OlegBot:
         self.auth_service = AuthService(
             config.HASHED_PASSWORD,
             persistence_path=config.USERS_FILE_PATH,
+            auth_enabled=config.AUTH_ENABLED,
         )
         self.llm_client = OpenRouterClient(
             api_key=config.OPENROUTER_API_KEY,
