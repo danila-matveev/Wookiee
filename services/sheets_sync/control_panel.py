@@ -14,7 +14,7 @@ import logging
 import time
 
 from shared.clients.sheets_client import get_client, get_moscow_now
-from services.sheets_sync.config import GOOGLE_SA_FILE, LOG_LEVEL, SPREADSHEET_ID, get_sheet_name
+from services.sheets_sync.config import GOOGLE_SA_FILE, LOG_LEVEL, SPREADSHEET_IDS, get_sheet_name
 from services.sheets_sync.runner import run_all, run_sync
 from services.sheets_sync.status import update_status
 
@@ -32,7 +32,7 @@ CHECKBOX_CHECK_INTERVAL = 4  # check data-sheet checkboxes every N poll cycles (
 SHEET_TO_SYNC = {
     "МойСклад_АПИ": "moysklad",
     "WB остатки": "wb_stocks",
-    "WB Цены": "wb_prices",
+    "WB цены": "wb_prices",
     "Ozon остатки и цены": "ozon",
     "Отзывы ООО": "wb_feedbacks",
     "Отзывы ИП": "wb_feedbacks",
@@ -43,7 +43,7 @@ SHEET_TO_SYNC = {
 
 
 def check_data_sheet_checkboxes() -> list:
-    """Check checkbox on each data sheet. If TRUE, reset and run sync.
+    """Check checkbox on each data sheet across all configured spreadsheets.
 
     Supports custom checkbox cell via dict format in SHEET_TO_SYNC:
     - str value: sync name, checkbox in C1 (default)
@@ -52,64 +52,68 @@ def check_data_sheet_checkboxes() -> list:
     Returns list of SyncResult.
     """
     results = []
-    try:
-        gc = get_client(GOOGLE_SA_FILE)
-        spreadsheet = gc.open_by_key(SPREADSHEET_ID)
-    except Exception as e:
-        logger.error("Cannot open spreadsheet for checkbox check: %s", e)
-        return results
+    gc = None
 
-    already_run = set()  # avoid running wb_feedbacks twice (ООО + ИП)
-
-    for base_name, entry in SHEET_TO_SYNC.items():
-        # Support both str and dict formats
-        if isinstance(entry, dict):
-            sync_name = entry["sync"]
-            checkbox_cell = entry.get("checkbox", "C1")
-        else:
-            sync_name = entry
-            checkbox_cell = "C1"
-
-        sheet_name = get_sheet_name(base_name)
+    for sid in SPREADSHEET_IDS:
         try:
-            ws = spreadsheet.worksheet(sheet_name)
-        except Exception:
-            continue  # sheet doesn't exist yet
-
-        try:
-            cb_val = str(ws.acell(checkbox_cell).value or "").strip().upper()
-        except Exception:
+            if gc is None:
+                gc = get_client(GOOGLE_SA_FILE)
+            spreadsheet = gc.open_by_key(sid)
+        except Exception as e:
+            logger.error("Cannot open spreadsheet %s for checkbox check: %s", sid[:8], e)
             continue
 
-        if cb_val != "TRUE":
-            continue
+        already_run = set()  # avoid running wb_feedbacks twice (ООО + ИП) per spreadsheet
 
-        # Reset checkbox immediately
-        try:
-            ws.update_acell(checkbox_cell, "FALSE")
-        except Exception:
-            pass
+        for base_name, entry in SHEET_TO_SYNC.items():
+            # Support both str and dict formats
+            if isinstance(entry, dict):
+                sync_name = entry["sync"]
+                checkbox_cell = entry.get("checkbox", "C1")
+            else:
+                sync_name = entry
+                checkbox_cell = "C1"
 
-        if sync_name in already_run:
-            continue
-        already_run.add(sync_name)
-
-        # For fin_data: read dates from B1/C1
-        start_date = None
-        end_date = None
-        if sync_name == "fin_data":
+            sheet_name = get_sheet_name(base_name)
             try:
-                b1 = (ws.acell("B1").value or "").strip()
-                c1 = (ws.acell("C1").value or "").strip()
-                if b1 and c1:
-                    start_date = b1
-                    end_date = c1
+                ws = spreadsheet.worksheet(sheet_name)
+            except Exception:
+                continue  # sheet doesn't exist yet
+
+            try:
+                cb_val = str(ws.acell(checkbox_cell).value or "").strip().upper()
+            except Exception:
+                continue
+
+            if cb_val != "TRUE":
+                continue
+
+            # Reset checkbox immediately
+            try:
+                ws.update_acell(checkbox_cell, "FALSE")
             except Exception:
                 pass
 
-        logger.info("Checkbox triggered on sheet '%s' -> running %s", sheet_name, sync_name)
-        result = run_sync(sync_name, start_date=start_date, end_date=end_date)
-        results.append(result)
+            if sync_name in already_run:
+                continue
+            already_run.add(sync_name)
+
+            # For fin_data: read dates from B1/C1
+            start_date = None
+            end_date = None
+            if sync_name == "fin_data":
+                try:
+                    b1 = (ws.acell("B1").value or "").strip()
+                    c1 = (ws.acell("C1").value or "").strip()
+                    if b1 and c1:
+                        start_date = b1
+                        end_date = c1
+                except Exception:
+                    pass
+
+            logger.info("Checkbox triggered on sheet '%s' [%s] -> running %s", sheet_name, sid[:8], sync_name)
+            result = run_sync(sync_name, start_date=start_date, end_date=end_date, spreadsheet_id=sid)
+            results.append(result)
 
     if results:
         try:

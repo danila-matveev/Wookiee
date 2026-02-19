@@ -22,7 +22,7 @@ from shared.data_layer import (
     get_ozon_fin_data_by_barcode,
     get_ozon_orders_by_barcode,
 )
-from services.sheets_sync.config import GOOGLE_SA_FILE, SPREADSHEET_ID, get_sheet_name
+from services.sheets_sync.config import GOOGLE_SA_FILE, get_active_spreadsheet_id, get_sheet_name
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +100,7 @@ def sync(start_date: str | None = None, end_date: str | None = None) -> int:
 
     # 1. Google Sheets
     gc = get_client(GOOGLE_SA_FILE)
-    spreadsheet = gc.open_by_key(SPREADSHEET_ID)
+    spreadsheet = gc.open_by_key(get_active_spreadsheet_id())
     sheet_name = get_sheet_name(SHEET_NAME)
     ws = get_or_create_worksheet(spreadsheet, sheet_name, rows=5000, cols=80)
 

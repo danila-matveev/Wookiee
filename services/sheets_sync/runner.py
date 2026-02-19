@@ -19,7 +19,7 @@ import sys
 import time
 from dataclasses import dataclass
 
-from services.sheets_sync.config import LOG_LEVEL, TEST_MODE
+from services.sheets_sync.config import LOG_LEVEL, TEST_MODE, SPREADSHEET_IDS, set_active_spreadsheet_id
 
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL, logging.INFO),
@@ -91,8 +91,9 @@ SYNC_REGISTRY: dict[str, dict] = {
 }
 
 
-def run_sync(name: str, start_date: str | None = None, end_date: str | None = None) -> SyncResult:
-    """Run a single sync by name."""
+def run_sync(name: str, start_date: str | None = None, end_date: str | None = None,
+             spreadsheet_id: str | None = None) -> SyncResult:
+    """Run a single sync by name, optionally targeting a specific spreadsheet."""
     info = SYNC_REGISTRY.get(name)
     if not info:
         return SyncResult(name=name, sheet_name="", status="error", rows=0, duration_sec=0, error=f"Unknown sync: {name}")
@@ -102,6 +103,10 @@ def run_sync(name: str, start_date: str | None = None, end_date: str | None = No
 
     logger.info("Running sync: %s -> %s", name, sheet)
     t0 = time.time()
+
+    # Temporarily override active spreadsheet ID if a specific one is requested
+    if spreadsheet_id:
+        set_active_spreadsheet_id(spreadsheet_id)
 
     try:
         mod = __import__(module_path, fromlist=["sync"])
@@ -121,14 +126,21 @@ def run_sync(name: str, start_date: str | None = None, end_date: str | None = No
         logger.exception("Sync %s failed", name)
         return SyncResult(name=name, sheet_name=sheet, status="error", rows=0, duration_sec=round(duration, 1), error=str(e))
 
+    finally:
+        if spreadsheet_id:
+            set_active_spreadsheet_id(None)
+
 
 def run_all(start_date: str | None = None, end_date: str | None = None) -> list[SyncResult]:
-    """Run all syncs sequentially."""
+    """Run all syncs sequentially for every configured spreadsheet."""
     results = []
-    for name in SYNC_REGISTRY:
-        result = run_sync(name, start_date=start_date, end_date=end_date)
-        results.append(result)
-        logger.info("  %s: %s (%d rows, %.1fs)", result.name, result.status, result.rows, result.duration_sec)
+    for sid in SPREADSHEET_IDS:
+        short_id = sid[:8]
+        logger.info("Running all syncs for spreadsheet %s...", short_id)
+        for name in SYNC_REGISTRY:
+            result = run_sync(name, start_date=start_date, end_date=end_date, spreadsheet_id=sid)
+            results.append(result)
+            logger.info("  [%s] %s: %s (%d rows, %.1fs)", short_id, result.name, result.status, result.rows, result.duration_sec)
     return results
 
 
