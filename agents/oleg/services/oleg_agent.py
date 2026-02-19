@@ -20,7 +20,7 @@ from typing import Dict, Any, Optional, List
 
 from agents.oleg.services.agent_executor import AgentExecutor, AgentResult
 from agents.oleg.services.agent_tools import TOOL_DEFINITIONS
-from agents.oleg.services.time_utils import get_current_time_msk
+from agents.oleg.services.time_utils import get_now_msk
 from shared.utils.json_utils import extract_json
 
 logger = logging.getLogger(__name__)
@@ -416,7 +416,7 @@ class OlegAgent:
 ---
 
 ТЕКУЩИЕ МЕТАДАННЫЕ:
-- Текущее время (MSK): {get_current_time_msk()}
+- Текущее время (MSK): {get_now_msk()}
 - Версия отчёта: {REPORT_VERSION}
 
 ---
