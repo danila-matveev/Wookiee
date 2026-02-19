@@ -313,7 +313,9 @@ def sync_report_to_notion(start_date, end_date, report_md, source="Скрипт"
         URL страницы в Notion
     """
     if not title:
-        title = f"Аналитика {start_date.replace('-', '.')} — {end_date.replace('-', '.')}"
+        start_fmt = ".".join(reversed(start_date.split("-")))
+        end_fmt = ".".join(reversed(end_date.split("-")))
+        title = f"Аналитика {start_fmt} — {end_fmt}"
     blocks = md_to_notion_blocks(report_md)
 
     print(f"\n[Notion] Поиск существующей страницы: \"{title}\"...")
