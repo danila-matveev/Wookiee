@@ -44,6 +44,18 @@ async def cmd_start(message: Message, state: FSMContext, auth_service):
     """
     user_id = message.from_user.id
 
+    # Auth disabled — auto-register and show menu
+    if not auth_service.auth_enabled:
+        auth_service.register_user(user_id)
+        from agents.oleg.handlers.menu import create_main_menu_keyboard
+        await message.answer(
+            "👋 Добро пожаловать в <b>Wookiee Analytics Bot</b>!\n\n"
+            "🏠 <b>Главное меню</b>\n\nВыберите действие:",
+            parse_mode="HTML",
+            reply_markup=create_main_menu_keyboard()
+        )
+        return
+
     # Check if already authenticated
     if auth_service.is_authenticated(user_id):
         await message.answer(
