@@ -95,7 +95,7 @@ FEEDBACK_LOG_PATH: str = str(Path(__file__).parent / "feedback_log.md")
 # Scheduler (MSK)
 # ============================================================================
 TIMEZONE: str = "Europe/Moscow"
-DAILY_REPORT_TIME: str = os.getenv("DAILY_REPORT_TIME", "10:05")
+DAILY_REPORT_TIME: str = os.getenv("DAILY_REPORT_TIME", "09:00")
 WEEKLY_REPORT_TIME: str = os.getenv("WEEKLY_REPORT_TIME", "10:15")
 MONTHLY_REPORT_TIME: str = os.getenv("MONTHLY_REPORT_TIME", "10:30")
 

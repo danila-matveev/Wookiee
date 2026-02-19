@@ -495,7 +495,7 @@ class OlegAgentRunner:
         self.scheduler.scheduler.add_job(
             check_data_freshness,
             trigger=CronTrigger(
-                minute="*/5", hour="6-14",
+                minute="*/5", hour="8-14",
                 timezone=self.scheduler.timezone,
             ),
             id="data_freshness_check",
