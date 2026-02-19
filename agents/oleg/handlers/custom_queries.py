@@ -24,7 +24,7 @@ from typing import Optional
 
 from agents.oleg.services.report_storage import ReportStorage
 from agents.oleg.services.report_formatter import ReportFormatter
-from agents.oleg.services.time_utils import get_today_msk, get_current_time_msk
+from agents.oleg.services.time_utils import get_today_msk, get_now_msk
 
 logger = logging.getLogger(__name__)
 

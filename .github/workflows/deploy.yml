@@ -27,14 +27,13 @@ jobs:
             echo "=== Pulling latest code ==="
             git pull origin main
 
+            echo "=== Cleaning stale PID locks ==="
+            rm -f "$PROJECT_DIR"/agents/oleg/logs/*.pid
+
             echo "=== Building and deploying Wookiee services ==="
             cd deploy
             docker compose build
             docker compose up -d
-
-            echo "=== Updating landing page ==="
-            docker cp "$PROJECT_DIR/landing/." \
-              n8n-docker-caddy-caddy-1:/srv/landing/
 
             echo "=== Waiting for healthchecks (30s) ==="
             sleep 30
