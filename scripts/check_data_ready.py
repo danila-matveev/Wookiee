@@ -160,7 +160,10 @@ def main():
         target_date = (date.today() - timedelta(days=1)).strftime("%Y-%m-%d")
 
     print(f"\nПроверка готовности данных за {target_date}")
-    print(f"Время запуска: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    import pytz
+    msk_tz = pytz.timezone("Europe/Moscow")
+    now_msk = datetime.now(msk_tz)
+    print(f"Время запуска: {now_msk.strftime('%Y-%m-%d %H:%M:%S')} MSK")
 
     check_db(DB_WB, "WB", target_date, "dateupdate")
     check_db(DB_OZON, "OZON", target_date, "date_update")
