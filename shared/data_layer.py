@@ -15,6 +15,7 @@ import psycopg2
 from dotenv import load_dotenv
 
 from shared.config import DB_CONFIG, DB_WB, DB_OZON, SUPABASE_ENV_PATH, MARKETPLACE_DB_CONFIG
+from shared.model_mapping import get_osnova_sql, map_to_osnova
 
 # =============================================================================
 # CONNECTION FACTORY — переключение legacy / managed БД
@@ -1442,17 +1443,18 @@ def get_wb_price_margin_by_model_period(start_date, end_date):
     conn = _get_wb_connection()
     cur = conn.cursor()
 
+    model_expr = get_osnova_sql("SPLIT_PART(article, '/', 1)")
     query = f"""
     SELECT
-        LOWER(SPLIT_PART(article, '/', 1)) as model,
+        {model_expr} as model,
         CASE WHEN SUM(full_counts) > 0
             THEN (SUM(revenue_spp) - COALESCE(SUM(revenue_return_spp), 0))
                  / SUM(full_counts)
             ELSE NULL END as avg_price_per_unit,
         SUM(full_counts) as sales_count,
-        {WB_MARGIN_SQL} as margin,
+        {{WB_MARGIN_SQL}} as margin,
         CASE WHEN (SUM(revenue_spp) - COALESCE(SUM(revenue_return_spp), 0)) > 0
-            THEN ({WB_MARGIN_SQL}) /
+            THEN ({{WB_MARGIN_SQL}}) /
                  (SUM(revenue_spp) - COALESCE(SUM(revenue_return_spp), 0)) * 100
             ELSE NULL END as margin_pct,
         SUM(revenue_spp) - COALESCE(SUM(revenue_return_spp), 0) as revenue,
@@ -1465,7 +1467,7 @@ def get_wb_price_margin_by_model_period(start_date, end_date):
             ELSE NULL END as drr_pct
     FROM abc_date
     WHERE date >= %s AND date < %s
-    GROUP BY LOWER(SPLIT_PART(article, '/', 1))
+    GROUP BY {model_expr}
     HAVING SUM(full_counts) > 0
     ORDER BY margin DESC;
     """
@@ -1491,9 +1493,10 @@ def get_ozon_price_margin_by_model_period(start_date, end_date):
     conn = _get_ozon_connection()
     cur = conn.cursor()
 
-    query = """
+    model_expr = get_osnova_sql("SPLIT_PART(article, '/', 1)")
+    query = f"""
     SELECT
-        LOWER(SPLIT_PART(article, '/', 1)) as model,
+        {model_expr} as model,
         CASE WHEN SUM(count_end) > 0
             THEN SUM(price_end) / SUM(count_end)
             ELSE NULL END as avg_price_per_unit,
@@ -1511,7 +1514,7 @@ def get_ozon_price_margin_by_model_period(start_date, end_date):
             ELSE NULL END as drr_pct
     FROM abc_date
     WHERE date >= %s AND date < %s
-    GROUP BY LOWER(SPLIT_PART(article, '/', 1))
+    GROUP BY {model_expr}
     HAVING SUM(count_end) > 0
     ORDER BY margin DESC;
     """
@@ -1830,7 +1833,7 @@ def get_wb_turnover_by_model(start_date, end_date):
     # Агрегация по модели
     model_data = {}
     for art in articles:
-        model_name = art['model']
+        model_name = map_to_osnova(art['model'])
         if model_name not in model_data:
             model_data[model_name] = {'sales_count': 0, 'stock_total': 0, 'revenue': 0, 'margin': 0}
         model_data[model_name]['sales_count'] += art['sales_count']
@@ -1839,7 +1842,8 @@ def get_wb_turnover_by_model(start_date, end_date):
 
     # Добавить остатки (stock по артикулам → агрегация по модели)
     for art_key, stock_val in stock_by_article.items():
-        model_name = art_key.split('/')[0] if '/' in art_key else art_key
+        base_name = art_key.split('/')[0] if '/' in art_key else art_key
+        model_name = map_to_osnova(base_name)
         if model_name in model_data:
             model_data[model_name]['stock_total'] += stock_val
 
@@ -1872,7 +1876,7 @@ def get_ozon_turnover_by_model(start_date, end_date):
 
     model_data = {}
     for art in articles:
-        model_name = art['model']
+        model_name = map_to_osnova(art['model'])
         if model_name not in model_data:
             model_data[model_name] = {'sales_count': 0, 'stock_total': 0, 'revenue': 0, 'margin': 0}
         model_data[model_name]['sales_count'] += art['sales_count']
@@ -1880,7 +1884,8 @@ def get_ozon_turnover_by_model(start_date, end_date):
         model_data[model_name]['margin'] += art['margin']
 
     for art_key, stock_val in stock_by_article.items():
-        model_name = art_key.split('/')[0] if '/' in art_key else art_key
+        base_name = art_key.split('/')[0] if '/' in art_key else art_key
+        model_name = map_to_osnova(base_name)
         if model_name in model_data:
             model_data[model_name]['stock_total'] += stock_val
 
