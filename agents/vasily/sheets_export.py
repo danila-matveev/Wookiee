@@ -412,7 +412,7 @@ def _clear_banding(spreadsheet, sheet_id: int) -> None:
         if sheet["properties"]["sheetId"] == sheet_id:
             for br in sheet.get("bandedRanges", []):
                 spreadsheet.batch_update({"requests": [
-                    {"deleteBandedRange": {"bandedRangeId": br["bandedRangeId"]}}
+                    {"deleteBanding": {"bandedRangeId": br["bandedRangeId"]}}
                 ]})
             break
 
