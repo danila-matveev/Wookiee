@@ -137,7 +137,7 @@ services:
       - n8n-docker-caddy_default
 
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 60s
       timeout: 10s
       retries: 3
