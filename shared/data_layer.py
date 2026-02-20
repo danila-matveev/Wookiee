@@ -185,7 +185,7 @@ def get_wb_by_model(current_start, prev_start, current_end):
     query = f"""
     SELECT
         CASE WHEN date >= %s THEN 'current' ELSE 'previous' END as period,
-        LOWER(SPLIT_PART(article, '/', 1)) as model,
+        {get_osnova_sql("SPLIT_PART(article, '/', 1)")} as model,
         SUM(full_counts) as sales_count,
         SUM(revenue_spp) - COALESCE(SUM(revenue_return_spp), 0) as revenue_before_spp,
         SUM(reclama + reclama_vn) as adv_total,
