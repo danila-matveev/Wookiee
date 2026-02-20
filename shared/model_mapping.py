@@ -6,10 +6,21 @@ MODEL_OSNOVA_MAPPING = {
     "wendy": "Wendy",
     "bella": "Bella",
     "audrey": "Audrey",
+    "alice": "Alice",
+    "mia": "Mia",
+    "miafull": "Miafull",
+    "space": "Space",
+    "valery": "Valery",
+    "duo": "Duo",
+    "angelina": "Angelina",
+    "amanda slip": "Amanda", "amanda thong": "Amanda", "amanda": "Amanda",
+    "olivia": "Olivia",
+    "roxy": "Roxy",
     "set vuki": "Set Vuki", "set vukip": "Set Vuki", "set vuki p": "Set Vuki", "set wookiee": "Set Vuki", "set vuki2": "Set Vuki", "set vuki 2": "Set Vuki",
     "set moon": "Set Moon", "set moon2": "Set Moon", "set moon 2": "Set Moon", "set moonp": "Set Moon", "set moon p": "Set Moon",
     "set bella": "Set Bella",
-    "set wendy": "Set Wendy"
+    "set wendy": "Set Wendy",
+    "set ruby": "Set Ruby"
 }
 
 def map_to_osnova(model_name: str) -> str:

@@ -24,6 +24,8 @@ _VALID_CHANNELS = {"wb", "ozon"}
 _VALID_REPORT_TYPES = {"daily", "period", "weekly", "monthly", "comparison", "price_review", "promotion_analysis", "price_scenario"}
 _KNOWN_MODELS = [
     "wendy", "ruby", "set_vuki", "joy", "vuki", "moon", "audrey", "bella",
+    "alice", "mia", "miafull", "space", "valery", "duo", "angelina", "amanda", "olivia", "roxy",
+    "set_moon", "set_bella", "set_wendy", "set_ruby"
 ]
 _DATA_START_DATE = "2024-01-01"
 _MAX_CLARIFICATION_ROUNDS = 3
