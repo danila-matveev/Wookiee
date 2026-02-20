@@ -63,6 +63,9 @@ class NotionService:
 
         try:
             title = f"Аналитика {start_date.replace('-', '.')} — {end_date.replace('-', '.')}"
+            
+            # Remove empty sections to avoid orphan headers in Notion
+            report_md = _remove_empty_sections(report_md)
             blocks = md_to_notion_blocks(report_md)
 
             existing = await self._find_existing_page(start_date, end_date)
@@ -182,6 +185,61 @@ def _parse_inline(text):
         elif seg:
             parts.append({"type": "text", "text": {"content": seg}})
     return parts if parts else [{"type": "text", "text": {"content": text}}]
+
+
+def _remove_empty_sections(md_text: str) -> str:
+    """
+    Removes headers that have no content before the next header of same or higher level.
+    """
+    lines = md_text.split('\n')
+    parsed = []
+    
+    # 1. Parse lines
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            parsed.append({'type': 'empty', 'text': line})
+            continue
+            
+        match = re.match(r'^(#+)\s+(.+)', stripped)
+        if match:
+            level = len(match.group(1))
+            parsed.append({'type': 'header', 'level': level, 'text': line})
+        else:
+            parsed.append({'type': 'content', 'text': line})
+            
+    # 2. Identify empty headers
+    indices_to_remove = set()
+    
+    for i in range(len(parsed)):
+        item = parsed[i]
+        if item['type'] == 'header':
+            has_content = False
+            for j in range(i + 1, len(parsed)):
+                next_item = parsed[j]
+                
+                # Found content -> keep header
+                if next_item['type'] == 'content':
+                    has_content = True
+                    break
+                
+                # Found another header
+                if next_item['type'] == 'header':
+                    # If same or higher level (H2 after H3, H3 after H3) -> stop, current header is empty
+                    if next_item['level'] <= item['level']:
+                        break
+                    # If deeper header (H4 after H3) -> continue looking for its content
+            
+            if not has_content:
+                indices_to_remove.add(i)
+                
+    # 3. Rebuild text
+    result_lines = []
+    for i in range(len(parsed)):
+        if i not in indices_to_remove:
+            result_lines.append(parsed[i]['text'])
+            
+    return '\n'.join(result_lines)
 
 
 def md_to_notion_blocks(md_text: str) -> list:
