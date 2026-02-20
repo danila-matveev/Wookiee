@@ -27,6 +27,27 @@ from shared.data_layer import (
 )
 
 
+MODEL_OSNOVA_MAPPING = {
+    "vuki": "Vuki", "vuki2": "Vuki", "vukiw": "Vuki", "vukiw2": "Vuki", "vukin": "Vuki", "vukin2": "Vuki", "vukip": "Vuki", "компбел-ж-бесшов": "Vuki",
+    "moon": "Moon", "moon2": "Moon", "moonw": "Moon", "moonw2": "Moon",
+    "ruby": "Ruby", "rubyw": "Ruby", "rubyp": "Ruby",
+    "joy": "Joy", "joyw": "Joy",
+    "wendy": "Wendy",
+    "bella": "Bella",
+    "audrey": "Audrey",
+    "set vuki": "Set Vuki", "set vukip": "Set Vuki", "set wookiee": "Set Vuki", "set vuki2": "Set Vuki",
+    "set moon": "Set Moon", "set moon2": "Set Moon", "set moonp": "Set Moon",
+    "set bella": "Set Bella",
+    "set wendy": "Set Wendy"
+}
+
+def _map_to_osnova(model_name: str) -> str:
+    if not model_name:
+        return "Unknown"
+    norm = model_name.lower().strip()
+    return MODEL_OSNOVA_MAPPING.get(norm, model_name.capitalize())
+
+
 # =============================================================================
 # TOOL DEFINITIONS (OpenAI function calling format)
 # =============================================================================
@@ -596,32 +617,34 @@ async def _handle_model_breakdown(channel: str, start_date: str, end_date: str) 
     current_models = {}
     previous_models = {}
     for row in results:
-        period, model = row[0], row[1]
+        period, raw_model = row[0], row[1]
+        model = _map_to_osnova(raw_model)
         
-        # Merge orders data
-        orders_data = orders_map.get((period, model), {"orders_count": 0, "orders_rub": 0})
+        # We also need to get orders_data. The orders_data is keyed by (period, raw_model)
+        orders_data = orders_map.get((period, raw_model), {"orders_count": 0, "orders_rub": 0})
         
-        data = {
-            "model": model,
-            "sales_count": to_float(row[2]),
-            "revenue_before_spp": to_float(row[3]),
-            "adv_total": to_float(row[4]),
-            "margin": to_float(row[5]),
-            "orders_count": orders_data["orders_count"],
-            "orders_rub": orders_data["orders_rub"],
-        }
+        target_dict = current_models if period == "current" else previous_models
+        if model not in target_dict:
+            target_dict[model] = {
+                "model": model, "sales_count": 0, "revenue_before_spp": 0,
+                "adv_total": 0, "margin": 0, "orders_count": 0, "orders_rub": 0
+            }
         
-        rev = data["revenue_before_spp"]
-        orders_sum = data["orders_rub"]
-        
-        data["margin_pct"] = round(_safe_div(data["margin"], rev) * 100, 1)
-        data["drr_pct"] = round(_safe_div(data["adv_total"], rev) * 100, 1)  # DDR Sales
-        data["drr_orders_pct"] = round(_safe_div(data["adv_total"], orders_sum) * 100, 1)  # DDR Orders
+        target_dict[model]["sales_count"] += to_float(row[2])
+        target_dict[model]["revenue_before_spp"] += to_float(row[3])
+        target_dict[model]["adv_total"] += to_float(row[4])
+        target_dict[model]["margin"] += to_float(row[5])
+        target_dict[model]["orders_count"] += orders_data["orders_count"]
+        target_dict[model]["orders_rub"] += orders_data["orders_rub"]
 
-        if period == "current":
-            current_models[model] = data
-        else:
-            previous_models[model] = data
+    for d in (current_models, previous_models):
+        for model in list(d.keys()):
+            data = d[model]
+            rev = data["revenue_before_spp"]
+            orders_sum = data["orders_rub"]
+            data["margin_pct"] = round(_safe_div(data["margin"], rev) * 100, 1)
+            data["drr_pct"] = round(_safe_div(data["adv_total"], rev) * 100, 1)
+            data["drr_orders_pct"] = round(_safe_div(data["adv_total"], orders_sum) * 100, 1)
 
     # Build list with changes
     models_list = []
@@ -780,22 +803,28 @@ async def _handle_model_advertising(start_date: str, end_date: str) -> dict:
     current_models = {}
     previous_models = {}
     for row in results:
-        period, model = row[0], row[1]
-        data = {
-            "model": model,
-            "ad_views": to_float(row[2]),
-            "ad_clicks": to_float(row[3]),
-            "ad_spend": to_float(row[4]),
-            "ad_to_cart": to_float(row[5]),
-            "ad_orders": to_float(row[6]),
-            "ctr_pct": round(to_float(row[7]), 2),
-            "cpc_rub": round(to_float(row[8]), 1),
-        }
-        data = _enrich_ad_metrics(data)
-        if period == "current":
-            current_models[model] = data
-        else:
-            previous_models[model] = data
+        period, raw_model = row[0], row[1]
+        model = _map_to_osnova(raw_model)
+        
+        target_dict = current_models if period == "current" else previous_models
+        if model not in target_dict:
+            target_dict[model] = {
+                "model": model, "ad_views": 0, "ad_clicks": 0,
+                "ad_spend": 0, "ad_to_cart": 0, "ad_orders": 0
+            }
+        
+        target_dict[model]["ad_views"] += to_float(row[2])
+        target_dict[model]["ad_clicks"] += to_float(row[3])
+        target_dict[model]["ad_spend"] += to_float(row[4])
+        target_dict[model]["ad_to_cart"] += to_float(row[5])
+        target_dict[model]["ad_orders"] += to_float(row[6])
+
+    for d in (current_models, previous_models):
+        for model in list(d.keys()):
+            data = d[model]
+            data["ctr_pct"] = round(_safe_div(data["ad_clicks"], data["ad_views"]) * 100, 2)
+            data["cpc_rub"] = round(_safe_div(data["ad_spend"], data["ad_clicks"]), 1)
+            d[model] = _enrich_ad_metrics(data)
 
     models_list = []
     for model, curr in sorted(current_models.items(), key=lambda x: x[1]["ad_spend"], reverse=True):
@@ -832,16 +861,17 @@ async def _handle_orders_by_model(channel: str, start_date: str, end_date: str) 
     current_models = {}
     previous_models = {}
     for row in results:
-        period, model = row[0], row[1]
-        data = {
-            "model": model,
-            "orders_count": to_float(row[2]),
-            "orders_rub": to_float(row[3]),
-        }
-        if period == "current":
-            current_models[model] = data
-        else:
-            previous_models[model] = data
+        period, raw_model = row[0], row[1]
+        model = _map_to_osnova(raw_model)
+        
+        target_dict = current_models if period == "current" else previous_models
+        if model not in target_dict:
+            target_dict[model] = {
+                "model": model, "orders_count": 0, "orders_rub": 0
+            }
+        
+        target_dict[model]["orders_count"] += to_float(row[2])
+        target_dict[model]["orders_rub"] += to_float(row[3])
 
     models_list = []
     for model, curr in sorted(current_models.items(), key=lambda x: x[1]["orders_rub"], reverse=True):
