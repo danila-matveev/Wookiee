@@ -625,17 +625,30 @@ async def _handle_model_breakdown(channel: str, start_date: str, end_date: str) 
 
     # Build list with changes
     models_list = []
-    for model, curr in sorted(current_models.items(), key=lambda x: x[1]["margin"], reverse=True):
+    all_models = set(current_models.keys()) | set(previous_models.keys())
+    
+    for model in sorted(all_models): 
+        curr = current_models.get(model, {
+            "model": model, "sales_count": 0, "revenue_before_spp": 0, 
+            "adv_total": 0, "margin": 0, "orders_count": 0, "orders_rub": 0,
+            "margin_pct": 0, "drr_pct": 0, "drr_orders_pct": 0
+        })
         prev = previous_models.get(model, {})
+        
         entry = {**curr}
-        if prev:
-            entry["margin_change_pct"] = _pct_change(curr["margin"], prev.get("margin", 0))
-            entry["margin_change_abs"] = round(curr["margin"] - prev.get("margin", 0), 0)
-            entry["revenue_change_pct"] = _pct_change(curr["revenue_before_spp"], prev.get("revenue_before_spp", 0))
-            entry["sales_change_pct"] = _pct_change(curr["sales_count"], prev.get("sales_count", 0))
-            entry["orders_rub_change"] = round(curr["orders_rub"] - prev.get("orders_rub", 0), 0)
-            entry["margin_pct_change_pp"] = round(curr.get("margin_pct", 0) - prev.get("margin_pct", 0), 1)
+        
+        # Calculate changes regardless of whether prev exists (defaults to 0 if empty)
+        entry["margin_change_pct"] = _pct_change(curr["margin"], prev.get("margin", 0))
+        entry["margin_change_abs"] = round(curr["margin"] - prev.get("margin", 0), 0)
+        entry["revenue_change_pct"] = _pct_change(curr["revenue_before_spp"], prev.get("revenue_before_spp", 0))
+        entry["sales_change_pct"] = _pct_change(curr["sales_count"], prev.get("sales_count", 0))
+        entry["orders_rub_change"] = round(curr["orders_rub"] - prev.get("orders_rub", 0), 0)
+        entry["margin_pct_change_pp"] = round(curr.get("margin_pct", 0) - prev.get("margin_pct", 0), 1)
+        
         models_list.append(entry)
+    
+    # Sort by margin descending after building the full list
+    models_list.sort(key=lambda x: x["margin"], reverse=True)
 
     return {
         "channel": channel.upper(),
