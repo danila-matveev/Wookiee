@@ -38,7 +38,7 @@ TOOL_DEFINITIONS = [
             "name": "get_brand_finance",
             "description": (
                 "Общая финансовая сводка бренда (WB + OZON): маржа (₽, %), выручка до СПП, "
-                "заказы (шт, ₽), продажи шт, реклама (внутр + внешн), ДРР%, СПП%. "
+                "заказы (шт, ₽), продажи шт, реклама (внутр + внешн), ДРР% (от продаж и от заказов), СПП%. "
                 "Автоматически сравнивает с предыдущим аналогичным периодом. "
                 "Используй ПЕРВЫМ для общей картины."
             ),
@@ -59,7 +59,7 @@ TOOL_DEFINITIONS = [
             "description": (
                 "Детальные финансы одного канала (wb или ozon): маржа, выручка, заказы, продажи, "
                 "реклама (внутренняя/внешняя отдельно), логистика, хранение, себестоимость, "
-                "комиссия, СПП%, НДС, штрафы, удержания. Используй для углублённого анализа канала."
+                "комиссия, СПП%, ДРР% (от продаж и от заказов), НДС, штрафы, удержания. Используй для углублённого анализа канала."
             ),
             "parameters": {
                 "type": "object",
@@ -414,6 +414,7 @@ def _enrich_finance(data: dict) -> dict:
     data["adv_total"] = adv_total
     data["margin_pct"] = round(_safe_div(margin, rev) * 100, 1)
     data["drr_pct"] = round(_safe_div(adv_total, rev) * 100, 1)
+    data["drr_orders_pct"] = round(_safe_div(adv_total, data.get("orders_rub", 0)) * 100, 1)
     data["spp_pct"] = round(_safe_div(spp, data.get("revenue_before_spp_gross", rev)) * 100, 1)
     data["logistics_per_unit"] = round(_safe_div(data.get("logistics", 0), sales), 0)
     data["cogs_per_unit"] = round(_safe_div(data.get("cost_of_goods", 0), sales), 0)
@@ -677,6 +678,7 @@ async def _handle_advertising_stats(channel: str, start_date: str, end_date: str
                 "card_to_cart_pct": round(_safe_div(add_to_cart, card_opens) * 100, 2),
                 "cart_to_order_pct": round(_safe_div(funnel_orders, add_to_cart) * 100, 2),
                 "order_to_buyout_pct": round(_safe_div(buyouts, funnel_orders) * 100, 2),
+                "cr_full_pct": round(_safe_div(funnel_orders, card_opens) * 100, 2),
                 "full_conversion_pct": round(_safe_div(buyouts, card_opens) * 100, 2),
             }
 
@@ -952,12 +954,30 @@ async def _handle_weekly_breakdown(channel: str, start_date: str, end_date: str)
 async def _handle_validate_data_quality(date: str) -> dict:
     """Validate WB data quality for a specific date."""
     result = await asyncio.to_thread(validate_wb_data_quality, date)
+    warnings = result.get("warnings", [])
+
+    # Дополнительная проверка на идентичность ДРР (равенство выручки и заказов)
+    try:
+        finance = await _handle_brand_finance(date, date)
+        wb_data = next((c for c in finance.get("channels", []) if c["channel"] == "WB"), None)
+        if wb_data:
+            rev = wb_data.get("revenue_before_spp", 0)
+            orders = wb_data.get("orders_rub", 0)
+            if rev > 0 and rev == orders:
+                warnings.append({
+                    'type': 'drr_metrics_identity',
+                    'severity': 'WARNING',
+                    'message': f"Выручка и заказы за {date} идентичны ({rev} руб). Проверьте корректность ДРР от заказов vs ДРР от продаж.",
+                    'explanation': 'В реальных данных выручка и заказы практически никогда не совпадают до рубля. Это может указывать на ошибку подгрузки данных.'
+                })
+    except Exception as e:
+        logger.error(f"Error during extended DQ check: {e}")
 
     return {
         "date": date,
-        "warnings": result.get("warnings", []),
+        "warnings": warnings,
         "margin_adjustment": result.get("margin_adjustment", 0),
-        "data_quality": "OK" if not result.get("warnings") else "WARNINGS",
+        "data_quality": "OK" if not warnings else "WARNINGS",
     }
 
 
