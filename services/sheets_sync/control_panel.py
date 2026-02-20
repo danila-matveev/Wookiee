@@ -32,7 +32,7 @@ CHECKBOX_CHECK_INTERVAL = 4  # check data-sheet checkboxes every N poll cycles (
 SHEET_TO_SYNC = {
     "МойСклад_АПИ": "moysklad",
     "WB остатки": "wb_stocks",
-    "WB цены": "wb_prices",
+    "WB Цены": "wb_prices",
     "Ozon остатки и цены": "ozon",
     "Отзывы ООО": "wb_feedbacks",
     "Отзывы ИП": "wb_feedbacks",
