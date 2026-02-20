@@ -98,7 +98,6 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - TZ=Europe/Moscow
-      - SYNC_TEST_MODE=true
 
     volumes:
       - ../services/sheets_sync/credentials:/app/services/sheets_sync/credentials:ro
@@ -114,6 +113,44 @@ services:
         reservations:
           cpus: '0.25'
           memory: 128M
+
+  # ── Vasily API: HTTP-эндпоинт для запуска расчёта перестановок из Google Sheets ──
+  vasily-api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.vasily_api
+    container_name: vasily-api
+    restart: unless-stopped
+
+    env_file:
+      - ../.env
+
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TZ=Europe/Moscow
+
+    volumes:
+      - ../services/sheets_sync/credentials:/app/services/sheets_sync/credentials:ro
+      - ../agents/vasily/data:/app/agents/vasily/data
+
+    networks:
+      - n8n-docker-caddy_default
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
 
 networks:
   n8n-docker-caddy_default:
