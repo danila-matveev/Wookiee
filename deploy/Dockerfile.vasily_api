@@ -16,7 +16,6 @@ COPY services/sheets_sync/ /app/services/sheets_sync/
 COPY agents/__init__.py /app/agents/__init__.py
 COPY agents/vasily/ /app/agents/vasily/
 COPY scripts/ /app/scripts/
-COPY sku_database/Спецификации.xlsx /app/sku_database/Спецификации.xlsx
 
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
