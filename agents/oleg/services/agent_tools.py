@@ -78,7 +78,7 @@ TOOL_DEFINITIONS = [
             "name": "get_model_breakdown",
             "description": (
                 "Топ моделей по марже для канала: модель, продажи шт, выручка до СПП, "
-                "реклама, маржа + изменения vs предыдущий период. "
+                "реклама, маржа, заказы (руб), ДРР% (зак/прод) + изменения vs предыдущий период. "
                 "Используй для поиска моделей-драйверов и проблемных моделей."
             ),
             "parameters": {
@@ -418,6 +418,9 @@ def _enrich_finance(data: dict) -> dict:
     data["spp_pct"] = round(_safe_div(spp, data.get("revenue_before_spp_gross", rev)) * 100, 1)
     data["logistics_per_unit"] = round(_safe_div(data.get("logistics", 0), sales), 0)
     data["cogs_per_unit"] = round(_safe_div(data.get("cost_of_goods", 0), sales), 0)
+    data["storage_per_unit"] = round(_safe_div(data.get("storage", 0), sales), 0)
+    data["margin_per_unit"] = round(_safe_div(margin, sales), 0)
+    data["turnover_days"] = 0  # Placeholder: stock data not yet available in finance aggregation
     return data
 
 
@@ -570,29 +573,50 @@ async def _handle_model_breakdown(channel: str, start_date: str, end_date: str) 
     current_start, prev_start, current_end = _calc_comparison_dates(start_date, end_date)
 
     if channel == "wb":
-        results = await asyncio.to_thread(
-            get_wb_by_model, current_start, prev_start, current_end
+        results, orders_results = await asyncio.gather(
+            asyncio.to_thread(get_wb_by_model, current_start, prev_start, current_end),
+            asyncio.to_thread(get_wb_orders_by_model, current_start, prev_start, current_end)
         )
     else:
-        results = await asyncio.to_thread(
-            get_ozon_by_model, current_start, prev_start, current_end
+        results, orders_results = await asyncio.gather(
+            asyncio.to_thread(get_ozon_by_model, current_start, prev_start, current_end),
+            asyncio.to_thread(get_ozon_orders_by_model, current_start, prev_start, current_end)
         )
+
+    # Index orders data: (period, model) -> {orders_count, orders_rub}
+    orders_map = {}
+    for row in orders_results:
+        key = (row[0], row[1])
+        orders_map[key] = {
+            "orders_count": to_float(row[2]),
+            "orders_rub": to_float(row[3]),
+        }
 
     # Parse: (period, model, sales_count, revenue_before_spp, adv_total, margin)
     current_models = {}
     previous_models = {}
     for row in results:
         period, model = row[0], row[1]
+        
+        # Merge orders data
+        orders_data = orders_map.get((period, model), {"orders_count": 0, "orders_rub": 0})
+        
         data = {
             "model": model,
             "sales_count": to_float(row[2]),
             "revenue_before_spp": to_float(row[3]),
             "adv_total": to_float(row[4]),
             "margin": to_float(row[5]),
+            "orders_count": orders_data["orders_count"],
+            "orders_rub": orders_data["orders_rub"],
         }
+        
         rev = data["revenue_before_spp"]
+        orders_sum = data["orders_rub"]
+        
         data["margin_pct"] = round(_safe_div(data["margin"], rev) * 100, 1)
-        data["drr_pct"] = round(_safe_div(data["adv_total"], rev) * 100, 1)
+        data["drr_pct"] = round(_safe_div(data["adv_total"], rev) * 100, 1)  # DDR Sales
+        data["drr_orders_pct"] = round(_safe_div(data["adv_total"], orders_sum) * 100, 1)  # DDR Orders
 
         if period == "current":
             current_models[model] = data
@@ -609,6 +633,8 @@ async def _handle_model_breakdown(channel: str, start_date: str, end_date: str) 
             entry["margin_change_abs"] = round(curr["margin"] - prev.get("margin", 0), 0)
             entry["revenue_change_pct"] = _pct_change(curr["revenue_before_spp"], prev.get("revenue_before_spp", 0))
             entry["sales_change_pct"] = _pct_change(curr["sales_count"], prev.get("sales_count", 0))
+            entry["orders_rub_change"] = round(curr["orders_rub"] - prev.get("orders_rub", 0), 0)
+            entry["margin_pct_change_pp"] = round(curr.get("margin_pct", 0) - prev.get("margin_pct", 0), 1)
         models_list.append(entry)
 
     return {
