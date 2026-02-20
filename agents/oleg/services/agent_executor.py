@@ -51,7 +51,7 @@ class AgentExecutor:
     """
 
     MAX_ITERATIONS = 10
-    MAX_TOOL_RESULT_LENGTH = 8000  # Truncate large tool results
+    MAX_TOOL_RESULT_LENGTH = 8500  # Truncate large tool results
 
     def __init__(
         self,
