@@ -1878,7 +1878,7 @@ def get_ozon_turnover_by_model(start_date, end_date):
     for art in articles:
         model_name = map_to_osnova(art['model'])
         if model_name not in model_data:
-            model_data[model_name] = {'sales_count': 0, 'stock_total': 0, 'revenue': 0, 'margin': 0}
+            model_data[model_name] = {'sales_count': 0.0, 'stock_total': 0.0, 'revenue': 0.0, 'margin': 0.0}
         model_data[model_name]['sales_count'] += art['sales_count']
         model_data[model_name]['revenue'] += art['revenue']
         model_data[model_name]['margin'] += art['margin']
