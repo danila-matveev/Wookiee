@@ -634,6 +634,7 @@ async def _handle_model_breakdown(channel: str, start_date: str, end_date: str) 
             entry["revenue_change_pct"] = _pct_change(curr["revenue_before_spp"], prev.get("revenue_before_spp", 0))
             entry["sales_change_pct"] = _pct_change(curr["sales_count"], prev.get("sales_count", 0))
             entry["orders_rub_change"] = round(curr["orders_rub"] - prev.get("orders_rub", 0), 0)
+            entry["margin_pct_change_pp"] = round(curr.get("margin_pct", 0) - prev.get("margin_pct", 0), 1)
         models_list.append(entry)
 
     return {

@@ -10,6 +10,8 @@ def get_now_msk() -> datetime:
     """Return current datetime in Moscow."""
     return datetime.now(get_msk_tz())
 
+get_current_time_msk = get_now_msk
+
 def get_today_msk() -> date:
     """Return current date in Moscow."""
     return get_now_msk().date()
