@@ -185,7 +185,7 @@ def get_wb_by_model(current_start, prev_start, current_end):
     query = f"""
     SELECT
         CASE WHEN date >= %s THEN 'current' ELSE 'previous' END as period,
-        LOWER(SPLIT_PART(article, '/', 1)) as model,
+        {get_osnova_sql("SPLIT_PART(article, '/', 1)")} as model,
         SUM(full_counts) as sales_count,
         SUM(revenue_spp) - COALESCE(SUM(revenue_return_spp), 0) as revenue_before_spp,
         SUM(reclama + reclama_vn) as adv_total,
@@ -255,10 +255,10 @@ def get_wb_traffic_by_model(current_start, prev_start, current_end):
     conn = _get_wb_connection()
     cur = conn.cursor()
 
-    query = """
+    query = f"""
     SELECT
         CASE WHEN w.date >= %s THEN 'current' ELSE 'previous' END as period,
-        LOWER(SPLIT_PART(n.vendorcode, '/', 1)) as model,
+        {get_osnova_sql("SPLIT_PART(n.vendorcode, '/', 1)")} as model,
         SUM(w.views) as ad_views,
         SUM(w.clicks) as ad_clicks,
         SUM(w.sum) as ad_spend,
@@ -269,7 +269,7 @@ def get_wb_traffic_by_model(current_start, prev_start, current_end):
     FROM wb_adv w
     JOIN nomenclature n ON w.nmid = n.nmid
     WHERE w.date >= %s AND w.date < %s
-    GROUP BY 1, LOWER(SPLIT_PART(n.vendorcode, '/', 1))
+    GROUP BY 1, 2
     ORDER BY 1, 5 DESC;
     """
     cur.execute(query, (current_start, prev_start, current_end))
@@ -285,10 +285,10 @@ def get_wb_orders_by_model(current_start, prev_start, current_end):
     conn = _get_wb_connection()
     cur = conn.cursor()
 
-    query = """
+    query = f"""
     SELECT
         CASE WHEN date >= %s THEN 'current' ELSE 'previous' END as period,
-        LOWER(SPLIT_PART(supplierarticle, '/', 1)) as model,
+        {get_osnova_sql("SPLIT_PART(supplierarticle, '/', 1)")} as model,
         COUNT(*) as orders_count,
         SUM(pricewithdisc) as orders_rub
     FROM orders
@@ -361,10 +361,10 @@ def get_ozon_by_model(current_start, prev_start, current_end):
 
     # LOWER() — OZON хранит артикулы с Capitalized ("Wendy"), WB — с lowercase ("wendy").
     # Для корректного объединения каналов и группировки нужен единый регистр.
-    query = """
+    query = f"""
     SELECT
         CASE WHEN date >= %s THEN 'current' ELSE 'previous' END as period,
-        LOWER(SPLIT_PART(article, '/', 1)) as model,
+        {get_osnova_sql("SPLIT_PART(article, '/', 1)")} as model,
         SUM(count_end) as sales_count,
         SUM(price_end) as revenue_before_spp,
         SUM(reclama_end + adv_vn) as adv_total,
@@ -387,10 +387,10 @@ def get_ozon_orders_by_model(current_start, prev_start, current_end):
     conn = _get_ozon_connection()
     cur = conn.cursor()
 
-    query = """
+    query = f"""
     SELECT
         CASE WHEN in_process_at::date >= %s THEN 'current' ELSE 'previous' END as period,
-        LOWER(SPLIT_PART(offer_id, '/', 1)) as model,
+        {get_osnova_sql("SPLIT_PART(offer_id, '/', 1)")} as model,
         COUNT(*) as orders_count,
         SUM(price) as orders_rub
     FROM orders
@@ -497,7 +497,7 @@ def get_wb_by_article(start_date, end_date):
     query = f"""
     SELECT
         LOWER(article) as article,
-        LOWER(SPLIT_PART(LOWER(article), '/', 1)) as model,
+        {get_osnova_sql("SPLIT_PART(article, '/', 1)")} as model,
         SUM(count_orders) as orders_count,
         SUM(full_counts) as sales_count,
         SUM(revenue_spp) - COALESCE(SUM(revenue_return_spp), 0) as revenue,
@@ -508,7 +508,7 @@ def get_wb_by_article(start_date, end_date):
     FROM abc_date
     WHERE date >= %s AND date < %s
       AND article IS NOT NULL AND article != '' AND article != '0'
-    GROUP BY LOWER(article)
+    GROUP BY 1
     ORDER BY 6 DESC;
     """
     cur.execute(query, (start_date, end_date))
@@ -540,10 +540,10 @@ def get_ozon_by_article(start_date, end_date):
 
     # OZON abc_date.article = "Alice/black_L" (с размером).
     # Убираем суффикс размера и приводим к lowercase.
-    finance_query = """
+    finance_query = f"""
     SELECT
         LOWER(REGEXP_REPLACE(article, '_[^_]+$', '')) as artikul,
-        SPLIT_PART(LOWER(REGEXP_REPLACE(article, '_[^_]+$', '')), '/', 1) as model,
+        {get_osnova_sql("SPLIT_PART(REGEXP_REPLACE(article, '_[^_]+$', ''), '/', 1)")} as model,
         SUM(count_end) as sales_count,
         SUM(price_end) as revenue,
         SUM(marga) - SUM(nds) as margin,
@@ -553,7 +553,7 @@ def get_ozon_by_article(start_date, end_date):
     FROM abc_date
     WHERE date >= %s AND date < %s
       AND article IS NOT NULL AND article != ''
-    GROUP BY LOWER(REGEXP_REPLACE(article, '_[^_]+$', ''))
+    GROUP BY 1
     ORDER BY 5 DESC;
     """
     cur.execute(finance_query, (start_date, end_date))
