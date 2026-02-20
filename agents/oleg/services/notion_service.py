@@ -152,10 +152,19 @@ class NotionService:
         return pages[0] if pages else None
 
     async def _delete_page_content(self, page_id: str) -> None:
-        """Delete all blocks from a page."""
-        result = await self._request("GET", f"blocks/{page_id}/children?page_size=100")
-        for block in result.get("results", []):
-            await self._request("DELETE", f"blocks/{block['id']}")
+        """Delete all blocks from a page recursively (pagination)."""
+        while True:
+            result = await self._request("GET", f"blocks/{page_id}/children?page_size=100")
+            blocks = result.get("results", [])
+            if not blocks:
+                break
+            
+            logger.info(f"Notion: deleting {len(blocks)} blocks from page {page_id}")
+            for block in blocks:
+                await self._request("DELETE", f"blocks/{block['id']}")
+            
+            if not result.get("has_more"):
+                break
 
     async def _append_blocks(self, page_id: str, blocks: list) -> None:
         """Append blocks in batches of 100."""

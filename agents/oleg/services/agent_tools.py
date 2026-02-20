@@ -82,7 +82,7 @@ TOOL_DEFINITIONS = [
             "description": (
                 "Полная декомпозиция по моделям (Vuki, Moon, Ruby, Wendy и др.) для канала. "
                 "Возвращает маржу, продажи, рекламу и ДРР. ОБЯЗАТЕЛЬНО выводи все полученные модели "
-                "в таблицу отчета (4.1.2/4.2.2), не пропуская убыточные модели, такие как Ruby."
+                "в таблицу отчета (4.1.2/4.2.2), не пропуская убыточные модели."
             ),
             "parameters": {
                 "type": "object",
@@ -313,6 +313,8 @@ def _safe_div(a, b, default=0.0):
 def _pct_change(current, previous):
     """Calculate percentage change."""
     if previous is None or previous == 0:
+        if current > 0: return 100.0
+        if current < 0: return -100.0
         return 0.0
     return round(((current - previous) / abs(previous)) * 100, 1)
 
@@ -633,6 +635,8 @@ async def _handle_model_breakdown(channel: str, start_date: str, end_date: str) 
     all_models = set(current_models.keys()) | set(previous_models.keys())
     
     for model in sorted(all_models): 
+        if model == "Other":
+            continue
         curr = current_models.get(model, {
             "model": model, "sales_count": 0, "revenue_before_spp": 0, 
             "adv_total": 0, "margin": 0, "orders_count": 0, "orders_rub": 0,
@@ -810,6 +814,8 @@ async def _handle_model_advertising(start_date: str, end_date: str) -> dict:
 
     models_list = []
     for model, curr in sorted(current_models.items(), key=lambda x: x[1]["ad_spend"], reverse=True):
+        if model == "Other":
+            continue
         prev = previous_models.get(model, {})
         entry = {**curr}
         if prev:
@@ -857,6 +863,8 @@ async def _handle_orders_by_model(channel: str, start_date: str, end_date: str) 
 
     models_list = []
     for model, curr in sorted(current_models.items(), key=lambda x: x[1]["orders_rub"], reverse=True):
+        if model == "Other":
+            continue
         prev = previous_models.get(model, {})
         entry = {**curr}
         if prev:
