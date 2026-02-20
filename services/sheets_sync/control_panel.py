@@ -34,8 +34,8 @@ SHEET_TO_SYNC = {
     "WB остатки": "wb_stocks",
     "WB Цены": "wb_prices",
     "Ozon остатки и цены": "ozon",
-    "Отзывы ООО": "wb_feedbacks",
-    "Отзывы ИП": "wb_feedbacks",
+    "Отзывы ООО": {"sync": "wb_feedbacks", "date_cells": ("A5", "B5")},
+    "Отзывы ИП": {"sync": "wb_feedbacks", "date_cells": ("A5", "B5")},
     "Фин данные": {"sync": "fin_data", "checkbox": "D1"},
     "Склейки WB": "wb_bundles",
     "Склейки Озон": "ozon_bundles",
@@ -98,7 +98,7 @@ def check_data_sheet_checkboxes() -> list:
                 continue
             already_run.add(sync_name)
 
-            # For fin_data: read dates from B1/C1
+            # Read dates from configured cells (fin_data: B1/C1, feedbacks: A5/B5)
             start_date = None
             end_date = None
             if sync_name == "fin_data":
@@ -108,6 +108,17 @@ def check_data_sheet_checkboxes() -> list:
                     if b1 and c1:
                         start_date = b1
                         end_date = c1
+                except Exception:
+                    pass
+            elif isinstance(entry, dict) and "date_cells" in entry:
+                try:
+                    cell_start, cell_end = entry["date_cells"]
+                    v_start = (ws.acell(cell_start).value or "").strip()
+                    v_end = (ws.acell(cell_end).value or "").strip()
+                    if v_start:
+                        start_date = v_start
+                    if v_end:
+                        end_date = v_end
                 except Exception:
                     pass
 
