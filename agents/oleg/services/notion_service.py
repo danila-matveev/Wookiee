@@ -331,25 +331,21 @@ def md_to_notion_blocks(md_text: str) -> list:
             i += 1
             continue
 
-        # Headings
-        if line.startswith('### '):
+        # Headings (support # to ######, mapping to h1-h3)
+        header_match = re.match(r'^(#+)\s+(.+)', line.strip())
+        if header_match:
+            level = len(header_match.group(1))
+            content = header_match.group(2).strip()
+            # Notion only supports heading_1, heading_2, heading_3
+            notion_level = min(level, 3)
+            block_type = f"heading_{notion_level}"
+            
             blocks.append({
-                "object": "block", "type": "heading_3",
-                "heading_3": {"rich_text": [{"type": "text", "text": {"content": line[4:].strip()[:2000]}}]},
-            })
-            i += 1
-            continue
-        if line.startswith('## '):
-            blocks.append({
-                "object": "block", "type": "heading_2",
-                "heading_2": {"rich_text": [{"type": "text", "text": {"content": line[3:].strip()[:2000]}}]},
-            })
-            i += 1
-            continue
-        if line.startswith('# '):
-            blocks.append({
-                "object": "block", "type": "heading_1",
-                "heading_1": {"rich_text": [{"type": "text", "text": {"content": line[2:].strip()[:2000]}}]},
+                "object": "block",
+                "type": block_type,
+                block_type: {
+                    "rich_text": [{"type": "text", "text": {"content": content[:2000]}}]
+                },
             })
             i += 1
             continue
