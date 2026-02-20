@@ -27,26 +27,7 @@ from shared.data_layer import (
 )
 
 
-MODEL_OSNOVA_MAPPING = {
-    "vuki": "Vuki", "vuki2": "Vuki", "vukiw": "Vuki", "vukiw2": "Vuki", "vukin": "Vuki", "vukin2": "Vuki", "vukip": "Vuki", "компбел-ж-бесшов": "Vuki",
-    "moon": "Moon", "moon2": "Moon", "moonw": "Moon", "moonw2": "Moon",
-    "ruby": "Ruby", "rubyw": "Ruby", "rubyp": "Ruby",
-    "joy": "Joy", "joyw": "Joy",
-    "wendy": "Wendy",
-    "bella": "Bella",
-    "audrey": "Audrey",
-    "set vuki": "Set Vuki", "set vukip": "Set Vuki", "set wookiee": "Set Vuki", "set vuki2": "Set Vuki",
-    "set moon": "Set Moon", "set moon2": "Set Moon", "set moonp": "Set Moon",
-    "set bella": "Set Bella",
-    "set wendy": "Set Wendy"
-}
-
-def _map_to_osnova(model_name: str) -> str:
-    if not model_name:
-        return "Unknown"
-    norm = model_name.lower().strip().replace('_', ' ')
-    # Also handle some edge cases if necessary, but replace('_', ' ') solves the reported issue
-    return MODEL_OSNOVA_MAPPING.get(norm, model_name.capitalize())
+from shared.model_mapping import map_to_osnova as _map_to_osnova
 
 
 # =============================================================================
