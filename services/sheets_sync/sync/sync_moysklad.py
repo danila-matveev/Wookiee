@@ -13,7 +13,7 @@ from shared.clients.sheets_client import (
     set_checkbox,
     write_range,
 )
-from services.sheets_sync.config import GOOGLE_SA_FILE, MOYSKLAD_TOKEN, SPREADSHEET_ID, get_sheet_name
+from services.sheets_sync.config import GOOGLE_SA_FILE, MOYSKLAD_TOKEN, get_active_spreadsheet_id, get_sheet_name
 
 logger = logging.getLogger(__name__)
 
@@ -75,26 +75,26 @@ def sync() -> int:
         # 5. Write to Google Sheet
         sheet_name = get_sheet_name(SHEET_NAME)
         gc = get_client(GOOGLE_SA_FILE)
-        spreadsheet = gc.open_by_key(SPREADSHEET_ID)
+        spreadsheet = gc.open_by_key(get_active_spreadsheet_id())
         ws = get_or_create_worksheet(spreadsheet, sheet_name)
 
-        # Clear data from row 3 down (preserve rows 1-2: datetime, headers, manual button)
+        # Clear from row 3 down (preserve row 1: meta, row 2: headers)
         last_row = ws.row_count
         last_col = max(ws.col_count, len(HEADERS))
         if last_row >= 3:
             ws.batch_clear([f"A3:{_col_letter(last_col)}{last_row}"])
 
-        # Row 1, A1: datetime only (like original GAS: single cell)
-        now_dt = get_moscow_now()
-        ws.update_acell("A1", now_dt.strftime("%Y-%m-%d %H:%M:%S"))
+        # Row 1, A1: update timestamp
+        date_str, time_str = get_moscow_datetime()
+        ws.update_acell("A1", f"Обновлено: {date_str} {time_str}")
 
-        # Row 2: All 42 headers (safe to overwrite — keeps them in sync)
+        # Row 2: headers
         write_range(ws, start_row=2, start_col=1, data=[HEADERS])
 
         # Checkbox for refresh in C1
         set_checkbox(ws, "C1")
 
-        # Row 3+: Main data
+        # Row 3+: data
         if data_rows:
             write_range(ws, start_row=3, start_col=1, data=data_rows)
 

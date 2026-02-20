@@ -10,7 +10,7 @@ from shared.clients.sheets_client import (
     get_or_create_worksheet,
     write_range,
 )
-from services.sheets_sync.config import ALL_CABINETS, GOOGLE_SA_FILE, SPREADSHEET_ID, get_sheet_name
+from services.sheets_sync.config import ALL_CABINETS, GOOGLE_SA_FILE, get_active_spreadsheet_id, get_sheet_name
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ def sync() -> int:
     logger.info("=== sync_ozon_bundles: start ===")
 
     gc = get_client(GOOGLE_SA_FILE)
-    spreadsheet = gc.open_by_key(SPREADSHEET_ID)
+    spreadsheet = gc.open_by_key(get_active_spreadsheet_id())
     sheet_name = get_sheet_name(SHEET_NAME)
     ws = get_or_create_worksheet(spreadsheet, sheet_name)
 

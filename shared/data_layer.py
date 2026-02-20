@@ -114,10 +114,11 @@ def calc_change_pp(current, previous):
 
 WB_MARGIN_SQL = """
     SUM(marga) - SUM(nds) - SUM(reclama_vn)
+    - COALESCE(SUM(reclama_vn_vk), 0)
+    - COALESCE(SUM(reclama_vn_creators), 0)
 """
-# Формула верифицирована: расхождение с OneScreen < 0.001% (0.23 руб на 239 199).
-# Предыдущая 11-полевая формула (revenue_spp - comis - logist - sebes - ...)
-# завышала маржу на ~2.5%, т.к. НЕ учитывала возвраты.
+# reclama_vn = блогеры, reclama_vn_vk = ВК, reclama_vn_creators = креаторы — ОТДЕЛЬНЫЕ поля.
+# Верифицировано 18.02.2026: расхождение с OneScreen 0.03 руб на 14.9 млн (< 0.001%).
 # Поле `marga` уже включает все возвраты (revenue_return_spp, sebes_return и т.д.).
 
 
@@ -1981,3 +1982,184 @@ def get_ozon_stock_daily_by_model(start_date, end_date, model=None):
         row['total_stock'] = to_float(row['total_stock'])
 
     return results
+
+
+# ============================================================
+# Фин данные: WB + OZON по баркодам (для листа "Фин данные")
+# ============================================================
+
+def get_wb_fin_data_by_barcode(start_date, end_date):
+    """WB финансы по баркодам для листа 'Фин данные'. LOWER() на артикуле и модели."""
+    conn = _get_wb_connection()
+    cur = conn.cursor()
+
+    query = f"""
+    SELECT
+        barcode,
+        nm_id,
+        MIN(LOWER(article)) as article,
+        MIN(LOWER(ts_name)) as ts_name,
+        lk,
+        SPLIT_PART(MIN(LOWER(article)), '/', 1) as model,
+        MIN(date) as min_sale_date,
+        SUM(count_orders) as orders_count,
+        SUM(full_counts) as sales_count,
+        SUM(revenue_spp) as revenue_before_spp_gross,
+        SUM(revenue_spp) - COALESCE(SUM(revenue_return_spp), 0) as revenue_before_spp,
+        SUM(revenue) - COALESCE(SUM(revenue_return), 0) as revenue_after_spp,
+        SUM(spp) as spp_amount,
+        COALESCE(SUM(revenue_return_spp), 0) as returns_revenue,
+        SUM(comis_spp) as commission,
+        SUM(logist) as logistics,
+        SUM(sebes) as cost_of_goods,
+        SUM(reclama) as adv_internal,
+        SUM(reclama_vn) as adv_external,
+        COALESCE(SUM(reclama_vn_vk), 0) as adv_vk,
+        COALESCE(SUM(reclama_vn_creators), 0) as adv_creators,
+        SUM(storage) as storage,
+        SUM(nds) as nds,
+        SUM(penalty) as penalty,
+        SUM(retention) as retention,
+        SUM(deduction) as deduction,
+        {WB_MARGIN_SQL} as margin,
+        SUM(counts_sam) as self_purchase_count
+    FROM abc_date
+    WHERE date >= %s AND date < %s
+      AND barcode IS NOT NULL AND barcode != ''
+    GROUP BY barcode, nm_id, lk
+    ORDER BY {WB_MARGIN_SQL} DESC;
+    """
+    cur.execute(query, (start_date, end_date))
+    columns = [desc[0] for desc in cur.description]
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    results = []
+    for r in rows:
+        row = dict(zip(columns, r))
+        for key in row:
+            if key not in ('barcode', 'article', 'ts_name', 'lk', 'model', 'min_sale_date'):
+                row[key] = to_float(row[key])
+        results.append(row)
+    return results
+
+
+def get_wb_orders_by_barcode(start_date, end_date):
+    """WB заказы по баркодам (для ср.чека заказов). Возвращает dict[barcode -> {...}]."""
+    conn = _get_wb_connection()
+    cur = conn.cursor()
+
+    query = """
+    SELECT
+        barcode,
+        COUNT(*) as orders_count,
+        SUM(pricewithdisc) as orders_rub
+    FROM orders
+    WHERE date >= %s AND date < %s
+      AND barcode IS NOT NULL AND barcode != ''
+      AND (iscancel IS NULL OR iscancel = '0' OR iscancel = 'false')
+    GROUP BY barcode;
+    """
+    cur.execute(query, (start_date, end_date))
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    result = {}
+    for r in rows:
+        result[str(r[0])] = {
+            'orders_count': to_float(r[1]),
+            'orders_rub': to_float(r[2]),
+        }
+    return result
+
+
+def get_ozon_fin_data_by_barcode(start_date, end_date):
+    """OZON финансы по баркодам. JOIN с nomenclature для получения barcode."""
+    conn = _get_ozon_connection()
+    cur = conn.cursor()
+
+    query = """
+    SELECT
+        COALESCE(n.barcode, a.article) as barcode,
+        a.article as ozon_article,
+        LOWER(SPLIT_PART(REGEXP_REPLACE(a.article, '_[^_]+$', ''), '/', 1)) as model,
+        a.lk,
+        MIN(a.date) as min_sale_date,
+        SUM(a.count_end) as sales_count,
+        SUM(a.price_end) as revenue_before_spp,
+        SUM(a.price_end_spp) as revenue_after_spp,
+        SUM(a.spp) as spp_amount,
+        SUM(a.count_return) as returns_count,
+        SUM(a.return_end) as returns_revenue,
+        SUM(a.comission_end) as commission,
+        SUM(a.logist_end) as logistics,
+        SUM(a.sebes_end) as cost_of_goods,
+        SUM(a.reclama_end) as adv_internal,
+        SUM(a.adv_vn) as adv_external,
+        COALESCE(SUM(a.adv_vn_vk), 0) as adv_vk,
+        COALESCE(SUM(a.adv_vn_creators), 0) as adv_creators,
+        SUM(a.storage_end) as storage,
+        SUM(a.nds) as nds,
+        SUM(a.marga) - SUM(a.nds)
+            - COALESCE(SUM(a.adv_vn_vk), 0)
+            - COALESCE(SUM(a.adv_vn_creators), 0) as margin
+    FROM abc_date a
+    LEFT JOIN nomenclature n ON a.article = n.article AND a.lk = n.lk
+    WHERE a.date >= %s AND a.date < %s
+      AND a.article IS NOT NULL AND a.article != ''
+    GROUP BY COALESCE(n.barcode, a.article), a.article, a.lk
+    ORDER BY SUM(a.marga) - SUM(a.nds)
+            - COALESCE(SUM(a.adv_vn_vk), 0)
+            - COALESCE(SUM(a.adv_vn_creators), 0) DESC;
+    """
+    cur.execute(query, (start_date, end_date))
+    columns = [desc[0] for desc in cur.description]
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    results = []
+    for r in rows:
+        row = dict(zip(columns, r))
+        for key in row:
+            if key not in ('barcode', 'ozon_article', 'model', 'lk', 'min_sale_date'):
+                row[key] = to_float(row[key])
+        results.append(row)
+    return results
+
+
+def get_ozon_orders_by_barcode(start_date, end_date):
+    """OZON заказы по баркодам. JOIN с nomenclature. Возвращает dict[barcode -> {...}]."""
+    conn = _get_ozon_connection()
+    cur = conn.cursor()
+
+    query = """
+    SELECT
+        COALESCE(n.barcode, o.offer_id) as barcode,
+        COUNT(*) as orders_count,
+        SUM(o.price) as orders_rub
+    FROM orders o
+    LEFT JOIN nomenclature n ON o.offer_id = n.article
+    WHERE o.in_process_at::date >= %s AND o.in_process_at::date < %s
+    GROUP BY COALESCE(n.barcode, o.offer_id);
+    """
+    cur.execute(query, (start_date, end_date))
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    result = {}
+    for r in rows:
+        barcode = str(r[0]) if r[0] else ''
+        if barcode:
+            result[barcode] = {
+                'orders_count': to_float(r[1]),
+                'orders_rub': to_float(r[2]),
+            }
+    return result

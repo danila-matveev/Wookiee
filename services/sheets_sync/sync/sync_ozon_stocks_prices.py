@@ -13,7 +13,7 @@ from shared.clients.sheets_client import (
     set_checkbox,
     to_number,
 )
-from services.sheets_sync.config import ALL_CABINETS, GOOGLE_SA_FILE, SPREADSHEET_ID, get_sheet_name
+from services.sheets_sync.config import ALL_CABINETS, GOOGLE_SA_FILE, get_active_spreadsheet_id, get_sheet_name
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,7 @@ def sync() -> int:
     logger.info("=== sync_ozon: start ===")
 
     gc = get_client(GOOGLE_SA_FILE)
-    spreadsheet = gc.open_by_key(SPREADSHEET_ID)
+    spreadsheet = gc.open_by_key(get_active_spreadsheet_id())
 
     # 1. Read "Все товары" sheet to get SKUs split by cabinet
     skus_by_cabinet = _get_skus_from_all_products(spreadsheet)
@@ -124,13 +124,10 @@ def sync() -> int:
         headers=HEADERS,
         data=normalized,
         meta_cells=[
-            (1, 1, "Дата составления отчёта"),
-            (1, 2, date_str),
-            (2, 1, "Время отчёта"),
-            (2, 2, time_str),
+            (1, 1, f"Обновлено: {date_str} {time_str}"),
         ],
-        header_row=3,
-        data_start_row=4,
+        header_row=2,
+        data_start_row=3,
     )
 
     # Checkbox for refresh
