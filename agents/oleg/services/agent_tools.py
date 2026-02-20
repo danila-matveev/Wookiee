@@ -418,6 +418,8 @@ def _enrich_finance(data: dict) -> dict:
     data["spp_pct"] = round(_safe_div(spp, data.get("revenue_before_spp_gross", rev)) * 100, 1)
     data["logistics_per_unit"] = round(_safe_div(data.get("logistics", 0), sales), 0)
     data["cogs_per_unit"] = round(_safe_div(data.get("cost_of_goods", 0), sales), 0)
+    data["storage_per_unit"] = round(_safe_div(data.get("storage", 0), sales), 0)
+    data["margin_per_unit"] = round(_safe_div(margin, sales), 0)
     data["turnover_days"] = 0  # Placeholder: stock data not yet available in finance aggregation
     return data
 
