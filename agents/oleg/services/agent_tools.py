@@ -44,7 +44,8 @@ MODEL_OSNOVA_MAPPING = {
 def _map_to_osnova(model_name: str) -> str:
     if not model_name:
         return "Unknown"
-    norm = model_name.lower().strip()
+    norm = model_name.lower().strip().replace('_', ' ')
+    # Also handle some edge cases if necessary, but replace('_', ' ') solves the reported issue
     return MODEL_OSNOVA_MAPPING.get(norm, model_name.capitalize())
 
 
