@@ -8,8 +8,9 @@
  */
 function refreshFinData() {
   // Ищем лист — сначала TEST, потом основной
-  var sheet = activeSpreadsheet.getSheetByName("Фин данные_TEST")
-           || activeSpreadsheet.getSheetByName("Фин данные");
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName("Фин данные_TEST")
+           || ss.getSheetByName("Фин данные");
   if (!sheet) {
     SpreadsheetApp.getUi().alert("Лист 'Фин данные' не найден");
     return;

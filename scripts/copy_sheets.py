@@ -1,4 +1,6 @@
-"""One-time script: copy sheets from 'Копия Спецификации' to 'Спецификации'.
+"""One-time script: copy all _TEST sheets from 'Копия Спецификации' to 'Спецификации'.
+
+Auto-discovers all sheets ending with '_TEST' in the source spreadsheet.
 
 Usage:
     python -m scripts.copy_sheets
@@ -19,16 +21,6 @@ logger = logging.getLogger(__name__)
 SOURCE_ID = "1WMfhIKf5qgmCGu8ypnbEEfdjNgkYhzs8hmEnRBajn2o"  # Копия Спецификации
 TARGET_ID = "19Nbr0kD8JJlwd7OCIMbM9qxucYNjmXnWtwJUgXv0vlg"  # Спецификации
 
-SHEETS_TO_COPY = [
-    "WB остатки",
-    "WB Цены",
-    "Ozon остатки и цены",
-    "МойСклад_АПИ",
-    "Отзывы ООО",
-    "Отзывы ИП",
-    "Фин данные",
-]
-
 
 def main():
     gc = get_client(GOOGLE_SA_FILE)
@@ -37,18 +29,17 @@ def main():
     logger.info("Source: %s", source.title)
     logger.info("Target ID: %s", TARGET_ID)
 
-    for name in SHEETS_TO_COPY:
-        try:
-            ws = source.worksheet(name)
-        except Exception:
-            logger.warning("Sheet '%s' not found in source, skipping", name)
+    copied = 0
+    for ws in source.worksheets():
+        if not ws.title.endswith("_TEST"):
             continue
 
-        logger.info("Copying '%s' (id=%s) ...", name, ws.id)
+        logger.info("Copying '%s' (id=%s) ...", ws.title, ws.id)
         ws.copy_to(TARGET_ID)
-        logger.info("  -> copied (will appear as 'Copy of %s')", name)
+        logger.info("  -> copied")
+        copied += 1
 
-    logger.info("Done. Rename copied sheets in the target spreadsheet as needed.")
+    logger.info("Done. Copied %d _TEST sheets.", copied)
 
 
 if __name__ == "__main__":
