@@ -89,10 +89,10 @@ def sync(start_date: str | None = None, end_date: str | None = None) -> int:
                 reverse=True,
             )
 
-            # Clear from row 5 down (preserve rows 1-4: meta + date labels)
+            # Clear entire sheet (old layout may have leftover data in rows 1-4)
             last_row = ws.row_count
-            if last_row >= 5:
-                ws.batch_clear([f"A5:{_col_letter(max(ws.col_count, 8))}{last_row}"])
+            max_col = _col_letter(max(ws.col_count, 8))
+            ws.batch_clear([f"A1:{max_col}{last_row}"])
 
             # Row 1: "Дата составления отчёта" + date
             write_range(ws, 1, 1, [["Дата составления отчёта", date_str]])
