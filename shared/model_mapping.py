@@ -50,4 +50,4 @@ def get_osnova_sql(raw_column: str) -> str:
     sql.append(f"  ELSE INITCAP(LOWER(TRIM(REPLACE({raw_column}, '_', ' '))))")
     sql.append("END")
     
-    return "\\n".join(sql)
+    return "\n".join(sql)
