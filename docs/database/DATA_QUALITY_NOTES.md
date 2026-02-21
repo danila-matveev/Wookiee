@@ -242,7 +242,21 @@ t['spp_pct'] = (total_spp_amount / total_revenue_before_spp * 100) if total_reve
 
 ---
 
-## 11. DATABASE_REFERENCE.md: поле count_return не существует
+## 11. WB: маппинг внутренняя/внешняя реклама (reclama / reclama_vn)
+
+**Обнаружено:** 2026-02-21, по таблице «5.2 Анти-драйверы (WB)»: для модели Ruby за 19.02.2026 отображалось «Внутр. реклама (тек)» 98 502 ₽ и «Внешн. реклама (тек)» 0, при корректных значениях 2 322 ₽ и 90 990 ₽.
+
+**Причина:** В источнике/БД WB внутренняя реклама (МП: Поиск, Автореклама и т.д.) приходит в поле `reclama_vn`, внешняя (блогеры, ВК) — в `reclama`. Документация и схема ранее указывали наоборот (`reclama` = внутренняя, `reclama_vn` = внешняя).
+
+**Исправление:** Во всех WB-запросах в `shared/data_layer.py` маппинг приведён в соответствие с фактическим источником: `adv_internal = SUM(reclama_vn)`, `adv_external = SUM(reclama)`.
+
+**Затронуты:** `get_wb_finance`, `get_wb_by_model`, `get_wb_by_article`, `get_wb_daily_series`, `get_wb_daily_series_range`, `get_wb_fin_data_by_barcode`, а также запросы с алиасом `a` (WB abc_date).
+
+**Примечание:** В `DATABASE_REFERENCE.md` и `DB_METRICS_GUIDE.md` по-прежнему указано «reclama = внутренняя, reclama_vn = внешняя» (схема/намерение). Фактически источник заполняет их наоборот; в коде маппинг исправлен.
+
+---
+
+## 12. DATABASE_REFERENCE.md: поле count_return не существует
 
 **Обнаружено:** 2026-02-11
 
@@ -254,7 +268,7 @@ t['spp_pct'] = (total_spp_amount / total_revenue_before_spp * 100) if total_reve
 
 ---
 
-## 12. Ложноположительное уведомление "Данные готовы" (BUG)
+## 13. Ложноположительное уведомление "Данные готовы" (BUG)
 
 **Обнаружено:** 2026-02-18
 
