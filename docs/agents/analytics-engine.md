@@ -17,6 +17,7 @@ Legacy-скрипты `daily_analytics.py`, `period_analytics.py`, `monthly_anal
 ## Ключевые блоки
 
 - Regression/elasticity: `agents/oleg/services/price_analysis/regression_engine.py`
+- Deep Elasticity: `agents/oleg/services/price_analysis/deep_elasticity_service.py` (поартикульный анализ, сегментация по ролям, First-Sale Alignment)
 - Scenarios/recommendations: `agents/oleg/services/price_analysis/scenario_modeler.py`, `agents/oleg/services/price_analysis/recommendation_engine.py`
 - ROI/stock optimization: `agents/oleg/services/price_analysis/roi_optimizer.py`, `agents/oleg/services/price_analysis/stock_price_optimizer.py`
 

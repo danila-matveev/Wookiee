@@ -23,6 +23,7 @@ from shared.data_layer import (
     get_ozon_traffic, get_ozon_daily_series, get_ozon_daily_series_range,
     get_ozon_weekly_breakdown,
     get_artikuly_statuses, validate_wb_data_quality,
+    get_total_avg_stock,
     to_float, calc_change,
 )
 
@@ -41,8 +42,8 @@ TOOL_DEFINITIONS = [
             "name": "get_brand_finance",
             "description": (
                 "Общая финансовая сводка бренда (WB + OZON): маржа (₽, %), выручка до СПП, "
-                "заказы (шт, ₽), продажи шт, реклама (внутр + внешн), ДРР% (от продаж и от заказов), СПП%. "
-                "Автоматически сравнивает с предыдущим аналогичным периодом. "
+                "заказы (шт, ₽), продажи шт, реклама (внутр + внешн), ДРР% (от продаж и от заказов), СПП%, "
+                "оборачиваемость (дни). Автоматически сравнивает с предыдущим аналогичным периодом. "
                 "Используй ПЕРВЫМ для общей картины."
             ),
             "parameters": {
@@ -81,8 +82,8 @@ TOOL_DEFINITIONS = [
             "name": "get_model_breakdown",
             "description": (
                 "Полная декомпозиция по моделям (Vuki, Moon, Ruby, Wendy и др.) для канала. "
-                "Возвращает маржу, продажи, рекламу и ДРР. ОБЯЗАТЕЛЬНО выводи все полученные модели "
-                "в таблицу отчета (4.1.2/4.2.2), не пропуская убыточные модели."
+                "Возвращает маржу, продажи, рекламу (внутренняя и внешняя отдельно) и ДРР. "
+                "ОБЯЗАТЕЛЬНО выводи все полученные модели в таблицу отчета (4.1.2/4.2.2), не пропуская убыточные модели."
             ),
             "parameters": {
                 "type": "object",
@@ -406,7 +407,7 @@ def _parse_orders_row_ozon(row) -> dict:
     return {"orders_count": to_float(row[1]), "orders_rub": to_float(row[2])}
 
 
-def _enrich_finance(data: dict) -> dict:
+def _enrich_finance(data: dict, avg_stock: float = 0.0, num_days: int = 1) -> dict:
     """Add derived metrics to finance dict."""
     rev = data.get("revenue_before_spp", 0)
     margin = data.get("margin", 0)
@@ -425,7 +426,21 @@ def _enrich_finance(data: dict) -> dict:
     data["cogs_per_unit"] = round(_safe_div(data.get("cost_of_goods", 0), sales), 0)
     data["storage_per_unit"] = round(_safe_div(data.get("storage", 0), sales), 0)
     data["margin_per_unit"] = round(_safe_div(margin, sales), 0)
-    data["turnover_days"] = 0  # Placeholder: stock data not yet available in finance aggregation
+    
+    # Оборачиваемость (дни) = Остаток / Средние продажи за период
+    # Средние продажи за период = sales / num_days
+    # Turnover = avg_stock / (sales / num_days) = (avg_stock * num_days) / sales
+    data["avg_stock"] = round(avg_stock, 0)
+    turnover = round(_safe_div(avg_stock * num_days, sales), 1)
+    data["turnover_days"] = turnover
+
+    # Годовой ROI % = ((маржа / себестоимость) * (365 / оборачиваемость)) * 100
+    # Примечание: маржа и себестоимость берутся суммарно за период (соотношение сохраняется)
+    cogs = data.get("cost_of_goods", 0)
+    margin_roi = _safe_div(margin, cogs)
+    turnover_factor = _safe_div(365, turnover)
+    data["roi_annual"] = round(margin_roi * turnover_factor * 100, 0)
+    
     return data
 
 
@@ -451,11 +466,20 @@ def _build_changes(current: dict, previous: dict) -> dict:
 async def _handle_brand_finance(start_date: str, end_date: str) -> dict:
     """Get brand (WB + OZON) financial summary."""
     current_start, prev_start, current_end = _calc_comparison_dates(start_date, end_date)
+    
+    # Calculate num_days
+    start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+    end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+    num_days = (end_dt - start_dt).days + 1
 
-    # Run both channels in parallel
-    wb_data, ozon_data = await asyncio.gather(
+    # Run both channels in parallel with stocks
+    (wb_data, ozon_data, wb_curr_stock, wb_prev_stock, ozon_curr_stock, ozon_prev_stock) = await asyncio.gather(
         asyncio.to_thread(get_wb_finance, current_start, prev_start, current_end),
         asyncio.to_thread(get_ozon_finance, current_start, prev_start, current_end),
+        asyncio.to_thread(get_total_avg_stock, "wb", current_start, current_end),
+        asyncio.to_thread(get_total_avg_stock, "wb", prev_start, current_start),
+        asyncio.to_thread(get_total_avg_stock, "ozon", current_start, current_end),
+        asyncio.to_thread(get_total_avg_stock, "ozon", prev_start, current_start),
     )
 
     wb_results, wb_orders = wb_data
@@ -468,6 +492,10 @@ async def _handle_brand_finance(start_date: str, end_date: str) -> dict:
     wb_previous = _parse_wb_finance_row(wb_periods["previous"])
     wb_orders_curr = _parse_orders_row_wb(wb_orders_periods.get("current"))
     wb_orders_prev = _parse_orders_row_wb(wb_orders_periods.get("previous"))
+    wb_current["orders_count"] = wb_orders_curr.get("orders_count", 0)
+    wb_current["orders_rub"] = wb_orders_curr.get("orders_rub", 0)
+    wb_previous["orders_count"] = wb_orders_prev.get("orders_count", 0)
+    wb_previous["orders_rub"] = wb_orders_prev.get("orders_rub", 0)
 
     # Parse OZON
     ozon_periods = _split_periods(ozon_results, 13)
@@ -476,6 +504,10 @@ async def _handle_brand_finance(start_date: str, end_date: str) -> dict:
     ozon_previous = _parse_ozon_finance_row(ozon_periods["previous"])
     ozon_orders_curr = _parse_orders_row_ozon(ozon_orders_periods.get("current"))
     ozon_orders_prev = _parse_orders_row_ozon(ozon_orders_periods.get("previous"))
+    ozon_current["orders_count"] = ozon_orders_curr.get("orders_count", 0)
+    ozon_current["orders_rub"] = ozon_orders_curr.get("orders_rub", 0)
+    ozon_previous["orders_count"] = ozon_orders_prev.get("orders_count", 0)
+    ozon_previous["orders_rub"] = ozon_orders_prev.get("orders_rub", 0)
 
     # Combine brand totals
     def _sum_channels(wb: dict, ozon: dict) -> dict:
@@ -492,18 +524,14 @@ async def _handle_brand_finance(start_date: str, end_date: str) -> dict:
 
     brand_current = _sum_channels(wb_current, ozon_current)
     brand_previous = _sum_channels(wb_previous, ozon_previous)
-
-    # Add orders (count + rub)
-    brand_current["orders_count"] = wb_orders_curr.get("orders_count", 0) + ozon_orders_curr.get("orders_count", 0)
-    brand_current["orders_rub"] = wb_orders_curr.get("orders_rub", 0) + ozon_orders_curr.get("orders_rub", 0)
-    brand_previous["orders_count"] = wb_orders_prev.get("orders_count", 0) + ozon_orders_prev.get("orders_count", 0)
-    brand_previous["orders_rub"] = wb_orders_prev.get("orders_rub", 0) + ozon_orders_prev.get("orders_rub", 0)
+    brand_curr_stock = wb_curr_stock + ozon_curr_stock
+    brand_prev_stock = wb_prev_stock + ozon_prev_stock
 
     # Enrich with derived metrics
-    brand_current = _enrich_finance(brand_current)
-    brand_previous = _enrich_finance(brand_previous)
-    wb_current = _enrich_finance(wb_current)
-    ozon_current = _enrich_finance(ozon_current)
+    brand_current = _enrich_finance(brand_current, brand_curr_stock, num_days)
+    brand_previous = _enrich_finance(brand_previous, brand_prev_stock, num_days)
+    wb_current = _enrich_finance(wb_current, wb_curr_stock, num_days)
+    ozon_current = _enrich_finance(ozon_current, ozon_curr_stock, num_days)
 
     changes = _build_changes(brand_current, brand_previous)
 
@@ -515,14 +543,16 @@ async def _handle_brand_finance(start_date: str, end_date: str) -> dict:
             "margin": wb_current.get("margin", 0),
             "margin_pct": wb_current.get("margin_pct", 0),
             "revenue": wb_current.get("revenue_before_spp", 0),
-            "orders_count": wb_orders_curr.get("orders_count", 0),
-            "orders_rub": wb_orders_curr.get("orders_rub", 0),
+            "orders_count": wb_current.get("orders_count", 0),
+            "orders_rub": wb_current.get("orders_rub", 0),
+            "turnover_days": wb_current.get("turnover_days", 0),
         },
         "ozon_summary": {
             "margin": ozon_current.get("margin", 0),
             "margin_pct": ozon_current.get("margin_pct", 0),
             "revenue": ozon_current.get("revenue_before_spp", 0),
-            "orders_rub": ozon_orders_curr.get("orders_rub", 0),
+            "orders_rub": ozon_current.get("orders_rub", 0),
+            "turnover_days": ozon_current.get("turnover_days", 0),
         },
     }
 
@@ -530,10 +560,17 @@ async def _handle_brand_finance(start_date: str, end_date: str) -> dict:
 async def _handle_channel_finance(channel: str, start_date: str, end_date: str) -> dict:
     """Get detailed finance for a single channel."""
     current_start, prev_start, current_end = _calc_comparison_dates(start_date, end_date)
+    
+    # Calculate num_days
+    start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+    end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+    num_days = (end_dt - start_dt).days + 1
 
     if channel == "wb":
-        results, orders = await asyncio.to_thread(
-            get_wb_finance, current_start, prev_start, current_end
+        (results, orders), curr_stock, prev_stock = await asyncio.gather(
+            asyncio.to_thread(get_wb_finance, current_start, prev_start, current_end),
+            asyncio.to_thread(get_total_avg_stock, "wb", current_start, current_end),
+            asyncio.to_thread(get_total_avg_stock, "wb", prev_start, current_start)
         )
         periods = _split_periods(results, 19)
         orders_periods = _split_periods(orders, 3)
@@ -546,8 +583,10 @@ async def _handle_channel_finance(channel: str, start_date: str, end_date: str) 
         previous["orders_count"] = orders_prev.get("orders_count", 0)
         previous["orders_rub"] = orders_prev.get("orders_rub", 0)
     else:
-        results, orders = await asyncio.to_thread(
-            get_ozon_finance, current_start, prev_start, current_end
+        (results, orders), curr_stock, prev_stock = await asyncio.gather(
+            asyncio.to_thread(get_ozon_finance, current_start, prev_start, current_end),
+            asyncio.to_thread(get_total_avg_stock, "ozon", current_start, current_end),
+            asyncio.to_thread(get_total_avg_stock, "ozon", prev_start, current_start)
         )
         periods = _split_periods(results, 13)
         orders_periods = _split_periods(orders, 3)
@@ -560,8 +599,8 @@ async def _handle_channel_finance(channel: str, start_date: str, end_date: str) 
         previous["orders_count"] = orders_prev.get("orders_count", 0)
         previous["orders_rub"] = orders_prev.get("orders_rub", 0)
 
-    current = _enrich_finance(current)
-    previous = _enrich_finance(previous)
+    current = _enrich_finance(current, curr_stock, num_days)
+    previous = _enrich_finance(previous, prev_stock, num_days)
     changes = _build_changes(current, previous)
 
     return {
@@ -578,15 +617,26 @@ async def _handle_model_breakdown(channel: str, start_date: str, end_date: str) 
     current_start, prev_start, current_end = _calc_comparison_dates(start_date, end_date)
 
     if channel == "wb":
-        results, orders_results = await asyncio.gather(
-            asyncio.to_thread(get_wb_by_model, current_start, prev_start, current_end),
-            asyncio.to_thread(get_wb_orders_by_model, current_start, prev_start, current_end)
+        (results, orders_results), stock_results = await asyncio.gather(
+            asyncio.gather(
+                asyncio.to_thread(get_wb_by_model, current_start, prev_start, current_end),
+                asyncio.to_thread(get_wb_orders_by_model, current_start, prev_start, current_end)
+            ),
+            asyncio.to_thread(get_wb_avg_stock, current_start, current_end)
         )
     else:
-        results, orders_results = await asyncio.gather(
-            asyncio.to_thread(get_ozon_by_model, current_start, prev_start, current_end),
-            asyncio.to_thread(get_ozon_orders_by_model, current_start, prev_start, current_end)
+        (results, orders_results), stock_results = await asyncio.gather(
+            asyncio.gather(
+                asyncio.to_thread(get_ozon_by_model, current_start, prev_start, current_end),
+                asyncio.to_thread(get_ozon_orders_by_model, current_start, prev_start, current_end)
+            ),
+            asyncio.to_thread(get_ozon_avg_stock, current_start, current_end)
         )
+
+    # Calculate num_days
+    start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+    end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+    num_days = (end_dt - start_dt).days + 1
 
     # Index orders data: (period, model) -> {orders_count, orders_rub}
     orders_map = {}
@@ -597,38 +647,69 @@ async def _handle_model_breakdown(channel: str, start_date: str, end_date: str) 
             "orders_rub": to_float(row[3]),
         }
 
-    # Parse: (period, model, sales_count, revenue_before_spp, adv_total, margin)
+    # Aggregate stock by model_osnova
+    stock_map = {}
+    for art, val in stock_results.items():
+        base = art.split('/')[0] if '/' in art else art
+        model_osnova = _map_to_osnova(base)
+        stock_map[model_osnova] = stock_map.get(model_osnova, 0) + val
+
+    # Parse results: (period, model, sales_count, revenue_before_spp, adv_internal, adv_external, margin, cogs)
     current_models = {}
     previous_models = {}
     for row in results:
         period, raw_model = row[0], row[1]
         model = _map_to_osnova(raw_model)
         
-        # We also need to get orders_data. The orders_data is keyed by (period, raw_model)
         orders_data = orders_map.get((period, raw_model), {"orders_count": 0, "orders_rub": 0})
         
         target_dict = current_models if period == "current" else previous_models
         if model not in target_dict:
             target_dict[model] = {
                 "model": model, "sales_count": 0, "revenue_before_spp": 0,
-                "adv_total": 0, "margin": 0, "orders_count": 0, "orders_rub": 0
+                "adv_internal": 0, "adv_external": 0, "adv_total": 0,
+                "margin": 0, "orders_count": 0, "orders_rub": 0,
+                "cost_of_goods": 0
             }
         
         target_dict[model]["sales_count"] += to_float(row[2])
         target_dict[model]["revenue_before_spp"] += to_float(row[3])
-        target_dict[model]["adv_total"] += to_float(row[4])
-        target_dict[model]["margin"] += to_float(row[5])
+        target_dict[model]["adv_internal"] += to_float(row[4])
+        target_dict[model]["adv_external"] += to_float(row[5])
+        target_dict[model]["adv_total"] += (to_float(row[4]) + to_float(row[5]))
+        target_dict[model]["margin"] += to_float(row[6])
+        target_dict[model]["cost_of_goods"] += to_float(row[7])
         target_dict[model]["orders_count"] += orders_data["orders_count"]
         target_dict[model]["orders_rub"] += orders_data["orders_rub"]
 
     for d in (current_models, previous_models):
+        is_current = (d is current_models)
         for model in list(d.keys()):
             data = d[model]
             rev = data["revenue_before_spp"]
             orders_sum = data["orders_rub"]
-            data["margin_pct"] = round(_safe_div(data["margin"], rev) * 100, 1)
+            sales = data["sales_count"]
+            margin = data["margin"]
+            cogs = data["cost_of_goods"]
+            
+            data["margin_pct"] = round(_safe_div(margin, rev) * 100, 1)
             data["drr_pct"] = round(_safe_div(data["adv_total"], rev) * 100, 1)
             data["drr_orders_pct"] = round(_safe_div(data["adv_total"], orders_sum) * 100, 1)
+            
+            # Stock metrics only for current period (based on stock_results)
+            if is_current:
+                avg_stock = stock_map.get(model, 0)
+                turnover = round(_safe_div(avg_stock * num_days, sales), 1)
+                data["avg_stock"] = round(avg_stock, 0)
+                data["turnover_days"] = turnover
+                
+                margin_roi = _safe_div(margin, cogs)
+                turnover_factor = _safe_div(365, turnover)
+                data["roi_annual"] = round(margin_roi * turnover_factor * 100, 0)
+            else:
+                data["avg_stock"] = 0
+                data["turnover_days"] = 0
+                data["roi_annual"] = 0
 
     # Build list with changes
     models_list = []
@@ -639,8 +720,11 @@ async def _handle_model_breakdown(channel: str, start_date: str, end_date: str) 
             continue
         curr = current_models.get(model, {
             "model": model, "sales_count": 0, "revenue_before_spp": 0, 
-            "adv_total": 0, "margin": 0, "orders_count": 0, "orders_rub": 0,
-            "margin_pct": 0, "drr_pct": 0, "drr_orders_pct": 0
+            "adv_internal": 0, "adv_external": 0, "adv_total": 0,
+            "margin": 0, "orders_count": 0, "orders_rub": 0,
+            "cost_of_goods": 0, # Added cost_of_goods
+            "margin_pct": 0, "drr_pct": 0, "drr_orders_pct": 0,
+            "avg_stock": 0, "turnover_days": 0, "roi_annual": 0 # Added stock/turnover/ROI
         })
         prev = previous_models.get(model, {})
         
