@@ -1,74 +1,44 @@
-# Wookiee — Архитектура системы AI-агентов
+# Wookiee — Architecture
 
-## Обзор
+## Current Production Contour
 
-Система AI-агентов для управления бизнесом бренда Wookiee. Каждый агент автономно решает конкретную бизнес-задачу, работая с данными из маркетплейсов, CRM, Google Sheets и других источников. Боты (Telegram) — интерфейсы для взаимодействия с агентами, а не самостоятельные сущности.
+`Oleg + Ibrahim + marketplace_etl + sheets_sync + wb_localization + deploy`
 
-## Компоненты
+## Components
 
-### 1. AI-агенты (`agents/`)
+### AI Agents (`agents/`)
 
-| Агент | Путь | Назначение | Интерфейс | LLM |
-|-------|------|-----------|-----------|-----|
-| **Олег** | `agents/oleg/` | Финансовый AI-агент: ReAct-аналитик, отчёты, NL-запросы, ценовая аналитика | Telegram | z.ai (GLM-4-plus), Claude (fallback) |
-| **Людмила** | `agents/lyudmila/` | CRM AI-агент: задачи, встречи, дайджесты через Bitrix24 | Telegram | z.ai |
-| **Ибрагим** | `agents/ibrahim/` | Дата-инженер: ETL маркетплейсов, reconciliation, управление схемой БД | CLI | z.ai (для analyze-api/schema) |
-| **Василий** | `agents/vasily/` | Логистический AI-агент: индекс локализации, перемещения между складами | CLI / Bitrix24 | — |
+| Компонент | Путь | Роль | Интерфейс |
+|---|---|---|---|
+| Олег | `agents/oleg/` | Финансовая аналитика, рекомендации, Telegram runtime | Telegram |
+| Ибрагим | `agents/ibrahim/` | Data engineering, ETL/DB orchestration | CLI |
 
-### Классификация по роли
+### Services (`services/`)
 
-| Слой | Роль | Агенты |
-|------|------|--------|
-| **Сенсоры** | Сбор и структурирование данных | Ибрагим (ETL, reconciliation) |
-| **Аналитики** | Синтез данных, генерация инсайтов | Олег (финансовый анализ, гипотезы) |
-| **Исполнители** | Действия по заданию | Людмила (задачи в Bitrix24), Василий (перемещения) |
+| Сервис | Путь | Назначение |
+|---|---|---|
+| Marketplace ETL | `services/marketplace_etl/` | Загрузка WB/OZON API данных в PostgreSQL |
+| Sheets Sync | `services/sheets_sync/` | Синхронизация Google Sheets |
+| WB Localization | `services/wb_localization/` | Расчёт локализации WB + экспорт в Google Sheets |
+| Vasily API | `services/vasily_api/` | HTTP запуск WB localization расчётов |
+| Ozon Delivery | `services/ozon_delivery/` | Утилиты оптимизации доставки OZON |
 
-Агент может совмещать роли. Олег — аналитик, но также исполнитель (отправка отчётов). Подробнее об уровнях автономии: [agent-principles.md](guides/agent-principles.md), секция 2.5.
+### Shared Layer
 
-### 2. Shared-инфраструктура (`shared/`)
-- **`config.py`** — единый источник конфигурации (читает `.env`)
-- **`data_layer.py`** — слой данных (ВСЕ DB-запросы, 65KB+)
-- **`clients/`** — API-клиенты: WB, OZON, МойСклад, Google Sheets, Bitrix24 OAuth, z.ai, OpenRouter
-- **`utils/`** — общие утилиты (JSON-сериализация)
+- `shared/config.py` — единая конфигурация
+- `shared/data_layer.py` — единый слой SQL/данных
+- `shared/clients/*` — API клиенты (WB/OZON/Sheets/Bitrix/MoySklad)
 
-### 3. Сервисы (`services/`)
-- **`marketplace_etl/`** — ETL-пайплайн: WB/OZON API → PostgreSQL (загрузка, валидация, reconciliation)
-- **`sheets_sync/`** — синхронизация Google Sheets ↔ маркетплейсы (цены, остатки, бандлы, отзывы)
-- **`ozon_delivery/`** — оптимизация доставки OZON
+## Runtime Entrypoints
 
-### 4. SKU Database (`sku_database/`)
-- Товарная матрица на Supabase (PostgreSQL): 22 модели, 478 артикулов, 1450 SKU
-- RLS включён на всех таблицах
-- Интеграция с Bitrix24 для синхронизации номенклатуры
+- `python -m agents.oleg`
+- `python -m services.marketplace_etl.scripts.run_daily_sync`
+- `python -m services.sheets_sync.runner`
+- `python -m services.wb_localization.run_localization`
+- `uvicorn services.vasily_api.app:app --host 0.0.0.0 --port 8000`
 
-## Источники данных
+## Deprecated / Archived
 
-| Источник | Хранилище | Содержимое |
-|----------|-----------|------------|
-| Wildberries | `pbi_wb_wookiee` (PostgreSQL) | Финансы, трафик, заказы, реклама |
-| OZON | `pbi_ozon_wookiee` (PostgreSQL) | Финансы, трафик, заказы, реклама |
-| Supabase | товарная матрица | Модели, артикулы, SKU, статусы, цвета |
-| МойСклад | API | Остатки, себестоимость, номенклатура |
-| Bitrix24 | API | Задачи, встречи, контакты, CRM |
-| Google Sheets | API | Оперативные данные, контроль цен/остатков |
-| Notion | API | Хранение отчётов |
-
-## Инфраструктура
-
-- **Сервер:** DigitalOcean Droplet (`167.99.12.42`), подробности → [infrastructure.md](infrastructure.md)
-- **Docker:** агенты контейнеризированы (`deploy/Dockerfile` + `deploy/docker-compose.yml`)
-- **Отчёты:** Markdown → `reports/` + синхронизация с Notion
-- **Расписание:** APScheduler (ежедневные отчёты, проверка данных)
-- **Мониторинг данных:** проверка каждые 5 мин с 06:00 до 12:00 МСК
-
-## Технологии
-
-- Python 3.11+
-- PostgreSQL (финансовые данные WB/OZON)
-- Supabase (товарная матрица, пользовательская память)
-- SQLite FTS5 (история отчётов)
-- aiogram 3.15 (Telegram-интерфейс)
-- Docker / docker-compose
-- APScheduler
-- z.ai API (GLM-4-plus, GLM-4.5-flash) + Claude API (Opus 4.6, Sonnet 4.5) via OpenRouter
-- Notion API, Bitrix24 API, WB API, OZON API, МойСклад API, Google Sheets API
+- `agents/lyudmila` удалён из активного runtime (архив: `docs/archive/retired_agents/lyudmila/`)
+- Агентный runtime Василия удалён (`agents/vasily` архивирован)
+- Актуальный модуль локализации: `services/wb_localization`

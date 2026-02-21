@@ -1,25 +1,23 @@
-# Конвенции логирования
+# Logging Conventions
 
-## Telegram Bot
+## Oleg Runtime
 
-- Директория: `bot/logs/` (git-ignored)
-- Уровень: контролируется переменной `LOG_LEVEL` в `.env` (по умолчанию: INFO)
-- Формат: стандартный Python logging
+- Логи: `agents/oleg/logs/`
+- Уровень: `LOG_LEVEL` в `.env`
+- Формат: standard Python logging
 
-## Analytics Scripts
+## WB Localization
 
-- Вывод: stdout (Markdown-отчёты)
-- Сохранение: `reports/` (git-ignored)
-- Флаг `--save` сохраняет в файл
-- Флаг `--notion` синхронизирует с Notion
+- Runtime-логи: stdout/stderr
+- История расчётов: `services/wb_localization/data/vasily.db`
 
-## Data Pipeline
+## ETL and Sheets Sync
 
-- Директория: `marketplace-data-pipeline/logs/` (git-ignored)
-- Уровень: переменная `LOG_LEVEL`
+- ETL и sync сервисы логируют в stdout контейнера
+- Для production диагностики использовать `docker logs`
 
-## Общие правила
+## General Rules
 
-- Не логировать секреты (пароли, токены)
-- Уровни: DEBUG для разработки, INFO для продакшена
-- Логи старше 3 дней можно удалять
+- Не логировать секреты и токены
+- `DEBUG` только для локальной отладки
+- `INFO`/`WARNING` для production

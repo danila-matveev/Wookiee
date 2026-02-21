@@ -24,19 +24,20 @@ import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
 
 # Путь к корню проекта
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from shared.clients.wb_client import WBClient
 from shared.clients.moysklad_client import MoySkladClient
 from services.sheets_sync.config import CABINET_IP, CABINET_OOO, MOYSKLAD_TOKEN
 
-from agents.vasily.generate_localization_report_v3 import (
+from services.wb_localization.generate_localization_report_v3 import (
     run_analysis,
     load_barcodes,
     load_statuses,
@@ -45,13 +46,14 @@ from agents.vasily.generate_localization_report_v3 import (
     DEFAULT_SAFETY_DAYS,
     DEFAULT_MIN_DONOR_LOC,
 )
-from agents.vasily.wb_localization_mappings import (
+from services.wb_localization.wb_localization_mappings import (
     WAREHOUSE_TO_FD,
     SKIP_WAREHOUSES,
     get_warehouse_fd,
     get_delivery_fd,
     log_unknown_mappings,
 )
+from services.wb_localization.history import History
 
 logger = logging.getLogger(__name__)
 
@@ -372,8 +374,110 @@ def _print_summary(report_path: Path) -> None:
 # ОСНОВНАЯ ЛОГИКА
 # ============================================
 
-def run_for_cabinet(cabinet, args, own_stock: dict[str, int],
-                    barcode_dict: dict, statuses: dict) -> Path | None:
+def _build_result_payload(cabinet_name: str, analysis: dict[str, Any]) -> dict[str, Any]:
+    """Преобразует результат анализа в структурированный payload для API/экспорта."""
+    sku_stats: pd.DataFrame = analysis.get('sku_stats', pd.DataFrame())
+    moves_df: pd.DataFrame = analysis.get('moves_df', pd.DataFrame())
+    supply_df: pd.DataFrame = analysis.get('supply_df', pd.DataFrame())
+    region_summary: pd.DataFrame = analysis.get('region_summary', pd.DataFrame())
+
+    total_local = float(sku_stats['Локальные'].sum()) if 'Локальные' in sku_stats.columns else 0.0
+    total_orders = float(sku_stats['Всего заказов'].sum()) if 'Всего заказов' in sku_stats.columns else 0.0
+    overall_index = (total_local / total_orders * 100) if total_orders > 0 else 0.0
+
+    summary = {
+        'overall_index': round(overall_index, 1),
+        'total_sku': int(len(sku_stats)),
+        'sku_with_orders': int((sku_stats['Всего заказов'] > 0).sum()) if 'Всего заказов' in sku_stats.columns else 0,
+        'movements_count': int(len(moves_df)),
+        'movements_qty': int(moves_df['Кол-во'].sum()) if 'Кол-во' in moves_df.columns and len(moves_df) > 0 else 0,
+        'supplies_count': int(len(supply_df)),
+        'supplies_qty': int(supply_df['Кол-во'].sum()) if 'Кол-во' in supply_df.columns and len(supply_df) > 0 else 0,
+    }
+
+    regions: list[dict[str, Any]] = []
+    if not region_summary.empty:
+        for _, row in region_summary.iterrows():
+            regions.append({
+                'region': row.get('Регион', ''),
+                'index': round(float(row.get('% локальных', 0)), 1),
+                'stock_share': round(float(row.get('Доля остатков, %', 0)), 1),
+                'order_share': round(float(row.get('Доля заказов, %', 0)), 1),
+                'recommendation': row.get('Рекомендация', ''),
+            })
+
+    top_problems: list[dict[str, Any]] = []
+    if 'Индекс, %' in sku_stats.columns and 'Всего заказов' in sku_stats.columns:
+        problem = sku_stats[
+            (sku_stats['Индекс, %'] < 75) & (sku_stats['Всего заказов'] > 0)
+        ].copy()
+        if not problem.empty:
+            problem['impact'] = problem['Всего заказов'] * (75 - problem['Индекс, %'])
+            top10 = problem.nlargest(10, 'impact')
+            for _, row in top10.iterrows():
+                top_problems.append({
+                    'article': row.get('Артикул продавца', ''),
+                    'size': row.get('Размер', ''),
+                    'index': round(float(row.get('Индекс, %', 0)), 1),
+                    'orders': int(row.get('Всего заказов', 0)),
+                    'impact': round(float(row.get('impact', 0)), 0),
+                })
+
+    return {
+        'cabinet': cabinet_name,
+        'timestamp': datetime.now().isoformat(timespec='seconds'),
+        'report_path': str(analysis.get('report_path', '')),
+        'summary': summary,
+        'regions': regions,
+        'top_problems': top_problems,
+        'comparison': None,
+        '_moves_df': moves_df,
+        '_supply_df': supply_df,
+    }
+
+
+def _attach_comparison_and_save(result: dict[str, Any], history_store: History) -> None:
+    """Добавляет сравнение с предыдущим расчётом и сохраняет в историю."""
+    prev = history_store.get_latest(result['cabinet'])
+    if prev:
+        prev_summary = prev.get('summary', {})
+        curr_summary = result.get('summary', {})
+        prev_index = prev_summary.get('overall_index', 0)
+        curr_index = curr_summary.get('overall_index', 0)
+
+        prev_regions = {r.get('region'): r.get('index') for r in prev.get('regions', [])}
+        curr_regions = {r.get('region'): r.get('index') for r in result.get('regions', [])}
+
+        improved: list[str] = []
+        worsened: list[str] = []
+        for region, curr_index_region in curr_regions.items():
+            if region in prev_regions:
+                delta = float(curr_index_region) - float(prev_regions[region])
+                if delta > 1:
+                    improved.append(region)
+                elif delta < -1:
+                    worsened.append(region)
+
+        result['comparison'] = {
+            'prev_timestamp': prev.get('timestamp'),
+            'prev_index': prev_index,
+            'index_change': round(curr_index - prev_index, 1),
+            'regions_improved': improved,
+            'regions_worsened': worsened,
+        }
+
+    history_store.save_run(result)
+
+
+def run_for_cabinet(
+    cabinet,
+    args,
+    own_stock: dict[str, int],
+    barcode_dict: dict,
+    statuses: dict,
+    return_result: bool = False,
+    history_store: History | None = None,
+) -> Path | dict[str, Any] | None:
     """Полный цикл для одного кабинета."""
     print(f"\n{'=' * 60}")
     print(f"Кабинет: {cabinet.name}")
@@ -432,13 +536,66 @@ def run_for_cabinet(cabinet, args, own_stock: dict[str, int],
         max_turnover_days=args.max_turnover_days,
     )
 
-    report_path = analysis["report_path"]
+    report_path = analysis['report_path']
     print(f"\n   Отчёт сохранён: {report_path}")
+
+    if return_result:
+        result = _build_result_payload(cabinet.name, analysis)
+        if history_store is not None:
+            _attach_comparison_and_save(result, history_store)
+        return result
 
     # 5. Консольная сводка
     _print_summary(report_path)
-
     return report_path
+
+
+def run_service_report(
+    cabinet_key: str,
+    days: int = 30,
+    safety_days: int = DEFAULT_SAFETY_DAYS,
+    min_donor_localization: float = DEFAULT_MIN_DONOR_LOC,
+    max_turnover_days: int = 100,
+    no_statuses: bool = False,
+    sku_db_path: str | None = None,
+    output_dir: str | None = None,
+    history_store: History | None = None,
+) -> dict[str, Any]:
+    """Сервисный entrypoint: полный расчёт и структурированный результат для одного кабинета."""
+    cab_key = cabinet_key.lower()
+    if cab_key in ('ip', 'ип'):
+        cabinet = CABINET_IP
+    elif cab_key in ('ooo', 'ооо'):
+        cabinet = CABINET_OOO
+    else:
+        raise ValueError(f"Unknown cabinet '{cabinet_key}', expected ip or ooo")
+
+    sku_db = sku_db_path or str(PROJECT_ROOT / 'sku_database' / 'Спецификации.xlsx')
+    barcode_dict = load_barcodes(sku_db)
+    statuses = load_statuses(skip=no_statuses)
+    own_stock = fetch_own_stock()
+
+    args = argparse.Namespace(
+        days=days,
+        safety_days=safety_days,
+        min_donor_localization=min_donor_localization,
+        max_turnover_days=max_turnover_days,
+        output_dir=output_dir,
+        dry_run=False,
+    )
+
+    result = run_for_cabinet(
+        cabinet=cabinet,
+        args=args,
+        own_stock=own_stock,
+        barcode_dict=barcode_dict,
+        statuses=statuses,
+        return_result=True,
+        history_store=history_store,
+    )
+    if result is None or isinstance(result, Path):
+        raise RuntimeError(f'Calculation failed for cabinet {cabinet.name}')
+    return result
 
 
 def main():

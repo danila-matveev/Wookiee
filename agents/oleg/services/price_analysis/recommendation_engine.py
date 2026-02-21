@@ -87,8 +87,10 @@ def generate_recommendations(
     selection_status = elasticity_result.get('selection_status')
     reason_code = elasticity_result.get('reason_code', '')
 
+    allowed_statuses = {'PASS', 'DEPRECATED_FALLBACK'}
+
     # Если оркестратор вернул блокировку — формируем human-readable reason
-    if selection_status and selection_status != 'PASS':
+    if selection_status and selection_status not in allowed_statuses:
         gate_status = selection_status
         reason_map = {
             'insufficient_data': f"INSUFFICIENT_DATA. Слишком мало наблюдений или низкое покрытие дат.",

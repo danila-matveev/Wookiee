@@ -9,14 +9,13 @@
 
 AI-агенты:
 - `agents/oleg/` — **Олег**, финансовый AI-агент (ReAct, интерфейс: Telegram)
-- `agents/lyudmila/` — **Людмила**, CRM AI-агент (Bitrix24, интерфейс: Telegram)
 - `agents/ibrahim/` — **Ибрагим**, дата-инженер (ETL маркетплейсов, управление БД)
-- `agents/vasily/` — **Василий**, логистический AI-агент (оптимизация WB/OZON)
 
 Инфраструктура:
 - `shared/` — общая библиотека (data_layer, API-клиенты, конфиг)
 - `services/marketplace_etl/` — ETL-пайплайн WB/OZON API → PostgreSQL
 - `services/sheets_sync/` — синхронизация Google Sheets
+- `services/wb_localization/` — WB-утилита локализации (расчёт + экспорт в Sheets)
 - `services/ozon_delivery/` — оптимизация доставки OZON
 - `sku_database/` — товарная матрица (Supabase)
 - `scripts/` — CLI-скрипты аналитики (ABC analysis, Notion sync)

@@ -1,54 +1,57 @@
 # Wookiee — Documentation Index
 
-## Quick Navigation
+## Core
 
 | Документ | Назначение |
-|----------|-----------|
-| [AGENTS.md](../AGENTS.md) | Универсальные правила (ЕДИНСТВЕННЫЙ ИСТОЧНИК ИСТИНЫ) |
-| [README.md](../README.md) | Обзор проекта и быстрый старт |
-| [architecture.md](architecture.md) | Архитектура системы AI-агентов |
-| [adr.md](adr.md) | Лог архитектурных решений |
-| [infrastructure.md](infrastructure.md) | Production-сервер: подключение, деплой, мониторинг |
-| [development-history.md](development-history.md) | Журнал последних изменений |
+|---|---|
+| [AGENTS.md](../AGENTS.md) | Единые правила разработки и качества |
+| [README.md](../README.md) | Обзор проекта, актуальные entrypoints |
+| [architecture.md](architecture.md) | Текущая архитектура runtime-контура |
+| [adr.md](adr.md) | Архитектурные решения (ADR) |
+| [development-history.md](development-history.md) | Последние изменения |
+| [infrastructure.md](infrastructure.md) | Сервер и деплой |
 
-## AI-агенты
+## Active Runtime
 
-Каждый агент — автономная система с LLM, playbook, tools и memory. Бот — это интерфейс, агент — мозг.
-
-| Агент | Статус | Документация |
-|-------|--------|-------------|
+| Компонент | Статус | Документация |
+|---|---|---|
 | Олег (финансовый AI-агент) | Активен | [agents/telegram-bot.md](agents/telegram-bot.md) |
-| Людмила (CRM AI-агент) | Активен | [agents/lyudmila-bot.md](agents/lyudmila-bot.md) |
-| Ибрагим (дата-инженер) | Активен | [agents/ibrahim.md](agents/ibrahim.md) |
-| Василий (логистический AI-агент) | В разработке | [agents/mp-localization.md](agents/mp-localization.md) |
+| Ибрагим (ETL/DB) | Активен | [agents/ibrahim.md](agents/ibrahim.md) |
+| WB localization service | Активен | [agents/mp-localization.md](agents/mp-localization.md) |
 | Analytics Engine | Активен | [agents/analytics-engine.md](agents/analytics-engine.md) |
-
-Обзор агентной архитектуры: [agents/README.md](agents/README.md)
 
 ## Guides
 
-| Guide | Назначение |
-|-------|-----------|
-| [dod.md](guides/dod.md) | Чеклист Definition of Done |
-| [agent-principles.md](guides/agent-principles.md) | Принципы построения AI-агентов |
-| [environment-setup.md](guides/environment-setup.md) | Настройка локального окружения |
-| [logging.md](guides/logging.md) | Конвенции логирования |
-| [archiving-and-temp.md](guides/archiving-and-temp.md) | Политика архивации и временных файлов |
+| Документ | Назначение |
+|---|---|
+| [guides/dod.md](guides/dod.md) | Definition of Done |
+| [guides/environment-setup.md](guides/environment-setup.md) | Локальная и серверная настройка |
+| [guides/logging.md](guides/logging.md) | Логирование |
+| [guides/agent-principles.md](guides/agent-principles.md) | Принципы проектирования агентов |
+| [guides/archiving-and-temp.md](guides/archiving-and-temp.md) | Архивирование и временные файлы |
 
-## Доменная документация
+## Database Docs
 
 | Документ | Назначение |
-|----------|-----------|
-| [DATABASE_REFERENCE.md](database/DATABASE_REFERENCE.md) | Полный справочник схем БД |
-| [DATABASE_WORKPLAN.md](database/DATABASE_WORKPLAN.md) | Открытые вопросы по БД |
-| [DATA_QUALITY_NOTES.md](database/DATA_QUALITY_NOTES.md) | Известные проблемы качества данных |
+|---|---|
+| [database/DB_METRICS_GUIDE.md](database/DB_METRICS_GUIDE.md) | Справочник метрик |
+| [database/DB_QUESTIONS_FOR_DEVELOPER.md](database/DB_QUESTIONS_FOR_DEVELOPER.md) | Вопросы к разработчику БД |
+| [database/DATABASE_REFERENCE.md](database/DATABASE_REFERENCE.md) | Legacy reference |
+| [database/DATABASE_WORKPLAN.md](database/DATABASE_WORKPLAN.md) | План работ по БД |
+| [database/DATA_QUALITY_NOTES.md](database/DATA_QUALITY_NOTES.md) | Ноты по качеству данных |
 
-## Документация суб-проектов
+## Plans
 
-| Проект | Документация |
-|--------|-------------|
-| SKU Database | [sku_database/README.md](../sku_database/README.md) |
+| Документ | Статус |
+|---|---|
+| [plans/ibrahim-deploy-and-etl.md](plans/ibrahim-deploy-and-etl.md) | Active |
 
-## Правило
+## Archive
 
-Читай ТОЛЬКО те документы, которые релевантны твоей текущей задаче. Не загружай всё подряд.
+| Документ | Назначение |
+|---|---|
+| [archive/agents/lyudmila-bot.md](archive/agents/lyudmila-bot.md) | Retired docs: Lyudmila |
+| [archive/plans/lyudmila-bitrix24-agent-retired.md](archive/plans/lyudmila-bitrix24-agent-retired.md) | Retired plan |
+| [archive/retired_agents/](archive/retired_agents/) | Архив runtime-кода удалённых агентов |
+
+Правило: держать в активной навигации только текущий runtime-контур.
