@@ -5,6 +5,27 @@
 
 ---
 
+## [2026-02-21] Deep Price Analysis System: high-precision elasticity
+
+### Что сделано
+- Внедрен `DeepElasticityService`: высокоточный анализ эластичности на основе поартикульных заказов (`orders`/`postings`).
+- Реализована сегментация SKU по ролям: 'Развитие' (Продается, Новый, Запуск) vs 'Ликвидация' (Выводим).
+- Внедрен механизм First-Sale Alignment (отсечение периодов до первого заказа SKU).
+- Реализован расчет средневзвешенной цены дня (Weighted Average Price) для групп SKU с учетом объема заказов.
+- Добавлен инструмент `get_deep_price_analysis` для агента Олега.
+- Исправлены ошибки типизации (Decimal/float) при передаче данных в регрессионный движок.
+- Актуализирована документация аналитического контура.
+
+### Зачем
+Повысить точность ценовых рекомендаций за счет анализа спроса на уровне первоисточника (заказы) и разделения стратегий для новинок и выводимых товаров.
+
+### Обновлено
+- [x] `agents/oleg/services/price_analysis/deep_elasticity_service.py` (создан)
+- [x] `agents/oleg/services/price_tools.py` (добавлен инструмент)
+- [x] `agents/oleg/services/price_analysis/regression_engine.py` (fix typing)
+- [x] `docs/agents/analytics-engine.md`
+- [x] `docs/development-history.md`
+
 ## [2026-02-21] Cleanup & Stabilization: runtime contour narrowed
 
 ### Что сделано
