@@ -52,10 +52,11 @@ def _run_reports() -> None:
     """Run Vasily reports for all cabinets (blocking, runs in thread)."""
     from agents.vasily.config import CABINETS, REPORT_PERIOD_DAYS, VASILY_SPREADSHEET_ID
     from agents.vasily.service import VasilyService
-    from agents.vasily.sheets_export import export_to_sheets
+    from agents.vasily.sheets_export import export_to_sheets, export_dashboard
 
     svc = VasilyService()
-    results = []
+    summaries = []
+    all_results = []
 
     for cabinet in CABINETS:
         cab = cabinet.strip()
@@ -74,7 +75,8 @@ def _run_reports() -> None:
             export_to_sheets(result)
             logger.info("Экспорт в Sheets: %s", result["cabinet"])
 
-        results.append({
+        all_results.append(result)
+        summaries.append({
             "cabinet": result["cabinet"],
             "overall_index": result["summary"]["overall_index"],
             "movements_count": result["summary"]["movements_count"],
@@ -83,7 +85,14 @@ def _run_reports() -> None:
             "supplies_qty": result["summary"]["supplies_qty"],
         })
 
-    return results
+    # Dashboard on «Обновление» sheet
+    if VASILY_SPREADSHEET_ID and all_results:
+        try:
+            export_dashboard(all_results, REPORT_PERIOD_DAYS)
+        except Exception as e:
+            logger.error("Ошибка обновления дашборда: %s", e)
+
+    return summaries
 
 
 def _worker() -> None:

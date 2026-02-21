@@ -25,7 +25,7 @@ BITRIX_FOLDER_ID: str = os.getenv("VASILY_BITRIX_FOLDER_ID", "")
 # ============================================================================
 # Report schedule
 # ============================================================================
-REPORT_DAY_OF_WEEK: str = os.getenv("VASILY_REPORT_DAY_OF_WEEK", "mon")
+REPORT_DAY_OF_WEEK: str = os.getenv("VASILY_REPORT_DAY_OF_WEEK", "*")
 REPORT_PERIOD_DAYS: int = int(os.getenv("VASILY_REPORT_PERIOD_DAYS", "2"))
 REPORT_HOUR: int = int(os.getenv("VASILY_REPORT_HOUR", "8"))
 REPORT_MINUTE: int = int(os.getenv("VASILY_REPORT_MINUTE", "0"))
