@@ -5,6 +5,36 @@
 
 ---
 
+## [2026-02-21] Таблица 1.1 (Notion): Оборачиваемость и Годовой ROI %
+
+### Что сделано
+- В отчёте Notion в таблице «1.1 Ключевые метрики» не отображались «Годовой ROI %», а «Оборачиваемость продаж (дни)» была 0.
+- В плейбуке добавлено явное требование заполнять строки «Оборачиваемость продаж (дни)» и «Годовой ROI %» из `brand.current.turnover_days` и `brand.current.roi_annual`.
+- В описание инструмента `get_brand_finance` добавлено указание на поля `turnover_days` и `roi_annual` для таблицы 1.1.
+- В `get_total_avg_stock` добавлен fallback: при отсутствии данных за период используется средний остаток за последние 7 дней (учитывает задержку ETL).
+
+### Обновлено
+- [x] `agents/oleg/playbook.md`
+- [x] `agents/oleg/services/agent_tools.py`
+- [x] `shared/data_layer.py`
+- [x] `docs/development-history.md`
+
+---
+
+## [2026-02-21] WB: исправлен маппинг внутренняя/внешняя реклама в таблицах драйверов/анти-драйверов
+
+### Что сделано
+- В таблице «5.2 Анти-драйверы (WB)» (и 5.1, 6.1, 6.2) колонки «Внутр. реклама (тек)» и «Внешн. реклама (тек)» заполнялись неверно.
+- Причина: в источнике WB внутренняя реклама приходит в `reclama_vn`, внешняя — в `reclama`; маппинг в коде был обратным.
+- Во всех WB-запросах в `shared/data_layer.py` исправлен маппинг: `adv_internal = SUM(reclama_vn)`, `adv_external = SUM(reclama)`.
+
+### Обновлено
+- [x] `shared/data_layer.py` (все функции, возвращающие adv_internal/adv_external для WB)
+- [x] `docs/database/DATA_QUALITY_NOTES.md` (раздел 11)
+- [x] `docs/development-history.md`
+
+---
+
 ## [2026-02-21] Deep Price Analysis System: high-precision elasticity
 
 ### Что сделано
