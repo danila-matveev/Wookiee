@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Configuration for wb_sheets_sync module."""
 
 import os

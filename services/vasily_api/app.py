@@ -50,11 +50,12 @@ def _verify_key(x_api_key: str = Header(...)) -> None:
 # ── Background worker ────────────────────────────────────────────────────────
 def _run_reports() -> None:
     """Run Vasily reports for all cabinets (blocking, runs in thread)."""
-    from agents.vasily.config import CABINETS, REPORT_PERIOD_DAYS, VASILY_SPREADSHEET_ID
-    from agents.vasily.service import VasilyService
-    from agents.vasily.sheets_export import export_to_sheets, export_dashboard
+    from services.wb_localization.config import CABINETS, REPORT_PERIOD_DAYS, VASILY_SPREADSHEET_ID
+    from services.wb_localization.history import History
+    from services.wb_localization.run_localization import run_service_report
+    from services.wb_localization.sheets_export import export_to_sheets, export_dashboard
 
-    svc = VasilyService()
+    history_store = History()
     summaries = []
     all_results = []
 
@@ -63,7 +64,11 @@ def _run_reports() -> None:
         if not cab:
             continue
         logger.info("Расчёт для %s...", cab)
-        result = svc.run_report(cab, days=REPORT_PERIOD_DAYS)
+        result = run_service_report(
+            cabinet_key=cab,
+            days=REPORT_PERIOD_DAYS,
+            history_store=history_store,
+        )
         logger.info(
             "%s: индекс=%.1f%%, перемещений=%d",
             result["cabinet"],

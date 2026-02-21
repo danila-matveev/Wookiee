@@ -131,7 +131,7 @@ services:
 
     volumes:
       - ../services/sheets_sync/credentials:/app/services/sheets_sync/credentials:ro
-      - ../agents/vasily/data:/app/agents/vasily/data
+      - ../services/wb_localization/data:/app/services/wb_localization/data
 
     networks:
       - n8n-docker-caddy_default
