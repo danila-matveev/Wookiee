@@ -29,7 +29,7 @@ from agents.vasily.config import (
     BITRIX_CHAT_ID,
 )
 from agents.vasily.service import VasilyService
-from agents.vasily.sheets_export import export_to_sheets
+from agents.vasily.sheets_export import export_to_sheets, export_dashboard
 from agents.vasily.bitrix_notify import VasilyBitrixNotifier
 
 logger = logging.getLogger(__name__)
@@ -80,13 +80,15 @@ class VasilyScheduler:
         logger.info("=" * 60)
 
         loop = asyncio.get_event_loop()
+        all_results = []
 
         for cabinet in CABINETS:
             cab = cabinet.strip()
             if not cab:
                 continue
             try:
-                await loop.run_in_executor(self.executor, self._run_single_cabinet, cab)
+                result = await loop.run_in_executor(self.executor, self._run_single_cabinet, cab)
+                all_results.append(result)
             except Exception as e:
                 logger.error("Ошибка расчёта для %s: %s", cab, e, exc_info=True)
                 # Notify about failure
@@ -97,6 +99,18 @@ class VasilyScheduler:
                         )
                     except Exception:
                         pass
+
+        # Dashboard on «Обновление» sheet
+        if VASILY_SPREADSHEET_ID and all_results:
+            try:
+                await loop.run_in_executor(
+                    self.executor,
+                    export_dashboard,
+                    all_results,
+                    REPORT_PERIOD_DAYS,
+                )
+            except Exception as e:
+                logger.error("Ошибка обновления дашборда: %s", e)
 
         logger.info("Все отчёты завершены")
 
