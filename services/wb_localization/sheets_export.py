@@ -15,7 +15,7 @@ from shared.clients.sheets_client import (
     to_number,
     _cell_ref,
 )
-from agents.vasily.config import GOOGLE_SA_FILE, VASILY_SPREADSHEET_ID, REPORT_PERIOD_DAYS
+from services.wb_localization.config import GOOGLE_SA_FILE, VASILY_SPREADSHEET_ID, REPORT_PERIOD_DAYS
 
 logger = logging.getLogger(__name__)
 

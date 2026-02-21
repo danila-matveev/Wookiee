@@ -12,9 +12,9 @@ RUN pip install --no-cache-dir -r services/vasily_api/requirements.txt
 COPY shared/ /app/shared/
 COPY services/__init__.py /app/services/__init__.py
 COPY services/vasily_api/ /app/services/vasily_api/
+COPY services/wb_localization/ /app/services/wb_localization/
 COPY services/sheets_sync/ /app/services/sheets_sync/
 COPY agents/__init__.py /app/agents/__init__.py
-COPY agents/vasily/ /app/agents/vasily/
 COPY scripts/ /app/scripts/
 
 ENV PYTHONUNBUFFERED=1

@@ -56,14 +56,24 @@ def estimate_price_elasticity(
         }
 
     df = pd.DataFrame(data)
-    # Целевая переменная спроса — только orders_count (заказы)
-    if 'orders_count' not in df.columns:
+    # Целевая переменная спроса: prefer orders_count, fallback to sales_count.
+    if 'orders_count' in df.columns:
+        demand_col = 'orders_count'
+    elif 'sales_count' in df.columns:
+        demand_col = 'sales_count'
+        logger.warning(
+            "estimate_price_elasticity: using deprecated fallback demand column sales_count; "
+            "prefer orders_count"
+        )
+    else:
         return {
             'error': 'missing_orders_count',
             'n_observations': len(df),
-            'note': 'orders_count column is required; sales_count (выкупы) не используется для эластичности',
+            'note': (
+                'orders_count column is required; '
+                'fallback to sales_count is supported only when the column exists'
+            ),
         }
-    demand_col = 'orders_count'
     mask = (df['price_per_unit'] > 0) & (df[demand_col] > 0)
     df = df[mask].copy()
 
@@ -110,6 +120,22 @@ def estimate_price_elasticity(
     }
     # --- Конец расчета quality_metrics ---
 
+    # Backward-compatible mode for historical datasets that only have sales_count.
+    # Legacy datasets stay on a simpler estimator to preserve historical behavior.
+    if demand_col == 'sales_count':
+        legacy = _estimate_price_elasticity_legacy_linear(
+            data=data,
+            min_observations=min_observations,
+            half_life_days=half_life_days,
+            demand_col=demand_col,
+        )
+        legacy['quality_metrics'] = quality_metrics
+        legacy['selected_model'] = legacy.get('selected_model', 'legacy_linear')
+        legacy['selection_status'] = legacy.get('selection_status', 'DEPRECATED_FALLBACK')
+        legacy['backtest_results'] = legacy.get('backtest_results', {})
+        legacy['demand_column'] = demand_col
+        return legacy
+
     # --- Оркестрация: запуск селектора моделей ---
     selection_result = _select_best_model(
         df=df,
@@ -134,10 +160,82 @@ def estimate_price_elasticity(
     # Возвращаем результат лучшей модели + мета-данные (backward-compatible)
     best = selection_result['best_result']
     best['quality_metrics'] = quality_metrics
+    best['demand_column'] = demand_col
     best['selected_model'] = selection_result['selected_model']
     best['selection_status'] = 'PASS'
     best['backtest_results'] = selection_result.get('backtest_results', {})
     return best
+
+
+def _estimate_price_elasticity_legacy_linear(
+    data: list[dict],
+    min_observations: int,
+    half_life_days: int,
+    demand_col: str = 'sales_count',
+) -> dict:
+    """
+    Legacy weighted log-log estimator used for deprecated sales_count fallback.
+    """
+    df = pd.DataFrame(data)
+    mask = (df['price_per_unit'] > 0) & (df[demand_col] > 0)
+    df = df[mask].copy()
+
+    if len(df) < min_observations:
+        return {
+            'error': 'insufficient_nonzero_data',
+            'n_observations': len(df),
+            'min_required': min_observations,
+        }
+
+    log_p = np.log(df['price_per_unit'].values)
+    log_q = np.log(df[demand_col].values)
+
+    if 'date' in df.columns:
+        dates = pd.to_datetime(df['date'])
+        max_date = dates.max()
+        days_ago = (max_date - dates).dt.days.values.astype(float)
+        weights = np.exp(-np.log(2) * days_ago / half_life_days)
+    else:
+        weights = np.ones(len(df))
+
+    try:
+        import statsmodels.api as sm
+
+        X = sm.add_constant(log_p)
+        model = sm.WLS(log_q, X, weights=weights).fit()
+
+        beta = float(model.params[1])
+        return {
+            'elasticity': round(beta, 3),
+            'elasticity_se': round(float(model.bse[1]), 3),
+            'r_squared': round(float(model.rsquared), 3),
+            'p_value': round(float(model.pvalues[1]), 4),
+            'n_observations': len(df),
+            'is_significant': float(model.pvalues[1]) < 0.05,
+            'interpretation': _interpret_elasticity(beta),
+            'confidence_interval_95': [
+                round(float(model.conf_int()[1][0]), 3),
+                round(float(model.conf_int()[1][1]), 3),
+            ],
+            'selected_model': 'legacy_linear',
+            'selection_status': 'DEPRECATED_FALLBACK',
+            'note': 'deprecated_sales_count_fallback',
+        }
+    except Exception as e:
+        logger.error(f"Legacy elasticity estimation failed: {e}")
+        slope, _, r_value, p_value, std_err = stats.linregress(log_p, log_q)
+        return {
+            'elasticity': round(slope, 3),
+            'elasticity_se': round(std_err, 3),
+            'r_squared': round(r_value ** 2, 3),
+            'p_value': round(p_value, 4),
+            'n_observations': len(df),
+            'is_significant': p_value < 0.05,
+            'interpretation': _interpret_elasticity(slope),
+            'selected_model': 'legacy_linear',
+            'selection_status': 'DEPRECATED_FALLBACK',
+            'note': 'fallback_scipy_no_weights_deprecated_sales_count',
+        }
 
 
 
@@ -570,11 +668,14 @@ def margin_factor_regression(data: list[dict]) -> dict:
         factors = {}
         for i, name in enumerate(available):
             idx = i + 1  # +1 для constant
+            beta = float(model.params[idx])
+            p_value_raw = float(model.pvalues[idx])
+            p_value = p_value_raw if np.isfinite(p_value_raw) else 1.0
             factors[name] = {
-                'standardized_beta': round(float(model.params[idx]), 3),
-                'p_value': round(float(model.pvalues[idx]), 4),
-                'is_significant': float(model.pvalues[idx]) < 0.05,
-                'direction': 'positive' if model.params[idx] > 0 else 'negative',
+                'standardized_beta': round(beta, 3),
+                'p_value': round(p_value, 4),
+                'is_significant': p_value < 0.05,
+                'direction': 'positive' if beta > 0 else 'negative',
             }
 
         # Ранжировать по абсолютному влиянию
@@ -584,14 +685,24 @@ def margin_factor_regression(data: list[dict]) -> dict:
             reverse=True,
         )
 
+        r_squared = float(model.rsquared)
+        r_squared_adj = float(model.rsquared_adj)
+        f_statistic = float(model.fvalue) if np.isfinite(float(model.fvalue)) else 0.0
+        f_p_value = float(model.f_pvalue) if np.isfinite(float(model.f_pvalue)) else 1.0
+
+        if not np.isfinite(r_squared):
+            r_squared = 0.0
+        if not np.isfinite(r_squared_adj):
+            r_squared_adj = 0.0
+
         return {
-            'r_squared': round(float(model.rsquared), 3),
-            'r_squared_adj': round(float(model.rsquared_adj), 3),
+            'r_squared': round(r_squared, 3),
+            'r_squared_adj': round(r_squared_adj, 3),
             'n_observations': len(df_clean),
             'factors': dict(sorted_factors),
             'strongest_factor': sorted_factors[0][0] if sorted_factors else None,
-            'f_statistic': round(float(model.fvalue), 2),
-            'f_p_value': round(float(model.f_pvalue), 4),
+            'f_statistic': round(f_statistic, 2),
+            'f_p_value': round(f_p_value, 4),
         }
     except Exception as e:
         logger.error(f"Factor regression failed: {e}")
