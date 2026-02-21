@@ -118,7 +118,7 @@ python -m lyudmila_bot.main
 
 ## Зависимости
 
-- **Внутренние:** `sku_database/Bitrix/client.py` (паттерн webhook)
+- **Внутренние:** `shared/clients/bitrix_oauth.py` (Bitrix24 OAuth клиент)
 - **Внешние:** Bitrix24 REST API, Claude API, Telegram Bot API
 
 ---
@@ -126,6 +126,6 @@ python -m lyudmila_bot.main
 ## Ссылки
 
 - Исходный код: [`lyudmila_bot/`](../lyudmila_bot/)
-- Bitrix24 клиент: [`sku_database/Bitrix/`](../../sku_database/Bitrix/)
+- Bitrix24 клиент: [`shared/clients/bitrix_oauth.py`](../../shared/clients/bitrix_oauth.py)
 - Аналитический бот Рома: [`agents/telegram-bot.md`](telegram-bot.md)
 - Правила проекта: [`AGENTS.md`](../AGENTS.md)

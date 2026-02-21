@@ -25,21 +25,6 @@ ssh -i ~/.ssh/id_ed25519_timeweb root@77.233.212.61
 | Docker | latest |
 | Домен | `matveevdanila.com` (GoDaddy) |
 
-<details>
-<summary>Старый сервер (DigitalOcean) — отключён</summary>
-
-| Параметр | Значение |
-|----------|----------|
-| Провайдер | DigitalOcean Droplet |
-| IP | `167.99.12.42` |
-| SSH | `ssh supabase-server` |
-| ОС | Ubuntu 22.04, kernel 5.15 |
-| CPU | 1 vCPU |
-| RAM | 2 GB |
-| Диск | 34 GB |
-
-</details>
-
 ## Запущенные контейнеры
 
 | Контейнер | Назначение | Домен / порт |
@@ -49,8 +34,6 @@ ssh -i ~/.ssh/id_ed25519_timeweb root@77.233.212.61
 | `wookiee_analytics_agent` | Олег — финансовый AI-агент | — |
 | `wookiee_analytics_bot` | Telegram-бот (UI для Олега) | — |
 | `wookiee_sheets_sync` | Синхронизация Google Sheets | — |
-
-Лендинг (`matveevdanila.com`) отдаётся Caddy как static file server из `/srv/landing`.
 
 ## Ключевые пути на сервере
 
@@ -67,8 +50,7 @@ ssh -i ~/.ssh/id_ed25519_timeweb root@77.233.212.61
 1. Push в `main` → GitHub Actions запускает workflow
 2. SSH на сервер через пользователя `deploy`
 3. `git pull` → `docker compose build` → `docker compose up -d`
-4. Обновление лендинга в Caddy volume
-5. Проверка healthcheck-статусов
+4. Проверка healthcheck-статусов
 
 ### Ручной деплой (резервный)
 
