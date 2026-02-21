@@ -1,74 +1,56 @@
-# Быстрый старт
+# Quickstart
 
-Пять шагов от клонирования до первого отчёта.
-
-## 1. Клонировать репозиторий
+## 1. Clone and Env
 
 ```bash
 git clone <repo-url>
 cd Wookiee
-```
-
-## 2. Настроить окружение
-
-```bash
 cp .env.example .env
-# Открыть .env и заполнить реальными значениями
 ```
 
-**Минимум для скриптов:**
-- `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD` — PostgreSQL с данными WB/OZON
+Заполните `.env` минимумом:
+- PostgreSQL: `DB_*`, `MARKETPLACE_DB_*`
+- WB/OZON API: `WB_*`, `OZON_*`
+- Telegram/OpenRouter для Олега: `TELEGRAM_BOT_TOKEN`, `BOT_PASSWORD_HASH`, `OPENROUTER_API_KEY`
+- Google Sheets: `GOOGLE_SERVICE_ACCOUNT_FILE`, `SPREADSHEET_ID`
 
-**Для Telegram-ботов дополнительно:**
-- `TELEGRAM_BOT_TOKEN`, `BOT_PASSWORD_HASH` — Олег (финансы)
-- `LYUDMILA_BOT_TOKEN` — Людмила (CRM)
-- `ZAI_API_KEY` или `CLAUDE_API_KEY` — AI-модели
-
-## 3. Установить зависимости
+## 2. Install Dependencies
 
 ```bash
-# Для скриптов
-pip install psycopg2-binary python-dotenv pandas openpyxl
-
-# Для Олега (Telegram-бот аналитики)
 pip install -r agents/oleg/requirements.txt
-
-# Для Людмилы (CRM-ассистент)
-pip install -r agents/lyudmila/requirements.txt
-
-# Для Василия (логистика WB)
-pip install -r agents/vasily/requirements.txt
+pip install -r services/sheets_sync/requirements.txt
+pip install -r services/vasily_api/requirements.txt
 ```
 
-## 4. Запустить первый скрипт
+## 3. Verify Project
 
 ```bash
-python3 scripts/abc_analysis.py --help
+python3 -m compileall -q agents services shared scripts
+python3 -m pytest -q
+python3 -m pytest -q services/marketplace_etl/tests
 ```
 
-Доступные скрипты: `scripts/daily_analytics.py`, `scripts/monthly_analytics.py`, `scripts/period_analytics.py`
-
-## 5. Запустить бота (опционально)
+## 4. Main Entrypoints
 
 ```bash
-# Олег — финансовый аналитик
+# Oleg bot (default mode)
 python3 -m agents.oleg
 
-# Людмила — CRM-ассистент
-python3 -m agents.lyudmila
+# Oleg agent loop
+python3 -m agents.oleg agent
 
-# Василий — логистика WB
-python3 -m agents.vasily
+# WB localization service dry-run
+python3 -m services.wb_localization.run_localization --dry-run
+
+# Sheets sync
+python3 -m services.sheets_sync
+
+# Marketplace ETL daily sync
+python3 -m services.marketplace_etl.scripts.run_daily_sync
 ```
 
-## Docker (альтернатива)
+## 5. Docker Deploy (optional)
 
 ```bash
 docker compose -f deploy/docker-compose.yml up -d
 ```
-
-## Что дальше?
-
-- **[docs/index.md](index.md)** — навигация по документации
-- **[AGENTS.md](../AGENTS.md)** — правила разработки для AI-агентов
-- **[docs/guides/environment-setup.md](guides/environment-setup.md)** — подробная настройка окружения

@@ -113,7 +113,7 @@ def run_sync(name: str, start_date: str | None = None, end_date: str | None = No
         sync_fn = mod.sync
 
         # Pass date arguments for scripts that support period selection
-        if name == "fin_data" and (start_date or end_date):
+        if name in ("fin_data", "wb_feedbacks") and (start_date or end_date):
             rows = sync_fn(start_date=start_date, end_date=end_date)
         else:
             rows = sync_fn()
@@ -150,8 +150,8 @@ def main():
     parser.add_argument("sync_name", nargs="?", help="Sync name or 'all'")
     parser.add_argument("--list", action="store_true", help="List available syncs")
     parser.add_argument("--test", action="store_true", help="Force test mode")
-    parser.add_argument("--start", help="Start date DD.MM.YYYY (for fin_data)")
-    parser.add_argument("--end", help="End date DD.MM.YYYY (for fin_data)")
+    parser.add_argument("--start", help="Start date DD.MM.YYYY (for fin_data, wb_feedbacks)")
+    parser.add_argument("--end", help="End date DD.MM.YYYY (for fin_data, wb_feedbacks)")
 
     args = parser.parse_args()
 

@@ -37,7 +37,7 @@ CREATE INDEX IF NOT EXISTS idx_reports_timestamp ON reports(cabinet, timestamp D
 class History:
     """SQLite-хранилище истории расчётов.
 
-    Файл: agents/vasily/data/vasily.db
+    Файл: services/wb_localization/data/vasily.db
     Таблица: reports — один ряд на расчёт (кабинет × дата).
     """
 

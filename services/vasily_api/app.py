@@ -50,19 +50,25 @@ def _verify_key(x_api_key: str = Header(...)) -> None:
 # ── Background worker ────────────────────────────────────────────────────────
 def _run_reports() -> None:
     """Run Vasily reports for all cabinets (blocking, runs in thread)."""
-    from agents.vasily.config import CABINETS, REPORT_PERIOD_DAYS, VASILY_SPREADSHEET_ID
-    from agents.vasily.service import VasilyService
-    from agents.vasily.sheets_export import export_to_sheets
+    from services.wb_localization.config import CABINETS, REPORT_PERIOD_DAYS, VASILY_SPREADSHEET_ID
+    from services.wb_localization.history import History
+    from services.wb_localization.run_localization import run_service_report
+    from services.wb_localization.sheets_export import export_to_sheets, export_dashboard
 
-    svc = VasilyService()
-    results = []
+    history_store = History()
+    summaries = []
+    all_results = []
 
     for cabinet in CABINETS:
         cab = cabinet.strip()
         if not cab:
             continue
         logger.info("Расчёт для %s...", cab)
-        result = svc.run_report(cab, days=REPORT_PERIOD_DAYS)
+        result = run_service_report(
+            cabinet_key=cab,
+            days=REPORT_PERIOD_DAYS,
+            history_store=history_store,
+        )
         logger.info(
             "%s: индекс=%.1f%%, перемещений=%d",
             result["cabinet"],
@@ -74,7 +80,8 @@ def _run_reports() -> None:
             export_to_sheets(result)
             logger.info("Экспорт в Sheets: %s", result["cabinet"])
 
-        results.append({
+        all_results.append(result)
+        summaries.append({
             "cabinet": result["cabinet"],
             "overall_index": result["summary"]["overall_index"],
             "movements_count": result["summary"]["movements_count"],
@@ -83,7 +90,14 @@ def _run_reports() -> None:
             "supplies_qty": result["summary"]["supplies_qty"],
         })
 
-    return results
+    # Dashboard on «Обновление» sheet
+    if VASILY_SPREADSHEET_ID and all_results:
+        try:
+            export_dashboard(all_results, REPORT_PERIOD_DAYS)
+        except Exception as e:
+            logger.error("Ошибка обновления дашборда: %s", e)
+
+    return summaries
 
 
 def _worker() -> None:

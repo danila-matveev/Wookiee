@@ -5,6 +5,63 @@
 
 ---
 
+## [2026-02-21] Deep Price Analysis System: high-precision elasticity
+
+### Что сделано
+- Внедрен `DeepElasticityService`: высокоточный анализ эластичности на основе поартикульных заказов (`orders`/`postings`).
+- Реализована сегментация SKU по ролям: 'Развитие' (Продается, Новый, Запуск) vs 'Ликвидация' (Выводим).
+- Внедрен механизм First-Sale Alignment (отсечение периодов до первого заказа SKU).
+- Реализован расчет средневзвешенной цены дня (Weighted Average Price) для групп SKU с учетом объема заказов.
+- Добавлен инструмент `get_deep_price_analysis` для агента Олега.
+- Исправлены ошибки типизации (Decimal/float) при передаче данных в регрессионный движок.
+- Актуализирована документация аналитического контура.
+
+### Зачем
+Повысить точность ценовых рекомендаций за счет анализа спроса на уровне первоисточника (заказы) и разделения стратегий для новинок и выводимых товаров.
+
+### Обновлено
+- [x] `agents/oleg/services/price_analysis/deep_elasticity_service.py` (создан)
+- [x] `agents/oleg/services/price_tools.py` (добавлен инструмент)
+- [x] `agents/oleg/services/price_analysis/regression_engine.py` (fix typing)
+- [x] `docs/agents/analytics-engine.md`
+- [x] `docs/development-history.md`
+
+## [2026-02-21] Cleanup & Stabilization: runtime contour narrowed
+
+### Что сделано
+- Добавлен baseline-отчёт: `docs/archive/baseline-2026-02-21.md` и pre-cleanup tag `pre-cleanup-2026-02-21`
+- Исправлены падения price-analysis тестов:
+  - контракт спроса: `orders_count` (основной) + deprecated fallback `sales_count`
+  - нормализация нечисловых метрик регрессии (NaN/inf не выходят в публичный результат)
+  - стабилизирован recommendation flow для fallback-режима
+- Добавлен quality gate CI: `.github/workflows/ci.yml` (Python 3.11, compileall, pytest)
+- Обновлён deploy sequencing: деплой запускается после успешного CI на `main`
+- Реструктурирован модуль WB локализации:
+  - активный runtime перенесён в `services/wb_localization/`
+  - новый entrypoint: `python -m services.wb_localization.run_localization`
+  - `services/vasily_api` переведён на новый сервисный модуль
+- Удалены из активного контура `agents/lyudmila` и агентный runtime Василия:
+  - код перенесён в архив: `docs/archive/retired_agents/`
+  - историческая дока Людмилы перенесена в `docs/archive/agents/lyudmila-bot.md`
+- Планы нормализованы:
+  - active: `docs/plans/ibrahim-deploy-and-etl.md`
+  - retired: `docs/archive/plans/lyudmila-bitrix24-agent-retired.md`
+
+### Зачем
+Зафиксировать рабочий прод-контур после переноса проекта на новый сервер, убрать лишний runtime-слой и сделать релизы зависимыми от реального состояния тестов.
+
+### Обновлено
+- [x] `agents/oleg/services/price_analysis/regression_engine.py`
+- [x] `agents/oleg/services/price_analysis/recommendation_engine.py`
+- [x] `.github/workflows/ci.yml`
+- [x] `.github/workflows/deploy.yml`
+- [x] `services/wb_localization/*`
+- [x] `services/vasily_api/app.py`
+- [x] `docs/index.md`, `docs/architecture.md`, `docs/agents/README.md`, `docs/QUICKSTART.md`, `docs/guides/environment-setup.md`
+- [x] `README.md`, `AGENTS.md`, `docs/adr.md`
+
+---
+
 ## [2026-02-18] Fix: ложноположительное уведомление "Данные готовы"
 
 ### Что сделано
