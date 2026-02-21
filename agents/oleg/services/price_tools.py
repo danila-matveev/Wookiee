@@ -414,7 +414,29 @@ PRICE_TOOL_DEFINITIONS = [
                     "channel": {"type": "string", "enum": ["wb", "ozon"], "description": "Канал"},
                 },
                 "required": ["channel"],
-            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_deep_price_analysis",
+            "description": (
+                "Глубокий анализ ценовой эластичности по группам SKU: 'Развитие' (Продается, Новый, Запуск) "
+                "и 'Ликвидация' (Выводим). Использует поартикульные данные заказов и реальные цены после СПП. "
+                "Позволяет понять, как изменение цены влияет на спрос отдельно для ядра ассортимента и для стока на вывод."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "model": {"type": "string", "description": "Имя модели (напр. wendy, ruby)"},
+                    "channel": {"type": "string", "enum": ["wb", "ozon"], "description": "Канал"},
+                    "lookback_days": {
+                        "type": "integer",
+                        "description": "Период анализа в днях (по умолчанию 180)",
+                        "default": 180,
+                    },
+                },
+                "required": ["model", "channel"],
         },
     },
 ]
@@ -891,6 +913,12 @@ async def _handle_promotion_plan(channel: str) -> dict:
     return result
 
 
+async def _handle_deep_price_analysis(model: str, channel: str, lookback_days: int = 180) -> dict:
+    """Обработчик get_deep_price_analysis."""
+    from agents.oleg.services.price_analysis.deep_elasticity_service import analyze_model_deep_elasticity
+    return analyze_model_deep_elasticity(channel, model, lookback_days)
+
+
 # =============================================================================
 # HANDLERS MAP
 # =============================================================================
@@ -913,4 +941,5 @@ PRICE_TOOL_HANDLERS = {
     "optimize_price_for_roi": _handle_optimize_price_for_roi,
     "analyze_cross_model_effects": _handle_cross_model_effects,
     "get_promotion_plan": _handle_promotion_plan,
+    "get_deep_price_analysis": _handle_deep_price_analysis,
 }

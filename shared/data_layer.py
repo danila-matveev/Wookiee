@@ -188,8 +188,10 @@ def get_wb_by_model(current_start, prev_start, current_end):
         {get_osnova_sql("SPLIT_PART(article, '/', 1)")} as model,
         SUM(full_counts) as sales_count,
         SUM(revenue_spp) - COALESCE(SUM(revenue_return_spp), 0) as revenue_before_spp,
-        SUM(reclama + reclama_vn) as adv_total,
-        {WB_MARGIN_SQL} as margin
+        SUM(reclama) as adv_internal,
+        SUM(reclama_vn) as adv_external,
+        {WB_MARGIN_SQL} as margin,
+        SUM(sebes) as cost_of_goods
     FROM abc_date
     WHERE date >= %s AND date < %s
     GROUP BY 1, 2
@@ -367,8 +369,10 @@ def get_ozon_by_model(current_start, prev_start, current_end):
         {get_osnova_sql("SPLIT_PART(article, '/', 1)")} as model,
         SUM(count_end) as sales_count,
         SUM(price_end) as revenue_before_spp,
-        SUM(reclama_end + adv_vn) as adv_total,
-        SUM(marga) - SUM(nds) as margin
+        SUM(reclama_end) as adv_internal,
+        SUM(adv_vn) as adv_external,
+        SUM(marga) - SUM(nds) as margin,
+        SUM(sebes_end) as cost_of_goods
     FROM abc_date
     WHERE date >= %s AND date < %s
     GROUP BY 1, 2
@@ -669,6 +673,35 @@ def get_ozon_avg_stock(start_date, end_date):
     conn.close()
 
     return {r[0]: to_float(r[1]) for r in rows}
+
+
+def get_total_avg_stock(channel, start_date, end_date):
+    """Total average stocks for a channel across all models."""
+    if channel == "wb":
+        conn = _get_wb_connection()
+        date_col = "lastchangedate"
+        stock_col = "quantityfull"
+    else:
+        conn = _get_ozon_connection()
+        date_col = "dateupdate"
+        stock_col = "stockspresent"
+    
+    cur = conn.cursor()
+    # Average of daily total sums
+    query = f"""
+    SELECT AVG(daily_total)
+    FROM (
+        SELECT {date_col}::date, SUM({stock_col}) as daily_total
+        FROM stocks
+        WHERE {date_col} >= %s AND {date_col} < %s
+        GROUP BY 1
+    ) t
+    """
+    cur.execute(query, (start_date, end_date))
+    res = cur.fetchone()
+    cur.close()
+    conn.close()
+    return to_float(res[0]) if res and res[0] is not None else 0.0
 
 
 def get_artikuly_full_info():
