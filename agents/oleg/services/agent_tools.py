@@ -432,14 +432,14 @@ def _enrich_finance(data: dict, avg_stock: float = 0.0, num_days: int = 1) -> di
     # Средние продажи за период = sales / num_days
     # Turnover = avg_stock / (sales / num_days) = (avg_stock * num_days) / sales
     data["avg_stock"] = round(avg_stock, 0)
-    turnover = round(_safe_div(avg_stock * num_days, sales), 1)
-    data["turnover_days"] = turnover
+    turnover_raw = _safe_div(avg_stock * num_days, sales)
+    data["turnover_days"] = round(turnover_raw, 1)
 
     # Годовой ROI % = ((маржа / себестоимость) * (365 / оборачиваемость)) * 100
     # Примечание: маржа и себестоимость берутся суммарно за период (соотношение сохраняется)
     cogs = data.get("cost_of_goods", 0)
     margin_roi = _safe_div(margin, cogs)
-    turnover_factor = _safe_div(365, turnover)
+    turnover_factor = _safe_div(365, turnover_raw)
     data["roi_annual"] = round(margin_roi * turnover_factor * 100, 0)
     
     return data
@@ -456,7 +456,8 @@ def _build_changes(current: dict, previous: dict) -> dict:
                 changes[f"{key}_change_pp"] = round(curr_val - prev_val, 1)
             else:
                 changes[f"{key}_change_pct"] = _pct_change(curr_val, prev_val)
-                changes[f"{key}_change_abs"] = round(curr_val - prev_val, 0)
+                abs_precision = 1 if key in {"turnover_days"} else 0
+                changes[f"{key}_change_abs"] = round(curr_val - prev_val, abs_precision)
     return changes
 
 
@@ -536,10 +537,30 @@ async def _handle_brand_finance(start_date: str, end_date: str) -> dict:
 
     changes = _build_changes(brand_current, brand_previous)
 
+    key_metrics_1_1 = {
+        "turnover_days": {
+            "current": brand_current.get("turnover_days", 0),
+            "previous": brand_previous.get("turnover_days", 0),
+            "change_abs": changes.get("turnover_days_change_abs", 0),
+            "change_pct": changes.get("turnover_days_change_pct", 0),
+        },
+        "roi_annual": {
+            "current": brand_current.get("roi_annual", 0),
+            "previous": brand_previous.get("roi_annual", 0),
+            "change_abs": changes.get("roi_annual_change_abs", 0),
+            "change_pct": changes.get("roi_annual_change_pct", 0),
+        },
+    }
+
     return {
         "period": f"{start_date} — {end_date}",
         "comparison_period": f"{prev_start} — {(datetime.strptime(start_date, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')}",
-        "brand": {"current": brand_current, "previous": brand_previous, "changes": changes},
+        "brand": {
+            "current": brand_current,
+            "previous": brand_previous,
+            "changes": changes,
+            "key_metrics_1_1": key_metrics_1_1,
+        },
         "wb_summary": {
             "margin": wb_current.get("margin", 0),
             "margin_pct": wb_current.get("margin_pct", 0),
