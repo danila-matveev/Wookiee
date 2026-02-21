@@ -135,8 +135,8 @@ def get_wb_finance(current_start, prev_start, current_end):
         SUM(full_counts) as sales_count,
         SUM(revenue_spp) - COALESCE(SUM(revenue_return_spp), 0) as revenue_before_spp,
         SUM(revenue) - COALESCE(SUM(revenue_return), 0) as revenue_after_spp,
-        SUM(reclama) as adv_internal,
-        SUM(reclama_vn) as adv_external,
+        SUM(reclama_vn) as adv_internal,
+        SUM(reclama) as adv_external,
         SUM(sebes) as cost_of_goods,
         SUM(logist) as logistics,
         SUM(storage) as storage,
@@ -176,7 +176,11 @@ def get_wb_finance(current_start, prev_start, current_end):
 
 
 def get_wb_by_model(current_start, prev_start, current_end):
-    """WB финансы по моделям. LOWER() на имени модели для корректной группировки."""
+    """WB финансы по моделям. LOWER() на имени модели для корректной группировки.
+
+    Реклама: в источнике WB внутренняя реклама (МП) приходит в reclama_vn,
+    внешняя (блогеры, ВК) — в reclama; маппинг adv_internal/adv_external приведён в соответствие.
+    """
     conn = _get_wb_connection()
     cur = conn.cursor()
 
@@ -188,8 +192,8 @@ def get_wb_by_model(current_start, prev_start, current_end):
         {get_osnova_sql("SPLIT_PART(article, '/', 1)")} as model,
         SUM(full_counts) as sales_count,
         SUM(revenue_spp) - COALESCE(SUM(revenue_return_spp), 0) as revenue_before_spp,
-        SUM(reclama) as adv_internal,
-        SUM(reclama_vn) as adv_external,
+        SUM(reclama_vn) as adv_internal,
+        SUM(reclama) as adv_external,
         {WB_MARGIN_SQL} as margin,
         SUM(sebes) as cost_of_goods
     FROM abc_date
@@ -506,8 +510,8 @@ def get_wb_by_article(start_date, end_date):
         SUM(full_counts) as sales_count,
         SUM(revenue_spp) - COALESCE(SUM(revenue_return_spp), 0) as revenue,
         {WB_MARGIN_SQL} as margin,
-        SUM(reclama) as adv_internal,
-        SUM(reclama_vn) as adv_external,
+        SUM(reclama_vn) as adv_internal,
+        SUM(reclama) as adv_external,
         SUM(reclama + reclama_vn) as adv_total
     FROM abc_date
     WHERE date >= %s AND date < %s
@@ -676,7 +680,10 @@ def get_ozon_avg_stock(start_date, end_date):
 
 
 def get_total_avg_stock(channel, start_date, end_date):
-    """Total average stocks for a channel across all models."""
+    """Total average stocks for a channel across all models.
+
+    If no data for the exact period, uses last 7 days before end_date (fallback for ETL delay).
+    """
     if channel == "wb":
         conn = _get_wb_connection()
         date_col = "lastchangedate"
@@ -687,7 +694,6 @@ def get_total_avg_stock(channel, start_date, end_date):
         stock_col = "stockspresent"
     
     cur = conn.cursor()
-    # Average of daily total sums
     query = f"""
     SELECT AVG(daily_total)
     FROM (
@@ -699,9 +705,20 @@ def get_total_avg_stock(channel, start_date, end_date):
     """
     cur.execute(query, (start_date, end_date))
     res = cur.fetchone()
+    val = to_float(res[0]) if res and res[0] is not None else 0.0
+    # Fallback: if no data in period (e.g. single day, ETL delay), use last 7 days
+    if val <= 0:
+        try:
+            end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+            fallback_start = (end_dt - timedelta(days=7)).strftime('%Y-%m-%d')
+            cur.execute(query, (fallback_start, end_date))
+            res2 = cur.fetchone()
+            val = to_float(res2[0]) if res2 and res2[0] is not None else 0.0
+        except (ValueError, Exception):
+            pass
     cur.close()
     conn.close()
-    return to_float(res[0]) if res and res[0] is not None else 0.0
+    return val
 
 
 def get_artikuly_full_info():
@@ -852,8 +869,8 @@ def get_wb_daily_series(target_date, lookback_days=7):
         SUM(comis_spp) as commission,
         SUM(spp) as spp_amount,
         {WB_MARGIN_SQL} as margin,
-        SUM(reclama) as adv_internal,
-        SUM(reclama_vn) as adv_external
+        SUM(reclama_vn) as adv_internal,
+        SUM(reclama) as adv_external
     FROM abc_date
     WHERE date >= %s AND date < %s
     GROUP BY date
@@ -1191,8 +1208,8 @@ def get_wb_price_margin_daily(start_date, end_date, model=None):
             ELSE NULL END as cogs_per_unit,
         -- Реклама (из abc_date подрядчика)
         SUM(a.reclama + a.reclama_vn) as adv_total,
-        SUM(a.reclama) as adv_internal,
-        SUM(a.reclama_vn) as adv_external
+        SUM(a.reclama_vn) as adv_internal,
+        SUM(a.reclama) as adv_external
     FROM abc_date a
     LEFT JOIN raw_orders o
         ON a.date = o.dt
@@ -1724,8 +1741,8 @@ def get_wb_price_margin_daily_by_article(start_date, end_date, article=None, mod
             ELSE NULL END as cogs_per_unit,
         -- Реклама (из abc_date подрядчика)
         SUM(a.reclama + a.reclama_vn) as adv_total,
-        SUM(a.reclama) as adv_internal,
-        SUM(a.reclama_vn) as adv_external
+        SUM(a.reclama_vn) as adv_internal,
+        SUM(a.reclama) as adv_external
     FROM abc_date a
     LEFT JOIN raw_orders o
         ON a.date = o.dt
@@ -2050,8 +2067,8 @@ def get_wb_fin_data_by_barcode(start_date, end_date):
         SUM(comis_spp) as commission,
         SUM(logist) as logistics,
         SUM(sebes) as cost_of_goods,
-        SUM(reclama) as adv_internal,
-        SUM(reclama_vn) as adv_external,
+        SUM(reclama_vn) as adv_internal,
+        SUM(reclama) as adv_external,
         COALESCE(SUM(reclama_vn_vk), 0) as adv_vk,
         COALESCE(SUM(reclama_vn_creators), 0) as adv_creators,
         SUM(storage) as storage,
