@@ -5,6 +5,20 @@
 
 ---
 
+## [2026-02-21] WB таблицы 5.1/5.2: исправлен маппинг рекламы в playbook
+
+### Что сделано
+- Проверена цепочка расчёта и передачи полей рекламы для таблиц «5.1 Драйверы прибыли (WB)» и «5.2 Анти‑драйверы (WB)».
+- Подтверждено, что Python/SQL маппинг в runtime корректный: WB отдаёт `adv_internal`/`adv_external` из `shared/data_layer.py`.
+- Найдена корневая причина: в `agents/oleg/playbook.md` были противоречивые инструкции (местами устаревший маппинг `reclama`/`reclama_vn`), из-за чего LLM путал колонки внутренней и внешней рекламы именно в WB-таблицах.
+- В playbook унифицированы правила: использовать только нормализованные поля tool-ответов `adv_internal` и `adv_external`; отдельно зафиксирован фактический backend-маппинг для WB и OZON.
+
+### Обновлено
+- [x] `agents/oleg/playbook.md`
+- [x] `docs/development-history.md`
+
+---
+
 ## [2026-02-21] Таблица 1.1 (Notion): Оборачиваемость и Годовой ROI %
 
 ### Что сделано
@@ -12,6 +26,9 @@
 - В плейбуке добавлено явное требование заполнять строки «Оборачиваемость продаж (дни)» и «Годовой ROI %» из `brand.current.turnover_days` и `brand.current.roi_annual`.
 - В описание инструмента `get_brand_finance` добавлено указание на поля `turnover_days` и `roi_annual` для таблицы 1.1.
 - В `get_total_avg_stock` добавлен fallback: при отсутствии данных за период используется средний остаток за последние 7 дней (учитывает задержку ETL).
+- В `agents/oleg/services/agent_tools.py` исправлен расчёт годового ROI: теперь используется `turnover_raw` (без раннего округления оборачиваемости), что устраняет искажение `roi_annual`.
+- В `agents/oleg/services/agent_tools.py` уточнена точность `Δ абс.` для оборачиваемости: `turnover_days_change_abs` сохраняется с 1 знаком после запятой.
+- В ответе `get_brand_finance` добавлен явный блок `brand.key_metrics_1_1` с полями `turnover_days` и `roi_annual` (current/previous/change_abs/change_pct) для более надёжной передачи в LLM при заполнении таблицы 1.1.
 
 ### Обновлено
 - [x] `agents/oleg/playbook.md`
