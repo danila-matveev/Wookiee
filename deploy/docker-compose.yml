@@ -88,9 +88,10 @@ services:
   sheets-sync:
     build:
       context: ..
-      dockerfile: deploy/Dockerfile.sheets_sync
+      dockerfile: deploy/Dockerfile
     container_name: wookiee_sheets_sync
     restart: unless-stopped
+    command: ["python", "-m", "services.sheets_sync.control_panel"]
 
     env_file:
       - ../.env

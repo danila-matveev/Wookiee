@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 DATA_DIR = Path(__file__).parent / "data"
 _DEFAULT_DB = DATA_DIR / "vasily.db"
+_DEFAULT_TIMEOUT = 5.0  # seconds
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS reports (
@@ -41,14 +42,16 @@ class History:
     Таблица: reports — один ряд на расчёт (кабинет × дата).
     """
 
-    def __init__(self, db_path: Path | None = None):
+    def __init__(self, db_path: Path | None = None, timeout: float = _DEFAULT_TIMEOUT):
         self._db_path = db_path or _DEFAULT_DB
+        self._timeout = timeout
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
         self._auto_migrate()
 
     def _get_conn(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(str(self._db_path))
+        conn = sqlite3.connect(str(self._db_path), timeout=self._timeout)
+        conn.execute(f"PRAGMA busy_timeout={int(self._timeout * 1000)}")
         conn.row_factory = sqlite3.Row
         return conn
 

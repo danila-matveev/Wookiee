@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 # Create router
 router = Router()
 
-PROJECT_ROOT = Path(__file__).parent.parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parents[3]  # repo root
 REPORTS_DIR = PROJECT_ROOT / "reports"
 
 # --- Constants for parsing ---
@@ -79,6 +79,207 @@ def _confirm_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="❌ Отмена", callback_data="menu_main")],
         ]
     )
+
+
+async def process_query(
+    user_query: str,
+    state_data: dict,
+    query_understanding=None,
+) -> tuple:
+    """
+    Unified query processing pipeline.
+
+    Returns (result_type, payload, new_state_data)
+    result_type: "clarify" | "needs_clarification" | "confirm" | "error"
+    payload: dict with "text" and optional "keyboard"
+    new_state_data: dict for FSM update (original_query, conversation_history, extracted_params, etc.)
+    """
+    conversation_history = state_data.get("conversation_history", []) or []
+
+    try:
+        # LLM-based parsing with regex fallback
+        if query_understanding:
+            params = await query_understanding.parse(
+                query=user_query,
+                conversation_history=conversation_history if conversation_history else None,
+            )
+        else:
+            params = _basic_parse(user_query)
+
+        status = params.get("status", "")
+
+        # --- Scenario "unclear": nothing understood ---
+        if status == "unclear" or (params.get("needs_clarification") and not params.get("proposed_query")):
+            questions = params.get("clarifying_questions", [])
+            questions_text = "\n".join(f"• {q}" for q in questions)
+
+            conversation_history.append({"role": "user", "content": user_query})
+            conversation_history.append({
+                "role": "assistant",
+                "content": f"Вопросы: {'; '.join(questions)}",
+            })
+
+            return (
+                "clarify",
+                {
+                    "text": (
+                        "🤔 <b>Помогите сформировать запрос:</b>\n\n"
+                        f"{questions_text}\n\n"
+                        "✍️ Напишите уточнение:"
+                    ),
+                    "keyboard": _back_keyboard(),
+                },
+                {
+                    "original_query": user_query,
+                    "conversation_history": conversation_history,
+                },
+            )
+
+        # --- Scenario "needs_clarification": partially understood ---
+        if status == "needs_clarification":
+            understood = params.get("understood_parts", {})
+            proposed = params.get("proposed_query", "")
+            questions = params.get("clarifying_questions", [])
+            questions_text = "\n".join(f"• {q}" for q in questions)
+
+            text_parts = ["🤔 <b>Я понял часть запроса:</b>\n"]
+            if understood.get("partial_intent"):
+                text_parts.append(f"<i>{understood['partial_intent']}</i>\n")
+            if proposed:
+                text_parts.append(f"\n📋 <b>Предлагаю:</b>\n<i>«{proposed}»</i>\n")
+            if questions_text:
+                text_parts.append(f"\n<b>Уточните:</b>\n{questions_text}")
+            text_parts.append("\n\n✍️ Напишите уточнение:")
+
+            conversation_history.append({"role": "user", "content": user_query})
+            conversation_history.append({
+                "role": "assistant",
+                "content": f"Понял: {understood.get('partial_intent', '')}. Вопросы: {'; '.join(questions)}",
+            })
+
+            return (
+                "needs_clarification",
+                {
+                    "text": "".join(text_parts),
+                    "keyboard": _back_keyboard(),
+                },
+                {
+                    "original_query": user_query,
+                    "conversation_history": conversation_history,
+                },
+            )
+
+        # --- Scenario "ready": fully understood → show proposed query for confirmation ---
+        proposed = params.get("proposed_query", "")
+        reformulated = params.get("reformulated_query", "")
+
+        display_query = proposed or reformulated
+        if not display_query:
+            report_type = params.get("report_type", "period")
+            start_date = params.get("start_date", "")
+            end_date = params.get("end_date", "")
+            display_query = f"Анализ ({report_type})"
+            if start_date and end_date:
+                display_query += f" за {start_date} — {end_date}"
+            display_query += f": {user_query}"
+
+        text_parts = [
+            f"📋 <b>Я предлагаю такой анализ:</b>\n\n<i>«{display_query}»</i>",
+        ]
+
+        directions = params.get("suggested_directions", [])
+        if directions:
+            dir_lines = "\n".join(f"• {d}" for d in directions[:3])
+            text_parts.append(f"\n\n💡 <b>Направления:</b>\n{dir_lines}")
+
+        data_hints = _get_data_highlights(params)
+        if data_hints:
+            text_parts.append(data_hints)
+
+        text_parts.append("\n\nЗапустить анализ или изменить запрос?")
+
+        return (
+            "confirm",
+            {
+                "text": "".join(text_parts),
+                "keyboard": _confirm_keyboard(),
+            },
+            {
+                "extracted_params": params,
+                "original_query": user_query,
+            },
+        )
+
+    except Exception as e:
+        logger.error(f"Custom query processing failed: {e}", exc_info=True)
+        return (
+            "error",
+            {
+                "text": (
+                    "❌ <b>Произошла ошибка</b>\n\n"
+                    "Попробуйте позже или используйте шаблонные отчёты."
+                ),
+                "keyboard": _back_keyboard(),
+            },
+            {},
+        )
+
+
+async def _run_query_flow(
+    message: Message,
+    state: FSMContext,
+    user_query: str,
+    state_data: dict,
+    query_understanding=None,
+) -> None:
+    """Shared flow to process a query and update FSM."""
+    processing_msg = await message.answer(
+        "🤔 <b>Анализирую запрос...</b>",
+        parse_mode="HTML",
+    )
+
+    try:
+        result_type, payload, new_state = await process_query(
+            user_query=user_query,
+            state_data=state_data,
+            query_understanding=query_understanding,
+        )
+
+        if result_type in ("clarify", "needs_clarification"):
+            await processing_msg.edit_text(
+                payload["text"],
+                parse_mode="HTML",
+                reply_markup=payload.get("keyboard"),
+            )
+            await state.update_data(**new_state, prefilled_query=None)
+            await state.set_state(QueryStates.waiting_for_clarification)
+            return
+
+        if result_type == "confirm":
+            await state.update_data(**new_state, prefilled_query=None)
+            await state.set_state(QueryStates.confirming_parameters)
+            await processing_msg.edit_text(
+                payload["text"],
+                parse_mode="HTML",
+                reply_markup=payload.get("keyboard"),
+            )
+            return
+
+        await processing_msg.edit_text(
+            payload["text"],
+            parse_mode="HTML",
+            reply_markup=payload.get("keyboard"),
+        )
+        await state.clear()
+    except Exception as e:
+        logger.error(f"Custom query flow failed: {e}", exc_info=True)
+        await processing_msg.edit_text(
+            "❌ <b>Произошла ошибка</b>\n\n"
+            "Попробуйте позже или используйте шаблонные отчёты.",
+            parse_mode="HTML",
+            reply_markup=_back_keyboard(),
+        )
+        await state.clear()
 
 
 # =====================================================================
@@ -373,7 +574,9 @@ async def process_custom_query(
         )
         return
 
-    user_query = message.text
+    data = await state.get_data()
+    prefilled_query = data.get("prefilled_query")
+    user_query = prefilled_query or message.text
 
     processing_msg = await message.answer(
         "🤔 <b>Анализирую запрос...</b>",
@@ -381,120 +584,38 @@ async def process_custom_query(
     )
 
     try:
-        # Get conversation history for multi-turn clarification
-        data = await state.get_data()
-        conversation_history = data.get("conversation_history", [])
-
-        # LLM-based parsing with regex fallback
-        if query_understanding:
-            params = await query_understanding.parse(
-                query=user_query,
-                conversation_history=conversation_history if conversation_history else None,
-            )
-        else:
-            params = _basic_parse(user_query)
-
-        status = params.get("status", "")
-
-        # --- Scenario "unclear": nothing understood ---
-        if status == "unclear" or (params.get("needs_clarification") and not params.get("proposed_query")):
-            questions = params.get("clarifying_questions", [])
-            questions_text = "\n".join(f"• {q}" for q in questions)
-
-            await processing_msg.edit_text(
-                "🤔 <b>Помогите сформировать запрос:</b>\n\n"
-                f"{questions_text}\n\n"
-                "✍️ Напишите уточнение:",
-                parse_mode="HTML",
-                reply_markup=_back_keyboard(),
-            )
-            conversation_history.append({"role": "user", "content": user_query})
-            conversation_history.append({
-                "role": "assistant",
-                "content": f"Вопросы: {'; '.join(questions)}",
-            })
-            await state.update_data(
-                original_query=user_query,
-                conversation_history=conversation_history,
-            )
-            await state.set_state(QueryStates.waiting_for_clarification)
-            return
-
-        # --- Scenario "needs_clarification": partially understood ---
-        if status == "needs_clarification":
-            understood = params.get("understood_parts", {})
-            proposed = params.get("proposed_query", "")
-            questions = params.get("clarifying_questions", [])
-            questions_text = "\n".join(f"• {q}" for q in questions)
-
-            text_parts = ["🤔 <b>Я понял часть запроса:</b>\n"]
-            if understood.get("partial_intent"):
-                text_parts.append(f"<i>{understood['partial_intent']}</i>\n")
-            if proposed:
-                text_parts.append(f"\n📋 <b>Предлагаю:</b>\n<i>«{proposed}»</i>\n")
-            if questions_text:
-                text_parts.append(f"\n<b>Уточните:</b>\n{questions_text}")
-            text_parts.append("\n\n✍️ Напишите уточнение:")
-
-            await processing_msg.edit_text(
-                "".join(text_parts),
-                parse_mode="HTML",
-                reply_markup=_back_keyboard(),
-            )
-            conversation_history.append({"role": "user", "content": user_query})
-            conversation_history.append({
-                "role": "assistant",
-                "content": f"Понял: {understood.get('partial_intent', '')}. Вопросы: {'; '.join(questions)}",
-            })
-            await state.update_data(
-                original_query=user_query,
-                conversation_history=conversation_history,
-            )
-            await state.set_state(QueryStates.waiting_for_clarification)
-            return
-
-        # --- Scenario "ready": fully understood → show proposed query for confirmation ---
-        proposed = params.get("proposed_query", "")
-        reformulated = params.get("reformulated_query", "")
-
-        # Use proposed_query as the main display, fall back to reformulated
-        display_query = proposed or reformulated
-        if not display_query:
-            report_type = params.get("report_type", "period")
-            start_date = params.get("start_date", "")
-            end_date = params.get("end_date", "")
-            display_query = f"Анализ ({report_type})"
-            if start_date and end_date:
-                display_query += f" за {start_date} — {end_date}"
-            display_query += f": {user_query}"
-
-        await state.update_data(
-            extracted_params=params,
-            original_query=user_query,
+        result_type, payload, new_state = await process_query(
+            user_query=user_query,
+            state_data=data,
+            query_understanding=query_understanding,
         )
-        await state.set_state(QueryStates.confirming_parameters)
 
-        text_parts = [
-            f"📋 <b>Я предлагаю такой анализ:</b>\n\n<i>«{display_query}»</i>",
-        ]
+        if result_type in ("clarify", "needs_clarification"):
+            await processing_msg.edit_text(
+                payload["text"],
+                parse_mode="HTML",
+                reply_markup=payload.get("keyboard"),
+            )
+            await state.update_data(**new_state, prefilled_query=None)
+            await state.set_state(QueryStates.waiting_for_clarification)
+            return
 
-        directions = params.get("suggested_directions", [])
-        if directions:
-            dir_lines = "\n".join(f"• {d}" for d in directions[:3])
-            text_parts.append(f"\n\n💡 <b>Направления:</b>\n{dir_lines}")
-
-        data_hints = _get_data_highlights(params)
-        if data_hints:
-            text_parts.append(data_hints)
-
-        text_parts.append("\n\nЗапустить анализ или изменить запрос?")
+        if result_type == "confirm":
+            await state.update_data(**new_state, prefilled_query=None)
+            await state.set_state(QueryStates.confirming_parameters)
+            await processing_msg.edit_text(
+                payload["text"],
+                parse_mode="HTML",
+                reply_markup=payload.get("keyboard"),
+            )
+            return
 
         await processing_msg.edit_text(
-            "".join(text_parts),
+            payload["text"],
             parse_mode="HTML",
-            reply_markup=_confirm_keyboard(),
+            reply_markup=payload.get("keyboard"),
         )
-
+        await state.clear()
     except Exception as e:
         logger.error(f"Custom query processing failed: {e}", exc_info=True)
         await processing_msg.edit_text(
@@ -531,24 +652,19 @@ async def process_clarification(
 ):
     """Process user's clarification — re-run LLM parsing with conversation context."""
     data = await state.get_data()
-    original = data.get("original_query", "")
-    conversation_history = data.get("conversation_history", [])
     clarification = message.text
-
-    # Add clarification to conversation history
+    conversation_history = data.get("conversation_history", []) or []
     conversation_history.append({"role": "user", "content": clarification})
 
-    combined_query = f"{original}. {clarification}"
-    await state.update_data(
-        original_query=combined_query,
-        conversation_history=conversation_history,
-    )
-    await state.set_state(QueryStates.waiting_for_query)
+    original = data.get("original_query", "")
+    combined_query = f"{original}. {clarification}".strip(". ")
 
-    # Re-run the main handler with conversation context
-    message.text = combined_query
-    await process_custom_query(
-        message, state, auth_service, oleg_agent, report_storage, query_understanding,
+    await _run_query_flow(
+        message=message,
+        state=state,
+        user_query=combined_query,
+        state_data={**data, "conversation_history": conversation_history},
+        query_understanding=query_understanding,
     )
 
 
@@ -566,13 +682,14 @@ async def process_comment(
     original = data.get("original_query", "")
     comment = message.text
 
-    combined_query = f"{original}. Уточнение: {comment}"
-    await state.update_data(original_query=combined_query)
-    await state.set_state(QueryStates.waiting_for_query)
+    combined_query = f"{original}. Уточнение: {comment}".strip(". ")
 
-    message.text = combined_query
-    await process_custom_query(
-        message, state, auth_service, oleg_agent, report_storage, query_understanding,
+    await _run_query_flow(
+        message=message,
+        state=state,
+        user_query=combined_query,
+        state_data=data,
+        query_understanding=query_understanding,
     )
 
 
@@ -618,12 +735,16 @@ async def callback_confirm_params(
                 start_date = (yesterday - timedelta(days=6)).strftime("%Y-%m-%d")
                 end_date = yesterday.strftime("%Y-%m-%d")
 
+        # Smart date adjustment should already be reflected in params; use them
+        params_start = params.get("start_date") or start_date
+        params_end = params.get("end_date") or end_date
+
         reformulated = params.get("reformulated_query", user_query)
         result = await oleg_agent.analyze_deep(
             user_query=reformulated,
             params={
-                "start_date": start_date,
-                "end_date": end_date,
+                "start_date": params_start,
+                "end_date": params_end,
                 "channels": params.get("channels", ["wb", "ozon"]),
                 "models": params.get("models", []),
                 "report_type": report_type,
@@ -640,23 +761,27 @@ async def callback_confirm_params(
             )
             return
 
+        report_md = ReportFormatter.sanitize_report_md(result)
+
         # Save to storage
         try:
             report_storage.save_report(
                 user_id=callback.from_user.id,
                 report_type="custom",
                 title=f"Запрос: {user_query[:50]}",
-                content=result.get("detailed_report", ""),
+                content=report_md,
                 metadata=params,
+                start_date=datetime.strptime(params_start, "%Y-%m-%d"),
+                end_date=datetime.strptime(params_end, "%Y-%m-%d"),
             )
         except Exception as e:
             logger.error(f"Failed to save report: {e}")
 
         # Notion sync
         notion_url = await notion_service.sync_report(
-            start_date=start_date,
-            end_date=end_date,
-            report_md=result.get("detailed_report", ""),
+            start_date=params_start,
+            end_date=params_end,
+            report_md=report_md,
         )
 
         # Build cost info
@@ -684,17 +809,17 @@ async def callback_confirm_params(
 
         keyboard = ReportFormatter.create_report_keyboard("custom")
 
-        if len(html_text) > 4000:
-            chunks = [html_text[i:i + 4000] for i in range(0, len(html_text), 4000)]
+        chunks = ReportFormatter.split_html_message(html_text, limit=4000)
+        if len(chunks) == 1:
+            await callback.message.edit_text(
+                chunks[0], parse_mode="HTML", reply_markup=keyboard,
+            )
+        else:
             await callback.message.edit_text(chunks[0], parse_mode="HTML")
             for chunk in chunks[1:-1]:
                 await callback.message.answer(chunk, parse_mode="HTML")
             await callback.message.answer(
                 chunks[-1], parse_mode="HTML", reply_markup=keyboard,
-            )
-        else:
-            await callback.message.edit_text(
-                html_text, parse_mode="HTML", reply_markup=keyboard,
             )
 
     except Exception as e:

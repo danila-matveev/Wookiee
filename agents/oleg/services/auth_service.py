@@ -19,7 +19,7 @@ class AuthService:
         self.auth_enabled = auth_enabled
         self.hashed_password = hashed_password.encode() if isinstance(hashed_password, str) else hashed_password
         self._persistence_path = Path(persistence_path) if persistence_path else None
-        self.authenticated_users: Set[int] = set()
+        self._authenticated_users: Set[int] = set()
         self._load_users()
 
     def _load_users(self) -> None:
@@ -28,10 +28,20 @@ class AuthService:
             return
         try:
             data = json.loads(self._persistence_path.read_text(encoding="utf-8"))
-            self.authenticated_users = set(data.get("user_ids", []))
-            logger.info(f"Loaded {len(self.authenticated_users)} authenticated users from disk")
+            self._authenticated_users = set(data.get("user_ids", []))
+            logger.info(f"Loaded {len(self._authenticated_users)} authenticated users from disk")
         except Exception as e:
             logger.warning(f"Failed to load authenticated users: {e}")
+
+    def reload(self) -> None:
+        """Reload authenticated users from disk (used by long-lived agents)."""
+        self._load_users()
+
+    @property
+    def authenticated_users(self) -> Set[int]:
+        """Always return up-to-date users by reloading from disk."""
+        self.reload()
+        return self._authenticated_users
 
     def _save_users(self) -> None:
         """Persist authenticated users to disk."""
@@ -40,7 +50,7 @@ class AuthService:
         try:
             self._persistence_path.parent.mkdir(parents=True, exist_ok=True)
             self._persistence_path.write_text(
-                json.dumps({"user_ids": sorted(self.authenticated_users)}, indent=2),
+                json.dumps({"user_ids": sorted(self._authenticated_users)}, indent=2),
                 encoding="utf-8",
             )
         except Exception as e:
@@ -80,7 +90,7 @@ class AuthService:
             True if authentication successful, False otherwise
         """
         if self.verify_password(password):
-            self.authenticated_users.add(user_id)
+            self._authenticated_users.add(user_id)
             self._save_users()
             logger.info(f"User {user_id} authenticated successfully")
             return True
@@ -104,7 +114,7 @@ class AuthService:
         Args:
             user_id: Telegram user ID
         """
-        self.authenticated_users.discard(user_id)
+        self._authenticated_users.discard(user_id)
         self._save_users()
         logger.info(f"User {user_id} logged out")
 

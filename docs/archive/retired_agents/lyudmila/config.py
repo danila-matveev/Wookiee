@@ -9,6 +9,14 @@ from dotenv import load_dotenv
 env_path = Path(__file__).resolve().parent.parent / '.env'
 load_dotenv(env_path)
 
+
+def _env_first(keys, default=""):
+    for k in keys:
+        v = os.getenv(k)
+        if v not in (None, ""):
+            return v
+    return default
+
 # ============================================================================
 # Telegram Bot Configuration
 # ============================================================================
@@ -34,11 +42,11 @@ SQLITE_DB_PATH: str = str(Path(__file__).resolve().parent / "data" / "lyudmila.d
 # ============================================================================
 # Supabase (PostgreSQL) — память Людмилы
 # ============================================================================
-SUPABASE_HOST: str = os.getenv("SUPABASE_HOST", "")
-SUPABASE_PORT: int = int(os.getenv("SUPABASE_PORT", "5432"))
-SUPABASE_DB: str = os.getenv("SUPABASE_DB", "postgres")
-SUPABASE_USER: str = os.getenv("SUPABASE_USER", "")
-SUPABASE_PASSWORD: str = os.getenv("SUPABASE_PASSWORD", "")
+SUPABASE_HOST: str = _env_first(["POSTGRES_HOST", "SUPABASE_HOST"], "")
+SUPABASE_PORT: int = int(_env_first(["POSTGRES_PORT", "SUPABASE_PORT"], "5432"))
+SUPABASE_DB: str = _env_first(["POSTGRES_DB", "SUPABASE_DB"], "postgres")
+SUPABASE_USER: str = _env_first(["POSTGRES_USER", "SUPABASE_USER"], "")
+SUPABASE_PASSWORD: str = _env_first(["POSTGRES_PASSWORD", "SUPABASE_PASSWORD"], "")
 
 # ============================================================================
 # Scheduler Configuration
