@@ -772,7 +772,9 @@ agents/oleg/
     scheduler_service.py                 # APScheduler wrapper
     data_freshness_service.py            # Проверка готовности + smart date adjustment
     feedback_service.py                  # Обработка обратной связи
-    db_config.py                         # (legacy, не используется)
+    db_config.py                         # DB connection config
+    json_utils.py                        # JSON parsing utilities
+    zai_client.py                        # (шим -> shared/clients/zai_client.py)
     price_analysis/
       __init__.py
       regression_engine.py               # Эластичность, корреляции, тренды

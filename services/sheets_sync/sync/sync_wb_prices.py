@@ -10,7 +10,7 @@ from shared.clients.sheets_client import (
     set_checkbox,
 )
 from shared.clients.wb_client import WBClient
-from services.sheets_sync.config import ALL_CABINETS, GOOGLE_SA_FILE, SPREADSHEET_ID, get_sheet_name
+from services.sheets_sync.config import ALL_CABINETS, GOOGLE_SA_FILE, get_active_spreadsheet_id, get_sheet_name
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ def sync() -> int:
     sheet_name = get_sheet_name(SHEET_NAME)
 
     gc = get_client(GOOGLE_SA_FILE)
-    spreadsheet = gc.open_by_key(SPREADSHEET_ID)
+    spreadsheet = gc.open_by_key(get_active_spreadsheet_id())
     ws = get_or_create_worksheet(spreadsheet, sheet_name)
 
     row_count = clear_and_write(
@@ -62,10 +62,10 @@ def sync() -> int:
         headers=headers,
         data=all_rows,
         meta_cells=[
-            (1, 1, f"{date_str} {time_str} | Два кабинета"),
+            (1, 1, f"Обновлено: {date_str} {time_str}"),
         ],
-        header_row=4,
-        data_start_row=5,
+        header_row=2,
+        data_start_row=3,
     )
 
     # Checkbox for refresh

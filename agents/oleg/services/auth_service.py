@@ -14,7 +14,9 @@ logger = logging.getLogger(__name__)
 class AuthService:
     """Service for managing user authentication"""
 
-    def __init__(self, hashed_password: str, persistence_path: Optional[str] = None):
+    def __init__(self, hashed_password: str, persistence_path: Optional[str] = None,
+                 auth_enabled: bool = True):
+        self.auth_enabled = auth_enabled
         self.hashed_password = hashed_password.encode() if isinstance(hashed_password, str) else hashed_password
         self._persistence_path = Path(persistence_path) if persistence_path else None
         self._authenticated_users: Set[int] = set()
@@ -70,6 +72,12 @@ class AuthService:
             logger.error(f"Password verification error: {e}")
             return False
 
+    def register_user(self, user_id: int) -> None:
+        """Add user to authenticated set without password check (for auth-disabled mode)."""
+        self.authenticated_users.add(user_id)
+        self._save_users()
+        logger.info(f"User {user_id} registered (auth disabled)")
+
     def authenticate_user(self, user_id: int, password: str) -> bool:
         """
         Authenticate user with password
@@ -92,14 +100,11 @@ class AuthService:
 
     def is_authenticated(self, user_id: int) -> bool:
         """
-        Check if user is already authenticated
-
-        Args:
-            user_id: Telegram user ID
-
-        Returns:
-            True if user is authenticated, False otherwise
+        Check if user is already authenticated.
+        When auth is disabled, always returns True.
         """
+        if not self.auth_enabled:
+            return True
         return user_id in self.authenticated_users
 
     def logout_user(self, user_id: int) -> None:

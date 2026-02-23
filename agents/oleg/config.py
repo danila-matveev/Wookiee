@@ -26,6 +26,7 @@ TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
 # ============================================================================
 # Authentication
 # ============================================================================
+AUTH_ENABLED: bool = os.getenv("AUTH_ENABLED", "true").lower() in ("true", "1", "yes")
 HASHED_PASSWORD: str = os.getenv(
     "BOT_PASSWORD_HASH",
     "$2b$12$LQ3fPZJ5ZqX5ZqX5ZqX5ZeX5ZqX5ZqX5ZqX5ZqX5ZqX5ZqX5ZqX5Zq"  # PLACEHOLDER
@@ -111,7 +112,7 @@ FEEDBACK_LOG_PATH: str = str(Path(__file__).parent / "feedback_log.md")
 # Scheduler (MSK)
 # ============================================================================
 TIMEZONE: str = "Europe/Moscow"
-DAILY_REPORT_TIME: str = os.getenv("DAILY_REPORT_TIME", "10:05")
+DAILY_REPORT_TIME: str = os.getenv("DAILY_REPORT_TIME", "09:00")
 WEEKLY_REPORT_TIME: str = os.getenv("WEEKLY_REPORT_TIME", "10:15")
 MONTHLY_REPORT_TIME: str = os.getenv("MONTHLY_REPORT_TIME", "10:30")
 

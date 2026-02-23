@@ -24,6 +24,7 @@ from typing import Optional
 
 from agents.oleg.services.report_storage import ReportStorage
 from agents.oleg.services.report_formatter import ReportFormatter
+from agents.oleg.services.time_utils import get_today_msk, get_now_msk
 
 logger = logging.getLogger(__name__)
 
@@ -382,7 +383,7 @@ def _parse_month_name(text: str) -> Optional[int]:
 
 def _parse_date_range(query: str) -> tuple:
     """Extract date range from Russian natural language query."""
-    current_year = datetime.now().year
+    current_year = get_today_msk().year
     query_lower = query.lower()
 
     # Pattern 1: "1-7 февраля [2026]"
@@ -450,7 +451,7 @@ def _detect_models(query: str) -> list:
 def _basic_parse(query: str) -> dict:
     """Fallback keyword-based parameter extraction (no LLM)."""
     query_lower = query.lower()
-    yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    yesterday = (get_today_msk() - timedelta(days=1)).strftime("%Y-%m-%d")
     channels = _detect_channels(query)
     models = _detect_models(query)
     channels_str = ", ".join(c.upper() for c in channels)
@@ -476,7 +477,7 @@ def _basic_parse(query: str) -> dict:
         }
 
     if any(w in query_lower for w in ["неделю", "недел", "7 дней"]):
-        end = datetime.now() - timedelta(days=1)
+        end = get_today_msk() - timedelta(days=1)
         start = end - timedelta(days=6)
         s, e = start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")
         return {
@@ -498,7 +499,7 @@ def _basic_parse(query: str) -> dict:
         }
 
     if any(w in query_lower for w in ["месяц", "30 дней"]):
-        end = datetime.now() - timedelta(days=1)
+        end = get_today_msk() - timedelta(days=1)
         start = end - timedelta(days=29)
         s, e = start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")
         return {
@@ -720,17 +721,17 @@ async def callback_confirm_params(
         # Determine dates if not provided
         if not start_date or not end_date:
             if report_type == "daily":
-                yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+                yesterday = (get_today_msk() - timedelta(days=1)).strftime("%Y-%m-%d")
                 start_date = yesterday
                 end_date = yesterday
             elif report_type == "monthly":
-                today = datetime.now()
+                today = get_today_msk()
                 first_of_month = today.replace(day=1)
                 last_month_end = first_of_month - timedelta(days=1)
                 start_date = last_month_end.replace(day=1).strftime("%Y-%m-%d")
                 end_date = last_month_end.strftime("%Y-%m-%d")
             else:
-                yesterday = datetime.now() - timedelta(days=1)
+                yesterday = get_today_msk() - timedelta(days=1)
                 start_date = (yesterday - timedelta(days=6)).strftime("%Y-%m-%d")
                 end_date = yesterday.strftime("%Y-%m-%d")
 

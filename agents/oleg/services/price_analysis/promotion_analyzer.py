@@ -10,6 +10,7 @@ Promotion Analyzer — анализ акций WB/OZON и рекомендаци
 """
 import logging
 from datetime import datetime, timedelta
+from agents.oleg.services.time_utils import get_now_msk
 from typing import Optional
 
 import numpy as np
@@ -258,8 +259,9 @@ class PromotionAnalyzer:
         Ищет периоды в прошлом, когда цена падала >10%, и вычисляет
         фактический подъём объёма. Это калиброванный volume_lift.
         """
-        end_date = datetime.now().strftime('%Y-%m-%d')
-        start_date = (datetime.now() - timedelta(days=lookback_days)).strftime('%Y-%m-%d')
+        now_msk = get_now_msk()
+        end_date = now_msk.strftime('%Y-%m-%d')
+        start_date = (now_msk - timedelta(days=lookback_days)).strftime('%Y-%m-%d')
 
         if channel == 'wb':
             data = get_wb_price_margin_daily(start_date, end_date, model)

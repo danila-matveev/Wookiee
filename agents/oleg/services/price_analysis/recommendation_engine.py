@@ -10,6 +10,7 @@ Recommendation Engine — генерация ценовых рекомендац
 """
 import logging
 from datetime import datetime
+from agents.oleg.services.time_utils import get_now_msk
 
 import numpy as np
 import pandas as pd
@@ -80,7 +81,75 @@ def generate_recommendations(
             'error': f'elasticity_error: {elasticity_result["error"]}',
         }
 
-    elasticity = elasticity_result['elasticity']
+    elasticity = elasticity_result.get('elasticity', 0)
+
+    # ====== Quality Gates: делегируем к selection_status из оркестратора ======
+    selection_status = elasticity_result.get('selection_status')
+    reason_code = elasticity_result.get('reason_code', '')
+
+    allowed_statuses = {'PASS', 'DEPRECATED_FALLBACK'}
+
+    # Если оркестратор вернул блокировку — формируем human-readable reason
+    if selection_status and selection_status not in allowed_statuses:
+        gate_status = selection_status
+        reason_map = {
+            'insufficient_data': f"INSUFFICIENT_DATA. Слишком мало наблюдений или низкое покрытие дат.",
+            'low_price_variation': f"FAIL. Недостаточная вариация цены (мало уникальных цен / изменений / диапазон).",
+            'low_predictive_power': f"FAIL. Модель не превосходит Naive Baseline на ≥10% WAPE или переобучена.",
+            'positive_elasticity': f"CONFOUNDED. Положительная эластичность ({elasticity}). Модель не идентифицирована.",
+        }
+        gate_reason = reason_map.get(reason_code, f"{gate_status}: {reason_code}")
+        return {
+            'model': model,
+            'channel': channel,
+            'timestamp': get_now_msk().isoformat(),
+            'action': 'hold',
+            'current_metrics': current,
+            'elasticity': elasticity_result,
+            'quality_status': gate_status,
+            'reason_code': reason_code,
+            'selected_model': elasticity_result.get('selected_model', 'none'),
+            'backtest_results': elasticity_result.get('backtest_results', {}),
+            'scenarios': [],
+            'recommended': {
+                'action': 'hold',
+                'reasoning': gate_reason,
+            },
+        }
+
+    # Fallback: если selection_status отсутствует (старый API) — применяем legacy-проверки
+    if not selection_status:
+        quality_metrics = elasticity_result.get('quality_metrics', {})
+        n_obs = elasticity_result.get('n_observations', 0)
+        if n_obs < 30 or quality_metrics.get('low_date_coverage', False):
+            gate_reason = f"INSUFFICIENT_DATA. Мало наблюдений ({n_obs}) или низкое покрытие дат."
+            return {
+                'model': model, 'channel': channel,
+                'timestamp': get_now_msk().isoformat(), 'action': 'hold',
+                'current_metrics': current, 'elasticity': elasticity_result,
+                'quality_status': 'INSUFFICIENT_DATA', 'scenarios': [],
+                'recommended': {'action': 'hold', 'reasoning': gate_reason},
+            }
+        if quality_metrics.get('insufficient_unique_prices') or quality_metrics.get('low_price_range') or quality_metrics.get('insufficient_price_changes'):
+            gate_reason = "FAIL. Недостаточная вариация цены."
+            return {
+                'model': model, 'channel': channel,
+                'timestamp': get_now_msk().isoformat(), 'action': 'hold',
+                'current_metrics': current, 'elasticity': elasticity_result,
+                'quality_status': 'FAIL', 'scenarios': [],
+                'recommended': {'action': 'hold', 'reasoning': gate_reason},
+            }
+        if quality_metrics.get('is_confounded', False) or elasticity > 0:
+            gate_reason = f"CONFOUNDED. Положительная эластичность ({elasticity})."
+            return {
+                'model': model, 'channel': channel,
+                'timestamp': get_now_msk().isoformat(), 'action': 'hold',
+                'current_metrics': current, 'elasticity': elasticity_result,
+                'quality_status': 'CONFOUNDED', 'scenarios': [],
+                'recommended': {'action': 'hold', 'reasoning': gate_reason},
+            }
+    # ====== Конец Quality Gates ======
+
 
     # Генерация сценариев
     scenarios = []
@@ -109,8 +178,9 @@ def generate_recommendations(
     recommendation = {
         'model': model,
         'channel': channel,
-        'timestamp': datetime.now().isoformat(),
+        'timestamp': get_now_msk().isoformat(),
         'action': action,
+        'quality_status': 'PASS',
         'current_metrics': current,
         'elasticity': elasticity_result,
         'confidence': confidence,
@@ -146,6 +216,16 @@ def generate_recommendations(
         elasticity_result, current, df
     )
 
+    # Risk Check: Wide CI (только для PASS)
+    ci = elasticity_result.get('confidence_interval_95', [0, 0])
+    if len(ci) == 2:
+        ci_width = ci[1] - ci[0]
+        ci_ratio = ci_width / max(abs(elasticity), 0.1)
+        if ci_ratio > 3.0:
+            recommendation['risk_factors'].append(
+                f"Wide CI: коэффициент нестабилен (CI width {ci_width:.2f}, ratio {ci_ratio:.1f})"
+            )
+
     # ROI если есть данные оборачиваемости
     if turnover_days and turnover_days > 0:
         current_roi = compute_annual_roi(current['margin_pct'], turnover_days)
@@ -157,6 +237,7 @@ def generate_recommendations(
         recommendation['stock_health'] = stock_health
 
     return recommendation
+
 
 
 def _simulate_scenario(
