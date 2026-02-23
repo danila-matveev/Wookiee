@@ -414,6 +414,7 @@ PRICE_TOOL_DEFINITIONS = [
                     "channel": {"type": "string", "enum": ["wb", "ozon"], "description": "Канал"},
                 },
                 "required": ["channel"],
+            },
         },
     },
     {
@@ -437,6 +438,7 @@ PRICE_TOOL_DEFINITIONS = [
                     },
                 },
                 "required": ["model", "channel"],
+            },
         },
     },
 ]

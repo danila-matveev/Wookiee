@@ -27,6 +27,7 @@ from agents.oleg.services.price_tools import (
     _handle_optimize_price_for_roi,
     _handle_cross_model_effects,
     _handle_promotion_plan,
+    _handle_deep_price_analysis,
 )
 
 
@@ -48,17 +49,18 @@ EXPECTED_TOOL_NAMES = {
     "optimize_price_for_roi",
     "analyze_cross_model_effects",
     "get_promotion_plan",
+    "get_deep_price_analysis",
 }
 
 
 class TestToolRegistration:
     def test_all_definitions_registered(self):
-        """17 tool definitions exist."""
-        assert len(PRICE_TOOL_DEFINITIONS) == 17
+        """18 tool definitions exist."""
+        assert len(PRICE_TOOL_DEFINITIONS) == 18
 
     def test_all_handlers_registered(self):
-        """17 handlers exist."""
-        assert len(PRICE_TOOL_HANDLERS) == 17
+        """18 handlers exist."""
+        assert len(PRICE_TOOL_HANDLERS) == 18
 
     def test_names_match(self):
         """Definition names match handler names."""
