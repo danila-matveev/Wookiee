@@ -1,0 +1,51 @@
+name: Deploy to Production
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -e
+
+            PROJECT_DIR="/home/danila/projects/wookiee"
+            cd "$PROJECT_DIR"
+
+            echo "=== Pulling latest code ==="
+            git pull origin main
+
+            echo "=== Cleaning stale PID locks ==="
+            rm -f "$PROJECT_DIR"/agents/oleg/logs/*.pid
+
+            echo "=== Building and deploying Wookiee services ==="
+            cd deploy
+            docker compose build
+            docker compose up -d
+
+            echo "=== Waiting for healthchecks (30s) ==="
+            sleep 30
+
+            echo "=== Container status ==="
+            docker ps --format "table {{.Names}}\t{{.Status}}\t{{.RunningFor}}"
+
+            echo "=== Healthcheck status ==="
+            for container in wookiee_analytics_agent wookiee_analytics_bot; do
+              status=$(docker inspect "$container" --format='{{.State.Health.Status}}' 2>/dev/null || echo "unknown")
+              echo "$container: $status"
+            done

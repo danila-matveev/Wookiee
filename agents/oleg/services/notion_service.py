@@ -63,6 +63,9 @@ class NotionService:
 
         try:
             title = f"Аналитика {start_date.replace('-', '.')} — {end_date.replace('-', '.')}"
+            
+            # Remove empty sections to avoid orphan headers in Notion
+            report_md = _remove_empty_sections(report_md)
             blocks = md_to_notion_blocks(report_md)
 
             existing = await self._find_existing_page(start_date, end_date)
@@ -149,10 +152,19 @@ class NotionService:
         return pages[0] if pages else None
 
     async def _delete_page_content(self, page_id: str) -> None:
-        """Delete all blocks from a page."""
-        result = await self._request("GET", f"blocks/{page_id}/children?page_size=100")
-        for block in result.get("results", []):
-            await self._request("DELETE", f"blocks/{block['id']}")
+        """Delete all blocks from a page recursively (pagination)."""
+        while True:
+            result = await self._request("GET", f"blocks/{page_id}/children?page_size=100")
+            blocks = result.get("results", [])
+            if not blocks:
+                break
+            
+            logger.info(f"Notion: deleting {len(blocks)} blocks from page {page_id}")
+            for block in blocks:
+                await self._request("DELETE", f"blocks/{block['id']}")
+            
+            if not result.get("has_more"):
+                break
 
     async def _append_blocks(self, page_id: str, blocks: list) -> None:
         """Append blocks in batches of 100."""
@@ -182,6 +194,61 @@ def _parse_inline(text):
         elif seg:
             parts.append({"type": "text", "text": {"content": seg}})
     return parts if parts else [{"type": "text", "text": {"content": text}}]
+
+
+def _remove_empty_sections(md_text: str) -> str:
+    """
+    Removes headers that have no content before the next header of same or higher level.
+    """
+    lines = md_text.split('\n')
+    parsed = []
+    
+    # 1. Parse lines
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            parsed.append({'type': 'empty', 'text': line})
+            continue
+            
+        match = re.match(r'^(#+)\s+(.+)', stripped)
+        if match:
+            level = len(match.group(1))
+            parsed.append({'type': 'header', 'level': level, 'text': line})
+        else:
+            parsed.append({'type': 'content', 'text': line})
+            
+    # 2. Identify empty headers
+    indices_to_remove = set()
+    
+    for i in range(len(parsed)):
+        item = parsed[i]
+        if item['type'] == 'header':
+            has_content = False
+            for j in range(i + 1, len(parsed)):
+                next_item = parsed[j]
+                
+                # Found content -> keep header
+                if next_item['type'] == 'content':
+                    has_content = True
+                    break
+                
+                # Found another header
+                if next_item['type'] == 'header':
+                    # If same or higher level (H2 after H3, H3 after H3) -> stop, current header is empty
+                    if next_item['level'] <= item['level']:
+                        break
+                    # If deeper header (H4 after H3) -> continue looking for its content
+            
+            if not has_content:
+                indices_to_remove.add(i)
+                
+    # 3. Rebuild text
+    result_lines = []
+    for i in range(len(parsed)):
+        if i not in indices_to_remove:
+            result_lines.append(parsed[i]['text'])
+            
+    return '\n'.join(result_lines)
 
 
 def md_to_notion_blocks(md_text: str) -> list:
@@ -273,25 +340,21 @@ def md_to_notion_blocks(md_text: str) -> list:
             i += 1
             continue
 
-        # Headings
-        if line.startswith('### '):
+        # Headings (support # to ######, mapping to h1-h3)
+        header_match = re.match(r'^(#+)\s+(.+)', line.strip())
+        if header_match:
+            level = len(header_match.group(1))
+            content = header_match.group(2).strip()
+            # Notion only supports heading_1, heading_2, heading_3
+            notion_level = min(level, 3)
+            block_type = f"heading_{notion_level}"
+            
             blocks.append({
-                "object": "block", "type": "heading_3",
-                "heading_3": {"rich_text": [{"type": "text", "text": {"content": line[4:].strip()[:2000]}}]},
-            })
-            i += 1
-            continue
-        if line.startswith('## '):
-            blocks.append({
-                "object": "block", "type": "heading_2",
-                "heading_2": {"rich_text": [{"type": "text", "text": {"content": line[3:].strip()[:2000]}}]},
-            })
-            i += 1
-            continue
-        if line.startswith('# '):
-            blocks.append({
-                "object": "block", "type": "heading_1",
-                "heading_1": {"rich_text": [{"type": "text", "text": {"content": line[2:].strip()[:2000]}}]},
+                "object": "block",
+                "type": block_type,
+                block_type: {
+                    "rich_text": [{"type": "text", "text": {"content": content[:2000]}}]
+                },
             })
             i += 1
             continue

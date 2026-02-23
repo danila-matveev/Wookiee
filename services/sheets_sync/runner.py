@@ -10,7 +10,7 @@ Usage:
 Examples:
     python -m services.sheets_sync.runner wb_stocks
     python -m services.sheets_sync.runner all
-    python -m services.sheets_sync.runner search_analytics --start 01.01.2026 --end 07.01.2026
+    python -m services.sheets_sync.runner fin_data --start 01.01.2026 --end 07.01.2026
 """
 
 import argparse
@@ -19,7 +19,7 @@ import sys
 import time
 from dataclasses import dataclass
 
-from services.sheets_sync.config import LOG_LEVEL, TEST_MODE
+from services.sheets_sync.config import LOG_LEVEL, TEST_MODE, SPREADSHEET_IDS, set_active_spreadsheet_id
 
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL, logging.INFO),
@@ -68,26 +68,32 @@ SYNC_REGISTRY: dict[str, dict] = {
         "sheet": "Отзывы ООО / Отзывы ИП",
         "description": "WB feedbacks rating aggregation",
     },
+    "fin_data": {
+        "module": "services.sheets_sync.sync.sync_fin_data",
+        "sheet": "Фин данные",
+        "description": "Financial data (WB+OZON) per barcode for period",
+    },
     "wb_bundles": {
         "module": "services.sheets_sync.sync.sync_wb_bundles",
         "sheet": "Склейки WB",
-        "description": "WB bundle prices (S-V columns)",
+        "description": "WB bundle prices update",
     },
     "ozon_bundles": {
         "module": "services.sheets_sync.sync.sync_ozon_bundles",
         "sheet": "Склейки Озон",
-        "description": "OZON bundle prices & stock (R, S, V columns)",
+        "description": "OZON bundle prices update",
     },
     "search_analytics": {
         "module": "services.sheets_sync.sync.sync_search_analytics",
         "sheet": "Аналитика по запросам",
-        "description": "WB search analytics (keywords + per-artikul)",
+        "description": "WB search analytics (keywords + per-article)",
     },
 }
 
 
-def run_sync(name: str, start_date: str | None = None, end_date: str | None = None) -> SyncResult:
-    """Run a single sync by name."""
+def run_sync(name: str, start_date: str | None = None, end_date: str | None = None,
+             spreadsheet_id: str | None = None) -> SyncResult:
+    """Run a single sync by name, optionally targeting a specific spreadsheet."""
     info = SYNC_REGISTRY.get(name)
     if not info:
         return SyncResult(name=name, sheet_name="", status="error", rows=0, duration_sec=0, error=f"Unknown sync: {name}")
@@ -98,12 +104,16 @@ def run_sync(name: str, start_date: str | None = None, end_date: str | None = No
     logger.info("Running sync: %s -> %s", name, sheet)
     t0 = time.time()
 
+    # Temporarily override active spreadsheet ID if a specific one is requested
+    if spreadsheet_id:
+        set_active_spreadsheet_id(spreadsheet_id)
+
     try:
         mod = __import__(module_path, fromlist=["sync"])
         sync_fn = mod.sync
 
-        # Pass date arguments for search_analytics
-        if name == "search_analytics" and (start_date or end_date):
+        # Pass date arguments for scripts that support period selection
+        if name in ("fin_data", "wb_feedbacks") and (start_date or end_date):
             rows = sync_fn(start_date=start_date, end_date=end_date)
         else:
             rows = sync_fn()
@@ -116,14 +126,21 @@ def run_sync(name: str, start_date: str | None = None, end_date: str | None = No
         logger.exception("Sync %s failed", name)
         return SyncResult(name=name, sheet_name=sheet, status="error", rows=0, duration_sec=round(duration, 1), error=str(e))
 
+    finally:
+        if spreadsheet_id:
+            set_active_spreadsheet_id(None)
+
 
 def run_all(start_date: str | None = None, end_date: str | None = None) -> list[SyncResult]:
-    """Run all syncs sequentially."""
+    """Run all syncs sequentially for every configured spreadsheet."""
     results = []
-    for name in SYNC_REGISTRY:
-        result = run_sync(name, start_date=start_date, end_date=end_date)
-        results.append(result)
-        logger.info("  %s: %s (%d rows, %.1fs)", result.name, result.status, result.rows, result.duration_sec)
+    for sid in SPREADSHEET_IDS:
+        short_id = sid[:8]
+        logger.info("Running all syncs for spreadsheet %s...", short_id)
+        for name in SYNC_REGISTRY:
+            result = run_sync(name, start_date=start_date, end_date=end_date, spreadsheet_id=sid)
+            results.append(result)
+            logger.info("  [%s] %s: %s (%d rows, %.1fs)", short_id, result.name, result.status, result.rows, result.duration_sec)
     return results
 
 
@@ -133,8 +150,8 @@ def main():
     parser.add_argument("sync_name", nargs="?", help="Sync name or 'all'")
     parser.add_argument("--list", action="store_true", help="List available syncs")
     parser.add_argument("--test", action="store_true", help="Force test mode")
-    parser.add_argument("--start", help="Start date DD.MM.YYYY (for search_analytics)")
-    parser.add_argument("--end", help="End date DD.MM.YYYY (for search_analytics)")
+    parser.add_argument("--start", help="Start date DD.MM.YYYY (for fin_data, wb_feedbacks)")
+    parser.add_argument("--end", help="End date DD.MM.YYYY (for fin_data, wb_feedbacks)")
 
     args = parser.parse_args()
 

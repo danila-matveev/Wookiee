@@ -1,75 +1,47 @@
-# Настройка окружения
+# Environment Setup
 
-## Требования
+## Requirements
 
 - Python 3.11+
-- PostgreSQL клиент (psycopg2)
-- Docker (опционально, для продакшена бота)
+- Docker + docker compose (for deploy)
+- Access to PostgreSQL (legacy + managed), WB/OZON API, Google Sheets service account
 
-## Установка
-
-### 1. Клонировать репозиторий
+## Local Setup
 
 ```bash
 git clone <repo-url>
 cd Wookiee
-```
-
-### 2. Создать корневой `.env`
-
-```bash
 cp .env.example .env
-# Заполнить реальные значения
 ```
 
-### 3. Зависимости для скриптов
+Install core dependencies:
 
 ```bash
-pip install psycopg2-binary python-dotenv
+pip install -r agents/oleg/requirements.txt
+pip install -r services/sheets_sync/requirements.txt
+pip install -r services/vasily_api/requirements.txt
 ```
 
-### 4. Telegram-бот
+## Environment Variables
+
+Minimum required groups in `.env`:
+
+- Oleg runtime: `TELEGRAM_BOT_TOKEN`, `BOT_PASSWORD_HASH`, `OPENROUTER_API_KEY`
+- Data access: `DB_*`, `MARKETPLACE_DB_*`, `SUPABASE_*`
+- Marketplace APIs: `WB_*`, `OZON_*`
+- Sheets/WB localization: `GOOGLE_SERVICE_ACCOUNT_FILE`, `SPREADSHEET_ID`, `VASILY_SPREADSHEET_ID`
+
+## Validation
 
 ```bash
-cd bot
-pip install -r requirements.txt
-cp .env.example .env
-# Заполнить реальные значения
+python3 -m compileall -q agents services shared scripts
+python3 -m pytest -q
+python3 -m pytest -q services/marketplace_etl/tests
+python3 -m services.wb_localization.run_localization --dry-run
 ```
 
-### 5. SKU Database (при необходимости)
+## Production Server (Timeweb)
 
-```bash
-cd wookiee_sku_database
-pip install -r requirements.txt
-cp .env.example .env
-# Заполнить реальные значения
-```
-
-## Трёхуровневая защита .env
-
-| Уровень | Файл | Назначение |
-|---------|------|-----------|
-| Git | `.gitignore` | .env не попадает в репозиторий |
-| AI-агенты | `.cursorignore` | .env не виден Cursor и другим AI |
-| IDE | `.vscode/settings.json` | .env виден разработчику в IDE |
-
-## Запуск
-
-### Скрипты (из корня проекта)
-
-```bash
-python scripts/daily_analytics.py --date 2026-02-08 --save --notion
-python scripts/period_analytics.py --start 2026-02-01 --end 2026-02-07 --save
-python scripts/monthly_analytics.py --month 2026-01 --save --notion
-```
-
-### Бот
-
-```bash
-# Напрямую
-python -m bot.main
-
-# Docker (продакшен)
-docker-compose up -d
-```
+- Host: `77.233.212.61`
+- Deploy workflow: `.github/workflows/deploy.yml`
+- Deploy is sequenced after successful CI (`.github/workflows/ci.yml`)

@@ -8,10 +8,9 @@ from shared.clients.sheets_client import (
     get_moscow_datetime,
     get_or_create_worksheet,
     set_checkbox,
-    write_range,
 )
 from shared.clients.wb_client import WBClient
-from services.sheets_sync.config import ALL_CABINETS, GOOGLE_SA_FILE, SPREADSHEET_ID, get_sheet_name
+from services.sheets_sync.config import ALL_CABINETS, GOOGLE_SA_FILE, get_active_spreadsheet_id, get_sheet_name
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +107,7 @@ def sync() -> int:
     sheet_name = get_sheet_name(SHEET_NAME)
 
     gc = get_client(GOOGLE_SA_FILE)
-    spreadsheet = gc.open_by_key(SPREADSHEET_ID)
+    spreadsheet = gc.open_by_key(get_active_spreadsheet_id())
     ws = get_or_create_worksheet(spreadsheet, sheet_name)
 
     row_count = clear_and_write(
@@ -116,26 +115,11 @@ def sync() -> int:
         headers=headers,
         data=data_rows,
         meta_cells=[
-            (1, 1, "Дата составления"),
-            (1, 2, date_str),
-            (2, 1, "Время отчёт"),
-            (2, 2, time_str),
+            (1, 1, f"Обновлено: {date_str} {time_str}"),
         ],
-        header_row=3,
-        data_start_row=4,
+        header_row=2,
+        data_start_row=3,
     )
-
-    # Summary totals in row 2 for special warehouse columns (I-K)
-    special_names = ["В пути до получателей", "В пути возвраты на склад WB", "Всего находится на складах"]
-    totals = []
-    for sp in special_names:
-        if sp in warehouse_names:
-            idx = 8 + warehouse_names.index(sp)
-            totals.append(sum(row[idx] for row in data_rows if idx < len(row) and isinstance(row[idx], (int, float))))
-        else:
-            totals.append(0)
-    if totals:
-        write_range(ws, start_row=2, start_col=9, data=[totals])
 
     # Checkbox for refresh
     set_checkbox(ws, "C1")

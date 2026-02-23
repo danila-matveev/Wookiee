@@ -14,6 +14,8 @@ Price Plan Generator — оркестратор ценовой аналитик�
 import logging
 from datetime import datetime, timedelta
 
+from agents.oleg.services.time_utils import get_now_msk, get_today_msk
+
 from shared.data_layer import (
     get_wb_price_margin_daily,
     get_ozon_price_margin_daily,
@@ -77,14 +79,15 @@ def generate_price_management_plan(
         priority_actions, summary
     """
     # Даты по умолчанию
+    now_msk = get_now_msk()
     if period_end is None:
-        period_end = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+        period_end = (now_msk - timedelta(days=1)).strftime('%Y-%m-%d')
     if period_start is None:
-        period_start = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+        period_start = (now_msk - timedelta(days=30)).strftime('%Y-%m-%d')
 
     # Широкий период для эластичности
     elasticity_start = (
-        datetime.now() - timedelta(days=ELASTICITY_LOOKBACK_DAYS)
+        now_msk - timedelta(days=ELASTICITY_LOOKBACK_DAYS)
     ).strftime('%Y-%m-%d')
 
     logger.info(
@@ -354,7 +357,7 @@ def generate_price_management_plan(
     return {
         'channel': channel,
         'period': f'{period_start} — {period_end}',
-        'generated_at': datetime.now().isoformat(),
+        'generated_at': get_now_msk().isoformat(),
         'models': plan_models,
         'roi_dashboard': roi_dashboard,
         'stock_matrix': stock_matrix,
@@ -397,10 +400,11 @@ def generate_article_level_plan(
         get_ozon_price_margin_daily_by_article,
     )
 
+    now_msk = get_now_msk()
     if period_end is None:
-        period_end = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+        period_end = (now_msk - timedelta(days=1)).strftime('%Y-%m-%d')
     if period_start is None:
-        period_start = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d')
+        period_start = (now_msk - timedelta(days=90)).strftime('%Y-%m-%d')
 
     # Артикульные данные
     if channel == 'wb':

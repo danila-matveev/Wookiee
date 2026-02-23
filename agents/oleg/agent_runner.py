@@ -25,6 +25,7 @@ from agents.oleg.services.report_formatter import ReportFormatter
 from agents.oleg.services.notion_service import NotionService
 from agents.oleg.services.scheduler_service import SchedulerService
 from agents.oleg.services.data_freshness_service import DataFreshnessService
+from agents.oleg.services.time_utils import get_today_msk, get_now_msk
 from agents.oleg.services.price_analysis.learning_store import LearningStore
 from agents.oleg.services.price_tools import set_learning_store
 
@@ -56,6 +57,7 @@ class OlegAgentRunner:
         self.auth_service = AuthService(
             config.HASHED_PASSWORD,
             persistence_path=config.USERS_FILE_PATH,
+            auth_enabled=config.AUTH_ENABLED,
         )
         self.llm_client = OpenRouterClient(
             api_key=config.OPENROUTER_API_KEY,
@@ -257,7 +259,7 @@ class OlegAgentRunner:
                         )
                     return
 
-                yesterday = datetime.now() - timedelta(days=1)
+                yesterday = get_now_msk() - timedelta(days=1)
                 date_str = yesterday.strftime("%Y-%m-%d")
 
                 success = await self._generate_and_enqueue(
@@ -275,7 +277,7 @@ class OlegAgentRunner:
                     keyboard_type="daily",
                 )
                 if success:
-                    self._daily_report_sent_date = date.today()
+                    self._daily_report_sent_date = get_today_msk()
 
             except Exception as e:
                 logger.error(f"Daily report job failed: {e}", exc_info=True)
@@ -284,7 +286,7 @@ class OlegAgentRunner:
         async def send_weekly_report():
             logger.info("Sending scheduled weekly report (Agent)")
             try:
-                end = datetime.now() - timedelta(days=1)
+                end = get_now_msk() - timedelta(days=1)
                 start = end - timedelta(days=6)
                 s, e = start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")
                 s, e, note, s_dt, e_dt = self.data_freshness.adjust_dates(s, e)
@@ -316,7 +318,7 @@ class OlegAgentRunner:
 
         # ─── Monthly check (every Monday — first 7 days) ─────
         async def check_and_send_monthly():
-            today = datetime.now()
+            today = get_now_msk()
             if today.day > 7:
                 return
 
@@ -365,7 +367,7 @@ class OlegAgentRunner:
         async def check_data_freshness():
             if self.data_freshness.already_notified_today():
                 # Данные уже объявлены готовыми; проверяем, отправлен ли дневной отчёт
-                today_d = date.today()
+                today_d = get_today_msk()
                 if self._daily_report_sent_date != today_d:
                     logger.info(
                         "Data ready, but daily report not yet sent — "
@@ -386,7 +388,7 @@ class OlegAgentRunner:
                     )
 
                 # Если дневной отчёт ещё не был отправлен — отправить сейчас
-                today_d = date.today()
+                today_d = get_today_msk()
                 if self._daily_report_sent_date != today_d:
                     logger.info("Data just became ready — generating daily report")
                     await send_daily_report()
@@ -397,7 +399,7 @@ class OlegAgentRunner:
         async def send_weekly_price_review():
             logger.info("Sending scheduled weekly price review (Agent)")
             try:
-                end = datetime.now() - timedelta(days=1)
+                end = get_now_msk() - timedelta(days=1)
                 start = end - timedelta(days=6)
                 s, e = start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")
                 s, e, note, s_dt, e_dt = self.data_freshness.adjust_dates(s, e)
@@ -517,7 +519,7 @@ class OlegAgentRunner:
         self.scheduler.scheduler.add_job(
             check_data_freshness,
             trigger=CronTrigger(
-                minute="*/5", hour="6-14",
+                minute="*/5", hour="8-14",
                 timezone=self.scheduler.timezone,
             ),
             id="data_freshness_check",
@@ -608,10 +610,10 @@ class OlegAgentRunner:
 
     async def _recover_missed_reports(self) -> None:
         """Generate daily reports for the last 3 days if missed."""
-        yesterday_str = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+        yesterday_str = (get_now_msk() - timedelta(days=1)).strftime("%Y-%m-%d")
 
         for days_ago in range(3, 0, -1):
-            target = datetime.now() - timedelta(days=days_ago)
+            target = get_now_msk() - timedelta(days=days_ago)
             target_str = target.strftime("%Y-%m-%d")
 
             if self.report_storage.has_report_for_period("daily_auto", target_str):
@@ -662,7 +664,7 @@ class OlegAgentRunner:
 
         # If yesterday's report exists now, mark today's daily as done
         if self.report_storage.has_report_for_period("daily_auto", yesterday_str):
-            self._daily_report_sent_date = date.today()
+            self._daily_report_sent_date = get_today_msk()
 
     # ── Run forever ──────────────────────────────────────────
 

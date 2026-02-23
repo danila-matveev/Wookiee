@@ -4,9 +4,11 @@ Agent Tools — инструменты агента Олег для доступ
 Обёртки над scripts/data_layer.py в формате OpenAI function calling.
 Все SQL-запросы остаются в data_layer.py — здесь только парсинг и агрегация.
 """
+import ast
 import asyncio
 import json
 import logging
+import operator
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
 
@@ -21,8 +23,12 @@ from shared.data_layer import (
     get_ozon_traffic, get_ozon_daily_series, get_ozon_daily_series_range,
     get_ozon_weekly_breakdown,
     get_artikuly_statuses, validate_wb_data_quality,
+    get_total_avg_stock,
     to_float, calc_change,
 )
+
+
+from shared.model_mapping import map_to_osnova as _map_to_osnova
 
 
 # =============================================================================
@@ -36,9 +42,10 @@ TOOL_DEFINITIONS = [
             "name": "get_brand_finance",
             "description": (
                 "Общая финансовая сводка бренда (WB + OZON): маржа (₽, %), выручка до СПП, "
-                "заказы (шт, ₽), продажи шт, реклама (внутр + внешн), ДРР%, СПП%. "
-                "Автоматически сравнивает с предыдущим аналогичным периодом. "
-                "Используй ПЕРВЫМ для общей картины."
+                "заказы (шт, ₽), продажи шт, реклама (внутр + внешн), ДРР% (от продаж и от заказов), СПП%, "
+                "оборачиваемость продаж в днях (turnover_days), годовой ROI % (roi_annual). "
+                "В brand.current и brand.previous обязательно есть turnover_days и roi_annual — используй их для таблицы 1.1. "
+                "Автоматически сравнивает с предыдущим аналогичным периодом. Используй ПЕРВЫМ для общей картины."
             ),
             "parameters": {
                 "type": "object",
@@ -57,7 +64,7 @@ TOOL_DEFINITIONS = [
             "description": (
                 "Детальные финансы одного канала (wb или ozon): маржа, выручка, заказы, продажи, "
                 "реклама (внутренняя/внешняя отдельно), логистика, хранение, себестоимость, "
-                "комиссия, СПП%, НДС, штрафы, удержания. Используй для углублённого анализа канала."
+                "комиссия, СПП%, ДРР% (от продаж и от заказов), НДС, штрафы, удержания. Используй для углублённого анализа канала."
             ),
             "parameters": {
                 "type": "object",
@@ -75,9 +82,9 @@ TOOL_DEFINITIONS = [
         "function": {
             "name": "get_model_breakdown",
             "description": (
-                "Топ моделей по марже для канала: модель, продажи шт, выручка до СПП, "
-                "реклама, маржа + изменения vs предыдущий период. "
-                "Используй для поиска моделей-драйверов и проблемных моделей."
+                "Полная декомпозиция по моделям (Vuki, Moon, Ruby, Wendy и др.) для канала. "
+                "Возвращает маржу, продажи, рекламу (внутренняя и внешняя отдельно) и ДРР. "
+                "ОБЯЗАТЕЛЬНО выводи все полученные модели в таблицу отчета (4.1.2/4.2.2), не пропуская убыточные модели."
             ),
             "parameters": {
                 "type": "object",
@@ -299,15 +306,17 @@ def _split_periods(rows: list, field_count: int) -> dict:
 
 
 def _safe_div(a, b, default=0.0):
-    """Safe division, returns default if divisor is 0."""
-    if not b:
+    """Safe division, returns default if divisor is 0 or None."""
+    if b is None or b == 0:
         return default
     return a / b
 
 
 def _pct_change(current, previous):
     """Calculate percentage change."""
-    if not previous:
+    if previous is None or previous == 0:
+        if current > 0: return 100.0
+        if current < 0: return -100.0
         return 0.0
     return round(((current - previous) / abs(previous)) * 100, 1)
 
@@ -376,14 +385,20 @@ def _parse_ozon_finance_row(row) -> dict:
         "commission": to_float(row[10]),
         "spp_amount": to_float(row[11]),
         "nds": to_float(row[12]),
+        # OZON abc_date не содержит penalty/retention/deduction,
+        # но waterfall (_handle_margin_levers) обращается к ним — без этих ключей
+        # waterfall не балансируется (сумма компонентов ≠ margin_change_total).
+        "penalty": 0.0,
+        "retention": 0.0,
+        "deduction": 0.0,
     }
 
 
 def _parse_orders_row_wb(row) -> dict:
-    """Parse WB orders row: (period, orders_rub)."""
+    """Parse WB orders row: (period, orders_count, orders_rub)."""
     if not row:
-        return {"orders_rub": 0}
-    return {"orders_rub": to_float(row[1])}
+        return {"orders_count": 0, "orders_rub": 0}
+    return {"orders_count": to_float(row[1]), "orders_rub": to_float(row[2])}
 
 
 def _parse_orders_row_ozon(row) -> dict:
@@ -393,7 +408,7 @@ def _parse_orders_row_ozon(row) -> dict:
     return {"orders_count": to_float(row[1]), "orders_rub": to_float(row[2])}
 
 
-def _enrich_finance(data: dict) -> dict:
+def _enrich_finance(data: dict, avg_stock: float = 0.0, num_days: int = 1) -> dict:
     """Add derived metrics to finance dict."""
     rev = data.get("revenue_before_spp", 0)
     margin = data.get("margin", 0)
@@ -406,9 +421,27 @@ def _enrich_finance(data: dict) -> dict:
     data["adv_total"] = adv_total
     data["margin_pct"] = round(_safe_div(margin, rev) * 100, 1)
     data["drr_pct"] = round(_safe_div(adv_total, rev) * 100, 1)
+    data["drr_orders_pct"] = round(_safe_div(adv_total, data.get("orders_rub", 0)) * 100, 1)
     data["spp_pct"] = round(_safe_div(spp, data.get("revenue_before_spp_gross", rev)) * 100, 1)
     data["logistics_per_unit"] = round(_safe_div(data.get("logistics", 0), sales), 0)
     data["cogs_per_unit"] = round(_safe_div(data.get("cost_of_goods", 0), sales), 0)
+    data["storage_per_unit"] = round(_safe_div(data.get("storage", 0), sales), 0)
+    data["margin_per_unit"] = round(_safe_div(margin, sales), 0)
+    
+    # Оборачиваемость (дни) = Остаток / Средние продажи за период
+    # Средние продажи за период = sales / num_days
+    # Turnover = avg_stock / (sales / num_days) = (avg_stock * num_days) / sales
+    data["avg_stock"] = round(avg_stock, 0)
+    turnover_raw = _safe_div(avg_stock * num_days, sales)
+    data["turnover_days"] = round(turnover_raw, 1)
+
+    # Годовой ROI % = ((маржа / себестоимость) * (365 / оборачиваемость)) * 100
+    # Примечание: маржа и себестоимость берутся суммарно за период (соотношение сохраняется)
+    cogs = data.get("cost_of_goods", 0)
+    margin_roi = _safe_div(margin, cogs)
+    turnover_factor = _safe_div(365, turnover_raw)
+    data["roi_annual"] = round(margin_roi * turnover_factor * 100, 0)
+    
     return data
 
 
@@ -423,7 +456,8 @@ def _build_changes(current: dict, previous: dict) -> dict:
                 changes[f"{key}_change_pp"] = round(curr_val - prev_val, 1)
             else:
                 changes[f"{key}_change_pct"] = _pct_change(curr_val, prev_val)
-                changes[f"{key}_change_abs"] = round(curr_val - prev_val, 0)
+                abs_precision = 1 if key in {"turnover_days"} else 0
+                changes[f"{key}_change_abs"] = round(curr_val - prev_val, abs_precision)
     return changes
 
 
@@ -434,11 +468,20 @@ def _build_changes(current: dict, previous: dict) -> dict:
 async def _handle_brand_finance(start_date: str, end_date: str) -> dict:
     """Get brand (WB + OZON) financial summary."""
     current_start, prev_start, current_end = _calc_comparison_dates(start_date, end_date)
+    
+    # Calculate num_days
+    start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+    end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+    num_days = (end_dt - start_dt).days + 1
 
-    # Run both channels in parallel
-    wb_data, ozon_data = await asyncio.gather(
+    # Run both channels in parallel with stocks
+    (wb_data, ozon_data, wb_curr_stock, wb_prev_stock, ozon_curr_stock, ozon_prev_stock) = await asyncio.gather(
         asyncio.to_thread(get_wb_finance, current_start, prev_start, current_end),
         asyncio.to_thread(get_ozon_finance, current_start, prev_start, current_end),
+        asyncio.to_thread(get_total_avg_stock, "wb", current_start, current_end),
+        asyncio.to_thread(get_total_avg_stock, "wb", prev_start, current_start),
+        asyncio.to_thread(get_total_avg_stock, "ozon", current_start, current_end),
+        asyncio.to_thread(get_total_avg_stock, "ozon", prev_start, current_start),
     )
 
     wb_results, wb_orders = wb_data
@@ -446,11 +489,15 @@ async def _handle_brand_finance(start_date: str, end_date: str) -> dict:
 
     # Parse WB
     wb_periods = _split_periods(wb_results, 19)
-    wb_orders_periods = _split_periods(wb_orders, 2)
+    wb_orders_periods = _split_periods(wb_orders, 3)
     wb_current = _parse_wb_finance_row(wb_periods["current"])
     wb_previous = _parse_wb_finance_row(wb_periods["previous"])
     wb_orders_curr = _parse_orders_row_wb(wb_orders_periods.get("current"))
     wb_orders_prev = _parse_orders_row_wb(wb_orders_periods.get("previous"))
+    wb_current["orders_count"] = wb_orders_curr.get("orders_count", 0)
+    wb_current["orders_rub"] = wb_orders_curr.get("orders_rub", 0)
+    wb_previous["orders_count"] = wb_orders_prev.get("orders_count", 0)
+    wb_previous["orders_rub"] = wb_orders_prev.get("orders_rub", 0)
 
     # Parse OZON
     ozon_periods = _split_periods(ozon_results, 13)
@@ -459,6 +506,10 @@ async def _handle_brand_finance(start_date: str, end_date: str) -> dict:
     ozon_previous = _parse_ozon_finance_row(ozon_periods["previous"])
     ozon_orders_curr = _parse_orders_row_ozon(ozon_orders_periods.get("current"))
     ozon_orders_prev = _parse_orders_row_ozon(ozon_orders_periods.get("previous"))
+    ozon_current["orders_count"] = ozon_orders_curr.get("orders_count", 0)
+    ozon_current["orders_rub"] = ozon_orders_curr.get("orders_rub", 0)
+    ozon_previous["orders_count"] = ozon_orders_prev.get("orders_count", 0)
+    ozon_previous["orders_rub"] = ozon_orders_prev.get("orders_rub", 0)
 
     # Combine brand totals
     def _sum_channels(wb: dict, ozon: dict) -> dict:
@@ -475,34 +526,55 @@ async def _handle_brand_finance(start_date: str, end_date: str) -> dict:
 
     brand_current = _sum_channels(wb_current, ozon_current)
     brand_previous = _sum_channels(wb_previous, ozon_previous)
-
-    # Add orders
-    brand_current["orders_rub"] = wb_orders_curr.get("orders_rub", 0) + ozon_orders_curr.get("orders_rub", 0)
-    brand_previous["orders_rub"] = wb_orders_prev.get("orders_rub", 0) + ozon_orders_prev.get("orders_rub", 0)
+    brand_curr_stock = wb_curr_stock + ozon_curr_stock
+    brand_prev_stock = wb_prev_stock + ozon_prev_stock
 
     # Enrich with derived metrics
-    brand_current = _enrich_finance(brand_current)
-    brand_previous = _enrich_finance(brand_previous)
-    wb_current = _enrich_finance(wb_current)
-    ozon_current = _enrich_finance(ozon_current)
+    brand_current = _enrich_finance(brand_current, brand_curr_stock, num_days)
+    brand_previous = _enrich_finance(brand_previous, brand_prev_stock, num_days)
+    wb_current = _enrich_finance(wb_current, wb_curr_stock, num_days)
+    ozon_current = _enrich_finance(ozon_current, ozon_curr_stock, num_days)
 
     changes = _build_changes(brand_current, brand_previous)
+
+    key_metrics_1_1 = {
+        "turnover_days": {
+            "current": brand_current.get("turnover_days", 0),
+            "previous": brand_previous.get("turnover_days", 0),
+            "change_abs": changes.get("turnover_days_change_abs", 0),
+            "change_pct": changes.get("turnover_days_change_pct", 0),
+        },
+        "roi_annual": {
+            "current": brand_current.get("roi_annual", 0),
+            "previous": brand_previous.get("roi_annual", 0),
+            "change_abs": changes.get("roi_annual_change_abs", 0),
+            "change_pct": changes.get("roi_annual_change_pct", 0),
+        },
+    }
 
     return {
         "period": f"{start_date} — {end_date}",
         "comparison_period": f"{prev_start} — {(datetime.strptime(start_date, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')}",
-        "brand": {"current": brand_current, "previous": brand_previous, "changes": changes},
+        "brand": {
+            "current": brand_current,
+            "previous": brand_previous,
+            "changes": changes,
+            "key_metrics_1_1": key_metrics_1_1,
+        },
         "wb_summary": {
             "margin": wb_current.get("margin", 0),
             "margin_pct": wb_current.get("margin_pct", 0),
             "revenue": wb_current.get("revenue_before_spp", 0),
-            "orders_rub": wb_orders_curr.get("orders_rub", 0),
+            "orders_count": wb_current.get("orders_count", 0),
+            "orders_rub": wb_current.get("orders_rub", 0),
+            "turnover_days": wb_current.get("turnover_days", 0),
         },
         "ozon_summary": {
             "margin": ozon_current.get("margin", 0),
             "margin_pct": ozon_current.get("margin_pct", 0),
             "revenue": ozon_current.get("revenue_before_spp", 0),
-            "orders_rub": ozon_orders_curr.get("orders_rub", 0),
+            "orders_rub": ozon_current.get("orders_rub", 0),
+            "turnover_days": ozon_current.get("turnover_days", 0),
         },
     }
 
@@ -510,22 +582,33 @@ async def _handle_brand_finance(start_date: str, end_date: str) -> dict:
 async def _handle_channel_finance(channel: str, start_date: str, end_date: str) -> dict:
     """Get detailed finance for a single channel."""
     current_start, prev_start, current_end = _calc_comparison_dates(start_date, end_date)
+    
+    # Calculate num_days
+    start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+    end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+    num_days = (end_dt - start_dt).days + 1
 
     if channel == "wb":
-        results, orders = await asyncio.to_thread(
-            get_wb_finance, current_start, prev_start, current_end
+        (results, orders), curr_stock, prev_stock = await asyncio.gather(
+            asyncio.to_thread(get_wb_finance, current_start, prev_start, current_end),
+            asyncio.to_thread(get_total_avg_stock, "wb", current_start, current_end),
+            asyncio.to_thread(get_total_avg_stock, "wb", prev_start, current_start)
         )
         periods = _split_periods(results, 19)
-        orders_periods = _split_periods(orders, 2)
+        orders_periods = _split_periods(orders, 3)
         current = _parse_wb_finance_row(periods["current"])
         previous = _parse_wb_finance_row(periods["previous"])
         orders_curr = _parse_orders_row_wb(orders_periods.get("current"))
         orders_prev = _parse_orders_row_wb(orders_periods.get("previous"))
+        current["orders_count"] = orders_curr.get("orders_count", 0)
         current["orders_rub"] = orders_curr.get("orders_rub", 0)
+        previous["orders_count"] = orders_prev.get("orders_count", 0)
         previous["orders_rub"] = orders_prev.get("orders_rub", 0)
     else:
-        results, orders = await asyncio.to_thread(
-            get_ozon_finance, current_start, prev_start, current_end
+        (results, orders), curr_stock, prev_stock = await asyncio.gather(
+            asyncio.to_thread(get_ozon_finance, current_start, prev_start, current_end),
+            asyncio.to_thread(get_total_avg_stock, "ozon", current_start, current_end),
+            asyncio.to_thread(get_total_avg_stock, "ozon", prev_start, current_start)
         )
         periods = _split_periods(results, 13)
         orders_periods = _split_periods(orders, 3)
@@ -538,8 +621,8 @@ async def _handle_channel_finance(channel: str, start_date: str, end_date: str) 
         previous["orders_count"] = orders_prev.get("orders_count", 0)
         previous["orders_rub"] = orders_prev.get("orders_rub", 0)
 
-    current = _enrich_finance(current)
-    previous = _enrich_finance(previous)
+    current = _enrich_finance(current, curr_stock, num_days)
+    previous = _enrich_finance(previous, prev_stock, num_days)
     changes = _build_changes(current, previous)
 
     return {
@@ -556,46 +639,131 @@ async def _handle_model_breakdown(channel: str, start_date: str, end_date: str) 
     current_start, prev_start, current_end = _calc_comparison_dates(start_date, end_date)
 
     if channel == "wb":
-        results = await asyncio.to_thread(
-            get_wb_by_model, current_start, prev_start, current_end
+        (results, orders_results), stock_results = await asyncio.gather(
+            asyncio.gather(
+                asyncio.to_thread(get_wb_by_model, current_start, prev_start, current_end),
+                asyncio.to_thread(get_wb_orders_by_model, current_start, prev_start, current_end)
+            ),
+            asyncio.to_thread(get_wb_avg_stock, current_start, current_end)
         )
     else:
-        results = await asyncio.to_thread(
-            get_ozon_by_model, current_start, prev_start, current_end
+        (results, orders_results), stock_results = await asyncio.gather(
+            asyncio.gather(
+                asyncio.to_thread(get_ozon_by_model, current_start, prev_start, current_end),
+                asyncio.to_thread(get_ozon_orders_by_model, current_start, prev_start, current_end)
+            ),
+            asyncio.to_thread(get_ozon_avg_stock, current_start, current_end)
         )
 
-    # Parse: (period, model, sales_count, revenue_before_spp, adv_total, margin)
+    # Calculate num_days
+    start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+    end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+    num_days = (end_dt - start_dt).days + 1
+
+    # Index orders data: (period, model) -> {orders_count, orders_rub}
+    orders_map = {}
+    for row in orders_results:
+        key = (row[0], row[1])
+        orders_map[key] = {
+            "orders_count": to_float(row[2]),
+            "orders_rub": to_float(row[3]),
+        }
+
+    # Aggregate stock by model_osnova
+    stock_map = {}
+    for art, val in stock_results.items():
+        base = art.split('/')[0] if '/' in art else art
+        model_osnova = _map_to_osnova(base)
+        stock_map[model_osnova] = stock_map.get(model_osnova, 0) + val
+
+    # Parse results: (period, model, sales_count, revenue_before_spp, adv_internal, adv_external, margin, cogs)
     current_models = {}
     previous_models = {}
     for row in results:
-        period, model = row[0], row[1]
-        data = {
-            "model": model,
-            "sales_count": to_float(row[2]),
-            "revenue_before_spp": to_float(row[3]),
-            "adv_total": to_float(row[4]),
-            "margin": to_float(row[5]),
-        }
-        rev = data["revenue_before_spp"]
-        data["margin_pct"] = round(_safe_div(data["margin"], rev) * 100, 1)
-        data["drr_pct"] = round(_safe_div(data["adv_total"], rev) * 100, 1)
+        period, raw_model = row[0], row[1]
+        model = _map_to_osnova(raw_model)
+        
+        orders_data = orders_map.get((period, raw_model), {"orders_count": 0, "orders_rub": 0})
+        
+        target_dict = current_models if period == "current" else previous_models
+        if model not in target_dict:
+            target_dict[model] = {
+                "model": model, "sales_count": 0, "revenue_before_spp": 0,
+                "adv_internal": 0, "adv_external": 0, "adv_total": 0,
+                "margin": 0, "orders_count": 0, "orders_rub": 0,
+                "cost_of_goods": 0
+            }
+        
+        target_dict[model]["sales_count"] += to_float(row[2])
+        target_dict[model]["revenue_before_spp"] += to_float(row[3])
+        target_dict[model]["adv_internal"] += to_float(row[4])
+        target_dict[model]["adv_external"] += to_float(row[5])
+        target_dict[model]["adv_total"] += (to_float(row[4]) + to_float(row[5]))
+        target_dict[model]["margin"] += to_float(row[6])
+        target_dict[model]["cost_of_goods"] += to_float(row[7])
+        target_dict[model]["orders_count"] += orders_data["orders_count"]
+        target_dict[model]["orders_rub"] += orders_data["orders_rub"]
 
-        if period == "current":
-            current_models[model] = data
-        else:
-            previous_models[model] = data
+    for d in (current_models, previous_models):
+        is_current = (d is current_models)
+        for model in list(d.keys()):
+            data = d[model]
+            rev = data["revenue_before_spp"]
+            orders_sum = data["orders_rub"]
+            sales = data["sales_count"]
+            margin = data["margin"]
+            cogs = data["cost_of_goods"]
+            
+            data["margin_pct"] = round(_safe_div(margin, rev) * 100, 1)
+            data["drr_pct"] = round(_safe_div(data["adv_total"], rev) * 100, 1)
+            data["drr_orders_pct"] = round(_safe_div(data["adv_total"], orders_sum) * 100, 1)
+            
+            # Stock metrics only for current period (based on stock_results)
+            if is_current:
+                avg_stock = stock_map.get(model, 0)
+                turnover = round(_safe_div(avg_stock * num_days, sales), 1)
+                data["avg_stock"] = round(avg_stock, 0)
+                data["turnover_days"] = turnover
+                
+                margin_roi = _safe_div(margin, cogs)
+                turnover_factor = _safe_div(365, turnover)
+                data["roi_annual"] = round(margin_roi * turnover_factor * 100, 0)
+            else:
+                data["avg_stock"] = 0
+                data["turnover_days"] = 0
+                data["roi_annual"] = 0
 
     # Build list with changes
     models_list = []
-    for model, curr in sorted(current_models.items(), key=lambda x: x[1]["margin"], reverse=True):
+    all_models = set(current_models.keys()) | set(previous_models.keys())
+    
+    for model in sorted(all_models): 
+        if model == "Other":
+            continue
+        curr = current_models.get(model, {
+            "model": model, "sales_count": 0, "revenue_before_spp": 0, 
+            "adv_internal": 0, "adv_external": 0, "adv_total": 0,
+            "margin": 0, "orders_count": 0, "orders_rub": 0,
+            "cost_of_goods": 0, # Added cost_of_goods
+            "margin_pct": 0, "drr_pct": 0, "drr_orders_pct": 0,
+            "avg_stock": 0, "turnover_days": 0, "roi_annual": 0 # Added stock/turnover/ROI
+        })
         prev = previous_models.get(model, {})
+        
         entry = {**curr}
-        if prev:
-            entry["margin_change_pct"] = _pct_change(curr["margin"], prev.get("margin", 0))
-            entry["margin_change_abs"] = round(curr["margin"] - prev.get("margin", 0), 0)
-            entry["revenue_change_pct"] = _pct_change(curr["revenue_before_spp"], prev.get("revenue_before_spp", 0))
-            entry["sales_change_pct"] = _pct_change(curr["sales_count"], prev.get("sales_count", 0))
+        
+        # Calculate changes regardless of whether prev exists (defaults to 0 if empty)
+        entry["margin_change_pct"] = _pct_change(curr["margin"], prev.get("margin", 0))
+        entry["margin_change_abs"] = round(curr["margin"] - prev.get("margin", 0), 0)
+        entry["revenue_change_pct"] = _pct_change(curr["revenue_before_spp"], prev.get("revenue_before_spp", 0))
+        entry["sales_change_pct"] = _pct_change(curr["sales_count"], prev.get("sales_count", 0))
+        entry["orders_rub_change"] = round(curr["orders_rub"] - prev.get("orders_rub", 0), 0)
+        entry["margin_pct_change_pp"] = round(curr.get("margin_pct", 0) - prev.get("margin_pct", 0), 1)
+        
         models_list.append(entry)
+    
+    # Sort by margin descending after building the full list
+    models_list.sort(key=lambda x: x["margin"], reverse=True)
 
     return {
         "channel": channel.upper(),
@@ -664,6 +832,7 @@ async def _handle_advertising_stats(channel: str, start_date: str, end_date: str
                 "card_to_cart_pct": round(_safe_div(add_to_cart, card_opens) * 100, 2),
                 "cart_to_order_pct": round(_safe_div(funnel_orders, add_to_cart) * 100, 2),
                 "order_to_buyout_pct": round(_safe_div(buyouts, funnel_orders) * 100, 2),
+                "cr_full_pct": round(_safe_div(funnel_orders, card_opens) * 100, 2),
                 "full_conversion_pct": round(_safe_div(buyouts, card_opens) * 100, 2),
             }
 
@@ -726,25 +895,33 @@ async def _handle_model_advertising(start_date: str, end_date: str) -> dict:
     current_models = {}
     previous_models = {}
     for row in results:
-        period, model = row[0], row[1]
-        data = {
-            "model": model,
-            "ad_views": to_float(row[2]),
-            "ad_clicks": to_float(row[3]),
-            "ad_spend": to_float(row[4]),
-            "ad_to_cart": to_float(row[5]),
-            "ad_orders": to_float(row[6]),
-            "ctr_pct": round(to_float(row[7]), 2),
-            "cpc_rub": round(to_float(row[8]), 1),
-        }
-        data = _enrich_ad_metrics(data)
-        if period == "current":
-            current_models[model] = data
-        else:
-            previous_models[model] = data
+        period, raw_model = row[0], row[1]
+        model = _map_to_osnova(raw_model)
+        
+        target_dict = current_models if period == "current" else previous_models
+        if model not in target_dict:
+            target_dict[model] = {
+                "model": model, "ad_views": 0, "ad_clicks": 0,
+                "ad_spend": 0, "ad_to_cart": 0, "ad_orders": 0
+            }
+        
+        target_dict[model]["ad_views"] += to_float(row[2])
+        target_dict[model]["ad_clicks"] += to_float(row[3])
+        target_dict[model]["ad_spend"] += to_float(row[4])
+        target_dict[model]["ad_to_cart"] += to_float(row[5])
+        target_dict[model]["ad_orders"] += to_float(row[6])
+
+    for d in (current_models, previous_models):
+        for model in list(d.keys()):
+            data = d[model]
+            data["ctr_pct"] = round(_safe_div(data["ad_clicks"], data["ad_views"]) * 100, 2)
+            data["cpc_rub"] = round(_safe_div(data["ad_spend"], data["ad_clicks"]), 1)
+            d[model] = _enrich_ad_metrics(data)
 
     models_list = []
     for model, curr in sorted(current_models.items(), key=lambda x: x[1]["ad_spend"], reverse=True):
+        if model == "Other":
+            continue
         prev = previous_models.get(model, {})
         entry = {**curr}
         if prev:
@@ -778,19 +955,22 @@ async def _handle_orders_by_model(channel: str, start_date: str, end_date: str) 
     current_models = {}
     previous_models = {}
     for row in results:
-        period, model = row[0], row[1]
-        data = {
-            "model": model,
-            "orders_count": to_float(row[2]),
-            "orders_rub": to_float(row[3]),
-        }
-        if period == "current":
-            current_models[model] = data
-        else:
-            previous_models[model] = data
+        period, raw_model = row[0], row[1]
+        model = _map_to_osnova(raw_model)
+        
+        target_dict = current_models if period == "current" else previous_models
+        if model not in target_dict:
+            target_dict[model] = {
+                "model": model, "orders_count": 0, "orders_rub": 0
+            }
+        
+        target_dict[model]["orders_count"] += to_float(row[2])
+        target_dict[model]["orders_rub"] += to_float(row[3])
 
     models_list = []
     for model, curr in sorted(current_models.items(), key=lambda x: x[1]["orders_rub"], reverse=True):
+        if model == "Other":
+            continue
         prev = previous_models.get(model, {})
         entry = {**curr}
         if prev:
@@ -939,12 +1119,30 @@ async def _handle_weekly_breakdown(channel: str, start_date: str, end_date: str)
 async def _handle_validate_data_quality(date: str) -> dict:
     """Validate WB data quality for a specific date."""
     result = await asyncio.to_thread(validate_wb_data_quality, date)
+    warnings = result.get("warnings", [])
+
+    # Дополнительная проверка на идентичность ДРР (равенство выручки и заказов)
+    try:
+        finance = await _handle_brand_finance(date, date)
+        wb_data = next((c for c in finance.get("channels", []) if c["channel"] == "WB"), None)
+        if wb_data:
+            rev = wb_data.get("revenue_before_spp", 0)
+            orders = wb_data.get("orders_rub", 0)
+            if rev > 0 and rev == orders:
+                warnings.append({
+                    'type': 'drr_metrics_identity',
+                    'severity': 'WARNING',
+                    'message': f"Выручка и заказы за {date} идентичны ({rev} руб). Проверьте корректность ДРР от заказов vs ДРР от продаж.",
+                    'explanation': 'В реальных данных выручка и заказы практически никогда не совпадают до рубля. Это может указывать на ошибку подгрузки данных.'
+                })
+    except Exception as e:
+        logger.error(f"Error during extended DQ check: {e}")
 
     return {
         "date": date,
-        "warnings": result.get("warnings", []),
+        "warnings": warnings,
         "margin_adjustment": result.get("margin_adjustment", 0),
-        "data_quality": "OK" if not result.get("warnings") else "WARNINGS",
+        "data_quality": "OK" if not warnings else "WARNINGS",
     }
 
 
@@ -967,19 +1165,45 @@ async def _handle_product_statuses() -> dict:
         return {"error": f"Supabase unavailable: {e}"}
 
 
+# Безопасные операторы для AST-калькулятора (вместо eval)
+_SAFE_OPS = {
+    ast.Add: operator.add,
+    ast.Sub: operator.sub,
+    ast.Mult: operator.mul,
+    ast.Div: operator.truediv,
+    ast.USub: operator.neg,
+    ast.UAdd: operator.pos,
+}
+
+
+def _safe_eval_ast(node):
+    """Рекурсивный AST-калькулятор: только числа и +-*/."""
+    if isinstance(node, ast.Expression):
+        return _safe_eval_ast(node.body)
+    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+        return node.value
+    if isinstance(node, ast.BinOp):
+        op_fn = _SAFE_OPS.get(type(node.op))
+        if op_fn is None:
+            raise ValueError(f"Unsupported operator: {type(node.op).__name__}")
+        return op_fn(_safe_eval_ast(node.left), _safe_eval_ast(node.right))
+    if isinstance(node, ast.UnaryOp):
+        op_fn = _SAFE_OPS.get(type(node.op))
+        if op_fn is None:
+            raise ValueError(f"Unsupported unary operator: {type(node.op).__name__}")
+        return op_fn(_safe_eval_ast(node.operand))
+    raise ValueError(f"Unsupported AST node: {type(node).__name__}")
+
+
 async def _handle_calculate_metric(formula: str, values: dict) -> dict:
-    """Safe calculator for metric verification."""
+    """Safe AST-based calculator for metric verification (no eval)."""
     try:
         expr = formula
         for name, val in sorted(values.items(), key=lambda x: -len(x[0])):
             expr = expr.replace(name, str(float(val)))
 
-        # Only allow numbers and basic operators for safety
-        allowed = set('0123456789.+-*/() ')
-        if not all(c in allowed for c in expr):
-            return {"error": f"Unsafe characters in formula after substitution: {expr}"}
-
-        result = eval(expr)
+        tree = ast.parse(expr, mode='eval')
+        result = _safe_eval_ast(tree)
         return {
             "formula": formula,
             "values": values,
