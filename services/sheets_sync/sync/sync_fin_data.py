@@ -213,11 +213,24 @@ def _resolve_dates(ws, start_date, end_date):
 
 
 def _dd_mm_to_iso(date_str: str) -> str:
-    """Convert DD.MM.YYYY to YYYY-MM-DD."""
-    parts = date_str.strip().split('.')
+    """Convert DD.MM.YYYY to YYYY-MM-DD. Also handles ISO passthrough and Sheets serial numbers."""
+    s = str(date_str).strip()
+    # Already ISO format (YYYY-MM-DD)
+    if len(s) == 10 and s[4] == '-' and s[7] == '-':
+        return s
+    # Google Sheets date serial number (float like "45983" or "45983.0")
+    try:
+        serial = float(s)
+        if 1 < serial < 200000:  # reasonable date range
+            d = datetime(1899, 12, 30) + timedelta(days=int(serial))
+            return d.strftime('%Y-%m-%d')
+    except (ValueError, TypeError):
+        pass
+    # DD.MM.YYYY
+    parts = s.split('.')
     if len(parts) == 3:
         return f"{parts[2]}-{parts[1]}-{parts[0]}"
-    return date_str
+    return s
 
 
 def _next_day(iso_date: str) -> str:
@@ -319,6 +332,9 @@ def _merge_data(wb_fin, wb_orders, ozon_fin, ozon_orders) -> dict:
         if entry:
             entry['orders_table_count'] = entry.get('orders_table_count', 0) + orders.get('orders_count', 0)
             entry['orders_table_rub'] = entry.get('orders_table_rub', 0) + orders.get('orders_rub', 0)
+            # Fallback: если abc_date не дал заказов — берём из orders table
+            if entry.get('orders_count', 0) == 0:
+                entry['orders_count'] = orders.get('orders_count', 0)
 
     # OZON financial data
     for item in ozon_fin:
@@ -415,7 +431,13 @@ def _calculate_derived_metrics(item, days_in_period):
     ) if orders_tbl else 0
 
     # Buyout rate (stored as fraction for %)
-    item['buyout_frac'] = min(_safe_div(sales, orders), 1.0) if orders > 0 else 0
+    # Если sales > orders — данные ненадёжны (WB abc_date часто отдаёт orders=0),
+    # показываем 0 (пустая ячейка) вместо ложных 100%
+    if orders > 0:
+        ratio = _safe_div(sales, orders)
+        item['buyout_frac'] = ratio if ratio <= 1.0 else 0
+    else:
+        item['buyout_frac'] = 0
 
     # Returns (fraction)
     item['returns_frac'] = _safe_div(returns_count, sales + returns_count)
@@ -675,15 +697,13 @@ def _write_to_sheet(ws, spreadsheet, display_start, display_end, totals_row, dat
     if last_row >= 1:
         ws.batch_clear([f"A1:{_col_letter(num_cols)}{last_row}"])
 
-    # Row 1: A1 = update text with period, B1/C1 = date pickers, D1 = checkbox
-    iso_start = _dd_mm_to_iso(display_start)
-    iso_end = _dd_mm_to_iso(display_end)
+    # Row 1: A1 = update text with period, B1/C1 = date pickers (DD.MM.YYYY), D1 = checkbox
     msk_date, msk_time = get_moscow_datetime()
     ds_short = display_start[:5] if len(display_start) == 10 else display_start
     period_label = f"{ds_short} — {display_end}"
     period_row = [
         f"Обновлено: {msk_date} {msk_time} | Период: {period_label}",
-        iso_start, iso_end, '',  # B1/C1 = date pickers, D1 = checkbox
+        display_start, display_end, '',  # B1/C1 = date pickers, D1 = checkbox
     ] + [''] * (num_cols - 4)
     ws.update(
         range_name=f"A1:{_col_letter(num_cols)}1",
