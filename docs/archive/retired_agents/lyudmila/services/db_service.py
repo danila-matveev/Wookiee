@@ -14,17 +14,26 @@ from agents.lyudmila import config
 logger = logging.getLogger(__name__)
 
 
+DEFAULT_TIMEOUT = 5.0  # seconds
+
+
 class DBService:
     """SQLite storage for users and action log"""
 
-    def __init__(self, db_path: Optional[str] = None):
+    def __init__(self, db_path: Optional[str] = None, timeout: float = DEFAULT_TIMEOUT):
         self.db_path = db_path or config.SQLITE_DB_PATH
+        self.timeout = timeout
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
 
+    def _connect(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(self.db_path, timeout=self.timeout)
+        conn.execute(f"PRAGMA busy_timeout={int(self.timeout * 1000)}")
+        return conn
+
     def _init_db(self) -> None:
         """Create tables if not exist"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             cursor = conn.cursor()
 
             cursor.execute("""
@@ -72,7 +81,7 @@ class DBService:
 
     def get_user(self, telegram_id: int) -> Optional[Dict[str, Any]]:
         """Get user by telegram_id"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM users WHERE telegram_id = ?", (telegram_id,))
@@ -89,7 +98,7 @@ class DBService:
         telegram_username: Optional[str] = None,
     ) -> int:
         """Create new user, return row id"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT OR REPLACE INTO users
@@ -104,7 +113,7 @@ class DBService:
 
     def update_last_active(self, telegram_id: int) -> None:
         """Update last_active_at timestamp"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.cursor().execute(
                 "UPDATE users SET last_active_at = CURRENT_TIMESTAMP WHERE telegram_id = ?",
                 (telegram_id,),
@@ -137,13 +146,13 @@ class DBService:
         params.append(telegram_id)
         query = f"UPDATE users SET {', '.join(updates)} WHERE telegram_id = ?"
 
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.cursor().execute(query, params)
             conn.commit()
 
     def deactivate_user(self, telegram_id: int) -> None:
         """Deactivate user"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.cursor().execute(
                 "UPDATE users SET is_active = 0 WHERE telegram_id = ?",
                 (telegram_id,),
@@ -153,7 +162,7 @@ class DBService:
 
     def get_all_active_users(self) -> List[Dict[str, Any]]:
         """Get all active users"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM users WHERE is_active = 1")
@@ -169,7 +178,7 @@ class DBService:
         details: Optional[Dict] = None,
     ) -> None:
         """Log user action"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.cursor().execute("""
                 INSERT INTO action_log (telegram_id, action_type, bitrix_entity_id, details)
                 VALUES (?, ?, ?, ?)

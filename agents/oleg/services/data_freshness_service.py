@@ -104,22 +104,26 @@ class DataFreshnessService:
         """Скорректировать период по доступности данных.
 
         Returns:
-            (adjusted_start, adjusted_end, note_or_None)
+            (adjusted_start_str, adjusted_end_str, note_or_None, adjusted_start_dt, adjusted_end_dt)
         """
         try:
             latest = self.get_latest_data_date()
         except Exception as e:
             logger.warning(f"get_latest_data_date failed: {e}")
-            return start_date, end_date, None
+            req_start = datetime.strptime(start_date, "%Y-%m-%d").date()
+            req_end = datetime.strptime(end_date, "%Y-%m-%d").date()
+            return start_date, end_date, None, req_start, req_end
 
         if latest is None:
-            return start_date, end_date, "Не удалось определить доступность данных."
+            req_start = datetime.strptime(start_date, "%Y-%m-%d").date()
+            req_end = datetime.strptime(end_date, "%Y-%m-%d").date()
+            return start_date, end_date, "Не удалось определить доступность данных.", req_start, req_end
 
         req_end = datetime.strptime(end_date, "%Y-%m-%d").date()
         req_start = datetime.strptime(start_date, "%Y-%m-%d").date()
 
         if req_end <= latest:
-            return start_date, end_date, None
+            return start_date, end_date, None, req_start, req_end
 
         adjusted_end = latest.strftime("%Y-%m-%d")
         missing_days = (req_end - latest).days
@@ -129,14 +133,14 @@ class DataFreshnessService:
                 f"Данные доступны только до {latest.strftime('%d.%m.%Y')}. "
                 f"Запрошенный период ({req_start.strftime('%d.%m')}–{req_end.strftime('%d.%m')}) "
                 f"не покрыт данными."
-            )
+            ), req_start, req_end
 
         note = (
             f"Данные доступны до {latest.strftime('%d.%m.%Y')} включительно. "
             f"Нет данных за последние {missing_days} дн. "
             f"Период скорректирован: {req_start.strftime('%d.%m')}–{latest.strftime('%d.%m.%Y')}."
         )
-        return start_date, adjusted_end, note
+        return start_date, adjusted_end, note, req_start, latest
 
     def format_notification(self, status: dict[str, Any]) -> str:
         # Данные проверяются за ВЧЕРА (yesterday), а не сегодня!

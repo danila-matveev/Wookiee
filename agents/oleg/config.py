@@ -9,6 +9,15 @@ from dotenv import load_dotenv
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 load_dotenv(PROJECT_ROOT / '.env')
 
+
+def _env_first(keys, default=""):
+    """Return first non-empty env value from list of keys."""
+    for k in keys:
+        v = os.getenv(k)
+        if v not in (None, ""):
+            return v
+    return default
+
 # ============================================================================
 # Telegram
 # ============================================================================
@@ -63,6 +72,13 @@ DB_USER: str = os.getenv("DB_USER", "")
 DB_PASSWORD: str = os.getenv("DB_PASSWORD", "")
 DB_NAME_WB: str = os.getenv("DB_NAME_WB", "pbi_wb_wookiee")
 DB_NAME_OZON: str = os.getenv("DB_NAME_OZON", "pbi_ozon_wookiee")
+
+# Optional: SKU database (Supabase pooler) — used when SKU access required
+SKU_DB_HOST: str = _env_first(["POSTGRES_HOST", "SUPABASE_HOST"], "")
+SKU_DB_PORT: int = int(_env_first(["POSTGRES_PORT", "SUPABASE_PORT"], "5432"))
+SKU_DB_NAME: str = _env_first(["POSTGRES_DB", "SUPABASE_DB"], "postgres")
+SKU_DB_USER: str = _env_first(["POSTGRES_USER", "SUPABASE_USER"], "")
+SKU_DB_PASSWORD: str = _env_first(["POSTGRES_PASSWORD", "SUPABASE_PASSWORD"], "")
 
 DB_CONFIG: dict = {
     "host": DB_HOST,

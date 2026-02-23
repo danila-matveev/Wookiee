@@ -25,21 +25,37 @@ from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
 
-# Загружаем .env из корня проекта
-_project_root = Path(__file__).parent.parent
-_env_path = _project_root / '.env'
-load_dotenv(_env_path)
+
+def _load_env_upwards(start: Path) -> None:
+    """Load first .env found when walking up from start to filesystem root."""
+    for parent in [start] + list(start.parents):
+        env_path = parent / ".env"
+        if env_path.exists():
+            load_dotenv(env_path, override=False)
+            return
+
+
+_project_root = Path(__file__).resolve().parent
+_load_env_upwards(_project_root)
+
+
+def _env_first(keys, default=""):
+    for k in keys:
+        v = os.getenv(k)
+        if v not in (None, ""):
+            return v
+    return default
 
 
 @dataclass
 class DatabaseConfig:
     """Конфигурация подключения к PostgreSQL"""
 
-    host: str = os.getenv('POSTGRES_HOST', 'localhost')
-    port: int = int(os.getenv('POSTGRES_PORT', '5432'))
-    database: str = os.getenv('POSTGRES_DB', 'postgres')
-    user: str = os.getenv('POSTGRES_USER', 'postgres')
-    password: str = os.getenv('POSTGRES_PASSWORD', '')
+    host: str = _env_first(['POSTGRES_HOST', 'SUPABASE_HOST'], 'localhost')
+    port: int = int(_env_first(['POSTGRES_PORT', 'SUPABASE_PORT'], '5432'))
+    database: str = _env_first(['POSTGRES_DB', 'SUPABASE_DB'], 'postgres')
+    user: str = _env_first(['POSTGRES_USER', 'SUPABASE_USER'], 'postgres')
+    password: str = _env_first(['POSTGRES_PASSWORD', 'SUPABASE_PASSWORD'], '')
 
     @property
     def is_supabase(self) -> bool:

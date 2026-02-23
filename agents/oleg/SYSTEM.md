@@ -406,21 +406,7 @@ LLM видит ограничение в user message и упоминает ег
 7. _send_html_report() -- paragraph-based chunking + отправка в TG
 ```
 
-**Paragraph-based chunking** (макс. 4000 символов на чанк):
-
-```python
-# Разбивка по параграфам (\n\n), чтобы не ломать HTML-теги
-paragraphs = html_text.split('\n\n')
-chunks = []
-current = ""
-for p in paragraphs:
-    if len(current) + len(p) + 2 > MAX_LEN:
-        if current:
-            chunks.append(current)
-        current = p[:MAX_LEN]
-    else:
-        current = current + "\n\n" + p if current else p
-```
+**Chunking длинных сообщений:** `ReportFormatter.split_html_message()` делит по абзацам (\\n\\n → \\n → hard cut) с лимитом 4000 символов, не ломая HTML; используется в боте и хендлерах.
 
 ---
 
@@ -626,23 +612,13 @@ Middleware создаётся для обоих типов событий: `mess
 2. Если OpenRouter настроен -- бот автоматически использует его для аналитики
 3. z.ai используется только для classify/clarify (дешёвая модель)
 
-### Raw JSON в Telegram вместо отформатированного отчёта
+### Raw JSON в Telegram/Notion вместо отчёта
 
-**Причина:** LLM вернула JSON как brief_summary вместо BBCode.
+**Причина:** LLM вернула raw JSON в `detailed_report` или `brief_summary`.
 
-**Встроенная защита:** `_safe_brief()` проверяет начинается ли brief с `{` или содержит `"brief_summary"`. Если да -> `_emergency_format()` конвертирует detailed_report из Markdown в BBCode.
+**Встроенная защита:** `ReportFormatter.sanitize_report_md()` автоматически очищает `detailed_report` (fallback на brief) и переписывает результат перед отправкой/сохранением. Используется во всех путях (агент, ручные отчёты, кастомные запросы).
 
-**Если всё равно не помогло:** проверить `max_tokens` (должен быть >= 16000 для analyze_deep).
-
-### Пустая страница Notion
-
-**Причина:** `detailed_report` содержит raw JSON или мусор.
-
-**Встроенная защита:** в `send_daily_report()` есть проверка:
-```python
-if '"brief_summary"' in report_md or '"detailed_report"' in report_md:
-    report_md = result.get("brief_summary", "")  # fallback
-```
+**Если всё равно не помогло:** проверить `max_tokens` (>=16000 для analyze_deep).
 
 ### Отчёты не отправляются (нет получателей)
 
