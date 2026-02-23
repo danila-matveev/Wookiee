@@ -137,7 +137,7 @@ def get_wb_finance(current_start, prev_start, current_end):
         SUM(revenue_spp) - COALESCE(SUM(revenue_return_spp), 0) as revenue_before_spp,
         SUM(revenue) - COALESCE(SUM(revenue_return), 0) as revenue_after_spp,
         SUM(reclama) as adv_internal,
-        SUM(reclama_vn) as adv_external,
+        SUM(reclama_vn + COALESCE(reclama_vn_vk, 0)) as adv_external,
         SUM(sebes) as cost_of_goods,
         SUM(logist) as logistics,
         SUM(storage) as storage,
@@ -194,7 +194,7 @@ def get_wb_by_model(current_start, prev_start, current_end):
         SUM(full_counts) as sales_count,
         SUM(revenue_spp) - COALESCE(SUM(revenue_return_spp), 0) as revenue_before_spp,
         SUM(reclama) as adv_internal,
-        SUM(reclama_vn) as adv_external,
+        SUM(reclama_vn + COALESCE(reclama_vn_vk, 0)) as adv_external,
         {WB_MARGIN_SQL} as margin,
         SUM(sebes) as cost_of_goods
     FROM abc_date
@@ -512,8 +512,8 @@ def get_wb_by_article(start_date, end_date):
         SUM(revenue_spp) - COALESCE(SUM(revenue_return_spp), 0) as revenue,
         {WB_MARGIN_SQL} as margin,
         SUM(reclama) as adv_internal,
-        SUM(reclama_vn) as adv_external,
-        SUM(reclama + reclama_vn) as adv_total
+        SUM(reclama_vn + COALESCE(reclama_vn_vk, 0)) as adv_external,
+        SUM(reclama + reclama_vn + COALESCE(reclama_vn_vk, 0)) as adv_total
     FROM abc_date
     WHERE date >= %s AND date < %s
       AND article IS NOT NULL AND article != '' AND article != '0'
@@ -863,7 +863,7 @@ def get_wb_daily_series(target_date, lookback_days=7):
         SUM(full_counts) as sales_count,
         SUM(revenue_spp) - COALESCE(SUM(revenue_return_spp), 0) as revenue_before_spp,
         SUM(revenue) - COALESCE(SUM(revenue_return), 0) as revenue_after_spp,
-        SUM(reclama + reclama_vn) as adv_total,
+        SUM(reclama + reclama_vn + COALESCE(reclama_vn_vk, 0)) as adv_total,
         SUM(sebes) as cost_of_goods,
         SUM(logist) as logistics,
         SUM(storage) as storage,
@@ -871,7 +871,7 @@ def get_wb_daily_series(target_date, lookback_days=7):
         SUM(spp) as spp_amount,
         {WB_MARGIN_SQL} as margin,
         SUM(reclama) as adv_internal,
-        SUM(reclama_vn) as adv_external
+        SUM(reclama_vn + COALESCE(reclama_vn_vk, 0)) as adv_external
     FROM abc_date
     WHERE date >= %s AND date < %s
     GROUP BY date
@@ -918,7 +918,7 @@ def get_ozon_daily_series(target_date, lookback_days=7):
         SUM(count_end) as sales_count,
         SUM(price_end) as revenue_before_spp,
         SUM(price_end_spp) as revenue_after_spp,
-        SUM(reclama_end + adv_vn) as adv_total,
+        SUM(reclama_end + adv_vn + COALESCE(adv_vn_vk, 0)) as adv_total,
         SUM(sebes_end) as cost_of_goods,
         SUM(logist_end) as logistics,
         SUM(storage_end) as storage,
@@ -970,7 +970,7 @@ def get_wb_daily_series_range(start_date, end_date):
         SUM(full_counts) as sales_count,
         SUM(revenue_spp) - COALESCE(SUM(revenue_return_spp), 0) as revenue_before_spp,
         SUM(revenue) - COALESCE(SUM(revenue_return), 0) as revenue_after_spp,
-        SUM(reclama + reclama_vn) as adv_total,
+        SUM(reclama + reclama_vn + COALESCE(reclama_vn_vk, 0)) as adv_total,
         SUM(sebes) as cost_of_goods,
         SUM(logist) as logistics,
         SUM(storage) as storage,
@@ -1018,7 +1018,7 @@ def get_ozon_daily_series_range(start_date, end_date):
         SUM(count_end) as sales_count,
         SUM(price_end) as revenue_before_spp,
         SUM(price_end_spp) as revenue_after_spp,
-        SUM(reclama_end + adv_vn) as adv_total,
+        SUM(reclama_end + adv_vn + COALESCE(adv_vn_vk, 0)) as adv_total,
         SUM(sebes_end) as cost_of_goods,
         SUM(logist_end) as logistics,
         SUM(storage_end) as storage,
@@ -1072,7 +1072,7 @@ def get_wb_weekly_breakdown(month_start, month_end):
         SUM(count_orders) as orders_count,
         SUM(full_counts) as sales_count,
         SUM(revenue_spp) - COALESCE(SUM(revenue_return_spp), 0) as revenue_before_spp,
-        SUM(reclama + reclama_vn) as adv_total,
+        SUM(reclama + reclama_vn + COALESCE(reclama_vn_vk, 0)) as adv_total,
         SUM(sebes) as cost_of_goods,
         SUM(logist) as logistics,
         SUM(storage) as storage,
@@ -1196,7 +1196,7 @@ def get_wb_price_margin_daily(start_date, end_date, model=None):
             ELSE NULL END as spp_pct,
         -- ДРР
         CASE WHEN (SUM(a.revenue_spp) - COALESCE(SUM(a.revenue_return_spp), 0)) > 0
-            THEN SUM(a.reclama + a.reclama_vn) /
+            THEN SUM(a.reclama + a.reclama_vn + COALESCE(a.reclama_vn_vk, 0)) /
                  (SUM(a.revenue_spp) - COALESCE(SUM(a.revenue_return_spp), 0)) * 100
             ELSE NULL END as drr_pct,
         -- Логистика на единицу
@@ -1208,9 +1208,9 @@ def get_wb_price_margin_daily(start_date, end_date, model=None):
             THEN SUM(a.sebes) / SUM(a.full_counts)
             ELSE NULL END as cogs_per_unit,
         -- Реклама (из abc_date подрядчика)
-        SUM(a.reclama + a.reclama_vn) as adv_total,
+        SUM(a.reclama + a.reclama_vn + COALESCE(a.reclama_vn_vk, 0)) as adv_total,
         SUM(a.reclama) as adv_internal,
-        SUM(a.reclama_vn) as adv_external
+        SUM(a.reclama_vn + COALESCE(a.reclama_vn_vk, 0)) as adv_external
     FROM abc_date a
     LEFT JOIN raw_orders o
         ON a.date = o.dt
@@ -1296,7 +1296,7 @@ def get_ozon_price_margin_daily(start_date, end_date, model=None):
             ELSE NULL END as spp_pct,
         -- ДРР
         CASE WHEN SUM(a.price_end) > 0
-            THEN SUM(a.reclama_end + a.adv_vn) / SUM(a.price_end) * 100
+            THEN SUM(a.reclama_end + a.adv_vn + COALESCE(a.adv_vn_vk, 0)) / SUM(a.price_end) * 100
             ELSE NULL END as drr_pct,
         -- Логистика на единицу
         CASE WHEN SUM(a.count_end) > 0
@@ -1307,9 +1307,9 @@ def get_ozon_price_margin_daily(start_date, end_date, model=None):
             THEN SUM(a.sebes_end) / SUM(a.count_end)
             ELSE NULL END as cogs_per_unit,
         -- Реклама (абсолют)
-        SUM(a.reclama_end + a.adv_vn) as adv_total,
+        SUM(a.reclama_end + a.adv_vn + COALESCE(a.adv_vn_vk, 0)) as adv_total,
         SUM(a.reclama_end) as adv_internal,
-        SUM(a.adv_vn) as adv_external
+        SUM(a.adv_vn + COALESCE(a.adv_vn_vk, 0)) as adv_external
     FROM abc_date a
     LEFT JOIN raw_orders o
         ON o.dt = a.date
@@ -1729,7 +1729,7 @@ def get_wb_price_margin_daily_by_article(start_date, end_date, article=None, mod
             ELSE NULL END as spp_pct,
         -- ДРР
         CASE WHEN (SUM(a.revenue_spp) - COALESCE(SUM(a.revenue_return_spp), 0)) > 0
-            THEN SUM(a.reclama + a.reclama_vn) /
+            THEN SUM(a.reclama + a.reclama_vn + COALESCE(a.reclama_vn_vk, 0)) /
                  (SUM(a.revenue_spp) - COALESCE(SUM(a.revenue_return_spp), 0)) * 100
             ELSE NULL END as drr_pct,
         -- Логистика на единицу
@@ -1741,9 +1741,9 @@ def get_wb_price_margin_daily_by_article(start_date, end_date, article=None, mod
             THEN SUM(a.sebes) / SUM(a.full_counts)
             ELSE NULL END as cogs_per_unit,
         -- Реклама (из abc_date подрядчика)
-        SUM(a.reclama + a.reclama_vn) as adv_total,
+        SUM(a.reclama + a.reclama_vn + COALESCE(a.reclama_vn_vk, 0)) as adv_total,
         SUM(a.reclama) as adv_internal,
-        SUM(a.reclama_vn) as adv_external
+        SUM(a.reclama_vn + COALESCE(a.reclama_vn_vk, 0)) as adv_external
     FROM abc_date a
     LEFT JOIN raw_orders o
         ON a.date = o.dt
@@ -2069,7 +2069,7 @@ def get_wb_fin_data_by_barcode(start_date, end_date):
         SUM(logist) as logistics,
         SUM(sebes) as cost_of_goods,
         SUM(reclama) as adv_internal,
-        SUM(reclama_vn) as adv_external,
+        SUM(reclama_vn + COALESCE(reclama_vn_vk, 0)) as adv_external,
         COALESCE(SUM(reclama_vn_vk), 0) as adv_vk,
         COALESCE(SUM(reclama_vn_creators), 0) as adv_creators,
         SUM(storage) as storage,
@@ -2155,7 +2155,7 @@ def get_ozon_fin_data_by_barcode(start_date, end_date):
         SUM(a.logist_end) as logistics,
         SUM(a.sebes_end) as cost_of_goods,
         SUM(a.reclama_end) as adv_internal,
-        SUM(a.adv_vn) as adv_external,
+        SUM(a.adv_vn + COALESCE(a.adv_vn_vk, 0)) as adv_external,
         COALESCE(SUM(a.adv_vn_vk), 0) as adv_vk,
         COALESCE(SUM(a.adv_vn_creators), 0) as adv_creators,
         SUM(a.storage_end) as storage,
