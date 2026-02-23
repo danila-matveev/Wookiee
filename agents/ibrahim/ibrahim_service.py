@@ -31,19 +31,27 @@ logger = logging.getLogger(__name__)
 class IbrahimService:
     """Main orchestrator for Ibrahim agent."""
 
-    def __init__(self):
+    DEFAULT_TIMEOUT = 5.0  # seconds
+
+    def __init__(self, timeout: float = None):
         self.etl = ETLOperator()
         self.reconciler = ReconciliationTask()
         self.quality = DataQuality()
         self.api_analyzer = APIDocsAnalyzer()
         self.schema_mgr = SchemaManager()
         self._llm = None
+        self._timeout = timeout or self.DEFAULT_TIMEOUT
         self._init_db()
+
+    def _connect(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(str(SQLITE_DB), timeout=self._timeout)
+        conn.execute(f"PRAGMA busy_timeout={int(self._timeout * 1000)}")
+        return conn
 
     def _init_db(self) -> None:
         """Initialize SQLite database for task history."""
         DATA_DIR.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(str(SQLITE_DB))
+        conn = self._connect()
         conn.execute(
             "CREATE TABLE IF NOT EXISTS task_log ("
             "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
@@ -59,7 +67,7 @@ class IbrahimService:
     def _log_task(self, task_type: str, status: str, result: dict) -> None:
         """Log task result to SQLite."""
         try:
-            conn = sqlite3.connect(str(SQLITE_DB))
+            conn = self._connect()
             conn.execute(
                 "INSERT INTO task_log (timestamp, task_type, status, result_json) "
                 "VALUES (?, ?, ?, ?)",
@@ -133,7 +141,7 @@ class IbrahimService:
         # Recent tasks from SQLite
         recent = []
         try:
-            conn = sqlite3.connect(str(SQLITE_DB))
+            conn = self._connect()
             cursor = conn.execute(
                 "SELECT timestamp, task_type, status FROM task_log "
                 "ORDER BY id DESC LIMIT 10"

@@ -15,7 +15,9 @@ logger = logging.getLogger(__name__)
 class ReportStorage:
     """Service for storing and retrieving reports"""
 
-    def __init__(self, db_path: str = "bot/data/reports.db"):
+    DEFAULT_TIMEOUT = 5.0  # seconds
+
+    def __init__(self, db_path: str = "bot/data/reports.db", timeout: float = None):
         """
         Initialize report storage
 
@@ -23,6 +25,7 @@ class ReportStorage:
             db_path: Path to SQLite database
         """
         self.db_path = db_path
+        self.timeout = timeout or self.DEFAULT_TIMEOUT
 
         # Ensure directory exists
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
@@ -30,9 +33,15 @@ class ReportStorage:
         # Initialize database
         self._init_db()
 
+    def _connect(self) -> sqlite3.Connection:
+        """Create configured SQLite connection with busy timeout."""
+        conn = sqlite3.connect(self.db_path, timeout=self.timeout)
+        conn.execute(f"PRAGMA busy_timeout={int(self.timeout * 1000)}")
+        return conn
+
     def _init_db(self) -> None:
         """Initialize database schema"""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             cursor = conn.cursor()
 
             # Create reports table
@@ -102,7 +111,7 @@ class ReportStorage:
 
             # ── WAL mode for concurrent access (agent + bot processes) ──
             cursor.execute("PRAGMA journal_mode=WAL")
-            cursor.execute("PRAGMA busy_timeout=5000")
+            cursor.execute(f"PRAGMA busy_timeout={int(self.timeout * 1000)}")
 
             # ── Delivery queue (agent enqueues, bot delivers to Telegram) ──
             cursor.execute("""
@@ -154,7 +163,7 @@ class ReportStorage:
         Returns:
             Report ID
         """
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             cursor = conn.cursor()
 
             cursor.execute("""
@@ -189,7 +198,7 @@ class ReportStorage:
         Returns:
             Report dict or None if not found
         """
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
 
@@ -223,7 +232,7 @@ class ReportStorage:
         Returns:
             List of report dicts
         """
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
 
@@ -262,7 +271,7 @@ class ReportStorage:
         Returns:
             List of matching report dicts
         """
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
 
@@ -288,7 +297,7 @@ class ReportStorage:
         Returns:
             True if deleted, False otherwise
         """
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             cursor = conn.cursor()
 
             cursor.execute("""
@@ -313,7 +322,7 @@ class ReportStorage:
         Returns:
             Number of deleted reports
         """
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             cursor = conn.cursor()
 
             cursor.execute("""
@@ -337,7 +346,7 @@ class ReportStorage:
         Returns:
             Number of reports
         """
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             cursor = conn.cursor()
 
             cursor.execute("""
@@ -359,7 +368,7 @@ class ReportStorage:
         Returns:
             True if report exists
         """
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             cursor = conn.cursor()
             # Try exact date match first (reliable)
             cursor.execute("""
@@ -386,7 +395,7 @@ class ReportStorage:
         keyboard_json: Optional[str] = None,
     ) -> int:
         """Queue a report for Telegram delivery. Called by agent process."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO delivery_queue (report_id, user_id, html_text, keyboard_json) "
@@ -404,7 +413,7 @@ class ReportStorage:
 
     def get_pending_deliveries(self, limit: int = 50) -> List[Dict[str, Any]]:
         """Get pending deliveries for the bot to send."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute(
@@ -417,7 +426,7 @@ class ReportStorage:
 
     def mark_delivered(self, queue_id: int) -> None:
         """Mark delivery as successfully sent."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.cursor().execute(
                 "UPDATE delivery_queue SET status = 'sent', sent_at = CURRENT_TIMESTAMP "
                 "WHERE id = ?",
@@ -427,7 +436,7 @@ class ReportStorage:
 
     def mark_delivery_failed(self, queue_id: int, error: str) -> None:
         """Record a failed delivery attempt. After 5 attempts, mark as 'failed'."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.cursor().execute(
                 "UPDATE delivery_queue "
                 "SET attempts = attempts + 1, last_attempt_at = CURRENT_TIMESTAMP, "

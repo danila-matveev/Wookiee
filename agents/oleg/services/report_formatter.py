@@ -3,6 +3,7 @@ Report Formatter — форматирование отчётов для Telegram
 
 BBCode→HTML, Notion ссылка, стоимость токенов, клавиатура.
 """
+import logging
 import re
 from typing import Optional, Dict, Any
 
@@ -11,6 +12,70 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 class ReportFormatter:
     """Форматирование отчётов для Telegram"""
+
+    @staticmethod
+    def sanitize_report_md(result: dict) -> str:
+        """
+        Ensure detailed_report is safe Markdown (not raw JSON) and keep it in result.
+        """
+        report_md = (result or {}).get("detailed_report", "") or ""
+
+        if '"brief_summary"' in report_md or '"detailed_report"' in report_md:
+            logging.getLogger(__name__).warning(
+                "Sanitizing detailed_report: detected raw JSON, falling back to brief_summary"
+            )
+            report_md = (result or {}).get("brief_summary", "") or ""
+
+        if result is not None:
+            result["detailed_report"] = report_md
+
+        return report_md
+
+    @staticmethod
+    def split_html_message(text: str, limit: int = 4000) -> list[str]:
+        """
+        Split long HTML text into chunks without breaking paragraphs.
+
+        Strategy:
+        - Prefer splitting on double newlines within limit.
+        - If a single paragraph is too long, fallback to single newline.
+        - If still too long, hard-cut at limit.
+        """
+        if len(text) <= limit:
+            return [text]
+
+        def _split_by_delimiter(s: str, delim: str) -> list[str]:
+            chunks = []
+            current = ""
+            parts = s.split(delim)
+            for p in parts:
+                segment = p if current == "" else current + delim + p
+                if len(segment) > limit:
+                    if current:
+                        chunks.append(current)
+                        current = p
+                    else:
+                        # hard cut
+                        chunks.extend([p[i:i + limit] for i in range(0, len(p), limit)])
+                        current = ""
+                else:
+                    current = segment
+            if current:
+                chunks.append(current)
+            return chunks
+
+        # Try double newline first
+        chunks = _split_by_delimiter(text, "\n\n")
+        if all(len(c) <= limit for c in chunks):
+            return chunks
+
+        # Fallback: single newline
+        chunks = _split_by_delimiter(text, "\n")
+        if all(len(c) <= limit for c in chunks):
+            return chunks
+
+        # Last resort: hard cuts already applied inside helper
+        return chunks
 
     @staticmethod
     def format_for_telegram(

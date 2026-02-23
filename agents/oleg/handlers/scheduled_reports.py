@@ -72,7 +72,7 @@ async def callback_daily_report(
     yesterday = datetime.now() - timedelta(days=1)
     date_str = yesterday.strftime("%Y-%m-%d")
 
-    s, e, note = data_freshness.adjust_dates(date_str, date_str)
+    s, e, note, s_dt, e_dt = data_freshness.adjust_dates(date_str, date_str)
 
     params = {
         "start_date": s,
@@ -95,24 +95,30 @@ async def callback_daily_report(
         )
         return
 
+    report_md = ReportFormatter.sanitize_report_md(result)
+
     # Save
     try:
+        title = f"Ежедневная сводка за {e_dt.strftime('%d.%m.%Y')}"
+        if note:
+            title += " (даты скорректированы)"
+
         report_storage.save_report(
             user_id=callback.from_user.id,
             report_type="daily",
-            title=f"Ежедневная сводка за {yesterday.strftime('%d.%m.%Y')}",
-            content=result.get("detailed_report", ""),
-            start_date=yesterday,
-            end_date=yesterday,
+            title=title,
+            content=report_md,
+            start_date=s_dt,
+            end_date=e_dt,
         )
     except Exception as e:
         logger.error(f"Failed to save report: {e}")
 
     # Notion sync
     notion_url = await notion_service.sync_report(
-        start_date=date_str,
-        end_date=date_str,
-        report_md=result.get("detailed_report", ""),
+        start_date=s,
+        end_date=e,
+        report_md=report_md,
     )
 
     # Format and send
@@ -150,7 +156,7 @@ async def callback_weekly_report(
     start = end - timedelta(days=6)
     s, e = start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")
 
-    s, e, note = data_freshness.adjust_dates(s, e)
+    s, e, note, s_dt, e_dt = data_freshness.adjust_dates(s, e)
 
     params = {
         "start_date": s,
@@ -173,19 +179,27 @@ async def callback_weekly_report(
         )
         return
 
+    report_md = ReportFormatter.sanitize_report_md(result)
+
     try:
+        title = f"Еженедельная сводка {s_dt.strftime('%d.%m')}–{e_dt.strftime('%d.%m.%Y')}"
+        if note:
+            title += " (даты скорректированы)"
+
         report_storage.save_report(
             user_id=callback.from_user.id,
             report_type="weekly",
-            title=f"Еженедельная сводка {start.strftime('%d.%m')}–{end.strftime('%d.%m.%Y')}",
-            content=result.get("detailed_report", ""),
+            title=title,
+            content=report_md,
+            start_date=s_dt,
+            end_date=e_dt,
         )
     except Exception as e:
         logger.error(f"Failed to save report: {e}")
 
     notion_url = await notion_service.sync_report(
         start_date=s, end_date=e,
-        report_md=result.get("detailed_report", ""),
+        report_md=report_md,
     )
 
     cost_info = _build_cost_info(result)
@@ -230,7 +244,7 @@ async def callback_quick_period(
     start_date = end_date - timedelta(days=days - 1)
     s, e = start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")
 
-    s, e, note = data_freshness.adjust_dates(s, e)
+    s, e, note, s_dt, e_dt = data_freshness.adjust_dates(s, e)
 
     await callback.message.edit_text(f"⏳ Олег готовит отчёт за {days} дней...")
     await callback.answer()
@@ -256,21 +270,27 @@ async def callback_quick_period(
         )
         return
 
+    report_md = ReportFormatter.sanitize_report_md(result)
+
     try:
+        title = f"Сводка {s_dt.strftime('%d.%m')}–{e_dt.strftime('%d.%m.%Y')}"
+        if note:
+            title += " (даты скорректированы)"
+
         report_storage.save_report(
             user_id=callback.from_user.id,
             report_type="period",
-            title=f"Сводка {start_date.strftime('%d.%m')}–{end_date.strftime('%d.%m.%Y')}",
-            content=result.get("detailed_report", ""),
-            start_date=start_date,
-            end_date=end_date,
+            title=title,
+            content=report_md,
+            start_date=s_dt,
+            end_date=e_dt,
         )
     except Exception as e:
         logger.error(f"Failed to save report: {e}")
 
     notion_url = await notion_service.sync_report(
         start_date=s, end_date=e,
-        report_md=result.get("detailed_report", ""),
+        report_md=report_md,
     )
 
     cost_info = _build_cost_info(result)
@@ -339,7 +359,7 @@ async def callback_calendar(
             return
 
         s, e = start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")
-        s, e, note = data_freshness.adjust_dates(s, e)
+        s, e, note, s_dt, e_dt = data_freshness.adjust_dates(s, e)
 
         await callback.message.edit_text(
             f"⏳ Олег готовит отчёт за {start_date.strftime('%d.%m.%Y')}–{end_date.strftime('%d.%m.%Y')}..."
@@ -367,21 +387,27 @@ async def callback_calendar(
             await callback.answer()
             return
 
+        report_md = ReportFormatter.sanitize_report_md(result)
+
         try:
+            title = f"Сводка {s_dt.strftime('%d.%m')}–{e_dt.strftime('%d.%m.%Y')}"
+            if note:
+                title += " (даты скорректированы)"
+
             report_storage.save_report(
                 user_id=callback.from_user.id,
                 report_type="period",
-                title=f"Сводка {start_date.strftime('%d.%m')}–{end_date.strftime('%d.%m.%Y')}",
-                content=result.get("detailed_report", ""),
-                start_date=start_date,
-                end_date=end_date,
+                title=title,
+                content=report_md,
+                start_date=s_dt,
+                end_date=e_dt,
             )
         except Exception as e:
             logger.error(f"Failed to save report: {e}")
 
         notion_url = await notion_service.sync_report(
             start_date=s, end_date=e,
-            report_md=result.get("detailed_report", ""),
+            report_md=report_md,
         )
 
         cost_info = _build_cost_info(result)
@@ -528,36 +554,17 @@ async def _send_html_report(
     keyboard: InlineKeyboardMarkup,
 ):
     """Send HTML-formatted report, split into chunks if needed."""
-    MAX_LEN = 4000
+    chunks = ReportFormatter.split_html_message(html_text, limit=4000)
 
-    if len(html_text) <= MAX_LEN:
+    if len(chunks) == 1:
         await callback.message.edit_text(
-            html_text, parse_mode="HTML", reply_markup=keyboard,
+            chunks[0], parse_mode="HTML", reply_markup=keyboard,
         )
         return
 
-    # Paragraph-based splitting to avoid cutting HTML tags
-    paragraphs = html_text.split('\n\n')
-    chunks = []
-    current = ""
-    for p in paragraphs:
-        if len(current) + len(p) + 2 > MAX_LEN:
-            if current:
-                chunks.append(current)
-            current = p[:MAX_LEN]
-        else:
-            current = current + "\n\n" + p if current else p
-    if current:
-        chunks.append(current)
-
-    if not chunks:
-        chunks = [html_text[:MAX_LEN]]
-
     await callback.message.edit_text(chunks[0], parse_mode="HTML")
-
     for chunk in chunks[1:-1]:
         await callback.message.answer(chunk, parse_mode="HTML")
-
     await callback.message.answer(
         chunks[-1], parse_mode="HTML", reply_markup=keyboard,
     )

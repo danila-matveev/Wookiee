@@ -22,12 +22,16 @@ DB_PATH = Path(__file__).parent.parent.parent / 'data' / 'reports.db'
 class LearningStore:
     """Хранение рекомендаций и обучение на результатах."""
 
-    def __init__(self, db_path: str = None):
+    DEFAULT_TIMEOUT = 5.0  # seconds
+
+    def __init__(self, db_path: str = None, timeout: float = None):
         self.db_path = db_path or str(DB_PATH)
+        self.timeout = timeout or self.DEFAULT_TIMEOUT
         self._ensure_tables()
 
     def _get_conn(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, timeout=self.timeout)
+        conn.execute(f"PRAGMA busy_timeout={int(self.timeout * 1000)}")
         conn.row_factory = sqlite3.Row
         return conn
 
