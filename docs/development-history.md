@@ -5,6 +5,21 @@
 
 ---
 
+## [2026-02-23] Таблица 1.1: реклама WB/OZON (adv_internal/adv_external)
+
+### Что сделано
+- В таблице «1.1 Ключевые метрики» внутренняя/внешняя реклама оказались перепутаны и внутренняя не включала OZON из-за старого workaround в `shared/data_layer.py`.
+- После обновления ETL WB поля `reclama` / `reclama_vn` снова соответствуют схеме, поэтому маппинг вернули к штатному: `adv_internal = SUM(reclama)`, `adv_external = SUM(reclama_vn)` во всех WB-запросах.
+- Обновлён плейбук Олега и data quality notes, чтобы зафиксировать новый (нормальный) маппинг и напоминание о сверке с PowerBI.
+
+### Обновлено
+- [x] `shared/data_layer.py`
+- [x] `agents/oleg/playbook.md`
+- [x] `docs/database/DATA_QUALITY_NOTES.md`
+- [x] `docs/development-history.md`
+
+---
+
 ## [2026-02-21] WB таблицы 5.1/5.2: исправлен маппинг рекламы в playbook
 
 ### Что сделано
