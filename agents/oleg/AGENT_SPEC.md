@@ -335,7 +335,7 @@ httpx==0.27.0             # HTTP client (z.ai, Supabase, Notion)
 ### Внешние сервисы
 | Сервис | Назначение | Обязательность | Статус |
 |--------|-----------|---------------|--------|
-| **z.ai API** | LLM провайдер (glm-4-plus, glm-4.5-flash) | Критично | ✅ Working |
+| **OpenRouter API** | LLM провайдер (glm-4.7*, gemini-3 fallback) | Критично | ✅ Working |
 | **PostgreSQL (WB)** | Данные Wildberries | Критично | ✅ Working |
 | **PostgreSQL (OZON)** | Данные OZON | Критично | ✅ Working |
 | **Supabase** | Товарная матрица | Опционально | ✅ Working |
@@ -348,14 +348,14 @@ shared/
 ├── data_layer.py          # Все SQL-запросы (WB, OZON, Supabase)
 ├── config.py              # Конфигурация (читает .env)
 ├── clients/
-│   ├── zai_client.py      # z.ai API wrapper
-│   ├── supabase_client.py # Supabase REST API
-│   └── notion_client.py   # Notion API
+│   ├── openrouter_client.py # OpenRouter API wrapper (LLM)
+│   ├── supabase_client.py   # Supabase REST API
+│   └── notion_client.py     # Notion API
 └── utils/
     └── json_utils.py      # JSON parsing (extract_json)
 ```
 
-**Важно:** Олег использует `shared/data_layer.py` (не `agents/oleg/services/data_layer.py`) — единый источник SQL-запросов для всех агентов.
+**Важно:** Олег использует только `shared/data_layer.py` — единый источник SQL-запросов для всех агентов (шима в services нет в использовании).
 
 ## Roadmap
 

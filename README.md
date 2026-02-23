@@ -91,7 +91,7 @@ graph TB
 | [`services/marketplace_etl/`](services/marketplace_etl/) | ETL-пайплайн WB/OZON API → PostgreSQL | Активен |
 | [`services/sheets_sync/`](services/sheets_sync/) | Синхронизация Google Sheets ↔ МП | Активен |
 | [`services/ozon_delivery/`](services/ozon_delivery/) | Оптимизация доставки OZON | Активен |
-| [`sku_database/`](sku_database/) | Товарная матрица (Supabase): 22 модели, 478 артикулов, 1450 SKU | Активен |
+| [`sku_database/`](sku_database/) | Товарная матрица (Supabase pooler). Заполняйте `POSTGRES_*` (fallback `SUPABASE_*`). | Активен |
 | [`scripts/`](scripts/) | CLI-скрипты аналитики (ABC, Notion sync) | Активен |
 | [`deploy/`](deploy/) | Docker конфигурация | Инфраструктура |
 | [`docs/`](docs/) | Документация: архитектура, ADR, руководства, БД | Справочник |
@@ -322,7 +322,7 @@ python scripts/notion_sync.py --file reports/2026-02-01_2026-02-07_analytics.md
 | Категория | Технологии |
 |-----------|-----------|
 | Язык | Python 3.11+ |
-| Базы данных | PostgreSQL (финансы WB/OZON), Supabase (товарная матрица), SQLite FTS5 (история отчётов) |
+| Базы данных | PostgreSQL (финансы WB/OZON), Supabase pooler (товарная матрица, keys `POSTGRES_*`, fallback `SUPABASE_*`), SQLite FTS5 (история отчётов) |
 | Интерфейсы | aiogram 3.15, APScheduler 3.10.4 |
 | AI / LLM | z.ai API (GLM-4-plus, GLM-4.5-flash), Claude API (Opus 4.6, Sonnet 4.5) via OpenRouter |
 | Интеграции | Notion API, Bitrix24 API, Wildberries API, OZON API, МойСклад API, Google Sheets API |

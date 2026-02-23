@@ -34,6 +34,7 @@ from agents.oleg.services.feedback_service import FeedbackService
 from agents.oleg.services.notion_service import NotionService
 from agents.oleg.services.scheduler_service import SchedulerService
 from agents.oleg.services.data_freshness_service import DataFreshnessService
+from agents.oleg.services.report_formatter import ReportFormatter
 
 from agents.oleg.services.price_analysis.learning_store import LearningStore
 from agents.oleg.services.price_tools import set_learning_store
@@ -201,33 +202,13 @@ class OlegBot:
 
     async def _send_html(self, user_id: int, html_text: str, keyboard=None) -> None:
         """Send HTML message, splitting by paragraphs if needed."""
-        MAX_LEN = 4000
-        if len(html_text) <= MAX_LEN:
+        chunks = ReportFormatter.split_html_message(html_text, limit=4000)
+        for i, chunk in enumerate(chunks):
+            kb = keyboard if i == len(chunks) - 1 else None
             await self.bot.send_message(
-                chat_id=user_id, text=html_text,
-                parse_mode="HTML", reply_markup=keyboard,
+                chat_id=user_id, text=chunk,
+                parse_mode="HTML", reply_markup=kb,
             )
-        else:
-            # Split by paragraph breaks to avoid cutting HTML tags
-            paragraphs = html_text.split('\n\n')
-            chunks = []
-            current = ""
-            for p in paragraphs:
-                if len(current) + len(p) + 2 > MAX_LEN:
-                    if current:
-                        chunks.append(current)
-                    current = p[:MAX_LEN]  # safety trim
-                else:
-                    current = current + "\n\n" + p if current else p
-            if current:
-                chunks.append(current)
-
-            for i, chunk in enumerate(chunks):
-                kb = keyboard if i == len(chunks) - 1 else None
-                await self.bot.send_message(
-                    chat_id=user_id, text=chunk,
-                    parse_mode="HTML", reply_markup=kb,
-                )
 
     # ── Preflight checks ────────────────────────────────────
 

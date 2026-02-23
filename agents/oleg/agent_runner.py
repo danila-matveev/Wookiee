@@ -101,6 +101,7 @@ class OlegAgentRunner:
 
     def _get_report_recipients(self) -> set:
         """Return user IDs for scheduled reports, falling back to ADMIN_CHAT_ID."""
+        self.auth_service.reload()
         users = self.auth_service.authenticated_users
         if users:
             return users
@@ -152,13 +153,7 @@ class OlegAgentRunner:
                 return False
 
             # Validate detailed_report content
-            report_md = result.get("detailed_report", "")
-            if '"brief_summary"' in report_md or '"detailed_report"' in report_md:
-                logger.warning(
-                    f"{report_type}: detailed_report contains raw JSON, "
-                    "using brief as fallback"
-                )
-                report_md = result.get("brief_summary", "")
+            report_md = ReportFormatter.sanitize_report_md(result)
 
             # Sync to Notion
             s = params.get("start_date", "")
@@ -196,14 +191,24 @@ class OlegAgentRunner:
             for user_id in recipients:
                 try:
                     if save_to_reports:
+                        start_date_param = params.get("start_date")
+                        end_date_param = params.get("end_date")
+                        start_dt = (
+                            datetime.strptime(start_date_param, "%Y-%m-%d")
+                            if start_date_param else report_date
+                        )
+                        end_dt = (
+                            datetime.strptime(end_date_param, "%Y-%m-%d")
+                            if end_date_param else report_date
+                        )
                         self.report_storage.save_report(
                             user_id=user_id,
                             report_type=report_type,
                             title=title,
-                            content=result.get("detailed_report", ""),
+                            content=report_md,
                             metadata=metadata,
-                            start_date=report_date,
-                            end_date=report_date,
+                            start_date=start_dt,
+                            end_date=end_dt,
                         )
                     self.report_storage.enqueue_delivery(
                         report_id=0,
@@ -282,7 +287,7 @@ class OlegAgentRunner:
                 end = datetime.now() - timedelta(days=1)
                 start = end - timedelta(days=6)
                 s, e = start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")
-                s, e, note = self.data_freshness.adjust_dates(s, e)
+                s, e, note, s_dt, e_dt = self.data_freshness.adjust_dates(s, e)
 
                 params = {
                     "start_date": s,
@@ -294,11 +299,15 @@ class OlegAgentRunner:
                     params["data_availability_note"] = note
                     logger.info(f"Weekly report: dates adjusted — {note}")
 
+                title = f"Еженедельная сводка {s_dt.strftime('%d.%m')} — {e_dt.strftime('%d.%m.%Y')}"
+                if note:
+                    title += " (даты скорректированы)"
+
                 await self._generate_and_enqueue(
                     user_query="Еженедельная аналитическая сводка",
                     params=params,
                     report_type="weekly_auto",
-                    title=f"Еженедельная сводка {s} — {e}",
+                    title=title,
                     save_to_reports=False,
                     keyboard_type="weekly",
                 )
@@ -324,7 +333,7 @@ class OlegAgentRunner:
             try:
                 s = last_month_start.strftime("%Y-%m-%d")
                 e = last_month_end.strftime("%Y-%m-%d")
-                s, e, note = self.data_freshness.adjust_dates(s, e)
+                s, e, note, s_dt, e_dt = self.data_freshness.adjust_dates(s, e)
 
                 params = {
                     "start_date": s,
@@ -336,11 +345,15 @@ class OlegAgentRunner:
                     params["data_availability_note"] = note
                     logger.info(f"Monthly report: dates adjusted — {note}")
 
+                title = f"Месячный отчёт за {s_dt.strftime('%Y-%m')}"
+                if note:
+                    title += " (даты скорректированы)"
+
                 await self._generate_and_enqueue(
                     user_query=f"Месячный аналитический отчёт за {month_str}",
                     params=params,
                     report_type="monthly_auto",
-                    title=f"Месячный отчёт за {month_str}",
+                    title=title,
                     save_to_reports=True,
                     metadata={"month": month_str},
                     keyboard_type="monthly",
@@ -387,7 +400,7 @@ class OlegAgentRunner:
                 end = datetime.now() - timedelta(days=1)
                 start = end - timedelta(days=6)
                 s, e = start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")
-                s, e, note = self.data_freshness.adjust_dates(s, e)
+                s, e, note, s_dt, e_dt = self.data_freshness.adjust_dates(s, e)
 
                 params = {
                     "start_date": s,
@@ -399,6 +412,10 @@ class OlegAgentRunner:
                     params["data_availability_note"] = note
                     logger.info(f"Price review: dates adjusted — {note}")
 
+                title = f"Ценовой обзор {s_dt.strftime('%d.%m')} — {e_dt.strftime('%d.%m.%Y')}"
+                if note:
+                    title += " (даты скорректированы)"
+
                 await self._generate_and_enqueue(
                     user_query=(
                         "Еженедельный ценовой обзор: эластичность, "
@@ -406,7 +423,7 @@ class OlegAgentRunner:
                     ),
                     params=params,
                     report_type="price_review_auto",
-                    title=f"Ценовой обзор {s} — {e}",
+                    title=title,
                     save_to_reports=False,
                     notion_source="Price Review (auto)",
                 )
@@ -456,9 +473,15 @@ class OlegAgentRunner:
                         )
                         if model_fact:
                             self.learning_store.record_outcome(
-                                recommendation_id=rec['id'],
-                                actual_margin_impact=model_fact.get('margin', 0),
-                                actual_volume_impact=model_fact.get('sales_count', 0),
+                                rec_id=rec['id'],
+                                outcomes={
+                                    "implemented": None,
+                                    "actual_price_after": model_fact.get('avg_price_per_unit'),
+                                    "actual_margin_impact": model_fact.get('margin', 0),
+                                    "actual_volume_impact": model_fact.get('sales_count', 0),
+                                    "period_start": fact_start,
+                                    "period_end": fact_end,
+                                },
                             )
                             logger.info(
                                 f"Recorded outcome for recommendation "
