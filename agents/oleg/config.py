@@ -1,6 +1,7 @@
 """
-Configuration for Oleg Analytics Telegram Bot.
-Merged from bot/config.py + scripts/config.py.
+Configuration for Oleg v2.
+
+Inherits from shared/config.py, adds v2-specific settings.
 """
 import os
 from pathlib import Path
@@ -18,6 +19,7 @@ def _env_first(keys, default=""):
             return v
     return default
 
+
 # ============================================================================
 # Telegram
 # ============================================================================
@@ -27,13 +29,10 @@ TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
 # Authentication
 # ============================================================================
 AUTH_ENABLED: bool = os.getenv("AUTH_ENABLED", "true").lower() in ("true", "1", "yes")
-HASHED_PASSWORD: str = os.getenv(
-    "BOT_PASSWORD_HASH",
-    "$2b$12$LQ3fPZJ5ZqX5ZqX5ZqX5ZeX5ZqX5ZqX5ZqX5ZqX5ZqX5ZqX5ZqX5Zq"  # PLACEHOLDER
-).strip("'\"")
+HASHED_PASSWORD: str = os.getenv("BOT_PASSWORD_HASH", "").strip("'\"")
 
 # ============================================================================
-# AI Providers — всё через OpenRouter
+# AI Providers — all via OpenRouter
 # ============================================================================
 OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")
 
@@ -42,18 +41,9 @@ CLASSIFY_MODEL: str = os.getenv("OLEG_CLASSIFY_MODEL", "z-ai/glm-4.7-flash")   #
 ANALYTICS_MODEL: str = os.getenv("OLEG_ANALYTICS_MODEL", "z-ai/glm-4.7")       # MAIN
 FALLBACK_MODEL: str = os.getenv("OLEG_FALLBACK_MODEL", "google/gemini-3-flash-preview")  # HEAVY
 
-# ============================================================================
-# AI API (OpenRouter — primary provider)
-# ============================================================================
 AI_BASE_URL: str = os.getenv("AI_BASE_URL", "https://openrouter.ai/api/v1")
 AI_API_KEY: str = OPENROUTER_API_KEY
-AI_MODEL: str = ANALYTICS_MODEL  # "z-ai/glm-4.7" (for tool-use / analytics)
-AI_CLASSIFY_MODEL: str = CLASSIFY_MODEL  # "z-ai/glm-4.7-flash" (for classification)
-
-# Backward-compatible aliases
-ZAI_API_KEY: str = AI_API_KEY
-ZAI_MODEL: str = AI_CLASSIFY_MODEL
-OLEG_MODEL: str = AI_MODEL
+AI_MODEL: str = ANALYTICS_MODEL
 
 # Pricing per 1K tokens (USD)
 PRICING: dict = {
@@ -73,13 +63,6 @@ DB_PASSWORD: str = os.getenv("DB_PASSWORD", "")
 DB_NAME_WB: str = os.getenv("DB_NAME_WB", "pbi_wb_wookiee")
 DB_NAME_OZON: str = os.getenv("DB_NAME_OZON", "pbi_ozon_wookiee")
 
-# Optional: SKU database (Supabase pooler) — used when SKU access required
-SKU_DB_HOST: str = _env_first(["POSTGRES_HOST", "SUPABASE_HOST"], "")
-SKU_DB_PORT: int = int(_env_first(["POSTGRES_PORT", "SUPABASE_PORT"], "5432"))
-SKU_DB_NAME: str = _env_first(["POSTGRES_DB", "SUPABASE_DB"], "postgres")
-SKU_DB_USER: str = _env_first(["POSTGRES_USER", "SUPABASE_USER"], "")
-SKU_DB_PASSWORD: str = _env_first(["POSTGRES_PASSWORD", "SUPABASE_PASSWORD"], "")
-
 DB_CONFIG: dict = {
     "host": DB_HOST,
     "port": DB_PORT,
@@ -87,14 +70,14 @@ DB_CONFIG: dict = {
     "password": DB_PASSWORD,
 }
 
-# Supabase (товарная матрица)
+# Supabase
 SUPABASE_ENV_PATH: str = os.getenv(
     "SUPABASE_ENV_PATH",
     str(PROJECT_ROOT / "sku_database" / ".env"),
 )
 
-# SQLite (local report history)
-SQLITE_DB_PATH: str = str(Path(__file__).parent / "data" / "reports.db")
+# SQLite (local state, reports, feedback)
+SQLITE_DB_PATH: str = str(Path(__file__).parent / "data" / "oleg_v2.db")
 
 # ============================================================================
 # Notion
@@ -106,7 +89,6 @@ NOTION_DATABASE_ID: str = os.getenv("NOTION_DATABASE_ID", "")
 # Paths
 # ============================================================================
 PLAYBOOK_PATH: str = str(Path(__file__).parent / "playbook.md")
-FEEDBACK_LOG_PATH: str = str(Path(__file__).parent / "feedback_log.md")
 
 # ============================================================================
 # Scheduler (MSK)
@@ -114,21 +96,42 @@ FEEDBACK_LOG_PATH: str = str(Path(__file__).parent / "feedback_log.md")
 TIMEZONE: str = "Europe/Moscow"
 DAILY_REPORT_TIME: str = os.getenv("DAILY_REPORT_TIME", "09:00")
 WEEKLY_REPORT_TIME: str = os.getenv("WEEKLY_REPORT_TIME", "10:15")
-MONTHLY_REPORT_TIME: str = os.getenv("MONTHLY_REPORT_TIME", "10:30")
 
 # ============================================================================
-# Reports
+# Executor
 # ============================================================================
-REPORT_RETENTION_DAYS: int = 90
+MAX_ITERATIONS: int = 10
+MAX_TOOL_RESULT_LENGTH: int = 8500
+TOOL_TIMEOUT_SEC: float = 30.0
+TOTAL_TIMEOUT_SEC: float = 120.0
+CONTEXT_COMPRESSION_AFTER: int = 5
+
+# ============================================================================
+# Circuit Breaker
+# ============================================================================
+CB_FAILURE_THRESHOLD: int = 3
+CB_COOLDOWN_SEC: float = 300.0  # 5 minutes
+
+# ============================================================================
+# Orchestrator
+# ============================================================================
+MAX_CHAIN_STEPS: int = 5
+ANOMALY_MARGIN_THRESHOLD: float = 10.0   # margin change > 10% triggers escalation
+ANOMALY_DRR_THRESHOLD: float = 30.0      # DRR change > 30% triggers escalation
+
+# ============================================================================
+# Watchdog
+# ============================================================================
+WATCHDOG_HEARTBEAT_INTERVAL_HOURS: int = 6
+ADMIN_CHAT_ID: int = int(os.getenv("ADMIN_CHAT_ID", "0"))
 
 # ============================================================================
 # Logging
 # ============================================================================
 LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
-LOG_FILE: str = str(Path(__file__).parent / "logs" / "bot.log")
+LOG_FILE: str = str(Path(__file__).parent / "logs" / "oleg_v2.log")
 
 # ============================================================================
 # Auth persistence
 # ============================================================================
 USERS_FILE_PATH: str = str(Path(__file__).parent / "data" / "authenticated_users.json")
-ADMIN_CHAT_ID: int = int(os.getenv("ADMIN_CHAT_ID", "0"))
