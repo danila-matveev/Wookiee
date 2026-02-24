@@ -23,7 +23,13 @@ log()   { echo -e "${GREEN}[deploy-v2]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[deploy-v2]${NC} $*"; }
 error() { echo -e "${RED}[deploy-v2]${NC} $*"; }
 
-# ─── 1. Остановить старый контейнер ──────────────────────────
+# ─── 1. Остановить v1 контейнеры (конфликт токенов) ──────────
+log "Останавливаю Oleg v1 (конфликт Telegram-токена)..."
+docker stop wookiee_analytics_agent wookiee_analytics_bot 2>/dev/null && log "V1 остановлен" || log "V1 не запущен"
+docker rm wookiee_analytics_agent wookiee_analytics_bot 2>/dev/null || true
+rm -f "$PROJECT_ROOT"/agents/oleg/logs/*.pid
+
+# ─── 1b. Остановить старый v2 контейнер ──────────────────────
 log "Останавливаю $CONTAINER..."
 if docker ps -q -f name="$CONTAINER" | grep -q .; then
     docker compose -f "$COMPOSE_FILE" stop "$SERVICE"

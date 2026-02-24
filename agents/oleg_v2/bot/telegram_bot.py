@@ -80,6 +80,14 @@ class OlegTelegramBot:
                 )
                 return
 
+            if text.startswith("/report_daily"):
+                await self._handle_report_daily(message)
+                return
+
+            if text.startswith("/report_weekly"):
+                await self._handle_report_weekly(message)
+                return
+
             if text.startswith("/health"):
                 if self.watchdog:
                     health = await self.watchdog.check_health()
@@ -135,6 +143,82 @@ class OlegTelegramBot:
         if self.bot:
             await self.bot.session.close()
             logger.info("Telegram bot stopped")
+
+    async def _handle_report_daily(self, message) -> None:
+        """Handle /report_daily command."""
+        if not self.pipeline:
+            await message.answer("Pipeline не настроен.")
+            return
+
+        await message.answer("Генерирую дневной отчёт...")
+
+        from agents.oleg_v2.pipeline.report_types import ReportType, ReportRequest
+        from agents.oleg_v2.services.time_utils import get_yesterday_msk
+
+        yesterday = get_yesterday_msk()
+        request = ReportRequest(
+            report_type=ReportType.DAILY,
+            start_date=str(yesterday),
+            end_date=str(yesterday),
+        )
+
+        try:
+            result = await self.pipeline.generate_report(request)
+            if result:
+                from agents.oleg_v2.bot.formatter import (
+                    split_html_message, format_cost_footer, add_caveats_header,
+                )
+                text = result.brief_summary
+                if result.caveats:
+                    text = add_caveats_header(text, result.caveats)
+                text += format_cost_footer(
+                    result.cost_usd, result.chain_steps, result.duration_ms,
+                )
+                for chunk in split_html_message(text):
+                    await message.answer(chunk, parse_mode="HTML")
+            else:
+                await message.answer("Отчёт не сгенерирован: hard gates failed. Проверьте /health.")
+        except Exception as e:
+            logger.error(f"Daily report command error: {e}", exc_info=True)
+            await message.answer(f"Ошибка генерации отчёта: {e}")
+
+    async def _handle_report_weekly(self, message) -> None:
+        """Handle /report_weekly command."""
+        if not self.pipeline:
+            await message.answer("Pipeline не настроен.")
+            return
+
+        await message.answer("Генерирую недельный отчёт...")
+
+        from agents.oleg_v2.pipeline.report_types import ReportType, ReportRequest
+        from agents.oleg_v2.services.time_utils import get_last_week_bounds_msk
+
+        monday, sunday = get_last_week_bounds_msk()
+        request = ReportRequest(
+            report_type=ReportType.WEEKLY,
+            start_date=str(monday),
+            end_date=str(sunday),
+        )
+
+        try:
+            result = await self.pipeline.generate_report(request)
+            if result:
+                from agents.oleg_v2.bot.formatter import (
+                    split_html_message, format_cost_footer, add_caveats_header,
+                )
+                text = result.brief_summary
+                if result.caveats:
+                    text = add_caveats_header(text, result.caveats)
+                text += format_cost_footer(
+                    result.cost_usd, result.chain_steps, result.duration_ms,
+                )
+                for chunk in split_html_message(text):
+                    await message.answer(chunk, parse_mode="HTML")
+            else:
+                await message.answer("Отчёт не сгенерирован: hard gates failed. Проверьте /health.")
+        except Exception as e:
+            logger.error(f"Weekly report command error: {e}", exc_info=True)
+            await message.answer(f"Ошибка генерации отчёта: {e}")
 
     async def send_message(self, chat_id: int, text: str, **kwargs) -> None:
         """Send a message directly (for scheduled reports)."""
