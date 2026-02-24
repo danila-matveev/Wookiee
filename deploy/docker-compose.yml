@@ -1,17 +1,12 @@
 services:
-  # ── Oleg v1 (ОТКЛЮЧЁН — заменён на v2) ──
-  # wookiee-agent и wookiee-bot убраны: v2 объединяет agent + bot + scheduler
-  # в один контейнер. Оба используют один TELEGRAM_BOT_TOKEN, поэтому
-  # одновременный запуск v1 и v2 невозможен (конфликт polling).
-
-  # ── Oleg v2: единый контейнер (bot + agent + scheduler + watchdog) ──
-  wookiee-oleg-v2:
+  # ── Oleg: единый контейнер (bot + agent + scheduler + watchdog) ──
+  wookiee-oleg:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
-    container_name: wookiee_oleg_v2
+    container_name: wookiee_oleg
     restart: unless-stopped
-    command: ["python", "-m", "agents.oleg_v2"]
+    command: ["python", "-m", "agents.oleg"]
 
     env_file:
       - ../.env
@@ -21,8 +16,8 @@ services:
       - TZ=Europe/Moscow
 
     volumes:
-      - ../agents/oleg_v2/data:/app/agents/oleg_v2/data
-      - ../agents/oleg_v2/logs:/app/agents/oleg_v2/logs
+      - ../agents/oleg/data:/app/agents/oleg/data
+      - ../agents/oleg/logs:/app/agents/oleg/logs
       - ../reports:/app/reports
       - ../scripts:/app/scripts:ro
 

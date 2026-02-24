@@ -4,12 +4,12 @@ Researcher Agent — deep analysis, hypothesis testing, API tools.
 import logging
 from typing import List, Dict, Any, Optional
 
-from agents.oleg_v2.agents.base_agent import BaseAgent
-from agents.oleg_v2.agents.researcher.tools import (
+from agents.oleg.agents.base_agent import BaseAgent
+from agents.oleg.agents.researcher.tools import (
     RESEARCHER_TOOL_DEFINITIONS,
     execute_researcher_tool,
 )
-from agents.oleg_v2.agents.researcher.prompts import RESEARCHER_SYSTEM_PROMPT
+from agents.oleg.agents.researcher.prompts import RESEARCHER_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
 

@@ -2,8 +2,8 @@
 import pytest
 from unittest.mock import AsyncMock
 
-from agents.oleg_v2.executor.react_loop import ReactLoop
-from agents.oleg_v2.executor.circuit_breaker import CircuitBreaker
+from agents.oleg.executor.react_loop import ReactLoop
+from agents.oleg.executor.circuit_breaker import CircuitBreaker
 
 
 @pytest.mark.asyncio

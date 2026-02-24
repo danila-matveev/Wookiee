@@ -175,7 +175,7 @@ class DiagnosticRunner:
         try:
             from shared.data_layer import _get_wb_connection, _db_cursor
 
-            with _db_cursor(_get_wb_connection) as cur:
+            with _db_cursor(_get_wb_connection) as (conn, cur):
                 cur.execute("SELECT MAX(dateupdate) FROM abc_date")
                 row = cur.fetchone()
                 last_update = row[0] if row else None

@@ -10,7 +10,7 @@ from typing import Optional
 from aiogram import Bot, Dispatcher, Router
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from agents.oleg_v2 import config
+from agents.oleg import config
 
 logger = logging.getLogger(__name__)
 
@@ -105,13 +105,13 @@ class OlegTelegramBot:
             if self.orchestrator:
                 await message.answer("Анализирую...")
                 try:
-                    from agents.oleg_v2.orchestrator.chain import ChainResult
+                    from agents.oleg.orchestrator.chain import ChainResult
                     result = await self.orchestrator.run_chain(
                         task=text,
                         task_type="query",
                     )
 
-                    from agents.oleg_v2.bot.formatter import (
+                    from agents.oleg.bot.formatter import (
                         split_html_message, format_cost_footer,
                     )
                     response = result.summary
@@ -152,8 +152,8 @@ class OlegTelegramBot:
 
         await message.answer("Генерирую дневной отчёт...")
 
-        from agents.oleg_v2.pipeline.report_types import ReportType, ReportRequest
-        from agents.oleg_v2.services.time_utils import get_yesterday_msk
+        from agents.oleg.pipeline.report_types import ReportType, ReportRequest
+        from agents.oleg.services.time_utils import get_yesterday_msk
 
         yesterday = get_yesterday_msk()
         request = ReportRequest(
@@ -165,7 +165,7 @@ class OlegTelegramBot:
         try:
             result = await self.pipeline.generate_report(request)
             if result:
-                from agents.oleg_v2.bot.formatter import (
+                from agents.oleg.bot.formatter import (
                     split_html_message, format_cost_footer, add_caveats_header,
                 )
                 text = result.brief_summary
@@ -190,8 +190,8 @@ class OlegTelegramBot:
 
         await message.answer("Генерирую недельный отчёт...")
 
-        from agents.oleg_v2.pipeline.report_types import ReportType, ReportRequest
-        from agents.oleg_v2.services.time_utils import get_last_week_bounds_msk
+        from agents.oleg.pipeline.report_types import ReportType, ReportRequest
+        from agents.oleg.services.time_utils import get_last_week_bounds_msk
 
         monday, sunday = get_last_week_bounds_msk()
         request = ReportRequest(
@@ -203,7 +203,7 @@ class OlegTelegramBot:
         try:
             result = await self.pipeline.generate_report(request)
             if result:
-                from agents.oleg_v2.bot.formatter import (
+                from agents.oleg.bot.formatter import (
                     split_html_message, format_cost_footer, add_caveats_header,
                 )
                 text = result.brief_summary
@@ -223,7 +223,7 @@ class OlegTelegramBot:
     async def send_message(self, chat_id: int, text: str, **kwargs) -> None:
         """Send a message directly (for scheduled reports)."""
         if self.bot:
-            from agents.oleg_v2.bot.formatter import split_html_message
+            from agents.oleg.bot.formatter import split_html_message
             for chunk in split_html_message(text):
                 await self.bot.send_message(
                     chat_id=chat_id,

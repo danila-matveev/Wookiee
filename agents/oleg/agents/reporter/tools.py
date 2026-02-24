@@ -1,8 +1,8 @@
 """
 Reporter Agent tools — financial and price analysis tools.
 
-Reuses v1 tool definitions and handlers from agents/oleg/services/agent_tools.py
-and agents/oleg/services/price_tools.py without code duplication.
+Tool definitions and handlers from agents/oleg/services/agent_tools.py
+and agents/oleg/services/price_tools.py.
 All SQL queries delegate to shared/data_layer.py.
 """
 from agents.oleg.services.agent_tools import (

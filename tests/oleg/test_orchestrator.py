@@ -4,9 +4,9 @@ import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from agents.oleg_v2.orchestrator.orchestrator import OlegOrchestrator
-from agents.oleg_v2.orchestrator.chain import ChainResult, AgentStep
-from agents.oleg_v2.executor.react_loop import AgentResult
+from agents.oleg.orchestrator.orchestrator import OlegOrchestrator
+from agents.oleg.orchestrator.chain import ChainResult, AgentStep
+from agents.oleg.executor.react_loop import AgentResult
 
 
 @pytest.fixture

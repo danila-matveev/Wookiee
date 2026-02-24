@@ -77,7 +77,7 @@ SUPABASE_ENV_PATH: str = os.getenv(
 )
 
 # SQLite (local state, reports, feedback)
-SQLITE_DB_PATH: str = str(Path(__file__).parent / "data" / "oleg_v2.db")
+SQLITE_DB_PATH: str = str(Path(__file__).parent / "data" / "oleg.db")
 
 # ============================================================================
 # Notion
@@ -129,7 +129,7 @@ ADMIN_CHAT_ID: int = int(os.getenv("ADMIN_CHAT_ID", "0"))
 # Logging
 # ============================================================================
 LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
-LOG_FILE: str = str(Path(__file__).parent / "logs" / "oleg_v2.log")
+LOG_FILE: str = str(Path(__file__).parent / "logs" / "oleg.log")
 
 # ============================================================================
 # Auth persistence

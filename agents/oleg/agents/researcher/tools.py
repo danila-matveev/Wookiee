@@ -209,7 +209,7 @@ async def _handle_search_wb_analytics(date_from: str) -> dict:
     """Get WB supplier orders."""
     try:
         from shared.clients.wb_client import WBClient
-        from agents.oleg_v2 import config
+        from agents.oleg import config
         client = WBClient(
             api_key=config._env_first(["WB_API_KEY_STATS", "WB_API_KEY"], ""),
             cabinet_name="Wookiee",
@@ -229,7 +229,7 @@ async def _handle_get_wb_feedbacks() -> dict:
     """Get WB feedbacks."""
     try:
         from shared.clients.wb_client import WBClient
-        from agents.oleg_v2 import config
+        from agents.oleg import config
         client = WBClient(
             api_key=config._env_first(["WB_API_KEY_FEEDBACKS", "WB_API_KEY"], ""),
             cabinet_name="Wookiee",
@@ -249,7 +249,7 @@ async def _handle_get_moysklad_inventory() -> dict:
     """Get МойСклад inventory."""
     try:
         from shared.clients.moysklad_client import MoySkladClient
-        from agents.oleg_v2 import config
+        from agents.oleg import config
         token = config._env_first(["MOYSKLAD_TOKEN"], "")
         if not token:
             return {"error": "MOYSKLAD_TOKEN not configured"}

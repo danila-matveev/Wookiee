@@ -4,7 +4,7 @@ Alerter — sends Telegram alerts with diagnostic results.
 import logging
 from typing import Optional
 
-from agents.oleg_v2.watchdog.diagnostic import DiagnosticReport
+from agents.oleg.watchdog.diagnostic import DiagnosticReport
 
 logger = logging.getLogger(__name__)
 

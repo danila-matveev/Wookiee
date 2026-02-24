@@ -2,10 +2,10 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from agents.oleg_v2.pipeline.report_pipeline import ReportPipeline
-from agents.oleg_v2.pipeline.report_types import ReportType, ReportRequest
-from agents.oleg_v2.pipeline.gate_checker import GateCheckResult, GateResult
-from agents.oleg_v2.orchestrator.chain import ChainResult, AgentStep
+from agents.oleg.pipeline.report_pipeline import ReportPipeline
+from agents.oleg.pipeline.report_types import ReportType, ReportRequest
+from agents.oleg.pipeline.gate_checker import GateCheckResult, GateResult
+from agents.oleg.orchestrator.chain import ChainResult, AgentStep
 
 
 @pytest.fixture

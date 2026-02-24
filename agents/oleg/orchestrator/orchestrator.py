@@ -18,10 +18,10 @@ import logging
 import time
 from typing import Dict, Optional
 
-from agents.oleg_v2.orchestrator.chain import (
+from agents.oleg.orchestrator.chain import (
     AgentStep, ChainResult, OrchestratorDecision, MAX_CHAIN_STEPS,
 )
-from agents.oleg_v2.orchestrator.prompts import (
+from agents.oleg.orchestrator.prompts import (
     DECIDE_NEXT_STEP_PROMPT,
     SYNTHESIZE_PROMPT,
 )

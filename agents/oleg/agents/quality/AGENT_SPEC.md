@@ -29,7 +29,7 @@ Quality manager. Processes team feedback on reports, verifies claims against dat
 - Playbook updates must be specific and actionable
 
 ## Playbook
-Located at `agents/oleg_v2/playbook.md`. Inherited from v1, continuously improved by Quality Agent based on team feedback. Contains business rules for:
+Located at `agents/oleg/playbook.md`. Inherited from v1, continuously improved by Quality Agent based on team feedback. Contains business rules for:
 - Analytical methodology
 - Marketplace-specific quirks
 - Data quality known issues

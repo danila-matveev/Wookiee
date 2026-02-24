@@ -1,10 +1,10 @@
-"""Allow running as: python -m agents.oleg_v2"""
+"""Allow running as: python -m agents.oleg"""
 import asyncio
 import sys
 
 
 def main():
-    from agents.oleg_v2.app import OlegApp
+    from agents.oleg.app import OlegApp
     app = OlegApp()
     asyncio.run(app.run())
 

@@ -15,7 +15,7 @@ import time
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional, Callable, Awaitable
 
-from agents.oleg_v2.executor.circuit_breaker import CircuitBreaker
+from agents.oleg.executor.circuit_breaker import CircuitBreaker
 
 logger = logging.getLogger(__name__)
 

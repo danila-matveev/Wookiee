@@ -1,35 +1,29 @@
 #!/usr/bin/env bash
 #
-# deploy_v2.sh — деплой Oleg v2 (единый контейнер)
+# deploy.sh — деплой Oleg (единый контейнер)
 #
 # Использование:
-#   bash deploy/deploy_v2.sh
-#   make oleg2-deploy
+#   bash deploy/deploy.sh
+#   make oleg-deploy
 #
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
-CONTAINER="wookiee_oleg_v2"
-SERVICE="wookiee-oleg-v2"
+CONTAINER="wookiee_oleg"
+SERVICE="wookiee-oleg"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-log()   { echo -e "${GREEN}[deploy-v2]${NC} $*"; }
-warn()  { echo -e "${YELLOW}[deploy-v2]${NC} $*"; }
-error() { echo -e "${RED}[deploy-v2]${NC} $*"; }
+log()   { echo -e "${GREEN}[deploy]${NC} $*"; }
+warn()  { echo -e "${YELLOW}[deploy]${NC} $*"; }
+error() { echo -e "${RED}[deploy]${NC} $*"; }
 
-# ─── 1. Остановить v1 контейнеры (конфликт токенов) ──────────
-log "Останавливаю Oleg v1 (конфликт Telegram-токена)..."
-docker stop wookiee_analytics_agent wookiee_analytics_bot 2>/dev/null && log "V1 остановлен" || log "V1 не запущен"
-docker rm wookiee_analytics_agent wookiee_analytics_bot 2>/dev/null || true
-rm -f "$PROJECT_ROOT"/agents/oleg/logs/*.pid
-
-# ─── 1b. Остановить старый v2 контейнер ──────────────────────
+# ─── 1. Остановить старый контейнер ───────────────────────
 log "Останавливаю $CONTAINER..."
 if docker ps -q -f name="$CONTAINER" | grep -q .; then
     docker compose -f "$COMPOSE_FILE" stop "$SERVICE"
@@ -39,7 +33,7 @@ else
     log "Контейнер не запущен, пропускаю"
 fi
 
-# ─── 2. Проверить .env ───────────────────────────────────────
+# ─── 2. Проверить .env ───────────────────────────────────
 if [ ! -f "$PROJECT_ROOT/.env" ]; then
     error "Файл .env не найден в $PROJECT_ROOT"
     exit 1
@@ -53,17 +47,17 @@ for var in TELEGRAM_BOT_TOKEN OPENROUTER_API_KEY DB_HOST DB_PASSWORD; do
 done
 log "Конфигурация .env валидна"
 
-# ─── 3. Собрать образ ────────────────────────────────────────
+# ─── 3. Собрать образ ────────────────────────────────────
 log "Собираю Docker-образ..."
 docker compose -f "$COMPOSE_FILE" build "$SERVICE"
 log "Образ собран"
 
-# ─── 4. Запустить контейнер ──────────────────────────────────
+# ─── 4. Запустить контейнер ──────────────────────────────
 log "Запускаю $SERVICE..."
 docker compose -f "$COMPOSE_FILE" up -d "$SERVICE"
 log "Контейнер запущен"
 
-# ─── 5. Ожидание и проверка ──────────────────────────────────
+# ─── 5. Ожидание и проверка ──────────────────────────────
 log "Жду 10 секунд для инициализации..."
 sleep 10
 
@@ -75,7 +69,7 @@ if ! docker ps -q -f name="$CONTAINER" | grep -q .; then
     exit 1
 fi
 
-# ─── 6. Показать логи ────────────────────────────────────────
+# ─── 6. Показать логи ────────────────────────────────────
 echo ""
 log "Последние логи:"
 echo "─────────────────────────────────────────"

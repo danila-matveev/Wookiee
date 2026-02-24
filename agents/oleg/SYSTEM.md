@@ -70,9 +70,9 @@ Oleg v2 is a multi-agent financial analytics system for Wookiee brand (WB + OZON
 ## Component Map
 
 ```
-agents/oleg_v2/
+agents/oleg/
 ├── __init__.py
-├── __main__.py           # Entry point: python -m agents.oleg_v2
+├── __main__.py           # Entry point: python -m agents.oleg
 ├── app.py                # OlegApp: wires everything together
 ├── config.py             # All configuration from .env
 ├── playbook.md           # Business rules (updated by Quality Agent)

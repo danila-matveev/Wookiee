@@ -1,7 +1,7 @@
 """
 Oleg v2 health check — verify imports, scheduler jobs, and config.
 
-Run: python3 -m agents.oleg_v2.check_scheduler
+Run: python3 -m agents.oleg.check_scheduler
   or: make oleg2-check
 """
 import sys
@@ -18,18 +18,18 @@ def main():
     # ── 1. Import check ─────────────────────────────────────
     print("[1/4] Проверка импортов...")
     modules = [
-        "agents.oleg_v2.app",
-        "agents.oleg_v2.executor.react_loop",
-        "agents.oleg_v2.executor.circuit_breaker",
-        "agents.oleg_v2.agents.reporter.agent",
-        "agents.oleg_v2.agents.researcher.agent",
-        "agents.oleg_v2.agents.quality.agent",
-        "agents.oleg_v2.orchestrator.orchestrator",
-        "agents.oleg_v2.pipeline.gate_checker",
-        "agents.oleg_v2.pipeline.report_pipeline",
-        "agents.oleg_v2.watchdog.watchdog",
-        "agents.oleg_v2.bot.telegram_bot",
-        "agents.oleg_v2.storage.state_store",
+        "agents.oleg.app",
+        "agents.oleg.executor.react_loop",
+        "agents.oleg.executor.circuit_breaker",
+        "agents.oleg.agents.reporter.agent",
+        "agents.oleg.agents.researcher.agent",
+        "agents.oleg.agents.quality.agent",
+        "agents.oleg.orchestrator.orchestrator",
+        "agents.oleg.pipeline.gate_checker",
+        "agents.oleg.pipeline.report_pipeline",
+        "agents.oleg.watchdog.watchdog",
+        "agents.oleg.bot.telegram_bot",
+        "agents.oleg.storage.state_store",
     ]
     import importlib
     for m in modules:
@@ -48,7 +48,7 @@ def main():
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
         from apscheduler.triggers.cron import CronTrigger
         import pytz
-        from agents.oleg_v2 import config
+        from agents.oleg import config
 
         tz = pytz.timezone(config.TIMEZONE)
         scheduler = AsyncIOScheduler(timezone=tz)
@@ -102,7 +102,7 @@ def main():
     print()
     print("[3/4] Проверка конфигурации...")
     try:
-        from agents.oleg_v2 import config
+        from agents.oleg import config
 
         checks = {
             "TELEGRAM_BOT_TOKEN": bool(config.TELEGRAM_BOT_TOKEN),
@@ -140,9 +140,9 @@ def main():
     print()
     print("[4/4] Проверка tools...")
     try:
-        from agents.oleg_v2.agents.reporter.tools import REPORTER_TOOL_DEFINITIONS
-        from agents.oleg_v2.agents.researcher.tools import RESEARCHER_TOOL_DEFINITIONS
-        from agents.oleg_v2.agents.quality.tools import QUALITY_TOOL_DEFINITIONS
+        from agents.oleg.agents.reporter.tools import REPORTER_TOOL_DEFINITIONS
+        from agents.oleg.agents.researcher.tools import RESEARCHER_TOOL_DEFINITIONS
+        from agents.oleg.agents.quality.tools import QUALITY_TOOL_DEFINITIONS
 
         print(f"  Reporter:   {len(REPORTER_TOOL_DEFINITIONS)} tools")
         print(f"  Researcher: {len(RESEARCHER_TOOL_DEFINITIONS)} tools")

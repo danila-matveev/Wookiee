@@ -1,5 +1,5 @@
 """Tests for bot formatter."""
-from agents.oleg_v2.bot.formatter import (
+from agents.oleg.bot.formatter import (
     split_html_message, add_caveats_header, format_cost_footer,
 )
 
