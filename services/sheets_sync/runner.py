@@ -88,6 +88,11 @@ SYNC_REGISTRY: dict[str, dict] = {
         "sheet": "Аналитика по запросам",
         "description": "WB search analytics (keywords + per-article)",
     },
+    "fin_data_new": {
+        "module": "services.sheets_sync.sync.sync_fin_data_new",
+        "sheet": "Фин данные NEW",
+        "description": "Financial data NEW (simplified 21 columns, WB+OZON) per barcode",
+    },
 }
 
 
@@ -113,7 +118,7 @@ def run_sync(name: str, start_date: str | None = None, end_date: str | None = No
         sync_fn = mod.sync
 
         # Pass date arguments for scripts that support period selection
-        if name in ("fin_data", "wb_feedbacks") and (start_date or end_date):
+        if name in ("fin_data", "fin_data_new", "wb_feedbacks") and (start_date or end_date):
             rows = sync_fn(start_date=start_date, end_date=end_date)
         else:
             rows = sync_fn()
