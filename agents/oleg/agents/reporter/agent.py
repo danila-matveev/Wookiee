@@ -7,12 +7,12 @@ to shared/data_layer.py for SQL queries.
 import logging
 from typing import List, Dict, Any, Optional
 
-from agents.oleg_v2.agents.base_agent import BaseAgent
-from agents.oleg_v2.agents.reporter.tools import (
+from agents.oleg.agents.base_agent import BaseAgent
+from agents.oleg.agents.reporter.tools import (
     REPORTER_TOOL_DEFINITIONS,
     execute_reporter_tool,
 )
-from agents.oleg_v2.agents.reporter.prompts import get_reporter_system_prompt
+from agents.oleg.agents.reporter.prompts import get_reporter_system_prompt
 
 logger = logging.getLogger(__name__)
 

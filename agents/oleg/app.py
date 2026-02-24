@@ -8,7 +8,7 @@ import logging
 import signal
 from typing import Optional
 
-from agents.oleg_v2 import config
+from agents.oleg import config
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ class OlegApp:
         logger.info("Oleg v2 starting up...")
 
         # Storage (SQLite for local state, reports, feedback)
-        from agents.oleg_v2.storage.state_store import StateStore
+        from agents.oleg.storage.state_store import StateStore
         self.state_store = StateStore(config.SQLITE_DB_PATH)
         self.state_store.init_db()
 
@@ -54,7 +54,7 @@ class OlegApp:
 
         # ── Sub-agents ──────────────────────────────────────────────
 
-        from agents.oleg_v2.agents.reporter.agent import ReporterAgent
+        from agents.oleg.agents.reporter.agent import ReporterAgent
         reporter = ReporterAgent(
             llm_client=llm_client,
             model=config.ANALYTICS_MODEL,
@@ -64,7 +64,7 @@ class OlegApp:
             total_timeout_sec=config.TOTAL_TIMEOUT_SEC,
         )
 
-        from agents.oleg_v2.agents.researcher.agent import ResearcherAgent
+        from agents.oleg.agents.researcher.agent import ResearcherAgent
         researcher = ResearcherAgent(
             llm_client=llm_client,
             model=config.ANALYTICS_MODEL,
@@ -74,7 +74,7 @@ class OlegApp:
             total_timeout_sec=config.TOTAL_TIMEOUT_SEC,
         )
 
-        from agents.oleg_v2.agents.quality.agent import QualityAgent
+        from agents.oleg.agents.quality.agent import QualityAgent
         quality = QualityAgent(
             llm_client=llm_client,
             model=config.ANALYTICS_MODEL,
@@ -88,7 +88,7 @@ class OlegApp:
 
         # ── Orchestrator ────────────────────────────────────────────
 
-        from agents.oleg_v2.orchestrator.orchestrator import OlegOrchestrator
+        from agents.oleg.orchestrator.orchestrator import OlegOrchestrator
         self.orchestrator = OlegOrchestrator(
             llm_client=llm_client,
             model=config.ANALYTICS_MODEL,
@@ -102,8 +102,8 @@ class OlegApp:
 
         # ── Pipeline ───────────────────────────────────────────────
 
-        from agents.oleg_v2.pipeline.gate_checker import GateChecker
-        from agents.oleg_v2.pipeline.report_pipeline import ReportPipeline
+        from agents.oleg.pipeline.gate_checker import GateChecker
+        from agents.oleg.pipeline.report_pipeline import ReportPipeline
         gate_checker = GateChecker()
         self.pipeline = ReportPipeline(
             orchestrator=self.orchestrator,
@@ -112,8 +112,8 @@ class OlegApp:
 
         # ── Watchdog ───────────────────────────────────────────────
 
-        from agents.oleg_v2.watchdog.watchdog import Watchdog
-        from agents.oleg_v2.watchdog.alerter import Alerter
+        from agents.oleg.watchdog.watchdog import Watchdog
+        from agents.oleg.watchdog.alerter import Alerter
         alerter = Alerter(bot=None)  # set bot reference after bot init
         self.watchdog = Watchdog(
             gate_checker=gate_checker,
@@ -125,7 +125,7 @@ class OlegApp:
 
         # ── Telegram Bot ───────────────────────────────────────────
 
-        from agents.oleg_v2.bot.telegram_bot import OlegTelegramBot
+        from agents.oleg.bot.telegram_bot import OlegTelegramBot
         self.bot = OlegTelegramBot(
             orchestrator=self.orchestrator,
             pipeline=self.pipeline,
@@ -192,8 +192,8 @@ class OlegApp:
 
     async def _run_daily_report(self) -> None:
         """Scheduled daily report callback."""
-        from agents.oleg_v2.pipeline.report_types import ReportType, ReportRequest
-        from agents.oleg_v2.services.time_utils import get_yesterday_msk, get_today_msk
+        from agents.oleg.pipeline.report_types import ReportType, ReportRequest
+        from agents.oleg.services.time_utils import get_yesterday_msk, get_today_msk
 
         yesterday = get_yesterday_msk()
         today = get_today_msk()
@@ -217,8 +217,8 @@ class OlegApp:
 
     async def _run_weekly_report(self) -> None:
         """Scheduled weekly report callback."""
-        from agents.oleg_v2.pipeline.report_types import ReportType, ReportRequest
-        from agents.oleg_v2.services.time_utils import get_last_week_bounds_msk
+        from agents.oleg.pipeline.report_types import ReportType, ReportRequest
+        from agents.oleg.services.time_utils import get_last_week_bounds_msk
 
         monday, sunday = get_last_week_bounds_msk()
 
@@ -241,7 +241,7 @@ class OlegApp:
 
     async def _deliver_report(self, result, request=None) -> None:
         """Deliver a report via Telegram + Notion."""
-        from agents.oleg_v2.bot.formatter import (
+        from agents.oleg.bot.formatter import (
             add_caveats_header, format_cost_footer,
         )
 
@@ -258,7 +258,7 @@ class OlegApp:
 
         # Save to Notion
         try:
-            from agents.oleg_v2.services.notion_service import NotionService
+            from agents.oleg.services.notion_service import NotionService
             notion = NotionService(
                 token=config.NOTION_TOKEN,
                 database_id=config.NOTION_DATABASE_ID,

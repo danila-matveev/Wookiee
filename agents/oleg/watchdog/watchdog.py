@@ -15,8 +15,8 @@ import time
 from datetime import datetime
 from typing import Optional
 
-from agents.oleg_v2.watchdog.diagnostic import DiagnosticRunner
-from agents.oleg_v2.watchdog.alerter import Alerter
+from agents.oleg.watchdog.diagnostic import DiagnosticRunner
+from agents.oleg.watchdog.alerter import Alerter
 
 logger = logging.getLogger(__name__)
 

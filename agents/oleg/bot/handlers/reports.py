@@ -7,7 +7,7 @@ from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-from agents.oleg_v2.services.time_utils import (
+from agents.oleg.services.time_utils import (
     get_yesterday_msk, get_last_week_bounds_msk,
 )
 
@@ -36,7 +36,7 @@ async def callback_daily_report(callback: CallbackQuery, pipeline=None, bot_inst
         )
         return
 
-    from agents.oleg_v2.pipeline.report_types import ReportType, ReportRequest
+    from agents.oleg.pipeline.report_types import ReportType, ReportRequest
     yesterday = get_yesterday_msk()
     request = ReportRequest(
         report_type=ReportType.DAILY,
@@ -47,7 +47,7 @@ async def callback_daily_report(callback: CallbackQuery, pipeline=None, bot_inst
     try:
         result = await pipeline.generate_report(request)
         if result:
-            from agents.oleg_v2.bot.formatter import (
+            from agents.oleg.bot.formatter import (
                 split_html_message, format_cost_footer,
             )
             text = result.brief_summary
@@ -82,7 +82,7 @@ async def callback_weekly_report(callback: CallbackQuery, pipeline=None, bot_ins
         )
         return
 
-    from agents.oleg_v2.pipeline.report_types import ReportType, ReportRequest
+    from agents.oleg.pipeline.report_types import ReportType, ReportRequest
     monday, sunday = get_last_week_bounds_msk()
     request = ReportRequest(
         report_type=ReportType.WEEKLY,
@@ -93,7 +93,7 @@ async def callback_weekly_report(callback: CallbackQuery, pipeline=None, bot_ins
     try:
         result = await pipeline.generate_report(request)
         if result:
-            from agents.oleg_v2.bot.formatter import (
+            from agents.oleg.bot.formatter import (
                 split_html_message, format_cost_footer,
             )
             text = result.brief_summary

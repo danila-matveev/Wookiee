@@ -5,7 +5,7 @@ from contextlib import contextmanager
 
 import pytest
 
-from agents.oleg_v2.pipeline.gate_checker import GateChecker, GateCheckResult
+from agents.oleg.pipeline.gate_checker import GateChecker, GateCheckResult
 
 
 class FakeCursor:
@@ -33,11 +33,16 @@ def _fake_db_cursor(rows):
 
     @contextmanager
     def fake_cursor(conn_factory):
-        yield cursor  # same cursor shared across all gate checks
+        yield MagicMock(), cursor  # (conn, cur) tuple matching _db_cursor signature
+
+    today = date.today()
+    yesterday = today - timedelta(days=1)
 
     with patch("shared.data_layer._get_wb_connection", return_value=MagicMock()), \
          patch("shared.data_layer._get_ozon_connection", return_value=MagicMock()), \
-         patch("shared.data_layer._db_cursor", fake_cursor):
+         patch("shared.data_layer._db_cursor", fake_cursor), \
+         patch("agents.oleg.pipeline.gate_checker.get_today_msk", return_value=today), \
+         patch("agents.oleg.pipeline.gate_checker.get_yesterday_msk", return_value=yesterday):
         yield
 
 

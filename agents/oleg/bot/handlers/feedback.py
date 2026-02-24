@@ -67,7 +67,7 @@ async def process_feedback(message: Message, state: FSMContext, orchestrator=Non
             task_type="feedback",
         )
 
-        from agents.oleg_v2.bot.formatter import (
+        from agents.oleg.bot.formatter import (
             split_html_message, format_cost_footer,
         )
         response = result.summary

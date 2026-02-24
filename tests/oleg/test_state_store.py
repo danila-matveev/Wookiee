@@ -1,5 +1,5 @@
 """Tests for StateStore (SQLite)."""
-from agents.oleg_v2.storage.state_store import StateStore
+from agents.oleg.storage.state_store import StateStore
 
 
 def test_init_db(temp_sqlite_path):

@@ -5,8 +5,8 @@ import logging
 import time
 from typing import Optional
 
-from agents.oleg_v2.pipeline.gate_checker import GateChecker, GateCheckResult
-from agents.oleg_v2.pipeline.report_types import ReportRequest, ReportResult, ReportType
+from agents.oleg.pipeline.gate_checker import GateChecker, GateCheckResult
+from agents.oleg.pipeline.report_types import ReportRequest, ReportResult, ReportType
 
 logger = logging.getLogger(__name__)
 

@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from datetime import datetime, date, timedelta
 from typing import List, Optional
 
+from agents.oleg.services.time_utils import get_today_msk, get_yesterday_msk
+
 logger = logging.getLogger(__name__)
 
 
@@ -115,12 +117,12 @@ class GateChecker:
             from shared.data_layer import _get_wb_connection, _get_ozon_connection, _db_cursor
 
             conn_factory = _get_wb_connection if marketplace == "wb" else _get_ozon_connection
-            with _db_cursor(conn_factory) as cur:
+            with _db_cursor(conn_factory) as (conn, cur):
                 cur.execute("SELECT MAX(dateupdate) FROM abc_date")
                 row = cur.fetchone()
                 last_update = row[0] if row else None
 
-            today = date.today()
+            today = get_today_msk()
             passed = last_update is not None and (
                 last_update == today or
                 (hasattr(last_update, 'date') and last_update.date() == today)
@@ -146,12 +148,12 @@ class GateChecker:
             from shared.data_layer import _get_wb_connection, _get_ozon_connection, _db_cursor
 
             conn_factory = _get_wb_connection if marketplace == "wb" else _get_ozon_connection
-            with _db_cursor(conn_factory) as cur:
+            with _db_cursor(conn_factory) as (conn, cur):
                 cur.execute("SELECT MAX(date) FROM abc_date")
                 row = cur.fetchone()
                 max_date = row[0] if row else None
 
-            yesterday = date.today() - timedelta(days=1)
+            yesterday = get_yesterday_msk()
             passed = max_date is not None and (
                 max_date >= yesterday if isinstance(max_date, date) else False
             )
@@ -176,9 +178,9 @@ class GateChecker:
             from shared.data_layer import _get_wb_connection, _get_ozon_connection, _db_cursor
 
             conn_factory = _get_wb_connection if marketplace == "wb" else _get_ozon_connection
-            yesterday = date.today() - timedelta(days=1)
+            yesterday = get_yesterday_msk()
 
-            with _db_cursor(conn_factory) as cur:
+            with _db_cursor(conn_factory) as (conn, cur):
                 cur.execute(
                     "SELECT COALESCE(SUM(ABS(logistics)), 0) FROM abc_date WHERE date = %s",
                     (yesterday,),
@@ -210,11 +212,11 @@ class GateChecker:
             from shared.data_layer import _get_wb_connection, _get_ozon_connection, _db_cursor
 
             conn_factory = _get_wb_connection if marketplace == "wb" else _get_ozon_connection
-            yesterday = date.today() - timedelta(days=1)
+            yesterday = get_yesterday_msk()
 
-            with _db_cursor(conn_factory) as cur:
+            with _db_cursor(conn_factory) as (conn, cur):
                 cur.execute(
-                    "SELECT COUNT(*) FROM orders_date WHERE date = %s",
+                    "SELECT COUNT(*) FROM abc_date WHERE date = %s",
                     (yesterday,),
                 )
                 row = cur.fetchone()
@@ -245,9 +247,9 @@ class GateChecker:
             from shared.data_layer import _get_wb_connection, _get_ozon_connection, _db_cursor
 
             conn_factory = _get_wb_connection if marketplace == "wb" else _get_ozon_connection
-            yesterday = date.today() - timedelta(days=1)
+            yesterday = get_yesterday_msk()
 
-            with _db_cursor(conn_factory) as cur:
+            with _db_cursor(conn_factory) as (conn, cur):
                 # Yesterday's revenue
                 col = "revenue"
                 cur.execute(
@@ -257,7 +259,7 @@ class GateChecker:
                 yesterday_rev = float(cur.fetchone()[0])
 
                 # 7-day average
-                week_ago = date.today() - timedelta(days=8)
+                week_ago = get_today_msk() - timedelta(days=8)
                 cur.execute(
                     f"SELECT COALESCE(AVG(daily_rev), 0) FROM ("
                     f"  SELECT date, SUM({col}) as daily_rev FROM abc_date "
@@ -293,9 +295,9 @@ class GateChecker:
             from shared.data_layer import _get_wb_connection, _get_ozon_connection, _db_cursor
 
             conn_factory = _get_wb_connection if marketplace == "wb" else _get_ozon_connection
-            yesterday = date.today() - timedelta(days=1)
+            yesterday = get_yesterday_msk()
 
-            with _db_cursor(conn_factory) as cur:
+            with _db_cursor(conn_factory) as (conn, cur):
                 cur.execute(
                     "SELECT COUNT(*), "
                     "SUM(CASE WHEN marga IS NOT NULL AND marga != 0 THEN 1 ELSE 0 END) "

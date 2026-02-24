@@ -4,14 +4,14 @@ Quality Agent — feedback processing, playbook management, verification.
 import logging
 from typing import List, Dict, Any, Optional
 
-from agents.oleg_v2.agents.base_agent import BaseAgent
-from agents.oleg_v2.agents.quality.tools import (
+from agents.oleg.agents.base_agent import BaseAgent
+from agents.oleg.agents.quality.tools import (
     QUALITY_TOOL_DEFINITIONS,
     execute_quality_tool,
     set_playbook_path,
     set_state_store,
 )
-from agents.oleg_v2.agents.quality.prompts import QUALITY_SYSTEM_PROMPT
+from agents.oleg.agents.quality.prompts import QUALITY_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
 

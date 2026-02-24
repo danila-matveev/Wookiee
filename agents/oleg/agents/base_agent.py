@@ -11,8 +11,8 @@ import logging
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 
-from agents.oleg_v2.executor.react_loop import ReactLoop, AgentResult
-from agents.oleg_v2.executor.circuit_breaker import CircuitBreaker
+from agents.oleg.executor.react_loop import ReactLoop, AgentResult
+from agents.oleg.executor.circuit_breaker import CircuitBreaker
 
 logger = logging.getLogger(__name__)
 
