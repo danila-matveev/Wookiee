@@ -26,7 +26,8 @@ COPY deploy/healthcheck.py /app/deploy/healthcheck.py
 COPY deploy/healthcheck_agent.py /app/deploy/healthcheck_agent.py
 
 # Create data, logs, and reports directories
-RUN mkdir -p /app/agents/oleg/data /app/agents/oleg/logs /app/reports
+RUN mkdir -p /app/agents/oleg/data /app/agents/oleg/logs /app/reports \
+    /app/agents/oleg_v2/data /app/agents/oleg_v2/logs
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
