@@ -1,12 +1,12 @@
 services:
-  # ── Agent: генерация отчётов по расписанию (никогда не останавливается) ──
-  wookiee-agent:
+  # ── Oleg: единый контейнер (bot + agent + scheduler + watchdog) ──
+  wookiee-oleg:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
-    container_name: wookiee_analytics_agent
+    container_name: wookiee_oleg
     restart: unless-stopped
-    command: ["python", "-m", "agents.oleg", "agent"]
+    command: ["python", "-m", "agents.oleg"]
 
     env_file:
       - ../.env
@@ -23,13 +23,6 @@ services:
 
     networks:
       - n8n-docker-caddy_default
-
-    healthcheck:
-      test: ["CMD", "python", "/app/deploy/healthcheck_agent.py"]
-      interval: 60s
-      timeout: 30s
-      retries: 3
-      start_period: 60s
 
     deploy:
       resources:
@@ -39,50 +32,6 @@ services:
         reservations:
           cpus: '0.5'
           memory: 256M
-
-  # ── Bot: Telegram UI + доставка отчётов из delivery_queue ──
-  wookiee-bot:
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile
-    container_name: wookiee_analytics_bot
-    restart: unless-stopped
-    command: ["python", "-m", "agents.oleg", "bot"]
-
-    env_file:
-      - ../.env
-
-    environment:
-      - PYTHONUNBUFFERED=1
-      - TZ=Europe/Moscow
-
-    volumes:
-      - ../agents/oleg/data:/app/agents/oleg/data
-      - ../agents/oleg/logs:/app/agents/oleg/logs
-      - ../reports:/app/reports
-      - ../scripts:/app/scripts:ro
-
-    networks:
-      - n8n-docker-caddy_default
-
-    depends_on:
-      - wookiee-agent
-
-    healthcheck:
-      test: ["CMD", "python", "/app/deploy/healthcheck.py"]
-      interval: 60s
-      timeout: 30s
-      retries: 3
-      start_period: 60s
-
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 256M
-        reservations:
-          cpus: '0.25'
-          memory: 128M
 
   # ── Sheets Sync: ежедневная синхронизация данных в Google Sheets ──
   sheets-sync:

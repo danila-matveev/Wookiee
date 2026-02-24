@@ -2044,6 +2044,48 @@ def get_ozon_stock_daily_by_model(start_date, end_date, model=None):
 # Фин данные: WB + OZON по баркодам (для листа "Фин данные")
 # ============================================================
 
+
+def get_wb_barcode_to_marketplace_mapping():
+    """Build non-marketplace → marketplace barcode mapping from WB nomenclature.
+
+    abc_date splits data across multiple barcode formats per product:
+    - Marketplace (20xx): sales + financial data
+    - GS2 (468xx): orders data
+    - GS1/EAN (460-467xx): additional sales/financial data
+
+    This mapping remaps ALL non-marketplace barcodes to their marketplace
+    equivalent so data merges into a single entry per product.
+
+    Returns dict[non_marketplace_barcode_str -> marketplace_barcode_str].
+    """
+    conn = _get_wb_connection()
+    cur = conn.cursor()
+    query = """
+    WITH grouped AS (
+        SELECT nmid, techsize, lk,
+               array_agg(DISTINCT barcod) FILTER (WHERE LEFT(barcod, 2) = '20') AS mkt,
+               array_agg(DISTINCT barcod) FILTER (WHERE LEFT(barcod, 2) != '20') AS non_mkt
+        FROM nomenclature
+        WHERE barcod IS NOT NULL AND barcod != ''
+        GROUP BY nmid, techsize, lk
+        HAVING array_length(array_agg(DISTINCT barcod) FILTER (WHERE LEFT(barcod, 2) = '20'), 1) > 0
+           AND array_length(array_agg(DISTINCT barcod) FILTER (WHERE LEFT(barcod, 2) != '20'), 1) > 0
+    )
+    SELECT unnest(non_mkt) as src_bc, mkt[1] as mkt_bc
+    FROM grouped;
+    """
+    cur.execute(query)
+    mapping = {str(r[0]): str(r[1]) for r in cur.fetchall()}
+    cur.close()
+    conn.close()
+    print(f"[data_layer] barcode→marketplace mapping: {len(mapping)} entries")
+    return mapping
+
+
+# Backward-compatible alias
+get_wb_gs2_to_marketplace_mapping = get_wb_barcode_to_marketplace_mapping
+
+
 def get_wb_fin_data_by_barcode(start_date, end_date):
     """WB финансы по баркодам для листа 'Фин данные'. LOWER() на артикуле и модели."""
     conn = _get_wb_connection()

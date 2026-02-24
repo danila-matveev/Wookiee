@@ -1,11 +1,13 @@
-"""Allow running as: python -m agents.oleg [bot|agent]"""
+"""Allow running as: python -m agents.oleg"""
+import asyncio
 import sys
 
-mode = sys.argv[1] if len(sys.argv) > 1 else "bot"
 
-if mode == "agent":
-    from agents.oleg.agent_runner import main
-else:
-    from agents.oleg.main import main
+def main():
+    from agents.oleg.app import OlegApp
+    app = OlegApp()
+    asyncio.run(app.run())
 
-main()
+
+if __name__ == "__main__":
+    main()

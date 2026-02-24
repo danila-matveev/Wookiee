@@ -39,6 +39,7 @@ SHEET_TO_SYNC = {
     "Фин данные": {"sync": "fin_data", "checkbox": "D1"},
     "Склейки WB": "wb_bundles",
     "Склейки Озон": "ozon_bundles",
+    "Фин данные NEW": {"sync": "fin_data_new", "checkbox": "D1"},
 }
 
 
