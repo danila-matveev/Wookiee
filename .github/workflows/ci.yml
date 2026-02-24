@@ -34,7 +34,7 @@ jobs:
       - name: Compile all Python modules
         run: python -m compileall -q agents services shared scripts
 
-      - name: Run core tests
+      - name: Run tests
         run: python -m pytest -q tests
 
       - name: Run marketplace ETL tests

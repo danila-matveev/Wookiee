@@ -21,6 +21,7 @@ from shared.data_layer import (
     get_wb_orders_by_barcode,
     get_ozon_fin_data_by_barcode,
     get_ozon_orders_by_barcode,
+    get_wb_barcode_to_marketplace_mapping,
 )
 from services.sheets_sync.config import GOOGLE_SA_FILE, get_active_spreadsheet_id, get_sheet_name
 
@@ -126,31 +127,35 @@ def sync(start_date: str | None = None, end_date: str | None = None) -> int:
     ozon_orders = get_ozon_orders_by_barcode(iso_start, iso_end)
     logger.info("OZON: %d barcodes, %d order barcodes", len(ozon_fin), len(ozon_orders))
 
-    # 5. Load reference data from "Все товары"
+    # 5. Load barcode→marketplace mapping (GS1/GS2/EAN → marketplace)
+    logger.info("Loading barcode→marketplace mapping...")
+    gs2_mapping = get_wb_barcode_to_marketplace_mapping()
+
+    # 6. Load reference data from "Все товары"
     logger.info("Loading reference data from 'Все товары'...")
     reference = _load_reference_data(spreadsheet)
     logger.info("Reference: %d barcodes", len(reference))
 
-    # 6. Build combined dict by barcode
-    combined = _merge_data(wb_fin, wb_orders, ozon_fin, ozon_orders)
+    # 7. Build combined dict by barcode
+    combined = _merge_data(wb_fin, wb_orders, ozon_fin, ozon_orders, gs2_mapping=gs2_mapping)
     logger.info("Combined: %d unique barcodes", len(combined))
 
     if not combined:
         logger.warning("No financial data for period %s — %s", display_start, display_end)
         return 0
 
-    # 7. Calculate derived metrics
+    # 8. Calculate derived metrics
     items = list(combined.values())
     for item in items:
         _calculate_derived_metrics(item, days_in_period)
 
-    # 8. ABC classification
+    # 9. ABC classification
     abc_sales = _calculate_abc(items, 'sales_count')
     abc_margin = _calculate_abc(items, 'margin')
     abc_margin_pct = _calculate_abc(items, 'margin_before_spp_pct')
     abc_turnover = _calculate_abc(items, 'turnover_days', reverse=True)
 
-    # 9. Build output rows (with formulas in A/B)
+    # 10. Build output rows (with formulas in A/B)
     data_rows = []
     for idx, item in enumerate(items):
         bc = item['barcode']
@@ -166,7 +171,7 @@ def sync(start_date: str | None = None, end_date: str | None = None) -> int:
         )
         data_rows.append(row)
 
-    # 10. Build totals row (no formulas — plain values)
+    # 11. Build totals row (no formulas — plain values)
     totals_row = _build_totals_row(items, days_in_period)
 
     # 11. Write to sheet + formatting + checkbox
@@ -300,15 +305,24 @@ def _load_reference_data(spreadsheet) -> dict:
 
 # ---- Data merging ----
 
-def _merge_data(wb_fin, wb_orders, ozon_fin, ozon_orders) -> dict:
-    """Merge WB and OZON data by barcode."""
-    combined = {}
+def _merge_data(wb_fin, wb_orders, ozon_fin, ozon_orders, gs2_mapping=None) -> dict:
+    """Merge WB and OZON data by barcode.
 
-    # WB financial data
+    gs2_mapping: dict[gs2_barcode -> marketplace_barcode] — remaps GS2 barcodes
+    (468...) from abc_date to marketplace barcodes so orders + sales merge correctly.
+    """
+    combined = {}
+    if gs2_mapping is None:
+        gs2_mapping = {}
+
+    # WB financial data (abc_date has orders under GS2, sales under marketplace)
     for item in wb_fin:
         bc = str(item.get('barcode', ''))
         if not bc:
             continue
+        # Remap GS2 barcode to marketplace barcode
+        bc = gs2_mapping.get(bc, bc)
+
         entry = combined.get(bc)
         if entry is None:
             entry = _empty_entry(bc)
@@ -317,9 +331,10 @@ def _merge_data(wb_fin, wb_orders, ozon_fin, ozon_orders) -> dict:
         entry['nm_id'] = item.get('nm_id', '')
         article = item.get('article', '')
         ts = item.get('ts_name', '')
-        entry['article_size'] = f"{article}_{ts}" if ts else article
-        entry['model'] = item.get('model', '')
-        entry['min_sale_date'] = item.get('min_sale_date', '')
+        if article:
+            entry['article_size'] = f"{article}_{ts}" if ts else article
+        entry['model'] = item.get('model', '') or entry.get('model', '')
+        entry['min_sale_date'] = item.get('min_sale_date', '') or entry.get('min_sale_date', '')
 
         for field in SUMMABLE_FIELDS:
             val = item.get(field, 0)
@@ -328,6 +343,8 @@ def _merge_data(wb_fin, wb_orders, ozon_fin, ozon_orders) -> dict:
     # WB orders
     for bc, orders in wb_orders.items():
         bc = str(bc)
+        # Remap GS2 barcode to marketplace barcode
+        bc = gs2_mapping.get(bc, bc)
         entry = combined.get(bc)
         if entry:
             entry['orders_table_count'] = entry.get('orders_table_count', 0) + orders.get('orders_count', 0)

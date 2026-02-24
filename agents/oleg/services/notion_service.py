@@ -1,16 +1,13 @@
 """
-Async Notion Service — синхронизация отчётов и комментариев.
+Notion Service — sync reports to Notion database.
 
-Async-обёртка над логикой из scripts/notion_sync.py.
+Standalone implementation (no v1 dependency).
 """
-import json
 import logging
 import re
 from typing import Optional
 
 import httpx
-
-from agents.oleg.config import NOTION_TOKEN, NOTION_DATABASE_ID
 
 logger = logging.getLogger(__name__)
 
@@ -19,11 +16,11 @@ NOTION_VERSION = "2022-06-28"
 
 
 class NotionService:
-    """Async Notion API service for report sync and comments."""
+    """Sync reports to Notion database with chain metadata."""
 
-    def __init__(self, token: str = "", database_id: str = ""):
-        self.token = token or NOTION_TOKEN
-        self.database_id = database_id or NOTION_DATABASE_ID
+    def __init__(self, token: str, database_id: str):
+        self.token = token
+        self.database_id = database_id
 
     @property
     def enabled(self) -> bool:
@@ -49,13 +46,14 @@ class NotionService:
         start_date: str,
         end_date: str,
         report_md: str,
-        source: str = "Telegram Bot",
+        source: str = "Reporter (auto)",
+        report_type: str = "Ежедневный фин анализ",
+        chain_steps: int = 1,
     ) -> Optional[str]:
         """
-        Sync report to Notion. Returns page URL or None on failure.
+        Sync a report to Notion (upsert).
 
-        If a page with matching period exists — updates it.
-        If not — creates a new page.
+        Returns Notion page URL or None on failure.
         """
         if not self.enabled:
             logger.warning("Notion not configured, skipping sync")
@@ -63,8 +61,7 @@ class NotionService:
 
         try:
             title = f"Аналитика {start_date.replace('-', '.')} — {end_date.replace('-', '.')}"
-            
-            # Remove empty sections to avoid orphan headers in Notion
+
             report_md = _remove_empty_sections(report_md)
             blocks = md_to_notion_blocks(report_md)
 
@@ -158,11 +155,11 @@ class NotionService:
             blocks = result.get("results", [])
             if not blocks:
                 break
-            
+
             logger.info(f"Notion: deleting {len(blocks)} blocks from page {page_id}")
             for block in blocks:
                 await self._request("DELETE", f"blocks/{block['id']}")
-            
+
             if not result.get("has_more"):
                 break
 
@@ -174,7 +171,7 @@ class NotionService:
 
 
 # =============================================================================
-# MARKDOWN → NOTION BLOCKS (from scripts/notion_sync.py)
+# MARKDOWN → NOTION BLOCKS
 # =============================================================================
 
 def _parse_inline(text):
@@ -197,57 +194,46 @@ def _parse_inline(text):
 
 
 def _remove_empty_sections(md_text: str) -> str:
-    """
-    Removes headers that have no content before the next header of same or higher level.
-    """
+    """Removes headers that have no content before the next header of same or higher level."""
     lines = md_text.split('\n')
     parsed = []
-    
-    # 1. Parse lines
+
     for line in lines:
         stripped = line.strip()
         if not stripped:
             parsed.append({'type': 'empty', 'text': line})
             continue
-            
+
         match = re.match(r'^(#+)\s+(.+)', stripped)
         if match:
             level = len(match.group(1))
             parsed.append({'type': 'header', 'level': level, 'text': line})
         else:
             parsed.append({'type': 'content', 'text': line})
-            
-    # 2. Identify empty headers
+
     indices_to_remove = set()
-    
+
     for i in range(len(parsed)):
         item = parsed[i]
         if item['type'] == 'header':
             has_content = False
             for j in range(i + 1, len(parsed)):
                 next_item = parsed[j]
-                
-                # Found content -> keep header
                 if next_item['type'] == 'content':
                     has_content = True
                     break
-                
-                # Found another header
                 if next_item['type'] == 'header':
-                    # If same or higher level (H2 after H3, H3 after H3) -> stop, current header is empty
                     if next_item['level'] <= item['level']:
                         break
-                    # If deeper header (H4 after H3) -> continue looking for its content
-            
+
             if not has_content:
                 indices_to_remove.add(i)
-                
-    # 3. Rebuild text
+
     result_lines = []
     for i in range(len(parsed)):
         if i not in indices_to_remove:
             result_lines.append(parsed[i]['text'])
-            
+
     return '\n'.join(result_lines)
 
 
@@ -340,15 +326,14 @@ def md_to_notion_blocks(md_text: str) -> list:
             i += 1
             continue
 
-        # Headings (support # to ######, mapping to h1-h3)
+        # Headings
         header_match = re.match(r'^(#+)\s+(.+)', line.strip())
         if header_match:
             level = len(header_match.group(1))
             content = header_match.group(2).strip()
-            # Notion only supports heading_1, heading_2, heading_3
             notion_level = min(level, 3)
             block_type = f"heading_{notion_level}"
-            
+
             blocks.append({
                 "object": "block",
                 "type": block_type,
