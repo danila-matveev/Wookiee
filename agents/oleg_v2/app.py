@@ -207,7 +207,7 @@ class OlegApp:
         try:
             result = await self.pipeline.generate_report(request)
             if result:
-                await self._deliver_report(result)
+                await self._deliver_report(result, request)
                 await self.watchdog.on_report_success("daily", result.cost_usd)
             else:
                 await self.watchdog.on_report_failure("daily", marketplace="wb")
@@ -231,7 +231,7 @@ class OlegApp:
         try:
             result = await self.pipeline.generate_report(request)
             if result:
-                await self._deliver_report(result)
+                await self._deliver_report(result, request)
                 await self.watchdog.on_report_success("weekly", result.cost_usd)
             else:
                 await self.watchdog.on_report_failure("weekly", marketplace="wb")
@@ -239,7 +239,7 @@ class OlegApp:
             logger.error(f"Weekly report failed: {e}", exc_info=True)
             await self.watchdog.on_report_failure("weekly", marketplace="wb")
 
-    async def _deliver_report(self, result) -> None:
+    async def _deliver_report(self, result, request=None) -> None:
         """Deliver a report via Telegram + Notion."""
         from agents.oleg_v2.bot.formatter import (
             add_caveats_header, format_cost_footer,
@@ -259,12 +259,18 @@ class OlegApp:
         # Save to Notion
         try:
             from agents.oleg_v2.services.notion_service import NotionService
-            notion = NotionService()
-            await notion.save_report(
-                report_text=result.detailed_report or result.brief_summary,
+            notion = NotionService(
+                token=config.NOTION_TOKEN,
+                database_id=config.NOTION_DATABASE_ID,
+            )
+            start_date = request.start_date if request else ""
+            end_date = request.end_date if request else ""
+            await notion.sync_report(
+                start_date=start_date,
+                end_date=end_date,
+                report_md=result.detailed_report or result.brief_summary,
                 report_type=result.report_type.value,
                 chain_steps=result.chain_steps,
-                cost_usd=result.cost_usd,
             )
         except Exception as e:
             logger.warning(f"Notion save failed (non-critical): {e}")

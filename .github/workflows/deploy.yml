@@ -30,7 +30,9 @@ jobs:
             echo "=== Pulling latest code ==="
             git pull origin main
 
-            echo "=== Cleaning stale PID locks ==="
+            echo "=== Stopping old v1 containers ==="
+            docker stop wookiee_analytics_agent wookiee_analytics_bot 2>/dev/null || true
+            docker rm wookiee_analytics_agent wookiee_analytics_bot 2>/dev/null || true
             rm -f "$PROJECT_DIR"/agents/oleg/logs/*.pid
 
             echo "=== Building and deploying Wookiee services ==="
@@ -38,14 +40,14 @@ jobs:
             docker compose build
             docker compose up -d
 
-            echo "=== Waiting for healthchecks (30s) ==="
+            echo "=== Waiting for startup (30s) ==="
             sleep 30
 
             echo "=== Container status ==="
             docker ps --format "table {{.Names}}\t{{.Status}}\t{{.RunningFor}}"
 
             echo "=== Healthcheck status ==="
-            for container in wookiee_analytics_agent wookiee_analytics_bot; do
-              status=$(docker inspect "$container" --format='{{.State.Health.Status}}' 2>/dev/null || echo "unknown")
+            for container in wookiee_oleg_v2 wookiee_sheets_sync; do
+              status=$(docker inspect "$container" --format='{{.State.Health.Status}}' 2>/dev/null || echo "no-healthcheck")
               echo "$container: $status"
             done
