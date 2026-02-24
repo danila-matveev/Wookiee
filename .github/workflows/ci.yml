@@ -35,7 +35,10 @@ jobs:
         run: python -m compileall -q agents services shared scripts
 
       - name: Run core tests
-        run: python -m pytest -q tests
+        run: python -m pytest -q tests --ignore=tests/oleg_v2
+
+      - name: Run Oleg v2 tests
+        run: python -m pytest -q tests/oleg_v2
 
       - name: Run marketplace ETL tests
         run: python -m pytest -q services/marketplace_etl/tests

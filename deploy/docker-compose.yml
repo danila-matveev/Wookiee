@@ -84,6 +84,40 @@ services:
           cpus: '0.25'
           memory: 128M
 
+  # ── Oleg v2: единый контейнер (bot + agent + scheduler + watchdog) ──
+  wookiee-oleg-v2:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: wookiee_oleg_v2
+    restart: unless-stopped
+    command: ["python", "-m", "agents.oleg_v2"]
+
+    env_file:
+      - ../.env
+
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TZ=Europe/Moscow
+
+    volumes:
+      - ../agents/oleg_v2/data:/app/agents/oleg_v2/data
+      - ../agents/oleg_v2/logs:/app/agents/oleg_v2/logs
+      - ../reports:/app/reports
+      - ../scripts:/app/scripts:ro
+
+    networks:
+      - n8n-docker-caddy_default
+
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
   # ── Sheets Sync: ежедневная синхронизация данных в Google Sheets ──
   sheets-sync:
     build:
