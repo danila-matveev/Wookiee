@@ -182,7 +182,7 @@ class GateChecker:
 
             with _db_cursor(conn_factory) as (conn, cur):
                 cur.execute(
-                    "SELECT COALESCE(SUM(ABS(logistics)), 0) FROM abc_date WHERE date = %s",
+                    "SELECT COALESCE(SUM(ABS(logist)), 0) FROM abc_date WHERE date = %s",
                     (yesterday,),
                 )
                 row = cur.fetchone()
