@@ -186,8 +186,16 @@ class ReactLoop:
                     _messages=messages,
                 )
 
-            # Case 2: No tool calls and no content — API error
+            # Case 2: No tool calls and no content — truncated or API error
             if not tool_calls:
+                if finish_reason == "length":
+                    logger.warning(
+                        f"Response truncated at iteration {iteration + 1} "
+                        f"(finish_reason=length), requesting partial summary"
+                    )
+                    return await self._request_partial_summary(
+                        messages, steps, total_usage, start_time,
+                    )
                 logger.warning(
                     f"Empty response at iteration {iteration + 1}: "
                     f"finish_reason={finish_reason}"

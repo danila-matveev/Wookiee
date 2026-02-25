@@ -18,10 +18,10 @@ logger = logging.getLogger(__name__)
 from shared.data_layer import (
     get_wb_finance, get_wb_by_model, get_wb_traffic, get_wb_traffic_by_model,
     get_wb_orders_by_model, get_wb_daily_series, get_wb_daily_series_range,
-    get_wb_weekly_breakdown,
+    get_wb_weekly_breakdown, get_wb_avg_stock,
     get_ozon_finance, get_ozon_by_model, get_ozon_orders_by_model,
     get_ozon_traffic, get_ozon_daily_series, get_ozon_daily_series_range,
-    get_ozon_weekly_breakdown,
+    get_ozon_weekly_breakdown, get_ozon_avg_stock,
     get_artikuly_statuses, validate_wb_data_quality,
     get_total_avg_stock,
     to_float, calc_change,
