@@ -13,8 +13,14 @@ logger = logging.getLogger(__name__)
 MAX_TELEGRAM_MSG = 4000
 
 
+def _bbcode_to_html(text: str) -> str:
+    """Convert BBCode [b]...[/b] tags to HTML <b>...</b>."""
+    return re.sub(r'\[b\](.*?)\[/b\]', r'<b>\1</b>', text)
+
+
 def split_html_message(text: str, max_length: int = MAX_TELEGRAM_MSG) -> List[str]:
     """Split long message into chunks, breaking at paragraph boundaries."""
+    text = _bbcode_to_html(text)
     if len(text) <= max_length:
         return [text]
 

@@ -81,7 +81,7 @@ class BaseAgent(ABC):
         instruction: str,
         context: Optional[str] = None,
         temperature: float = 0.4,
-        max_tokens: int = 4000,
+        max_tokens: int = 16000,
     ) -> AgentResult:
         """
         Run the agent on a task.
@@ -128,7 +128,7 @@ class BaseAgent(ABC):
         prior_result: AgentResult,
         continuation_message: str,
         temperature: float = 0.4,
-        max_tokens: int = 4000,
+        max_tokens: int = 16000,
     ) -> AgentResult:
         """Continue from a prior analysis result."""
         loop = self._get_loop()

@@ -1,35 +1,18 @@
 Создай дневной аналитический отчёт за $ARGUMENTS в сравнении с предыдущим днём.
 
-Workflow Ромы (ИИ финн-аналитик Wookiee):
+Workflow Олега (AI финансовый аналитик Wookiee):
 
 1. Запусти скрипт:
    ```
-   python3 scripts/daily_analytics.py --date $ARGUMENTS --save --export-context
+   python3 scripts/run_daily_report.py $ARGUMENTS
    ```
 
-2. Прочитай справочник Ромы: `scripts/analytics_agent_roma/playbook.md`
+2. Скрипт инициализирует OlegApp → pipeline → orchestrator → reporter agent.
+   Reporter использует playbook `agents/oleg/playbook.md` и все доступные tools (get_brand_finance, get_channel_finance, get_margin_levers, get_model_breakdown и др.)
 
-3. Прочитай данные для анализа: `reports/$ARGUMENTS_data_context.json`
+3. Результат:
+   - Краткая сводка (brief_summary) — для Telegram
+   - Подробный отчёт (detailed_report) — для Notion
+   - Стоимость генерации, количество шагов, длительность
 
-4. На основе playbook и data_context напиши **два формата** анализа:
-
-   **А. Краткая сводка (для чата)** — по формату из playbook раздел 6.1:
-   - Максимум 30-40 строк, форматирование [b]...[/b]
-   - Бренд → WB → OZON → Маркетинг → Декомпозиция → Что произошло → Рекомендации
-   - Контрфактуал: «если убрать X → маржа была бы Y руб (Z%)»
-
-   **Б. Подробный отчёт (для Notion)** — по формату из playbook раздел 6.2:
-   - Причинно-следственные цепочки с конкретными цифрами
-   - Модельная декомпозиция (таблица)
-   - **Маркетинг и воронка:** рекламная эффективность по моделям (CPM, CTR, CPO, ROMI-статус), органическая воронка (конверсии по шагам), связка реклама ↔ органика, гипотезы
-   - 7-дневный контекст (таблица с закономерностями)
-   - Рекомендации с оценкой эффекта в рублях
-
-5. Допиши **подробный отчёт** в файл `reports/$ARGUMENTS_daily_analytics.md`
-
-6. Синхронизируй с Notion:
-   ```
-   python3 scripts/notion_sync.py --file reports/$ARGUMENTS_daily_analytics.md
-   ```
-
-7. Покажи пользователю **краткую сводку** (готовую для копирования в чат) и ссылку на Notion
+4. Покажи пользователю краткую сводку и ссылку на Notion (если была синхронизация)

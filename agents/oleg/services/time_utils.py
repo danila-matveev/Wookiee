@@ -39,3 +39,12 @@ def get_last_week_bounds_msk() -> tuple[date, date]:
     last_monday = today - timedelta(days=today.weekday() + 7)
     last_sunday = last_monday + timedelta(days=6)
     return last_monday, last_sunday
+
+
+def get_last_month_bounds_msk() -> tuple[date, date]:
+    """Get first and last day of previous month."""
+    today = get_today_msk()
+    first_of_this_month = today.replace(day=1)
+    last_of_prev = first_of_this_month - timedelta(days=1)
+    first_of_prev = last_of_prev.replace(day=1)
+    return first_of_prev, last_of_prev
