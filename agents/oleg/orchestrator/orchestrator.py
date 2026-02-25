@@ -239,7 +239,7 @@ class OlegOrchestrator:
                 ],
                 model=self.model,
                 temperature=0.3,
-                max_tokens=4000,
+                max_tokens=16000,
             )
 
             content = response.get("content", "")
@@ -256,7 +256,7 @@ class OlegOrchestrator:
                 f"[{s.agent}]: {s.result}" for s in chain_history
             )
             return {
-                "brief_summary": combined[:4000],
+                "brief_summary": combined[:16000],
                 "detailed_report": combined,
             }
 

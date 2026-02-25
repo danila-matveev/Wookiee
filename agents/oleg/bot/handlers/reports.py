@@ -16,6 +16,29 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
+async def _save_to_notion(result, request) -> str | None:
+    """Save report to Notion, return page URL or None."""
+    try:
+        from agents.oleg import config
+        from agents.oleg.services.notion_service import NotionService
+        notion = NotionService(
+            token=config.NOTION_TOKEN,
+            database_id=config.NOTION_DATABASE_ID,
+        )
+        if not notion.enabled:
+            return None
+        return await notion.sync_report(
+            start_date=request.start_date if request else "",
+            end_date=request.end_date if request else "",
+            report_md=result.detailed_report or result.brief_summary,
+            report_type=result.report_type.value if hasattr(result, 'report_type') else "Ежедневный фин анализ",
+            chain_steps=result.chain_steps,
+        )
+    except Exception as e:
+        logger.warning(f"Notion save failed (non-critical): {e}")
+        return None
+
+
 def _back_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -50,10 +73,15 @@ async def callback_daily_report(callback: CallbackQuery, pipeline=None, bot_inst
             from agents.oleg.bot.formatter import (
                 split_html_message, format_cost_footer,
             )
+
+            page_url = await _save_to_notion(result, request)
+
             text = result.brief_summary
             text += format_cost_footer(
                 result.cost_usd, result.chain_steps, result.duration_ms,
             )
+            if page_url:
+                text += f'\n\n<a href="{page_url}">Подробный отчёт в Notion</a>'
             for chunk in split_html_message(text):
                 await callback.message.answer(chunk, parse_mode="HTML")
             await callback.message.answer(
@@ -96,10 +124,15 @@ async def callback_weekly_report(callback: CallbackQuery, pipeline=None, bot_ins
             from agents.oleg.bot.formatter import (
                 split_html_message, format_cost_footer,
             )
+
+            page_url = await _save_to_notion(result, request)
+
             text = result.brief_summary
             text += format_cost_footer(
                 result.cost_usd, result.chain_steps, result.duration_ms,
             )
+            if page_url:
+                text += f'\n\n<a href="{page_url}">Подробный отчёт в Notion</a>'
             for chunk in split_html_message(text):
                 await callback.message.answer(chunk, parse_mode="HTML")
             await callback.message.answer(

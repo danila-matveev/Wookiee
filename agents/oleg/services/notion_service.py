@@ -175,7 +175,9 @@ class NotionService:
 # =============================================================================
 
 def _parse_inline(text):
-    """Parse bold markers into Notion rich_text array."""
+    """Parse bold markers (**...** and [b]...[/b]) into Notion rich_text array."""
+    # Normalize BBCode to markdown bold
+    text = re.sub(r'\[b\](.*?)\[/b\]', r'**\1**', text)
     parts = []
     segments = re.split(r'(\*\*[^*]+\*\*)', text)
     for seg in segments:

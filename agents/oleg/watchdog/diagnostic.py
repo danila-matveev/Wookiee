@@ -59,14 +59,14 @@ class DiagnosticRunner:
         self.state_store = state_store
         self.llm_client = llm_client
 
-    async def diagnose(self, report_type: str = "daily") -> DiagnosticReport:
+    async def diagnose(self, report_type: str = "daily", marketplace: str = "wb") -> DiagnosticReport:
         """Run full diagnostic chain."""
         checks: List[DiagCheck] = []
 
         # 1. Check data gates
         if self.gate_checker:
             try:
-                gate_result = self.gate_checker.check_all("wb")
+                gate_result = self.gate_checker.check_all(marketplace)
                 for gate in gate_result.gates:
                     if not gate.passed:
                         checks.append(DiagCheck(
@@ -96,7 +96,7 @@ class DiagnosticRunner:
         checks.append(await self._check_llm())
 
         # 4. Check ETL
-        checks.append(await self._check_etl())
+        checks.append(await self._check_etl(marketplace))
 
         # 5. Check recent errors
         if self.state_store:
@@ -170,13 +170,16 @@ class DiagnosticRunner:
                 fix="Проверить OPENROUTER_API_KEY и доступность API.",
             )
 
-    async def _check_etl(self) -> DiagCheck:
+    async def _check_etl(self, marketplace: str = "wb") -> DiagCheck:
         """Check when ETL last ran."""
         try:
-            from shared.data_layer import _get_wb_connection, _db_cursor
+            from shared.data_layer import _get_wb_connection, _get_ozon_connection, _db_cursor
 
-            with _db_cursor(_get_wb_connection) as (conn, cur):
-                cur.execute("SELECT MAX(dateupdate) FROM abc_date")
+            conn_factory = _get_wb_connection if marketplace == "wb" else _get_ozon_connection
+            dateupdate_col = "dateupdate" if marketplace == "wb" else "date_update"
+
+            with _db_cursor(conn_factory) as (conn, cur):
+                cur.execute(f"SELECT MAX({dateupdate_col}) FROM abc_date")
                 row = cur.fetchone()
                 last_update = row[0] if row else None
 

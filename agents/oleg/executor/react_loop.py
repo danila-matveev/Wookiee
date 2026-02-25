@@ -90,7 +90,7 @@ class ReactLoop:
         system_prompt: str,
         user_message: str,
         temperature: float = 0.4,
-        max_tokens: int = 4000,
+        max_tokens: int = 16000,
     ) -> AgentResult:
         """Run the ReAct loop."""
         start_time = time.time()
@@ -280,7 +280,7 @@ class ReactLoop:
         prior_result: AgentResult,
         continuation_message: str,
         temperature: float = 0.4,
-        max_tokens: int = 4000,
+        max_tokens: int = 16000,
     ) -> AgentResult:
         """Continue analysis from a prior result."""
         messages = list(prior_result._messages)
@@ -465,7 +465,7 @@ class ReactLoop:
             response = await self.llm.complete(
                 messages=messages,
                 model=self.model,
-                max_tokens=4000,
+                max_tokens=16000,
             )
             content = response.get("content") or (
                 "Превышено максимальное количество шагов анализа. "

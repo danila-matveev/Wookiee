@@ -1,0 +1,55 @@
+"""Run report for arbitrary period (bypasses Telegram bot)."""
+import asyncio
+import logging
+import sys
+from datetime import date
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+)
+
+
+async def run(start: date, end: date):
+    from agents.oleg.app import OlegApp
+    from agents.oleg.pipeline.report_types import ReportRequest, ReportType
+
+    app = OlegApp()
+    await app.setup()
+
+    request = ReportRequest(
+        report_type=ReportType.CUSTOM,
+        start_date=str(start),
+        end_date=str(end),
+        channel="wb",
+    )
+
+    print(f"Starting report generation for {start} — {end}...")
+    result = await app.pipeline.generate_report(request)
+
+    if result is None:
+        print("FAILED: Gates did not pass")
+        return
+
+    print(f"SUCCESS! Steps: {result.chain_steps}, Cost: ${result.cost_usd:.4f}")
+    print(f"Duration: {result.duration_ms}ms")
+    print("--- BRIEF ---")
+    print(result.brief_summary or "No summary")
+    print("--- DETAILED ---")
+    print(result.detailed_report or "No detailed report")
+
+
+def _parse_date(s: str) -> date:
+    parts = s.split("-")
+    return date(int(parts[0]), int(parts[1]), int(parts[2]))
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 3:
+        print("Usage: python run_period_report.py YYYY-MM-DD YYYY-MM-DD")
+        sys.exit(1)
+
+    start_date = _parse_date(sys.argv[1])
+    end_date = _parse_date(sys.argv[2])
+
+    asyncio.run(run(start_date, end_date))
