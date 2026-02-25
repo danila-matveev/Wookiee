@@ -5,13 +5,14 @@ from apscheduler.triggers.cron import CronTrigger
 import pytz
 
 
-def _create_scheduler_with_jobs(daily_time="09:00", weekly_time="10:15"):
+def _create_scheduler_with_jobs(daily_time="09:00", weekly_time="10:15", monthly_time="10:30"):
     """Helper: create scheduler with standard jobs."""
     tz = pytz.timezone("Europe/Moscow")
     scheduler = AsyncIOScheduler(timezone=tz)
 
     daily_h, daily_m = (int(x) for x in daily_time.split(":"))
     weekly_h, weekly_m = (int(x) for x in weekly_time.split(":"))
+    monthly_h, monthly_m = (int(x) for x in monthly_time.split(":"))
 
     async def _stub():
         pass
@@ -28,6 +29,11 @@ def _create_scheduler_with_jobs(daily_time="09:00", weekly_time="10:15"):
     )
     scheduler.add_job(
         _stub,
+        CronTrigger(day="1-7", day_of_week="mon", hour=monthly_h, minute=monthly_m, timezone=tz),
+        id="monthly_report",
+    )
+    scheduler.add_job(
+        _stub,
         CronTrigger(hour="*/6", minute=0, timezone=tz),
         id="watchdog_heartbeat",
     )
@@ -36,11 +42,11 @@ def _create_scheduler_with_jobs(daily_time="09:00", weekly_time="10:15"):
 
 
 def test_jobs_created():
-    """Scheduler creates 3 expected jobs."""
+    """Scheduler creates 4 expected jobs."""
     scheduler = _create_scheduler_with_jobs()
     jobs = scheduler.get_jobs()
     job_ids = {j.id for j in jobs}
-    assert job_ids == {"daily_report", "weekly_report", "watchdog_heartbeat"}
+    assert job_ids == {"daily_report", "weekly_report", "monthly_report", "watchdog_heartbeat"}
 
 
 def test_daily_schedule():
@@ -62,6 +68,17 @@ def test_weekly_schedule():
     trigger = job.trigger
     assert "hour='10'" in str(trigger)
     assert "minute='15'" in str(trigger)
+    assert "day_of_week='mon'" in str(trigger)
+
+
+def test_monthly_schedule():
+    """Monthly report runs first Monday of month at configured time."""
+    scheduler = _create_scheduler_with_jobs(monthly_time="10:30")
+    job = scheduler.get_job("monthly_report")
+    trigger = job.trigger
+    assert "hour='10'" in str(trigger)
+    assert "minute='30'" in str(trigger)
+    assert "day='1-7'" in str(trigger)
     assert "day_of_week='mon'" in str(trigger)
 
 

@@ -58,24 +58,68 @@ class GateCheckResult:
     def soft_total(self) -> int:
         return sum(1 for g in self.gates if not g.is_hard)
 
+    def format_status_message(self, target_date: str = "") -> str:
+        """Format gate check results as a human-readable Telegram message."""
+        lines = []
+        if self.can_generate:
+            lines.append(f"✅ Данные за {target_date} готовы.")
+        else:
+            lines.append(f"❌ Данные за {target_date} не готовы.")
+
+        for g in self.gates:
+            icon = "✅" if g.passed else ("❌" if g.is_hard else "⚠️")
+            lines.append(f"  {icon} {g.name}: {g.detail}")
+
+        lines.append(
+            f"\nHard: {self.hard_passed}/{self.hard_total}, "
+            f"Soft: {self.soft_passed}/{self.soft_total}"
+        )
+        return "\n".join(lines)
+
 
 class GateChecker:
     """
     Check data quality gates before report generation.
 
     Hard gates (data must exist):
-    1. ETL ran today — abc_date.dateupdate = today
-    2. Yesterday's data exists — MAX(date) = yesterday
+    1. ETL ran today — abc_date updated today
+    2. Source data loaded today — orders for yesterday have today's dateupdate
     3. Logistics > 0 — logistics data present
 
     Soft gates (report with caveat if failed):
-    4. Orders cross-check — ≤ 5% discrepancy
+    4. Orders volume vs 7-day avg — ≥ 70%
     5. Revenue vs 7-day avg — ≥ 70%
     6. Margin fill — ≥ 50% of articles have margin data
     """
 
+    # Column name mapping: WB and Ozon abc_date have different schemas
+    _COLUMN_MAP = {
+        "wb": {
+            "dateupdate": "dateupdate",
+            "logistics": "logist",
+            "revenue": "revenue",
+            "marga": "marga",
+        },
+        "ozon": {
+            "dateupdate": "date_update",
+            "logistics": "logist_end",
+            "revenue": "price_end",
+            "marga": "marga",
+        },
+    }
+
+    # Orders table config per marketplace
+    _ORDERS_CONFIG = {
+        "wb": {"table": "orders", "date_col": "date::date"},
+        "ozon": {"table": "orders", "date_col": "in_process_at::date"},
+    }
+
     def __init__(self):
         self._gates: List[GateResult] = []
+
+    def _col(self, marketplace: str, logical_name: str) -> str:
+        """Resolve logical column name to marketplace-specific column."""
+        return self._COLUMN_MAP[marketplace][logical_name]
 
     def check_all(self, marketplace: str = "wb") -> GateCheckResult:
         """Run all gates for a marketplace."""
@@ -83,11 +127,11 @@ class GateChecker:
 
         # Hard gates
         self._check_etl_ran_today(marketplace)
-        self._check_yesterday_data(marketplace)
+        self._check_source_loaded_today(marketplace)
         self._check_logistics_present(marketplace)
 
         # Soft gates
-        self._check_orders_crosscheck(marketplace)
+        self._check_orders_volume(marketplace)
         self._check_revenue_vs_avg(marketplace)
         self._check_margin_fill(marketplace)
 
@@ -112,13 +156,14 @@ class GateChecker:
         return result
 
     def _check_etl_ran_today(self, marketplace: str) -> None:
-        """Hard gate 1: ETL ran today."""
+        """Hard gate 1: ETL ran today (abc_date updated today)."""
         try:
             from shared.data_layer import _get_wb_connection, _get_ozon_connection, _db_cursor
 
             conn_factory = _get_wb_connection if marketplace == "wb" else _get_ozon_connection
+            col = self._col(marketplace, "dateupdate")
             with _db_cursor(conn_factory) as (conn, cur):
-                cur.execute("SELECT MAX(dateupdate) FROM abc_date")
+                cur.execute(f"SELECT MAX({col}) FROM abc_date")
                 row = cur.fetchone()
                 last_update = row[0] if row else None
 
@@ -142,31 +187,38 @@ class GateChecker:
                 detail=f"Check failed: {e}",
             ))
 
-    def _check_yesterday_data(self, marketplace: str) -> None:
-        """Hard gate 2: Yesterday's data exists."""
+    def _check_source_loaded_today(self, marketplace: str) -> None:
+        """Hard gate 2: Orders for yesterday were loaded by today's ETL."""
         try:
             from shared.data_layer import _get_wb_connection, _get_ozon_connection, _db_cursor
 
             conn_factory = _get_wb_connection if marketplace == "wb" else _get_ozon_connection
-            with _db_cursor(conn_factory) as (conn, cur):
-                cur.execute("SELECT MAX(date) FROM abc_date")
-                row = cur.fetchone()
-                max_date = row[0] if row else None
-
+            cfg = self._ORDERS_CONFIG[marketplace]
             yesterday = get_yesterday_msk()
-            passed = max_date is not None and (
-                max_date >= yesterday if isinstance(max_date, date) else False
-            )
+            today = get_today_msk()
+
+            with _db_cursor(conn_factory) as (conn, cur):
+                cur.execute(
+                    f"SELECT COUNT(*) FROM {cfg['table']} "
+                    f"WHERE {cfg['date_col']} = %s AND dateupdate::date = %s",
+                    (yesterday, today),
+                )
+                row = cur.fetchone()
+                count = int(row[0]) if row else 0
+
+            passed = count > 0
 
             self._gates.append(GateResult(
-                name="Yesterday's data exists",
+                name="Source data loaded today",
                 passed=passed,
                 is_hard=True,
-                detail=f"Max date: {max_date}, yesterday: {yesterday}",
+                value=count,
+                detail=f"Orders for {yesterday} loaded today: {count} rows"
+                    if passed else f"No orders for {yesterday} loaded today",
             ))
         except Exception as e:
             self._gates.append(GateResult(
-                name="Yesterday's data exists",
+                name="Source data loaded today",
                 passed=False,
                 is_hard=True,
                 detail=f"Check failed: {e}",
@@ -179,10 +231,11 @@ class GateChecker:
 
             conn_factory = _get_wb_connection if marketplace == "wb" else _get_ozon_connection
             yesterday = get_yesterday_msk()
+            col = self._col(marketplace, "logistics")
 
             with _db_cursor(conn_factory) as (conn, cur):
                 cur.execute(
-                    "SELECT COALESCE(SUM(ABS(logist)), 0) FROM abc_date WHERE date = %s",
+                    f"SELECT COALESCE(SUM(ABS({col})), 0) FROM abc_date WHERE date = %s",
                     (yesterday,),
                 )
                 row = cur.fetchone()
@@ -205,37 +258,48 @@ class GateChecker:
                 detail=f"Check failed: {e}",
             ))
 
-    def _check_orders_crosscheck(self, marketplace: str) -> None:
-        """Soft gate 4: Orders cross-check ≤ 5%."""
-        # Simplified: check that orders data exists and is reasonable
+    def _check_orders_volume(self, marketplace: str) -> None:
+        """Soft gate 4: Orders volume vs 7-day avg ≥ 70%."""
         try:
             from shared.data_layer import _get_wb_connection, _get_ozon_connection, _db_cursor
 
             conn_factory = _get_wb_connection if marketplace == "wb" else _get_ozon_connection
             yesterday = get_yesterday_msk()
+            week_ago = get_today_msk() - timedelta(days=8)
 
             with _db_cursor(conn_factory) as (conn, cur):
+                # Yesterday's order count
                 cur.execute(
                     "SELECT COUNT(*) FROM abc_date WHERE date = %s",
                     (yesterday,),
                 )
-                row = cur.fetchone()
-                count = int(row[0]) if row else 0
+                yesterday_count = int(cur.fetchone()[0])
 
-            passed = count > 0
+                # 7-day average
+                cur.execute(
+                    "SELECT COALESCE(AVG(cnt), 0) FROM ("
+                    "  SELECT COUNT(*) as cnt FROM abc_date "
+                    "  WHERE date >= %s AND date < %s GROUP BY date"
+                    ") sub",
+                    (week_ago, yesterday),
+                )
+                avg_count = float(cur.fetchone()[0])
+
+            ratio = (yesterday_count / avg_count * 100) if avg_count > 0 else 100
+            passed = ratio >= 70
 
             self._gates.append(GateResult(
-                name="Orders cross-check",
+                name="Orders volume vs avg",
                 passed=passed,
                 is_hard=False,
-                value=count,
-                threshold=1,
-                detail=f"Orders records for {yesterday}: {count}" if passed
-                    else f"No orders data for {yesterday}",
+                value=round(ratio, 1),
+                threshold=70,
+                detail=f"Orders {yesterday_count} = {ratio:.0f}% of 7d avg {avg_count:.0f}"
+                    if not passed else f"Orders volume OK: {ratio:.0f}% of 7d avg",
             ))
         except Exception as e:
             self._gates.append(GateResult(
-                name="Orders cross-check",
+                name="Orders volume vs avg",
                 passed=True,  # Don't block on check failure
                 is_hard=False,
                 detail=f"Check skipped: {e}",
@@ -248,10 +312,10 @@ class GateChecker:
 
             conn_factory = _get_wb_connection if marketplace == "wb" else _get_ozon_connection
             yesterday = get_yesterday_msk()
+            col = self._col(marketplace, "revenue")
 
             with _db_cursor(conn_factory) as (conn, cur):
                 # Yesterday's revenue
-                col = "revenue"
                 cur.execute(
                     f"SELECT COALESCE(SUM({col}), 0) FROM abc_date WHERE date = %s",
                     (yesterday,),
@@ -296,12 +360,13 @@ class GateChecker:
 
             conn_factory = _get_wb_connection if marketplace == "wb" else _get_ozon_connection
             yesterday = get_yesterday_msk()
+            col = self._col(marketplace, "marga")
 
             with _db_cursor(conn_factory) as (conn, cur):
                 cur.execute(
-                    "SELECT COUNT(*), "
-                    "SUM(CASE WHEN marga IS NOT NULL AND marga != 0 THEN 1 ELSE 0 END) "
-                    "FROM abc_date WHERE date = %s",
+                    f"SELECT COUNT(*), "
+                    f"SUM(CASE WHEN {col} IS NOT NULL AND {col} != 0 THEN 1 ELSE 0 END) "
+                    f"FROM abc_date WHERE date = %s",
                     (yesterday,),
                 )
                 row = cur.fetchone()

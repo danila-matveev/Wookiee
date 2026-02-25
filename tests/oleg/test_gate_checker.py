@@ -46,22 +46,23 @@ def _fake_db_cursor(rows):
         yield
 
 
-def test_all_gates_pass():
-    """All gates pass with good data."""
-    today = date.today()
-    yesterday = today - timedelta(days=1)
-
-    rows = [
-        (today,),          # Gate 1: ETL dateupdate = today
-        (yesterday,),      # Gate 2: max date = yesterday
+def _good_rows():
+    """Rows that make all 6 gates pass."""
+    return [
+        (date.today(),),   # Gate 1: ETL dateupdate = today
+        (50,),             # Gate 2: source orders loaded today (count > 0)
         (50000.0,),        # Gate 3: logistics > 0
-        (100,),            # Gate 4: orders count > 0
-        (1000000.0,),      # Gate 5: yesterday revenue
-        (900000.0,),       # Gate 5: 7-day avg revenue
+        (100,),            # Gate 4a: yesterday orders count
+        (90.0,),           # Gate 4b: 7-day avg count
+        (1000000.0,),      # Gate 5a: yesterday revenue
+        (900000.0,),       # Gate 5b: 7-day avg revenue
         (200, 150),        # Gate 6: total articles, filled margin
     ]
 
-    with _fake_db_cursor(rows):
+
+def test_all_gates_pass():
+    """All gates pass with good data."""
+    with _fake_db_cursor(_good_rows()):
         gc = GateChecker()
         result = gc.check_all("wb")
 
@@ -72,13 +73,13 @@ def test_all_gates_pass():
 def test_hard_gate_etl_fails():
     """ETL not ran today → hard fail."""
     old_date = date.today() - timedelta(days=3)
-    yesterday = date.today() - timedelta(days=1)
 
     rows = [
         (old_date,),       # Gate 1: ETL NOT today
-        (yesterday,),      # Gate 2
+        (50,),             # Gate 2
         (50000.0,),        # Gate 3
-        (100,),            # Gate 4
+        (100,),            # Gate 4a
+        (90.0,),           # Gate 4b
         (1000000.0,),      # Gate 5a
         (900000.0,),       # Gate 5b
         (200, 150),        # Gate 6
@@ -95,16 +96,62 @@ def test_hard_gate_etl_fails():
     assert etl_gate.is_hard is True
 
 
+def test_hard_gate_source_not_loaded():
+    """No source orders loaded today → hard fail."""
+    rows = [
+        (date.today(),),   # Gate 1: pass
+        (0,),              # Gate 2: NO orders loaded today
+        (50000.0,),        # Gate 3
+        (100,),            # Gate 4a
+        (90.0,),           # Gate 4b
+        (1000000.0,),      # Gate 5a
+        (900000.0,),       # Gate 5b
+        (200, 150),        # Gate 6
+    ]
+
+    with _fake_db_cursor(rows):
+        gc = GateChecker()
+        result = gc.check_all("wb")
+
+    assert result.can_generate is False
+    source_gate = result.gates[1]
+    assert source_gate.name == "Source data loaded today"
+    assert source_gate.passed is False
+    assert source_gate.is_hard is True
+
+
+def test_soft_gate_orders_volume_low():
+    """Orders volume < 70% of avg → soft fail with caveat."""
+    rows = [
+        (date.today(),),   # Gate 1: pass
+        (50,),             # Gate 2: pass
+        (50000.0,),        # Gate 3: pass
+        (30,),             # Gate 4a: yesterday count = 30
+        (100.0,),          # Gate 4b: avg = 100 → 30% < 70%
+        (1000000.0,),      # Gate 5a
+        (900000.0,),       # Gate 5b
+        (200, 150),        # Gate 6
+    ]
+
+    with _fake_db_cursor(rows):
+        gc = GateChecker()
+        result = gc.check_all("wb")
+
+    assert result.can_generate is True
+    assert result.has_caveats is True
+    volume_gate = result.gates[3]
+    assert volume_gate.name == "Orders volume vs avg"
+    assert volume_gate.passed is False
+
+
 def test_soft_gate_caveat():
     """Soft gate fails → report with caveat."""
-    today = date.today()
-    yesterday = today - timedelta(days=1)
-
     rows = [
-        (today,),          # Gate 1: pass
-        (yesterday,),      # Gate 2: pass
+        (date.today(),),   # Gate 1: pass
+        (50,),             # Gate 2: pass
         (50000.0,),        # Gate 3: pass
-        (0,),              # Gate 4: orders = 0 → soft fail
+        (0,),              # Gate 4a: orders = 0
+        (100.0,),          # Gate 4b: avg = 100 → 0% < 70%
         (1000000.0,),      # Gate 5a
         (900000.0,),       # Gate 5b
         (200, 150),        # Gate 6
@@ -133,22 +180,35 @@ def test_db_error_graceful():
 
 def test_gate_result_counts():
     """Verify hard/soft counts."""
-    today = date.today()
-    yesterday = today - timedelta(days=1)
-
-    rows = [
-        (today,),
-        (yesterday,),
-        (50000.0,),
-        (100,),
-        (1000000.0,),
-        (900000.0,),
-        (200, 150),
-    ]
-
-    with _fake_db_cursor(rows):
+    with _fake_db_cursor(_good_rows()):
         gc = GateChecker()
         result = gc.check_all("wb")
 
     assert result.hard_total == 3
     assert result.soft_total == 3
+
+
+def test_ozon_gates_pass():
+    """Ozon marketplace gates pass with good data."""
+    with _fake_db_cursor(_good_rows()):
+        gc = GateChecker()
+        result = gc.check_all("ozon")
+
+    assert result.can_generate is True
+    assert len(result.gates) == 6
+
+
+def test_column_map_completeness():
+    """Both marketplaces have all required column mappings."""
+    gc = GateChecker()
+    for mp in ["wb", "ozon"]:
+        for col in ["dateupdate", "logistics", "revenue", "marga"]:
+            assert gc._col(mp, col), f"Missing column mapping for {mp}.{col}"
+
+
+def test_orders_config_completeness():
+    """Both marketplaces have orders table config."""
+    for mp in ["wb", "ozon"]:
+        cfg = GateChecker._ORDERS_CONFIG[mp]
+        assert "table" in cfg
+        assert "date_col" in cfg

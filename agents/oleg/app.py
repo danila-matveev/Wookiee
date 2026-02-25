@@ -176,6 +176,16 @@ class OlegApp:
             replace_existing=True,
         )
 
+        # Monthly report (first Monday of month)
+        monthly_h, monthly_m = (int(x) for x in config.MONTHLY_REPORT_TIME.split(":"))
+        self.scheduler.add_job(
+            self._run_monthly_report,
+            CronTrigger(day="1-7", day_of_week="mon", hour=monthly_h, minute=monthly_m, timezone=tz),
+            id="monthly_report",
+            name=f"Monthly Report (1st Mon {monthly_h:02d}:{monthly_m:02d} MSK)",
+            replace_existing=True,
+        )
+
         # Watchdog heartbeat (every 6 hours)
         self.scheduler.add_job(
             self.watchdog.heartbeat,
@@ -187,16 +197,53 @@ class OlegApp:
 
         logger.info(
             f"Scheduler configured: daily={daily_h:02d}:{daily_m:02d}, "
-            f"weekly=Mon {weekly_h:02d}:{weekly_m:02d}"
+            f"weekly=Mon {weekly_h:02d}:{weekly_m:02d}, "
+            f"monthly=1st Mon {monthly_h:02d}:{monthly_m:02d}"
         )
 
-    async def _run_daily_report(self) -> None:
-        """Scheduled daily report callback."""
+    async def _run_daily_report(self, _retry_attempt: int = 0) -> None:
+        """Scheduled daily report callback with gate notification and retry."""
         from agents.oleg.pipeline.report_types import ReportType, ReportRequest
-        from agents.oleg.services.time_utils import get_yesterday_msk, get_today_msk
+        from agents.oleg.services.time_utils import get_yesterday_msk
 
+        MAX_RETRIES = 3
+        RETRY_INTERVAL_MIN = 30
         yesterday = get_yesterday_msk()
-        today = get_today_msk()
+
+        # Step 1: Pre-check gates and notify
+        gate_result = self.pipeline.gate_checker.check_all("wb")
+        status_msg = gate_result.format_status_message(str(yesterday))
+
+        if not gate_result.can_generate:
+            attempt_info = f" (попытка {_retry_attempt + 1}/{MAX_RETRIES + 1})"
+            status_msg += attempt_info
+
+            if _retry_attempt < MAX_RETRIES:
+                status_msg += f"\nПовторная проверка через {RETRY_INTERVAL_MIN} мин."
+                await self._send_admin_message(status_msg)
+
+                # Schedule retry
+                from apscheduler.triggers.date import DateTrigger
+                from datetime import datetime, timedelta
+                import pytz
+                tz = pytz.timezone(config.TIMEZONE)
+                retry_time = datetime.now(tz) + timedelta(minutes=RETRY_INTERVAL_MIN)
+                self.scheduler.add_job(
+                    self._run_daily_report,
+                    DateTrigger(run_date=retry_time),
+                    id=f"daily_report_retry_{_retry_attempt + 1}",
+                    kwargs={"_retry_attempt": _retry_attempt + 1},
+                    replace_existing=True,
+                )
+                return
+            else:
+                status_msg += "\nВсе попытки исчерпаны. Отчёт не сгенерирован."
+                await self._send_admin_message(status_msg)
+                await self.watchdog.on_report_failure("daily", marketplace="wb")
+                return
+
+        # Gates passed — notify and generate
+        await self._send_admin_message(status_msg + " Генерирую отчёт...")
 
         request = ReportRequest(
             report_type=ReportType.DAILY,
@@ -239,24 +286,50 @@ class OlegApp:
             logger.error(f"Weekly report failed: {e}", exc_info=True)
             await self.watchdog.on_report_failure("weekly", marketplace="wb")
 
+    async def _run_monthly_report(self) -> None:
+        """Scheduled monthly report callback (first Monday of month)."""
+        from agents.oleg.pipeline.report_types import ReportType, ReportRequest
+        from agents.oleg.services.time_utils import get_last_month_bounds_msk
+
+        first, last = get_last_month_bounds_msk()
+
+        await self._send_admin_message(
+            f"Генерирую месячный отчёт за {first} — {last}..."
+        )
+
+        request = ReportRequest(
+            report_type=ReportType.MONTHLY,
+            start_date=str(first),
+            end_date=str(last),
+        )
+
+        try:
+            result = await self.pipeline.generate_report(request)
+            if result:
+                await self._deliver_report(result, request)
+                await self.watchdog.on_report_success("monthly", result.cost_usd)
+            else:
+                await self.watchdog.on_report_failure("monthly", marketplace="wb")
+        except Exception as e:
+            logger.error(f"Monthly report failed: {e}", exc_info=True)
+            await self.watchdog.on_report_failure("monthly", marketplace="wb")
+
+    async def _send_admin_message(self, text: str) -> None:
+        """Send a plain-text message to admin chat."""
+        if self.bot and config.ADMIN_CHAT_ID:
+            try:
+                await self.bot.send_message(config.ADMIN_CHAT_ID, text)
+            except Exception as e:
+                logger.warning(f"Failed to send admin message: {e}")
+
     async def _deliver_report(self, result, request=None) -> None:
-        """Deliver a report via Telegram + Notion."""
+        """Deliver a report via Notion (first) + Telegram (with Notion link)."""
         from agents.oleg.bot.formatter import (
             add_caveats_header, format_cost_footer,
         )
 
-        text = result.brief_summary
-        if result.caveats:
-            text = add_caveats_header(text, result.caveats)
-        text += format_cost_footer(
-            result.cost_usd, result.chain_steps, result.duration_ms,
-        )
-
-        # Send to admin chat
-        if self.bot and config.ADMIN_CHAT_ID:
-            await self.bot.send_message(config.ADMIN_CHAT_ID, text)
-
-        # Save to Notion
+        # 1. Save to Notion first to get the page URL
+        page_url = None
         try:
             from agents.oleg.services.notion_service import NotionService
             notion = NotionService(
@@ -265,7 +338,7 @@ class OlegApp:
             )
             start_date = request.start_date if request else ""
             end_date = request.end_date if request else ""
-            await notion.sync_report(
+            page_url = await notion.sync_report(
                 start_date=start_date,
                 end_date=end_date,
                 report_md=result.detailed_report or result.brief_summary,
@@ -274,6 +347,20 @@ class OlegApp:
             )
         except Exception as e:
             logger.warning(f"Notion save failed (non-critical): {e}")
+
+        # 2. Build Telegram message with Notion link
+        text = result.brief_summary
+        if result.caveats:
+            text = add_caveats_header(text, result.caveats)
+        text += format_cost_footer(
+            result.cost_usd, result.chain_steps, result.duration_ms,
+        )
+        if page_url:
+            text += f'\n\n<a href="{page_url}">Подробный отчёт в Notion</a>'
+
+        # 3. Send to admin chat
+        if self.bot and config.ADMIN_CHAT_ID:
+            await self.bot.send_message(config.ADMIN_CHAT_ID, text)
 
     async def run(self) -> None:
         """Run the application."""
