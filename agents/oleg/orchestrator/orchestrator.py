@@ -199,13 +199,11 @@ class OlegOrchestrator:
                 finish_reason = response.get("finish_reason", "unknown")
                 logger.warning(
                     f"Orchestrator got empty response (finish_reason={finish_reason}), "
-                    f"continuing with next reporter step"
+                    f"synthesizing from collected data"
                 )
                 return OrchestratorDecision(
-                    done=False,
-                    next_agent="reporter",
-                    instruction=task,
-                    reasoning=f"Empty LLM response (finish_reason={finish_reason}), continuing",
+                    done=True,
+                    reasoning=f"Empty LLM response (finish_reason={finish_reason}), synthesizing",
                 )
 
             decision_data = json.loads(content)
