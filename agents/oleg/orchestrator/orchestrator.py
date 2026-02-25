@@ -194,7 +194,20 @@ class OlegOrchestrator:
                 response_format={"type": "json_object"},
             )
 
-            content = response.get("content", "")
+            content = response.get("content") or ""
+            if not content.strip():
+                finish_reason = response.get("finish_reason", "unknown")
+                logger.warning(
+                    f"Orchestrator got empty response (finish_reason={finish_reason}), "
+                    f"continuing with next reporter step"
+                )
+                return OrchestratorDecision(
+                    done=False,
+                    next_agent="reporter",
+                    instruction=task,
+                    reasoning=f"Empty LLM response (finish_reason={finish_reason}), continuing",
+                )
+
             decision_data = json.loads(content)
 
             return OrchestratorDecision(

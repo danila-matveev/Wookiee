@@ -88,14 +88,22 @@ class OpenRouterClient:
             response = await self.client.chat.completions.create(**kwargs)
 
             content = response.choices[0].message.content
+            finish_reason = response.choices[0].finish_reason if response.choices else "unknown"
             usage = {
                 "input_tokens": response.usage.prompt_tokens if response.usage else 0,
                 "output_tokens": response.usage.completion_tokens if response.usage else 0,
             }
 
+            if finish_reason == "length":
+                logger.warning(
+                    f"Response truncated (finish_reason=length), "
+                    f"max_tokens={max_tokens}, model={use_model}"
+                )
+
             return {
                 "content": content,
-                "confidence": 0.8,
+                "confidence": 0.8 if finish_reason == "stop" else 0.6,
+                "finish_reason": finish_reason,
                 "usage": usage,
                 "model": use_model,
             }
