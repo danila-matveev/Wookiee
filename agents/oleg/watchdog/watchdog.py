@@ -54,7 +54,7 @@ class Watchdog:
             consecutive = self.state_store.get_consecutive_failures(marketplace) + 1
 
         # Run diagnostics
-        diagnostic = await self.diagnostic_runner.diagnose(report_type)
+        diagnostic = await self.diagnostic_runner.diagnose(report_type, marketplace=marketplace)
 
         # Log
         if self.state_store:
