@@ -38,6 +38,29 @@ async def run(target_date: date):
     print("--- DETAILED ---")
     print(result.detailed_report or "No detailed report")
 
+    # Deliver to Notion
+    try:
+        from agents.oleg import config
+        from agents.oleg.services.notion_service import NotionService
+        notion = NotionService(
+            token=config.NOTION_TOKEN,
+            database_id=config.NOTION_DATABASE_ID,
+        )
+        if notion.enabled:
+            page_url = await notion.sync_report(
+                report_type="daily",
+                start_date=str(target_date),
+                end_date=str(target_date),
+                brief_summary=result.brief_summary or "",
+                detailed_report=result.detailed_report or "",
+                cost_usd=result.cost_usd,
+                chain_steps=result.chain_steps,
+                duration_ms=result.duration_ms,
+            )
+            print(f"\nNotion: {page_url}")
+    except Exception as e:
+        print(f"\nNotion sync failed: {e}")
+
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
