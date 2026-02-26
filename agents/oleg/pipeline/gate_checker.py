@@ -168,10 +168,9 @@ class GateChecker:
                 last_update = row[0] if row else None
 
             today = get_today_msk()
-            passed = last_update is not None and (
-                last_update == today or
-                (hasattr(last_update, 'date') and last_update.date() == today)
-            )
+            # Normalize: datetime → date (datetime is subclass of date)
+            update_date = last_update.date() if isinstance(last_update, datetime) else last_update
+            passed = update_date is not None and update_date == today
 
             self._gates.append(GateResult(
                 name="ETL ran today",

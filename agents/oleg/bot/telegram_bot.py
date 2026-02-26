@@ -197,14 +197,16 @@ class OlegTelegramBot:
 
                 page_url = await self._save_to_notion(result, request)
 
-                text = result.brief_summary
-                if result.caveats:
-                    text = add_caveats_header(text, result.caveats)
-                text += format_cost_footer(
-                    result.cost_usd, result.chain_steps, result.duration_ms,
-                )
+                parts = []
                 if page_url:
-                    text += f'\n\n<a href="{page_url}">Подробный отчёт в Notion</a>'
+                    parts.append(f'<a href="{page_url}">📊 Подробный отчёт в Notion</a>\n')
+                if result.caveats:
+                    parts.append(add_caveats_header("", result.caveats))
+                parts.append(result.brief_summary)
+                parts.append(format_cost_footer(
+                    result.cost_usd, result.chain_steps, result.duration_ms,
+                ))
+                text = "\n".join(parts)
                 for chunk in split_html_message(text):
                     await message.answer(chunk, parse_mode="HTML")
             else:
@@ -240,14 +242,16 @@ class OlegTelegramBot:
 
                 page_url = await self._save_to_notion(result, request)
 
-                text = result.brief_summary
-                if result.caveats:
-                    text = add_caveats_header(text, result.caveats)
-                text += format_cost_footer(
-                    result.cost_usd, result.chain_steps, result.duration_ms,
-                )
+                parts = []
                 if page_url:
-                    text += f'\n\n<a href="{page_url}">Подробный отчёт в Notion</a>'
+                    parts.append(f'<a href="{page_url}">📊 Подробный отчёт в Notion</a>\n')
+                if result.caveats:
+                    parts.append(add_caveats_header("", result.caveats))
+                parts.append(result.brief_summary)
+                parts.append(format_cost_footer(
+                    result.cost_usd, result.chain_steps, result.duration_ms,
+                ))
+                text = "\n".join(parts)
                 for chunk in split_html_message(text):
                     await message.answer(chunk, parse_mode="HTML")
             else:
@@ -283,14 +287,16 @@ class OlegTelegramBot:
 
                 page_url = await self._save_to_notion(result, request)
 
-                text = result.brief_summary
-                if result.caveats:
-                    text = add_caveats_header(text, result.caveats)
-                text += format_cost_footer(
-                    result.cost_usd, result.chain_steps, result.duration_ms,
-                )
+                parts = []
                 if page_url:
-                    text += f'\n\n<a href="{page_url}">Подробный отчёт в Notion</a>'
+                    parts.append(f'<a href="{page_url}">📊 Подробный отчёт в Notion</a>\n')
+                if result.caveats:
+                    parts.append(add_caveats_header("", result.caveats))
+                parts.append(result.brief_summary)
+                parts.append(format_cost_footer(
+                    result.cost_usd, result.chain_steps, result.duration_ms,
+                ))
+                text = "\n".join(parts)
                 for chunk in split_html_message(text):
                     await message.answer(chunk, parse_mode="HTML")
             else:

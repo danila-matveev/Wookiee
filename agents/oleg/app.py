@@ -195,6 +195,15 @@ class OlegApp:
             replace_existing=True,
         )
 
+        # Data-ready check (hourly 06:00–13:00 MSK, Mon-Sat)
+        self.scheduler.add_job(
+            self._check_data_ready,
+            CronTrigger(day_of_week="mon-sat", hour="6-13", minute=0, timezone=tz),
+            id="data_ready_check",
+            name="Data Ready Check (hourly 06-13 MSK)",
+            replace_existing=True,
+        )
+
         logger.info(
             f"Scheduler configured: daily={daily_h:02d}:{daily_m:02d}, "
             f"weekly=Mon {weekly_h:02d}:{weekly_m:02d}, "
@@ -242,8 +251,8 @@ class OlegApp:
                 await self.watchdog.on_report_failure("daily", marketplace="wb")
                 return
 
-        # Gates passed — notify and generate
-        await self._send_admin_message(status_msg + " Генерирую отчёт...")
+        # Gates passed — notify about report generation (data readiness already notified by _check_data_ready)
+        await self._send_admin_message(f"Запускаю расчёт за {yesterday}...")
 
         request = ReportRequest(
             report_type=ReportType.DAILY,
@@ -322,6 +331,42 @@ class OlegApp:
             except Exception as e:
                 logger.warning(f"Failed to send admin message: {e}")
 
+    async def _check_data_ready(self) -> None:
+        """Hourly check: notify admin as soon as yesterday's data is loaded by ETL.
+
+        Sends one notification per date, tracked via state_store key 'data_ready_notified'.
+        """
+        if not self.pipeline:
+            return
+
+        from agents.oleg.services.time_utils import get_yesterday_msk
+
+        yesterday = get_yesterday_msk()
+        state_key = "data_ready_notified"
+
+        # Check if we already notified for this date
+        if self.state_store:
+            last_notified = self.state_store.get_state(state_key)
+            if last_notified == str(yesterday):
+                return  # Already notified today
+
+        # Run gate check to see if data is ready
+        try:
+            gate_result = self.pipeline.gate_checker.check_all("wb")
+        except Exception as e:
+            logger.warning(f"Data ready check failed: {e}")
+            return
+
+        if gate_result.can_generate:
+            status_msg = gate_result.format_status_message(str(yesterday))
+            await self._send_admin_message(status_msg)
+
+            # Mark as notified
+            if self.state_store:
+                self.state_store.set_state(state_key, str(yesterday))
+
+            logger.info(f"Data ready notification sent for {yesterday}")
+
     async def _deliver_report(self, result, request=None) -> None:
         """Deliver a report via Notion (first) + Telegram (with Notion link)."""
         from agents.oleg.bot.formatter import (
@@ -348,19 +393,30 @@ class OlegApp:
         except Exception as e:
             logger.warning(f"Notion save failed (non-critical): {e}")
 
-        # 2. Build Telegram message with Notion link
-        text = result.brief_summary
-        if result.caveats:
-            text = add_caveats_header(text, result.caveats)
-        text += format_cost_footer(
-            result.cost_usd, result.chain_steps, result.duration_ms,
-        )
         if page_url:
-            text += f'\n\n<a href="{page_url}">Подробный отчёт в Notion</a>'
+            logger.info(f"Notion page URL: {page_url}")
+        else:
+            logger.warning("Notion sync returned no page URL — link will not appear in TG")
+
+        # 2. Build Telegram message: Notion link at top, then summary
+        parts = []
+        if page_url:
+            parts.append(f'<a href="{page_url}">📊 Подробный отчёт в Notion</a>\n')
+        if result.caveats:
+            parts.append(add_caveats_header("", result.caveats))
+        parts.append(result.brief_summary)
+        parts.append(format_cost_footer(
+            result.cost_usd, result.chain_steps, result.duration_ms,
+        ))
+        text = "\n".join(parts)
 
         # 3. Send to admin chat
         if self.bot and config.ADMIN_CHAT_ID:
-            await self.bot.send_message(config.ADMIN_CHAT_ID, text)
+            try:
+                await self.bot.send_message(config.ADMIN_CHAT_ID, text)
+            except Exception as e:
+                logger.error(f"TG delivery failed: {e}", exc_info=True)
+                # Don't let TG failures propagate — report was generated and saved to Notion
 
     async def run(self) -> None:
         """Run the application."""

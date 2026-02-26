@@ -6,7 +6,7 @@ Produces a human-readable diagnostic report with fix instructions.
 """
 import logging
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from typing import List, Optional
 
 logger = logging.getLogger(__name__)
@@ -192,7 +192,8 @@ class DiagnosticRunner:
                     fix="ETL никогда не запускался. Проверить контейнер ETL.",
                 )
 
-            update_date = last_update if isinstance(last_update, date) else last_update.date()
+            # Normalize: datetime → date (datetime is subclass of date, so isinstance check is unreliable)
+            update_date = last_update.date() if isinstance(last_update, datetime) else last_update
             if update_date < today:
                 return DiagCheck(
                     component="ETL загрузка",

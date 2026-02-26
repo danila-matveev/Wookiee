@@ -3,6 +3,7 @@ ReportFormatter — formats reports for Telegram and Notion.
 
 Reuses v1 report_formatter logic adapted for v2 chain results.
 """
+import html
 import logging
 import re
 from typing import List
@@ -18,9 +19,31 @@ def _bbcode_to_html(text: str) -> str:
     return re.sub(r'\[b\](.*?)\[/b\]', r'<b>\1</b>', text)
 
 
+def escape_html_safe(text: str) -> str:
+    """Escape HTML special chars (&, <, >) in text, preserving allowed TG tags.
+
+    Allowed tags: <b>, <i>, <a href="...">.
+    """
+    # Extract allowed tags, escape the rest, then restore tags
+    _ALLOWED_TAG = re.compile(
+        r'(</?(?:b|i|u|s|code|pre|a)(?: [^>]*)?>)', re.IGNORECASE,
+    )
+    parts = _ALLOWED_TAG.split(text)
+    result = []
+    for i, part in enumerate(parts):
+        if i % 2 == 1:
+            # This is an allowed HTML tag — keep as-is
+            result.append(part)
+        else:
+            # Regular text — escape HTML entities
+            result.append(html.escape(part, quote=False))
+    return "".join(result)
+
+
 def split_html_message(text: str, max_length: int = MAX_TELEGRAM_MSG) -> List[str]:
     """Split long message into chunks, breaking at paragraph boundaries."""
     text = _bbcode_to_html(text)
+    text = escape_html_safe(text)
     if len(text) <= max_length:
         return [text]
 
