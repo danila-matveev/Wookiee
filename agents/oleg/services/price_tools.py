@@ -441,6 +441,26 @@ PRICE_TOOL_DEFINITIONS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_margin_factor_regression",
+            "description": (
+                "Многофакторная регрессия: какие факторы сильнее всего влияют на маржу%. "
+                "Стандартизированные бета-коэффициенты: цена, СПП, ДРР, логистика, себестоимость. "
+                "Показывает рычаги маржинальности с p-value и R²."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "model": {"type": "string", "description": "Модель (wendy, ruby и т.д.)"},
+                    "channel": {"type": "string", "enum": ["wb", "ozon"], "description": "Канал продаж"},
+                    "lookback_days": {"type": "integer", "description": "Период анализа в днях (по умолчанию 180)", "default": 180},
+                },
+                "required": ["model", "channel"],
+            },
+        },
+    },
 ]
 
 
@@ -551,7 +571,10 @@ async def _handle_price_counterfactual(model: str, channel: str, price_change_pc
 
 
 async def _handle_analyze_promotion(channel: str) -> dict:
-    """Обработчик analyze_promotion."""
+    """Обработчик analyze_promotion — реальное сканирование акций через API."""
+    from agents.oleg import config
+    from agents.oleg.services.price_analysis.promotion_analyzer import PromotionAnalyzer
+
     now_msk = get_now_msk()
     end_date = now_msk.strftime('%Y-%m-%d')
     start_date = (now_msk - timedelta(days=30)).strftime('%Y-%m-%d')
@@ -559,20 +582,65 @@ async def _handle_analyze_promotion(channel: str) -> dict:
     # Текущие метрики по моделям
     if channel == 'wb':
         models = get_wb_price_margin_by_model_period(start_date, end_date)
+        clients = config.get_wb_clients()
+        analyzer = PromotionAnalyzer(wb_clients=clients)
     else:
         models = get_ozon_price_margin_by_model_period(start_date, end_date)
+        clients = config.get_ozon_clients()
+        analyzer = PromotionAnalyzer(ozon_clients=clients)
 
     if not models:
         return {'error': f'No model data for {channel}'}
 
-    # Примечание: PromotionAnalyzer требует инициализированные WB/OZON клиенты.
-    # В текущей интеграции клиенты инициализируются в main.py.
-    # Пока возвращаем метрики с пометкой что API-сканирование нужно настроить.
+    # Собрать кэшированные эластичности
+    elasticities = {}
+    if _learning_store:
+        for m in models[:10]:
+            model_name = m.get('model', '')
+            cached = _learning_store.get_elasticity_cached(model_name, channel)
+            if cached and 'error' not in cached:
+                elasticities[model_name] = cached
+
+    # Сканирование акций через API
+    try:
+        promotions = analyzer.scan_promotions(channel)
+    except Exception as e:
+        logger.warning(f"Promotion scan failed for {channel}: {e}")
+        promotions = []
+
+    if not promotions:
+        return {
+            'channel': channel,
+            'promotions': [],
+            'models_count': len(models),
+            'note': 'Активных акций не обнаружено или API-клиенты не настроены',
+        }
+
+    # Финансовый анализ обнаруженных акций
+    analyzed = []
+    for promo in promotions[:10]:
+        try:
+            # analyze_promotion принимает одну модель за раз —
+            # берём первую модель с данными для оценки финансового эффекта
+            for model_data in models[:10]:
+                model_name = model_data.get('model', '')
+                elasticity = elasticities.get(model_name)
+                analysis = analyzer.analyze_promotion(
+                    promotion=promo,
+                    model_metrics=model_data,
+                    elasticity=elasticity,
+                )
+                analysis['model'] = model_name
+                analyzed.append(analysis)
+        except Exception as e:
+            logger.warning(f"Promotion analysis failed for {promo.get('id', '?')}: {e}")
+
     return {
         'channel': channel,
-        'models_overview': models[:10],  # Топ-10 по марже
-        'note': 'Для сканирования акций через API необходима настройка WB/OZON клиентов в main.py',
+        'promotions_found': len(promotions),
+        'promotions_analyzed': analyzed,
         'models_count': len(models),
+        'elasticities_available': len(elasticities),
     }
 
 
@@ -921,6 +989,26 @@ async def _handle_deep_price_analysis(model: str, channel: str, lookback_days: i
     return analyze_model_deep_elasticity(channel, model, lookback_days)
 
 
+async def _handle_margin_factor_regression(model: str, channel: str, lookback_days: int = 180) -> dict:
+    """Обработчик get_margin_factor_regression."""
+    from agents.oleg.services.price_analysis.regression_engine import margin_factor_regression
+
+    model = model.lower()
+    now_msk = get_now_msk()
+    end_date = now_msk.strftime('%Y-%m-%d')
+    start_date = (now_msk - timedelta(days=lookback_days)).strftime('%Y-%m-%d')
+
+    data = _get_data(channel, start_date, end_date, model)
+    if not data:
+        return {'error': f'No data for {model} on {channel}'}
+
+    result = margin_factor_regression(data)
+    result['model'] = model
+    result['channel'] = channel
+    result['period'] = f"{start_date} — {end_date}"
+    return result
+
+
 # =============================================================================
 # HANDLERS MAP
 # =============================================================================
@@ -944,4 +1032,5 @@ PRICE_TOOL_HANDLERS = {
     "analyze_cross_model_effects": _handle_cross_model_effects,
     "get_promotion_plan": _handle_promotion_plan,
     "get_deep_price_analysis": _handle_deep_price_analysis,
+    "get_margin_factor_regression": _handle_margin_factor_regression,
 }

@@ -436,9 +436,15 @@ class DataMigrator:
             self.session.flush()
             self._modeli[kod_modeli] = obj.id
 
+            # Case-insensitive lookup: добавляем lowercase-ключ
+            if kod_modeli.lower() not in self._modeli:
+                self._modeli[kod_modeli.lower()] = obj.id
+
             # Также добавляем маппинг по названию для обратной совместимости
             if nazvanie not in self._modeli:
                 self._modeli[nazvanie] = obj.id
+            if nazvanie.lower() not in self._modeli:
+                self._modeli[nazvanie.lower()] = obj.id
 
             count += 1
 
@@ -485,9 +491,11 @@ class DataMigrator:
             if not artikul_code or artikul_code in self._artikuly:
                 continue
 
-            # Находим модель по названию
+            # Находим модель по названию (case-insensitive fallback)
             model_name = clean_string(row.get('Модель'))
             model_id = self._modeli.get(model_name)
+            if model_id is None and model_name:
+                model_id = self._modeli.get(model_name.lower())
 
             # Находим цвет по color_code
             color_code = clean_string(row.get('Color code'))

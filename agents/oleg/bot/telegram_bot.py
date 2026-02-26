@@ -24,11 +24,13 @@ class OlegTelegramBot:
         pipeline=None,
         watchdog=None,
         state_store=None,
+        auth_service=None,
     ):
         self.orchestrator = orchestrator
         self.pipeline = pipeline
         self.watchdog = watchdog
         self.state_store = state_store
+        self.auth_service = auth_service
 
         self.bot: Optional[Bot] = None
         self.dp: Optional[Dispatcher] = None
@@ -61,6 +63,11 @@ class OlegTelegramBot:
             user_id = message.from_user.id
             text = message.text.strip()
 
+            # Auto-register user for notifications
+            if self.auth_service and not self.auth_service.is_authenticated(user_id):
+                self.auth_service.register_user(user_id)
+                logger.info(f"Auto-registered user {user_id} for notifications")
+
             # Simple routing
             if text.startswith("/start"):
                 await message.answer(
@@ -72,9 +79,12 @@ class OlegTelegramBot:
             if text.startswith("/help"):
                 await message.answer(
                     "Доступные команды:\n"
-                    "/report_daily — дневной отчёт\n"
-                    "/report_weekly — недельный отчёт\n"
-                    "/report_monthly — месячный отчёт\n"
+                    "/report_daily — дневной финансовый отчёт\n"
+                    "/report_weekly — недельный финансовый отчёт\n"
+                    "/report_monthly — месячный финансовый отчёт\n"
+                    "/marketing_daily — дневной маркетинговый отчёт\n"
+                    "/marketing_weekly — недельный маркетинговый отчёт\n"
+                    "/marketing_monthly — месячный маркетинговый отчёт\n"
                     "/feedback — отправить ОС по отчёту\n"
                     "/health — проверка здоровья системы\n"
                     "Или просто задайте вопрос."
@@ -91,6 +101,18 @@ class OlegTelegramBot:
 
             if text.startswith("/report_monthly"):
                 await self._handle_report_monthly(message)
+                return
+
+            if text.startswith("/marketing_daily"):
+                await self._handle_marketing_daily(message)
+                return
+
+            if text.startswith("/marketing_weekly"):
+                await self._handle_marketing_weekly(message)
+                return
+
+            if text.startswith("/marketing_monthly"):
+                await self._handle_marketing_monthly(message)
                 return
 
             if text.startswith("/health"):
@@ -303,6 +325,141 @@ class OlegTelegramBot:
                 await message.answer("Отчёт не сгенерирован: hard gates failed. Проверьте /health.")
         except Exception as e:
             logger.error(f"Monthly report command error: {e}", exc_info=True)
+            await message.answer(f"Ошибка генерации отчёта: {e}")
+
+    async def _handle_marketing_daily(self, message) -> None:
+        """Handle /marketing_daily command."""
+        if not self.pipeline:
+            await message.answer("Pipeline не настроен.")
+            return
+
+        await message.answer("Генерирую дневной маркетинговый отчёт...")
+
+        from agents.oleg.pipeline.report_types import ReportType, ReportRequest
+        from agents.oleg.services.time_utils import get_yesterday_msk
+
+        yesterday = get_yesterday_msk()
+        request = ReportRequest(
+            report_type=ReportType.MARKETING_DAILY,
+            start_date=str(yesterday),
+            end_date=str(yesterday),
+        )
+
+        try:
+            result = await self.pipeline.generate_report(request)
+            if result:
+                from agents.oleg.bot.formatter import (
+                    split_html_message, format_cost_footer, add_caveats_header,
+                )
+
+                page_url = await self._save_to_notion(result, request)
+
+                parts = []
+                if page_url:
+                    parts.append(f'<a href="{page_url}">📈 Подробный отчёт в Notion</a>\n')
+                if result.caveats:
+                    parts.append(add_caveats_header("", result.caveats))
+                parts.append(result.brief_summary)
+                parts.append(format_cost_footer(
+                    result.cost_usd, result.chain_steps, result.duration_ms,
+                ))
+                text = "\n".join(parts)
+                for chunk in split_html_message(text):
+                    await message.answer(chunk, parse_mode="HTML")
+            else:
+                await message.answer("Отчёт не сгенерирован: hard gates failed. Проверьте /health.")
+        except Exception as e:
+            logger.error(f"Marketing daily report error: {e}", exc_info=True)
+            await message.answer(f"Ошибка генерации отчёта: {e}")
+
+    async def _handle_marketing_weekly(self, message) -> None:
+        """Handle /marketing_weekly command."""
+        if not self.pipeline:
+            await message.answer("Pipeline не настроен.")
+            return
+
+        await message.answer("Генерирую недельный маркетинговый отчёт...")
+
+        from agents.oleg.pipeline.report_types import ReportType, ReportRequest
+        from agents.oleg.services.time_utils import get_last_week_bounds_msk
+
+        monday, sunday = get_last_week_bounds_msk()
+        request = ReportRequest(
+            report_type=ReportType.MARKETING_WEEKLY,
+            start_date=str(monday),
+            end_date=str(sunday),
+        )
+
+        try:
+            result = await self.pipeline.generate_report(request)
+            if result:
+                from agents.oleg.bot.formatter import (
+                    split_html_message, format_cost_footer, add_caveats_header,
+                )
+
+                page_url = await self._save_to_notion(result, request)
+
+                parts = []
+                if page_url:
+                    parts.append(f'<a href="{page_url}">📈 Подробный отчёт в Notion</a>\n')
+                if result.caveats:
+                    parts.append(add_caveats_header("", result.caveats))
+                parts.append(result.brief_summary)
+                parts.append(format_cost_footer(
+                    result.cost_usd, result.chain_steps, result.duration_ms,
+                ))
+                text = "\n".join(parts)
+                for chunk in split_html_message(text):
+                    await message.answer(chunk, parse_mode="HTML")
+            else:
+                await message.answer("Отчёт не сгенерирован: hard gates failed. Проверьте /health.")
+        except Exception as e:
+            logger.error(f"Marketing weekly report error: {e}", exc_info=True)
+            await message.answer(f"Ошибка генерации отчёта: {e}")
+
+    async def _handle_marketing_monthly(self, message) -> None:
+        """Handle /marketing_monthly command."""
+        if not self.pipeline:
+            await message.answer("Pipeline не настроен.")
+            return
+
+        await message.answer("Генерирую месячный маркетинговый отчёт...")
+
+        from agents.oleg.pipeline.report_types import ReportType, ReportRequest
+        from agents.oleg.services.time_utils import get_last_month_bounds_msk
+
+        first, last = get_last_month_bounds_msk()
+        request = ReportRequest(
+            report_type=ReportType.MARKETING_MONTHLY,
+            start_date=str(first),
+            end_date=str(last),
+        )
+
+        try:
+            result = await self.pipeline.generate_report(request)
+            if result:
+                from agents.oleg.bot.formatter import (
+                    split_html_message, format_cost_footer, add_caveats_header,
+                )
+
+                page_url = await self._save_to_notion(result, request)
+
+                parts = []
+                if page_url:
+                    parts.append(f'<a href="{page_url}">📈 Подробный отчёт в Notion</a>\n')
+                if result.caveats:
+                    parts.append(add_caveats_header("", result.caveats))
+                parts.append(result.brief_summary)
+                parts.append(format_cost_footer(
+                    result.cost_usd, result.chain_steps, result.duration_ms,
+                ))
+                text = "\n".join(parts)
+                for chunk in split_html_message(text):
+                    await message.answer(chunk, parse_mode="HTML")
+            else:
+                await message.answer("Отчёт не сгенерирован: hard gates failed. Проверьте /health.")
+        except Exception as e:
+            logger.error(f"Marketing monthly report error: {e}", exc_info=True)
             await message.answer(f"Ошибка генерации отчёта: {e}")
 
     async def send_message(self, chat_id: int, text: str, **kwargs) -> None:

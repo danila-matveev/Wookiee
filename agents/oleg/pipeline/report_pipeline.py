@@ -35,7 +35,11 @@ class ReportPipeline:
 
         # Step 1: Gate check (skip for user queries — they bypass gates)
         caveats = []
-        if request.report_type in (ReportType.DAILY, ReportType.WEEKLY, ReportType.MONTHLY):
+        if request.report_type in (
+            ReportType.DAILY, ReportType.WEEKLY, ReportType.MONTHLY,
+            ReportType.MARKETING_DAILY, ReportType.MARKETING_WEEKLY,
+            ReportType.MARKETING_MONTHLY,
+        ):
             marketplace = request.channel or "wb"
             gate_result = self.gate_checker.check_all(marketplace)
 
@@ -109,9 +113,66 @@ class ReportPipeline:
                 f"Определи лучшую и худшую недели."
             )
 
-        # CUSTOM
+        # CUSTOM (financial)
+        if request.report_type == ReportType.CUSTOM:
+            channel_note = f" Канал: {request.channel}." if request.channel else ""
+            return (
+                f"Сформируй отчёт {period}.{channel_note} "
+                f"{request.user_query or ''}"
+            )
+
+        # ── Marketing reports ─────────────────────────────────────
+        if request.report_type == ReportType.MARKETING_DAILY:
+            return (
+                f"Оперативная сводка рекламных метрик {period}. "
+                f"Используй get_marketing_overview, get_funnel_analysis, "
+                f"get_external_ad_breakdown (wb + ozon). "
+                f"Покажи DRR (внутр/внешн), основные аномалии vs предыдущий день."
+            )
+
+        if request.report_type == ReportType.MARKETING_WEEKLY:
+            return (
+                f"Еженедельный маркетинговый анализ {period}. "
+                f"Используй get_marketing_overview, get_funnel_analysis, "
+                f"get_external_ad_breakdown, get_model_ad_efficiency, "
+                f"get_organic_vs_paid (wb), get_ad_daily_trend. "
+                f"Анализируй воронку, каналы, модели, органику vs платный."
+            )
+
+        if request.report_type == ReportType.MARKETING_MONTHLY:
+            return (
+                f"Глубокий маркетинговый анализ {period}. "
+                f"Используй ВСЕ tools: marketing_overview, funnel_analysis, "
+                f"external_ad_breakdown, model_ad_efficiency, organic_vs_paid, "
+                f"campaign_performance, ad_daily_trend, ad_budget_utilization, "
+                f"ad_spend_correlation, channel_finance, margin_levers. "
+                f"Корреляции расход↔маржа по моделям, ROMI по типам рекламы, "
+                f"бюджет vs факт, понедельная динамика. Стратегические рекомендации с расчётом эффекта в ₽."
+            )
+
+        # MARKETING_CUSTOM — depth adapts to period length
+        from datetime import datetime
+        try:
+            days = (datetime.strptime(request.end_date, "%Y-%m-%d")
+                    - datetime.strptime(request.start_date, "%Y-%m-%d")).days
+        except (ValueError, TypeError):
+            days = 7
+
+        if days <= 7:
+            depth = (
+                "Используй get_marketing_overview, get_funnel_analysis, "
+                "get_external_ad_breakdown, get_model_ad_efficiency, "
+                "get_ad_daily_trend. Воронка, каналы, модели."
+            )
+        else:
+            depth = (
+                "Используй ВСЕ tools включая ad_spend_correlation, "
+                "ad_budget_utilization, campaign_performance. "
+                "Корреляции, ROMI, стратегические рекомендации."
+            )
+
         channel_note = f" Канал: {request.channel}." if request.channel else ""
         return (
-            f"Сформируй отчёт {period}.{channel_note} "
-            f"{request.user_query or ''}"
+            f"Маркетинговый анализ {period}.{channel_note} "
+            f"{depth} {request.user_query or ''}"
         )

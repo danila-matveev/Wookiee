@@ -5,7 +5,7 @@ from contextlib import contextmanager
 
 import pytest
 
-from agents.oleg.pipeline.gate_checker import GateChecker, GateCheckResult
+from agents.oleg.pipeline.gate_checker import GateChecker, GateCheckResult, GateResult
 
 
 class FakeCursor:
@@ -212,3 +212,89 @@ def test_orders_config_completeness():
         cfg = GateChecker._ORDERS_CONFIG[mp]
         assert "table" in cfg
         assert "date_col" in cfg
+
+
+def test_extra_dict_populated():
+    """Gate results have extra dict with structured data for formatting."""
+    from datetime import datetime
+    today = date.today()
+    # Use a datetime for Gate 1 so update_time is extracted
+    now = datetime(today.year, today.month, today.day, 7, 30, 0)
+    rows = [
+        (now,),            # Gate 1: ETL dateupdate = today as datetime
+        (50,),             # Gate 2: source orders
+        (50000.0,),        # Gate 3: logistics
+        (100,),            # Gate 4a: yesterday orders count
+        (90.0,),           # Gate 4b: 7-day avg count
+        (1000000.0,),      # Gate 5a: yesterday revenue
+        (900000.0,),       # Gate 5b: 7-day avg revenue
+        (200, 150),        # Gate 6: total articles, filled margin
+    ]
+
+    with _fake_db_cursor(rows):
+        gc = GateChecker()
+        result = gc.check_all("wb")
+
+    # Gate 1: ETL — update_time
+    etl = result.gates[0]
+    assert etl.extra.get("update_time") == "07:30"
+
+    # Gate 2: Source — order_count
+    src = result.gates[1]
+    assert src.extra.get("order_count") == 50
+
+    # Gate 4: Orders volume — count + ratio
+    orders = result.gates[3]
+    assert orders.extra.get("count") == 100
+    assert orders.extra.get("ratio") is not None
+
+    # Gate 5: Revenue — ratio
+    rev = result.gates[4]
+    assert rev.extra.get("ratio") is not None
+
+    # Gate 6: Margin — filled, total, pct
+    margin = result.gates[5]
+    assert margin.extra.get("filled") == 150
+    assert margin.extra.get("total") == 200
+
+
+def test_format_status_message_russian():
+    """format_status_message outputs human-readable Russian text."""
+    with _fake_db_cursor(_good_rows()):
+        gc = GateChecker()
+        result = gc.check_all("wb")
+
+    msg = result.format_status_message("2026-02-25", marketplace="wb")
+
+    # Should contain Russian date, not ISO format
+    assert "25 февраля" in msg
+    assert "WB" in msg
+    # Should NOT contain English gate names
+    assert "Hard:" not in msg
+    assert "Soft:" not in msg
+    assert "ETL ran today" not in msg
+
+
+def test_format_status_message_fail():
+    """format_status_message shows failure details when hard gate fails."""
+    old_date = date.today() - timedelta(days=3)
+    rows = [
+        (old_date,),       # Gate 1: ETL NOT today
+        (0,),              # Gate 2: NO orders
+        (0,),              # Gate 3: no logistics
+        (100,),            # Gate 4a
+        (90.0,),           # Gate 4b
+        (1000000.0,),      # Gate 5a
+        (900000.0,),       # Gate 5b
+        (200, 150),        # Gate 6
+    ]
+
+    with _fake_db_cursor(rows):
+        gc = GateChecker()
+        result = gc.check_all("wb")
+
+    msg = result.format_status_message("2026-02-25")
+
+    assert "❌" in msg
+    assert "не готовы" in msg
+    assert "не обновлены" in msg or "⏳" in msg

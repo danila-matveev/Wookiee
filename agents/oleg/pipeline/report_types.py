@@ -11,6 +11,10 @@ class ReportType(Enum):
     CUSTOM = "custom"
     QUERY = "query"       # free-form user question
     FEEDBACK = "feedback"
+    MARKETING_DAILY = "marketing_daily"
+    MARKETING_WEEKLY = "marketing_weekly"
+    MARKETING_MONTHLY = "marketing_monthly"
+    MARKETING_CUSTOM = "marketing_custom"
 
 
 @dataclass
