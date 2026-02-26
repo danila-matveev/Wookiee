@@ -71,17 +71,21 @@ async def callback_daily_report(callback: CallbackQuery, pipeline=None, bot_inst
         result = await pipeline.generate_report(request)
         if result:
             from agents.oleg.bot.formatter import (
-                split_html_message, format_cost_footer,
+                split_html_message, format_cost_footer, add_caveats_header,
             )
 
             page_url = await _save_to_notion(result, request)
 
-            text = result.brief_summary
-            text += format_cost_footer(
-                result.cost_usd, result.chain_steps, result.duration_ms,
-            )
+            parts = []
             if page_url:
-                text += f'\n\n<a href="{page_url}">Подробный отчёт в Notion</a>'
+                parts.append(f'<a href="{page_url}">📊 Подробный отчёт в Notion</a>\n')
+            if result.caveats:
+                parts.append(add_caveats_header("", result.caveats))
+            parts.append(result.brief_summary)
+            parts.append(format_cost_footer(
+                result.cost_usd, result.chain_steps, result.duration_ms,
+            ))
+            text = "\n".join(parts)
             for chunk in split_html_message(text):
                 await callback.message.answer(chunk, parse_mode="HTML")
             await callback.message.answer(
@@ -122,17 +126,21 @@ async def callback_weekly_report(callback: CallbackQuery, pipeline=None, bot_ins
         result = await pipeline.generate_report(request)
         if result:
             from agents.oleg.bot.formatter import (
-                split_html_message, format_cost_footer,
+                split_html_message, format_cost_footer, add_caveats_header,
             )
 
             page_url = await _save_to_notion(result, request)
 
-            text = result.brief_summary
-            text += format_cost_footer(
-                result.cost_usd, result.chain_steps, result.duration_ms,
-            )
+            parts = []
             if page_url:
-                text += f'\n\n<a href="{page_url}">Подробный отчёт в Notion</a>'
+                parts.append(f'<a href="{page_url}">📊 Подробный отчёт в Notion</a>\n')
+            if result.caveats:
+                parts.append(add_caveats_header("", result.caveats))
+            parts.append(result.brief_summary)
+            parts.append(format_cost_footer(
+                result.cost_usd, result.chain_steps, result.duration_ms,
+            ))
+            text = "\n".join(parts)
             for chunk in split_html_message(text):
                 await callback.message.answer(chunk, parse_mode="HTML")
             await callback.message.answer(

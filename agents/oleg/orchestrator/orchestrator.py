@@ -15,6 +15,7 @@ Chain patterns:
 """
 import json
 import logging
+import re
 import time
 from typing import Dict, Optional
 
@@ -222,6 +223,53 @@ class OlegOrchestrator:
                 reasoning=f"Decision failed: {e}, synthesizing from collected data",
             )
 
+    @staticmethod
+    def _parse_report_sections(content: str) -> dict:
+        """Parse LLM output into brief_summary and detailed_report sections.
+
+        Looks for markers like '# brief_summary' and '# detailed_report'.
+        If not found, uses the first ~4000 chars as brief and full text as detailed.
+        """
+        brief = ""
+        detailed = ""
+
+        # Try to split by section headers (case-insensitive, flexible whitespace)
+        brief_pattern = re.compile(
+            r'^#+\s*brief[_\s]?summary\s*$', re.IGNORECASE | re.MULTILINE,
+        )
+        detailed_pattern = re.compile(
+            r'^#+\s*detailed[_\s]?report\s*$', re.IGNORECASE | re.MULTILINE,
+        )
+
+        brief_match = brief_pattern.search(content)
+        detailed_match = detailed_pattern.search(content)
+
+        if brief_match and detailed_match:
+            # Both sections found — extract each
+            if brief_match.start() < detailed_match.start():
+                brief = content[brief_match.end():detailed_match.start()].strip()
+                detailed = content[detailed_match.end():].strip()
+            else:
+                detailed = content[detailed_match.end():brief_match.start()].strip()
+                brief = content[brief_match.end():].strip()
+        elif brief_match:
+            # Only brief found — everything after it is brief, no detailed
+            brief = content[brief_match.end():].strip()
+            detailed = content
+        elif detailed_match:
+            # Only detailed found — everything before it is brief
+            brief = content[:detailed_match.start()].strip()
+            detailed = content[detailed_match.end():].strip()
+        else:
+            # No markers — use first ~4000 chars as brief
+            brief = content[:4000].strip()
+            detailed = content
+
+        return {
+            "brief_summary": brief or content[:4000],
+            "detailed_report": detailed or content,
+        }
+
     async def _synthesize(
         self, task: str, chain_history: list[AgentStep],
     ) -> dict:
@@ -229,10 +277,7 @@ class OlegOrchestrator:
 
         # If only one step and it's reporter — use its output directly
         if len(chain_history) == 1 and chain_history[0].agent == "reporter":
-            return {
-                "brief_summary": chain_history[0].result,
-                "detailed_report": chain_history[0].result,
-            }
+            return self._parse_report_sections(chain_history[0].result)
 
         chain_results_text = self._format_chain_history(chain_history)
 
@@ -255,10 +300,7 @@ class OlegOrchestrator:
 
             content = response.get("content", "")
 
-            return {
-                "brief_summary": content,
-                "detailed_report": content,
-            }
+            return self._parse_report_sections(content)
 
         except Exception as e:
             logger.error(f"Synthesis failed: {e}")
@@ -267,7 +309,7 @@ class OlegOrchestrator:
                 f"[{s.agent}]: {s.result}" for s in chain_history
             )
             return {
-                "brief_summary": combined[:16000],
+                "brief_summary": combined[:4000],
                 "detailed_report": combined,
             }
 
