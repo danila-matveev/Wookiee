@@ -98,6 +98,10 @@ class OlegApp:
                 "quality": quality,
             },
             pricing=config.PRICING,
+            review_model=config.REVIEW_MODEL if config.REVIEW_ENABLED else None,
+            review_task_types=config.REVIEW_TASK_TYPES if config.REVIEW_ENABLED else [],
+            review_max_tokens=config.REVIEW_MAX_TOKENS,
+            review_mode=config.REVIEW_MODE,
         )
 
         # ── Pipeline ───────────────────────────────────────────────
@@ -122,6 +126,25 @@ class OlegApp:
             alerter=alerter,
             heartbeat_interval_hours=config.WATCHDOG_HEARTBEAT_INTERVAL_HOURS,
         )
+
+        # ── Anomaly Monitor ────────────────────────────────────────
+
+        self.anomaly_monitor = None
+        if config.ANOMALY_MONITOR_ENABLED:
+            from agents.oleg.anomaly.anomaly_monitor import AnomalyMonitor
+            self.anomaly_monitor = AnomalyMonitor(
+                state_store=self.state_store,
+                alerter=alerter,
+                llm_client=llm_client,
+                classify_model=config.CLASSIFY_MODEL,
+                thresholds={
+                    "revenue": {"threshold": config.ANOMALY_REVENUE_THRESHOLD, "direction": "both"},
+                    "margin_pct": {"threshold": config.ANOMALY_MARGIN_PCT_THRESHOLD, "direction": "both"},
+                    "drr_pct": {"threshold": config.ANOMALY_DRR_THRESHOLD_MONITOR, "direction": "up"},
+                    "orders_count": {"threshold": config.ANOMALY_ORDERS_THRESHOLD, "direction": "down"},
+                },
+                weekend_multiplier=config.ANOMALY_WEEKEND_MULTIPLIER,
+            )
 
         # ── Telegram Bot ───────────────────────────────────────────
 
@@ -203,6 +226,20 @@ class OlegApp:
             name="Data Ready Check (hourly 06-13 MSK)",
             replace_existing=True,
         )
+
+        # Anomaly monitor (every N hours, offset at :30 to avoid collision)
+        if self.anomaly_monitor:
+            self.scheduler.add_job(
+                self.anomaly_monitor.check_and_alert,
+                CronTrigger(
+                    hour=f"*/{config.ANOMALY_MONITOR_INTERVAL_HOURS}",
+                    minute=30,
+                    timezone=tz,
+                ),
+                id="anomaly_monitor",
+                name=f"Anomaly Monitor (every {config.ANOMALY_MONITOR_INTERVAL_HOURS}h)",
+                replace_existing=True,
+            )
 
         logger.info(
             f"Scheduler configured: daily={daily_h:02d}:{daily_m:02d}, "
