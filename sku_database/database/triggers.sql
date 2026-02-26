@@ -85,6 +85,24 @@ $$ LANGUAGE plpgsql;
 COMMENT ON FUNCTION update_updated_at() IS 'Функция автоматического обновления поля updated_at';
 
 -- ============================================
+-- ТРИГГЕРЫ ДЛЯ ТАБЛИЦЫ MODELI_OSNOVA
+-- ============================================
+
+-- Триггер версионирования
+DROP TRIGGER IF EXISTS tr_modeli_osnova_izmeneniya ON modeli_osnova;
+CREATE TRIGGER tr_modeli_osnova_izmeneniya
+    AFTER INSERT OR UPDATE OR DELETE ON modeli_osnova
+    FOR EACH ROW
+    EXECUTE FUNCTION log_izmeneniya();
+
+-- Триггер обновления updated_at
+DROP TRIGGER IF EXISTS tr_modeli_osnova_updated_at ON modeli_osnova;
+CREATE TRIGGER tr_modeli_osnova_updated_at
+    BEFORE UPDATE ON modeli_osnova
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at();
+
+-- ============================================
 -- ТРИГГЕРЫ ДЛЯ ТАБЛИЦЫ MODELI
 -- ============================================
 

@@ -45,6 +45,9 @@
 | Документ | Статус |
 |---|---|
 | [plans/ibrahim-deploy-and-etl.md](plans/ibrahim-deploy-and-etl.md) | Active |
+| [plans/2026-02-25-db-audit-results.md](plans/2026-02-25-db-audit-results.md) | Completed |
+| [plans/2026-02-25-db-improvement-proposals.md](plans/2026-02-25-db-improvement-proposals.md) | Active |
+| [plans/2026-02-25-dashboard-tz.md](plans/2026-02-25-dashboard-tz.md) | Active |
 
 ## Archive
 

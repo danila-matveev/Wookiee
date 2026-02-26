@@ -157,6 +157,9 @@ CREATE TABLE modeli_osnova (
     stil VARCHAR(200),
     po_nastroeniyu VARCHAR(200),
 
+    -- Тип коллекции (добавлено миграцией 001)
+    tip_kollekcii VARCHAR(30) CHECK (tip_kollekcii IN ('tricot', 'seamless_wendy', 'seamless_audrey')),
+
     -- Логистика и сертификация
     tnved VARCHAR(20),
     gruppa_sertifikata VARCHAR(50),
@@ -204,6 +207,7 @@ COMMENT ON COLUMN modeli_osnova.vid_trusov IS 'Вид трусов';
 COMMENT ON COLUMN modeli_osnova.naznachenie IS 'Назначение';
 COMMENT ON COLUMN modeli_osnova.stil IS 'Стиль';
 COMMENT ON COLUMN modeli_osnova.po_nastroeniyu IS 'По настроению';
+COMMENT ON COLUMN modeli_osnova.tip_kollekcii IS 'Тип коллекции (tricot, seamless_wendy, seamless_audrey)';
 COMMENT ON COLUMN modeli_osnova.tnved IS 'ТНВЭД';
 COMMENT ON COLUMN modeli_osnova.gruppa_sertifikata IS 'Группа сертификата';
 COMMENT ON COLUMN modeli_osnova.nazvanie_etiketka IS 'Название для этикетки';

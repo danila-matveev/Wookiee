@@ -5,6 +5,35 @@
 
 ---
 
+## [2026-02-25] Аудит SKU Database + ТЗ Dashboard каталога
+
+### Что сделано
+- **Cleanup sku_database/**: удалены мёртвые скрипты (`examples.py`, `db_shell.py`, `import_to_supabase.py`, `diagnose_security.py`), удалены `docker-compose.yml` и `deploy 2.sh`
+- Удалён неиспользуемый `MAPPING_ARTIKULY` из `config/mapping.py`
+- Синхронизированы `schema.sql` и `models.py` с живой БД (добавлен `tip_kollekcii`)
+- Добавлен триггер аудита на `modeli_osnova` (ранее отсутствовал)
+- Обновлён `sku_database/README.md` (убраны ссылки на несуществующие файлы)
+- **Полный аудит БД**: программное чтение всех 7 каталожных листов Google Sheets через gspread, сравнение 90+ колонок Sheets с 16 таблицами Supabase
+- **10 предложений по улучшению БД**: от импорта Ozon-склеек (CRITICAL) до compound UNIQUE на artikuly
+- **ТЗ дашборда каталога**: архитектура, ER-диаграмма, 12 модулей UI с wireframes, 7 user journeys с блок-схемами, RBAC (3 роли), workflow статусов, Mermaid-диаграммы
+
+### Зачем
+Подготовка к созданию визуального дашборда управления товарным каталогом (замена Google Sheets). Аудит выявил 5 критических проблем (пустая таблица `skleyki_ozon`, ~60 неимпортируемых колонок, хардкод в views).
+
+### Обновлено
+- [x] `sku_database/config/mapping.py` (удалён MAPPING_ARTIKULY)
+- [x] `sku_database/database/schema.sql` (tip_kollekcii)
+- [x] `sku_database/database/models.py` (tip_kollekcii)
+- [x] `sku_database/database/triggers.sql` (modeli_osnova trigger)
+- [x] `sku_database/README.md` (полное обновление)
+- [x] `docs/plans/2026-02-25-db-audit-results.md` (создан)
+- [x] `docs/plans/2026-02-25-db-improvement-proposals.md` (создан)
+- [x] `docs/plans/2026-02-25-dashboard-tz.md` (создан)
+- [x] `docs/index.md` (добавлены новые планы)
+- [x] `docs/development-history.md` (эта запись)
+
+---
+
 ## [2026-02-23] Таблица 1.1: реклама WB/OZON (adv_internal/adv_external)
 
 ### Что сделано
@@ -225,31 +254,3 @@
 - Dockerfile + docker-compose для деплоя
 - ADR для архитектурного решения (отдельный бот vs модуль)
 
----
-
-## [2026-02-09] Реструктуризация проекта под 2030ai/project_template
-
-### Что сделано
-- Создан AGENTS.md как единый источник правил для AI-агентов
-- CLAUDE.md переписан в тонкую обёртку-ссылку на AGENTS.md
-- Создана структура docs/ (index, architecture, adr, guides, templates)
-- scripts/config.py переведён на python-dotenv (секреты убраны из кода)
-- .gitignore расширен, добавлен .cursorignore
-- Санированы bot/.env.example и docs/database/DATABASE_REFERENCE.md
-- Создан корневой .env.example
-- Добавлены .claude/commands/ и .claude/skills/
-
-### Зачем
-Подготовка проекта к публикации на GitHub. Стандартизация документации для AI-agent-first разработки.
-
-### Обновлено
-- [x] AGENTS.md (создан)
-- [x] CLAUDE.md (переписан)
-- [x] README.md (обновлён)
-- [x] docs/ (создана вся структура)
-- [x] .gitignore (расширен)
-- [x] ADR-001, ADR-002, ADR-003
-
-### Следующие шаги
-- Инициализация git-репозитория и первый push на GitHub
-- Настройка CI/CD (GitHub Actions)

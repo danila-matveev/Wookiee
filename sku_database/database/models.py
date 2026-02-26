@@ -214,6 +214,12 @@ class ModelOsnova(Base):
     stil: Mapped[Optional[str]] = mapped_column(String(200), comment='Стиль')
     po_nastroeniyu: Mapped[Optional[str]] = mapped_column(String(200), comment='По настроению')
 
+    # Тип коллекции (добавлено миграцией 001)
+    tip_kollekcii: Mapped[Optional[str]] = mapped_column(
+        String(30),
+        comment='Тип коллекции (tricot, seamless_wendy, seamless_audrey)'
+    )
+
     # Логистика и сертификация
     tnved: Mapped[Optional[str]] = mapped_column(String(20), comment='ТНВЭД')
     gruppa_sertifikata: Mapped[Optional[str]] = mapped_column(String(50), comment='Группа сертификата')
