@@ -80,6 +80,8 @@ class NotionService:
                 }
                 if source:
                     properties["Источник"] = {"select": {"name": source}}
+                if report_type:
+                    properties["Тип анализа"] = {"select": {"name": report_type}}
 
                 await self._request("PATCH", f"pages/{page_id}", {"properties": properties})
                 await self._append_blocks(page_id, blocks)
@@ -97,6 +99,8 @@ class NotionService:
                 }
                 if source:
                     properties["Источник"] = {"select": {"name": source}}
+                if report_type:
+                    properties["Тип анализа"] = {"select": {"name": report_type}}
 
                 page_payload = {
                     "parent": {"database_id": self.database_id},

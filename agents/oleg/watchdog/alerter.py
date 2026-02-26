@@ -12,26 +12,39 @@ logger = logging.getLogger(__name__)
 class Alerter:
     """Telegram alerter for watchdog events."""
 
-    def __init__(self, bot=None, admin_chat_id: int = 0):
+    def __init__(self, bot=None, admin_chat_id: int = 0, auth_service=None):
         self.bot = bot
         self.admin_chat_id = admin_chat_id
+        self.auth_service = auth_service
+
+    def _get_recipients(self) -> list:
+        """Get notification recipients from auth_service + admin fallback."""
+        recipients = set()
+        if self.auth_service:
+            recipients.update(self.auth_service._authenticated)
+        if self.admin_chat_id:
+            recipients.add(self.admin_chat_id)
+        return list(recipients)
 
     async def send_alert(self, message: str) -> bool:
-        """Send a plain text alert to admin."""
-        if not self.bot or not self.admin_chat_id:
-            logger.warning(f"Alert not sent (no bot/chat_id): {message[:100]}")
+        """Send a plain text alert to all notification recipients."""
+        recipients = self._get_recipients()
+        if not self.bot or not recipients:
+            logger.warning(f"Alert not sent (no bot/recipients): {message[:100]}")
             return False
 
-        try:
-            await self.bot.send_message(
-                chat_id=self.admin_chat_id,
-                text=message[:4000],
-            )
-            logger.info(f"Alert sent to {self.admin_chat_id}")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send alert: {e}")
-            return False
+        sent = False
+        for chat_id in recipients:
+            try:
+                await self.bot.send_message(
+                    chat_id=chat_id,
+                    text=message[:4000],
+                )
+                logger.info(f"Alert sent to {chat_id}")
+                sent = True
+            except Exception as e:
+                logger.error(f"Failed to send alert to {chat_id}: {e}")
+        return sent
 
     async def send_diagnostic_alert(self, diagnostic: DiagnosticReport) -> bool:
         """Send a formatted diagnostic alert."""

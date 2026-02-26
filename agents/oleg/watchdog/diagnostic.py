@@ -192,8 +192,11 @@ class DiagnosticRunner:
                     fix="ETL никогда не запускался. Проверить контейнер ETL.",
                 )
 
-            # Normalize: datetime → date (datetime is subclass of date, so isinstance check is unreliable)
-            update_date = last_update.date() if isinstance(last_update, datetime) else last_update
+            # Normalize: datetime → date for safe comparison
+            try:
+                update_date = last_update.date()  # works for datetime objects
+            except AttributeError:
+                update_date = last_update          # already a date object
             if update_date < today:
                 return DiagCheck(
                     component="ETL загрузка",

@@ -473,3 +473,172 @@ def generate_recommendations_batch(
             if r.get('action') != 'hold' and 'error' not in r
         ),
     }
+
+
+def generate_turnover_optimized_recommendation(
+    data: list[dict],
+    model: str,
+    channel: str,
+    turnover_days: float,
+    avg_stock: float,
+    target_turnover_days: float = 30.0,
+    min_margin_pct: float = 20.0,
+) -> dict:
+    """
+    Рекомендация по цене, оптимизированная под ROI с учётом оборачиваемости.
+
+    Ключевой инсайт: модели с высокой маржой но низкой оборачиваемостью (>60 дней)
+    замораживают капитал. Оптимальная стратегия — максимизация annual_roi:
+
+        annual_roi = margin_pct × (365 / turnover_days)
+
+    Может рекомендовать снижение цены для ускорения оборота, если ROI вырастет.
+
+    Args:
+        data: ежедневные данные модели из data_layer
+        model: имя модели
+        channel: 'wb' | 'ozon'
+        turnover_days: текущая оборачиваемость (дни)
+        avg_stock: средний остаток в штуках
+        target_turnover_days: целевая оборачиваемость
+        min_margin_pct: минимально допустимая маржа%
+
+    Returns:
+        dict:
+        - current_state: {margin_pct, turnover_days, annual_roi, frozen_capital_days}
+        - recommendation: 'hold' | 'decrease_for_turnover' | 'increase_margin'
+        - scenarios: list of {price_change_pct, expected_margin_pct, expected_turnover_days, expected_annual_roi}
+        - reasoning: str
+    """
+    if len(data) < 14:
+        return {
+            'model': model,
+            'channel': channel,
+            'error': 'insufficient_data',
+            'n_days': len(data),
+        }
+
+    df = pd.DataFrame(data)
+
+    # --- 1. Текущее состояние ---
+    recent_14 = df.tail(14)
+    current_margin_pct = float(recent_14['margin_pct'].mean())
+
+    recent_7 = df.tail(7)
+    current_price = float(recent_7['price_per_unit'].mean())
+
+    current_annual_roi = current_margin_pct * (365.0 / max(turnover_days, 1))
+    frozen_capital_days = max(0.0, turnover_days - target_turnover_days)
+
+    current_state = {
+        'margin_pct': round(current_margin_pct, 2),
+        'turnover_days': round(turnover_days, 1),
+        'annual_roi': round(current_annual_roi, 2),
+        'frozen_capital_days': round(frozen_capital_days, 1),
+    }
+
+    # --- 2. Эластичность ---
+    try:
+        elasticity_result = estimate_price_elasticity(data)
+        elasticity = (
+            elasticity_result.get('elasticity', -1.0)
+            if 'error' not in elasticity_result
+            else -1.0
+        )
+    except Exception as e:
+        logger.warning(
+            'Не удалось оценить эластичность для %s/%s: %s', model, channel, e
+        )
+        elasticity = -1.0
+
+    # --- 3. Генерация сценариев ---
+    margin_sensitivity = 0.7
+    scenario_steps = [-10, -5, 0, 5, 10]
+    scenarios = []
+
+    for pct in scenario_steps:
+        # Ожидаемое изменение объёма (%)
+        expected_volume_change = elasticity * pct
+
+        # Ожидаемая оборачиваемость: больше объём → быстрее оборот
+        expected_turnover = turnover_days / (1 + expected_volume_change / 100.0)
+
+        # Ожидаемая маржинальность (%)
+        expected_margin = current_margin_pct + (pct * margin_sensitivity)
+        expected_margin = max(expected_margin, 0.0)
+
+        # Ожидаемый годовой ROI
+        expected_annual_roi = expected_margin * (365.0 / max(expected_turnover, 1))
+
+        scenarios.append({
+            'price_change_pct': pct,
+            'expected_margin_pct': round(expected_margin, 2),
+            'expected_turnover_days': round(expected_turnover, 1),
+            'expected_annual_roi': round(expected_annual_roi, 2),
+        })
+
+    # --- 4. Лучший сценарий (макс ROI при марже >= min_margin_pct) ---
+    valid = [s for s in scenarios if s['expected_margin_pct'] >= min_margin_pct]
+    if valid:
+        best = max(valid, key=lambda s: s['expected_annual_roi'])
+    else:
+        best = next(s for s in scenarios if s['price_change_pct'] == 0)
+
+    # --- 5. Рекомендация ---
+    roi_improvement_pct = (
+        (best['expected_annual_roi'] - current_annual_roi)
+        / max(abs(current_annual_roi), 1e-10)
+        * 100.0
+    )
+
+    if best['price_change_pct'] < 0 and roi_improvement_pct > 5.0:
+        recommendation = 'decrease_for_turnover'
+    elif best['price_change_pct'] > 0:
+        recommendation = 'increase_margin'
+    else:
+        recommendation = 'hold'
+
+    # --- 6. Reasoning ---
+    reasoning_parts = [
+        f"Текущая маржинальность {current_margin_pct:.1f}%, "
+        f"оборачиваемость {turnover_days:.0f} дн., "
+        f"годовой ROI {current_annual_roi:.0f}%.",
+    ]
+
+    if frozen_capital_days > 0:
+        reasoning_parts.append(
+            f"Капитал заморожен на {frozen_capital_days:.0f} дн. сверх целевых "
+            f"{target_turnover_days:.0f} дн."
+        )
+
+    if recommendation == 'decrease_for_turnover':
+        reasoning_parts.append(
+            f"Рекомендуется снизить цену на {abs(best['price_change_pct'])}% "
+            f"для ускорения оборота. Ожидаемый ROI вырастет до "
+            f"{best['expected_annual_roi']:.0f}% (+{roi_improvement_pct:.1f}%)."
+        )
+    elif recommendation == 'increase_margin':
+        reasoning_parts.append(
+            f"Рекомендуется повысить цену на {best['price_change_pct']}% "
+            f"для увеличения маржи. Ожидаемый ROI: "
+            f"{best['expected_annual_roi']:.0f}%."
+        )
+    else:
+        reasoning_parts.append(
+            "Текущая цена оптимальна — изменения не улучшают ROI."
+        )
+
+    reasoning_parts.append(f"Эластичность: {elasticity:.2f}.")
+
+    reasoning = ' '.join(reasoning_parts)
+
+    return {
+        'model': model,
+        'channel': channel,
+        'current_state': current_state,
+        'recommendation': recommendation,
+        'scenarios': scenarios,
+        'reasoning': reasoning,
+        'elasticity_used': round(elasticity, 3),
+        'best_scenario': best,
+    }

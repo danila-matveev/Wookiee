@@ -2261,3 +2261,487 @@ def get_ozon_orders_by_barcode(start_date, end_date):
                 'orders_rub': to_float(r[2]),
             }
     return result
+
+
+# =============================================================================
+# МАРКЕТИНГОВАЯ АНАЛИТИКА — рекламные разрезы, воронки, ROI
+# =============================================================================
+
+def get_wb_external_ad_breakdown(current_start, prev_start, current_end, lk=None):
+    """WB разбивка рекламных расходов: внутренняя МП (reclama), блогеры (reclama_vn),
+    ВК (reclama_vn_vk), creators (reclama_vn_creators). По периодам current/previous.
+    """
+    conn = _get_wb_connection()
+    cur = conn.cursor()
+
+    lk_clause = ""
+    params = [current_start, prev_start, current_end]
+    if lk is not None:
+        lk_clause = "AND lk = %s"
+        params.append(lk)
+
+    query = f"""
+    SELECT
+        CASE WHEN date >= %s THEN 'current' ELSE 'previous' END as period,
+        SUM(reclama) as adv_internal,
+        SUM(reclama_vn) as adv_bloggers,
+        COALESCE(SUM(reclama_vn_vk), 0) as adv_vk,
+        COALESCE(SUM(reclama_vn_creators), 0) as adv_creators,
+        SUM(reclama) + SUM(reclama_vn)
+            + COALESCE(SUM(reclama_vn_vk), 0)
+            + COALESCE(SUM(reclama_vn_creators), 0) as adv_total
+    FROM abc_date
+    WHERE date >= %s AND date < %s
+        {lk_clause}
+    GROUP BY 1
+    ORDER BY period DESC;
+    """
+    cur.execute(query, params)
+    results = cur.fetchall()
+
+    cur.close()
+    conn.close()
+    return results
+
+
+def get_ozon_external_ad_breakdown(current_start, prev_start, current_end, lk=None):
+    """OZON разбивка рекламных расходов: внутренняя (reclama_end), внешняя (adv_vn),
+    ВК (adv_vn_vk). По периодам current/previous.
+    """
+    conn = _get_ozon_connection()
+    cur = conn.cursor()
+
+    lk_clause = ""
+    params = [current_start, prev_start, current_end]
+    if lk is not None:
+        lk_clause = "AND lk = %s"
+        params.append(lk)
+
+    query = f"""
+    SELECT
+        CASE WHEN date >= %s THEN 'current' ELSE 'previous' END as period,
+        SUM(reclama_end) as adv_internal,
+        SUM(adv_vn) as adv_external,
+        COALESCE(SUM(adv_vn_vk), 0) as adv_vk,
+        SUM(reclama_end) + SUM(adv_vn)
+            + COALESCE(SUM(adv_vn_vk), 0) as adv_total
+    FROM abc_date
+    WHERE date >= %s AND date < %s
+        {lk_clause}
+    GROUP BY 1
+    ORDER BY period DESC;
+    """
+    cur.execute(query, params)
+    results = cur.fetchall()
+
+    cur.close()
+    conn.close()
+    return results
+
+
+def get_wb_organic_vs_paid_funnel(current_start, prev_start, current_end, lk=None):
+    """WB воронки: органическая (content_analysis) и платная (wb_adv).
+
+    Органика: card_opens, add_to_cart, orders, buyouts из content_analysis.
+    Платная: views, clicks, to_cart, orders, spend из wb_adv.
+    lk фильтр применяется только к content_analysis (wb_adv не имеет lk).
+
+    Returns (organic_results, paid_results).
+    """
+    conn = _get_wb_connection()
+    cur = conn.cursor()
+
+    lk_clause = ""
+    organic_params = [current_start, prev_start, current_end, prev_start, current_end]
+    if lk is not None:
+        lk_clause = "AND ca.lk = %s"
+        organic_params.append(lk)
+
+    organic_query = f"""
+    SELECT
+        CASE WHEN ca.date >= %s THEN 'current' ELSE 'previous' END as period,
+        SUM(ca.opencardcount) as card_opens,
+        SUM(ca.addtocartcount) as add_to_cart,
+        SUM(ca.orderscount) as funnel_orders,
+        SUM(ca.buyoutscount) as buyouts,
+        CASE WHEN SUM(ca.opencardcount) > 0
+            THEN SUM(ca.addtocartcount)::float / SUM(ca.opencardcount) * 100
+            ELSE 0 END as card_to_cart_pct,
+        CASE WHEN SUM(ca.addtocartcount) > 0
+            THEN SUM(ca.orderscount)::float / SUM(ca.addtocartcount) * 100
+            ELSE 0 END as cart_to_order_pct,
+        CASE WHEN SUM(ca.orderscount) > 0
+            THEN SUM(ca.buyoutscount)::float / SUM(ca.orderscount) * 100
+            ELSE 0 END as order_to_buyout_pct
+    FROM content_analysis ca
+    WHERE ca.date >= %s AND ca.date < %s
+        AND ca.vendorcode IN (SELECT DISTINCT article FROM abc_date WHERE date >= %s AND date < %s)
+        {lk_clause}
+    GROUP BY 1
+    ORDER BY period DESC;
+    """
+    cur.execute(organic_query, organic_params)
+    organic_results = cur.fetchall()
+
+    paid_query = """
+    SELECT
+        CASE WHEN date >= %s THEN 'current' ELSE 'previous' END as period,
+        SUM(views) as ad_views,
+        SUM(clicks) as ad_clicks,
+        SUM(atbs) as ad_to_cart,
+        SUM(orders) as ad_orders,
+        SUM(sum) as ad_spend,
+        CASE WHEN SUM(views) > 0 THEN SUM(clicks)::float / SUM(views) * 100 ELSE 0 END as ctr,
+        CASE WHEN SUM(clicks) > 0 THEN SUM(sum) / SUM(clicks) ELSE 0 END as cpc
+    FROM wb_adv
+    WHERE date >= %s AND date < %s
+    GROUP BY 1
+    ORDER BY period DESC;
+    """
+    cur.execute(paid_query, (current_start, prev_start, current_end))
+    paid_results = cur.fetchall()
+
+    cur.close()
+    conn.close()
+    return organic_results, paid_results
+
+
+def get_wb_ad_daily_series(start_date, end_date, lk=None):
+    """Дневной ряд рекламных метрик WB из wb_adv: date, views, clicks, spend,
+    to_cart, orders, CTR, CPC. Одна строка на день.
+
+    wb_adv не имеет колонки lk — параметр lk принимается для совместимости
+    интерфейса, но не используется в запросе.
+    """
+    conn = _get_wb_connection()
+    cur = conn.cursor()
+
+    query = """
+    SELECT
+        date,
+        SUM(views) as views,
+        SUM(clicks) as clicks,
+        SUM(sum) as spend,
+        SUM(atbs) as to_cart,
+        SUM(orders) as orders,
+        CASE WHEN SUM(views) > 0 THEN SUM(clicks)::float / SUM(views) * 100 ELSE 0 END as ctr,
+        CASE WHEN SUM(clicks) > 0 THEN SUM(sum) / SUM(clicks) ELSE 0 END as cpc
+    FROM wb_adv
+    WHERE date >= %s AND date < %s
+    GROUP BY date
+    ORDER BY date;
+    """
+    cur.execute(query, (start_date, end_date))
+    results = cur.fetchall()
+
+    cur.close()
+    conn.close()
+    return results
+
+
+def get_ozon_ad_daily_series(start_date, end_date):
+    """Дневной ряд рекламных метрик OZON из adv_stats_daily: date, views, clicks,
+    orders_count, rk_expense, avg_bid, CTR, CPC.
+    """
+    conn = _get_ozon_connection()
+    cur = conn.cursor()
+
+    query = """
+    SELECT
+        operation_date as date,
+        SUM(views) as views,
+        SUM(clicks) as clicks,
+        SUM(orders_count) as orders,
+        SUM(rk_expense) as spend,
+        AVG(avg_bid) as avg_bid,
+        CASE WHEN SUM(views) > 0 THEN SUM(clicks)::float / SUM(views) * 100 ELSE 0 END as ctr,
+        CASE WHEN SUM(clicks) > 0 THEN SUM(rk_expense) / SUM(clicks) ELSE 0 END as cpc
+    FROM adv_stats_daily
+    WHERE operation_date >= %s AND operation_date < %s
+    GROUP BY operation_date
+    ORDER BY operation_date;
+    """
+    cur.execute(query, (start_date, end_date))
+    results = cur.fetchall()
+
+    cur.close()
+    conn.close()
+    return results
+
+
+def get_wb_model_ad_roi(current_start, prev_start, current_end, lk=None):
+    """ROI рекламы WB по моделям: JOIN wb_adv (расход, заказы рекламные через nomenclature)
+    с abc_date (выручка, маржа по модели). lk фильтр на abc_date.
+
+    Возвращает: period, model, ad_spend, ad_orders, revenue, margin, DRR%, ROMI.
+    """
+    conn = _get_wb_connection()
+    cur = conn.cursor()
+
+    lk_clause = ""
+    params = [current_start, prev_start, current_end,
+              current_start, prev_start, current_end]
+    if lk is not None:
+        lk_clause = "AND a.lk = %s"
+        params.append(lk)
+
+    model_sql = get_osnova_sql("SPLIT_PART(n.vendorcode, '/', 1)")
+    model_sql_abc = get_osnova_sql("SPLIT_PART(a.article, '/', 1)")
+
+    query = f"""
+    WITH ad_by_model AS (
+        SELECT
+            CASE WHEN w.date >= %s THEN 'current' ELSE 'previous' END as period,
+            {model_sql} as model,
+            SUM(w.sum) as ad_spend,
+            SUM(w.orders) as ad_orders
+        FROM wb_adv w
+        JOIN nomenclature n ON w.nmid = n.nmid
+        WHERE w.date >= %s AND w.date < %s
+        GROUP BY 1, 2
+    ),
+    fin_by_model AS (
+        SELECT
+            CASE WHEN a.date >= %s THEN 'current' ELSE 'previous' END as period,
+            {model_sql_abc} as model,
+            SUM(a.revenue_spp) - COALESCE(SUM(a.revenue_return_spp), 0) as revenue,
+            {WB_MARGIN_SQL} as margin
+        FROM abc_date a
+        WHERE a.date >= %s AND a.date < %s
+            {lk_clause}
+        GROUP BY 1, 2
+    )
+    SELECT
+        COALESCE(ad.period, fin.period) as period,
+        COALESCE(ad.model, fin.model) as model,
+        COALESCE(ad.ad_spend, 0) as ad_spend,
+        COALESCE(ad.ad_orders, 0) as ad_orders,
+        COALESCE(fin.revenue, 0) as revenue,
+        COALESCE(fin.margin, 0) as margin,
+        CASE WHEN COALESCE(fin.revenue, 0) > 0
+            THEN COALESCE(ad.ad_spend, 0) / fin.revenue * 100
+            ELSE NULL END as drr_pct,
+        CASE WHEN COALESCE(ad.ad_spend, 0) > 0
+            THEN (COALESCE(fin.margin, 0) - COALESCE(ad.ad_spend, 0))
+                 / COALESCE(ad.ad_spend, 0) * 100
+            ELSE NULL END as romi
+    FROM ad_by_model ad
+    FULL OUTER JOIN fin_by_model fin
+        ON ad.period = fin.period AND ad.model = fin.model
+    ORDER BY period DESC, COALESCE(ad.ad_spend, 0) DESC;
+    """
+    cur.execute(query, params)
+    results = cur.fetchall()
+
+    cur.close()
+    conn.close()
+    return results
+
+
+def get_ozon_model_ad_roi(current_start, prev_start, current_end, lk=None):
+    """ROI рекламы OZON по моделям: JOIN ozon_adv_api (расход, заказы по SKU)
+    с abc_date (выручка, маржа по модели через article). lk фильтр на abc_date.
+
+    Связь: ozon_adv_api.sku = abc_date.sku (прямая).
+    Модель: LOWER(SPLIT_PART(article, '/', 1)).
+
+    Возвращает: period, model, ad_spend, ad_orders, revenue, margin, DRR%, ROMI.
+    """
+    conn = _get_ozon_connection()
+    cur = conn.cursor()
+
+    lk_clause = ""
+    params = [current_start, prev_start, current_end,
+              current_start, prev_start, current_end]
+    if lk is not None:
+        lk_clause = "AND a.lk = %s"
+        params.append(lk)
+
+    model_sql_abc = get_osnova_sql("SPLIT_PART(a.article, '/', 1)")
+
+    query = f"""
+    WITH ad_by_sku AS (
+        SELECT
+            CASE WHEN operation_date >= %s THEN 'current' ELSE 'previous' END as period,
+            sku,
+            SUM(sum_rev) as ad_spend,
+            SUM(orders) as ad_orders
+        FROM ozon_adv_api
+        WHERE operation_date >= %s AND operation_date < %s
+        GROUP BY 1, 2
+    ),
+    fin_by_model AS (
+        SELECT
+            CASE WHEN a.date >= %s THEN 'current' ELSE 'previous' END as period,
+            {model_sql_abc} as model,
+            a.sku,
+            SUM(a.price_end) as revenue,
+            SUM(a.marga) - SUM(a.nds) as margin
+        FROM abc_date a
+        WHERE a.date >= %s AND a.date < %s
+            {lk_clause}
+        GROUP BY 1, 2, 3
+    ),
+    joined AS (
+        SELECT
+            COALESCE(ad.period, fin.period) as period,
+            COALESCE(fin.model, 'Unknown') as model,
+            COALESCE(ad.ad_spend, 0) as ad_spend,
+            COALESCE(ad.ad_orders, 0) as ad_orders,
+            COALESCE(fin.revenue, 0) as revenue,
+            COALESCE(fin.margin, 0) as margin
+        FROM ad_by_sku ad
+        FULL OUTER JOIN fin_by_model fin
+            ON ad.period = fin.period AND ad.sku = fin.sku
+    )
+    SELECT
+        period,
+        model,
+        SUM(ad_spend) as ad_spend,
+        SUM(ad_orders) as ad_orders,
+        SUM(revenue) as revenue,
+        SUM(margin) as margin,
+        CASE WHEN SUM(revenue) > 0
+            THEN SUM(ad_spend) / SUM(revenue) * 100
+            ELSE NULL END as drr_pct,
+        CASE WHEN SUM(ad_spend) > 0
+            THEN (SUM(margin) - SUM(ad_spend)) / SUM(ad_spend) * 100
+            ELSE NULL END as romi
+    FROM joined
+    GROUP BY period, model
+    ORDER BY period DESC, SUM(ad_spend) DESC;
+    """
+    cur.execute(query, params)
+    results = cur.fetchall()
+
+    cur.close()
+    conn.close()
+    return results
+
+
+def get_ozon_ad_by_sku(current_start, prev_start, current_end):
+    """OZON рекламная статистика по SKU из ozon_adv_api: clicks, to_cart, orders,
+    spend, CPC, CTR. По периодам current/previous.
+    """
+    conn = _get_ozon_connection()
+    cur = conn.cursor()
+
+    query = """
+    SELECT
+        CASE WHEN operation_date >= %s THEN 'current' ELSE 'previous' END as period,
+        sku,
+        SUM(clicks) as clicks,
+        SUM(to_cart) as to_cart,
+        SUM(orders) as orders,
+        SUM(sum_rev) as spend,
+        CASE WHEN SUM(clicks) > 0 THEN SUM(sum_rev) / SUM(clicks) ELSE 0 END as cpc,
+        SUM(ctr) as ctr_raw
+    FROM ozon_adv_api
+    WHERE operation_date >= %s AND operation_date < %s
+    GROUP BY 1, 2
+    ORDER BY period DESC, SUM(sum_rev) DESC;
+    """
+    cur.execute(query, (current_start, prev_start, current_end))
+    results = cur.fetchall()
+
+    cur.close()
+    conn.close()
+    return results
+
+
+def get_wb_campaign_stats(current_start, prev_start, current_end):
+    """WB статистика по рекламным кампаниям (name_rk). По периодам current/previous.
+
+    Возвращает: period, campaign, views, clicks, spend, to_cart, orders, CTR, CPC.
+    """
+    conn = _get_wb_connection()
+    cur = conn.cursor()
+
+    query = """
+    SELECT
+        CASE WHEN date >= %s THEN 'current' ELSE 'previous' END as period,
+        name_rk as campaign,
+        SUM(views) as views,
+        SUM(clicks) as clicks,
+        SUM(sum) as spend,
+        SUM(atbs) as to_cart,
+        SUM(orders) as orders,
+        CASE WHEN SUM(views) > 0 THEN SUM(clicks)::float / SUM(views) * 100 ELSE 0 END as ctr,
+        CASE WHEN SUM(clicks) > 0 THEN SUM(sum) / SUM(clicks) ELSE 0 END as cpc
+    FROM wb_adv
+    WHERE date >= %s AND date < %s
+    GROUP BY 1, 2
+    ORDER BY period DESC, SUM(sum) DESC;
+    """
+    cur.execute(query, (current_start, prev_start, current_end))
+    results = cur.fetchall()
+
+    cur.close()
+    conn.close()
+    return results
+
+
+def get_wb_ad_budget_utilization(start_date, end_date):
+    """Сравнение бюджета (adv_budget) с фактическим расходом (wb_adv).
+
+    Структура adv_budget может варьироваться — используется безопасный запрос
+    с TRY/EXCEPT и fallback на пустой результат для бюджетной части.
+
+    Returns (budget_rows, actual_rows) — обе части всегда возвращаются.
+    """
+    conn = _get_wb_connection()
+    cur = conn.cursor()
+
+    # Фактический расход из wb_adv — надёжный источник
+    actual_query = """
+    SELECT
+        date,
+        SUM(sum) as actual_spend,
+        SUM(views) as views,
+        SUM(clicks) as clicks,
+        SUM(orders) as orders
+    FROM wb_adv
+    WHERE date >= %s AND date < %s
+    GROUP BY date
+    ORDER BY date;
+    """
+    cur.execute(actual_query, (start_date, end_date))
+    actual_rows = cur.fetchall()
+
+    # Бюджет из adv_budget — структура таблицы может отличаться,
+    # поэтому используем безопасный запрос с fallback.
+    budget_rows = []
+    try:
+        budget_query = """
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_name = 'adv_budget'
+        ORDER BY ordinal_position;
+        """
+        cur.execute(budget_query)
+        columns = [row[0] for row in cur.fetchall()]
+
+        if columns:
+            # Определяем колонку даты и суммы по имени
+            date_col = next((c for c in columns if c in ('date', 'dt', 'operation_date', 'created_at')), None)
+            sum_col = next((c for c in columns if c in ('budget', 'sum', 'total', 'amount', 'cash')), None)
+
+            if date_col and sum_col:
+                safe_query = f"""
+                SELECT
+                    {date_col}::date as date,
+                    SUM({sum_col}) as budget
+                FROM adv_budget
+                WHERE {date_col}::date >= %s AND {date_col}::date < %s
+                GROUP BY {date_col}::date
+                ORDER BY {date_col}::date;
+                """
+                cur.execute(safe_query, (start_date, end_date))
+                budget_rows = cur.fetchall()
+    except Exception:
+        # Если таблица не существует или запрос не удался — возвращаем пустой список
+        budget_rows = []
+
+    cur.close()
+    conn.close()
+    return budget_rows, actual_rows

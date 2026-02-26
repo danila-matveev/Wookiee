@@ -1129,3 +1129,338 @@ def estimate_ad_elasticity(
             'price_is_significant': None,
             'note': 'fallback_scipy_no_price_control',
         }
+
+
+def multi_factor_margin_drivers(
+    data: list[dict],
+    include_seasonality: bool = True,
+    include_interactions: bool = True,
+    include_lags: bool = True,
+) -> dict:
+    """
+    Расширенная многофакторная регрессия маржи с сезонными контролями,
+    взаимодействиями и лагами.
+
+    Добавляет к margin_factor_regression():
+    - Сезонные дамми-переменные (месяц, день недели)
+    - Взаимодействия: цена × реклама, цена × СПП
+    - Лаги: реклама t-1 (отложенный эффект рекламы)
+    - VIF (Variance Inflation Factor) для каждого предиктора
+    - AIC/BIC для сравнения моделей
+
+    Returns:
+        dict с ключами:
+        - factors: list of {name, beta_std, p_value, vif, interpretation}
+        - r_squared, adj_r_squared
+        - aic, bic
+        - n_observations
+        - model_comparison: {base_r2, extended_r2, improvement}
+        - seasonality: {significant_months, day_of_week_effect}
+    """
+    if len(data) < 20:
+        return {
+            'error': 'insufficient_data',
+            'n_observations': len(data),
+            'min_required': 20,
+        }
+
+    df = pd.DataFrame(data)
+
+    # Целевая переменная
+    if 'margin_pct' not in df.columns:
+        return {'error': 'missing_column_margin_pct'}
+
+    # Базовые предикторы (те же, что в margin_factor_regression)
+    base_predictors = ['price_per_unit', 'spp_pct', 'drr_pct', 'logistics_per_unit', 'cogs_per_unit']
+    available = [p for p in base_predictors if p in df.columns]
+
+    if len(available) < 2:
+        return {'error': 'insufficient_predictors', 'available': available}
+
+    # Убрать строки с NaN/None в базовых столбцах
+    df_clean = df[available + ['margin_pct']].copy()
+    if 'date' in df.columns:
+        df_clean['date'] = pd.to_datetime(df['date'])
+    df_clean = df_clean.dropna(subset=available + ['margin_pct'])
+
+    if len(df_clean) < 20:
+        return {'error': 'insufficient_clean_data', 'n_clean': len(df_clean)}
+
+    # --- Базовая модель (для сравнения) ---
+    try:
+        import statsmodels.api as sm
+    except ImportError:
+        return {'error': 'statsmodels_unavailable'}
+
+    y = df_clean['margin_pct'].values
+    X_base = df_clean[available].values
+
+    # Стандартизация базовых предикторов
+    base_means = X_base.mean(axis=0)
+    base_stds = X_base.std(axis=0) + 1e-10
+    X_base_std = (X_base - base_means) / base_stds
+    y_mean = y.mean()
+    y_std = y.std() + 1e-10
+    y_std_vals = (y - y_mean) / y_std
+
+    try:
+        X_base_const = sm.add_constant(X_base_std)
+        base_model = sm.OLS(y_std_vals, X_base_const).fit()
+        base_r2 = float(base_model.rsquared)
+    except Exception as e:
+        logger.error(f"Base model failed in multi_factor_margin_drivers: {e}")
+        return {'error': str(e)}
+
+    # --- Расширенные признаки ---
+    extended_names = list(available)
+    extended_cols = [df_clean[col].values for col in available]
+
+    # Сезонные дамми-переменные
+    seasonal_month_names = []
+    seasonal_dow_names = []
+    if include_seasonality and 'date' in df_clean.columns:
+        dates = df_clean['date']
+        months = dates.dt.month.values
+        dow = dates.dt.dayofweek.values  # 0=Monday .. 6=Sunday
+
+        # Месяц: дамми-кодирование (drop_first для избежания мультиколлинеарности)
+        unique_months = sorted(set(months))
+        if len(unique_months) > 1:
+            for m in unique_months[1:]:  # drop first month
+                col_name = f'month_{m}'
+                extended_names.append(col_name)
+                seasonal_month_names.append(col_name)
+                extended_cols.append((months == m).astype(float))
+
+        # День недели: дамми-кодирование (drop_first)
+        unique_dow = sorted(set(dow))
+        if len(unique_dow) > 1:
+            for d in unique_dow[1:]:  # drop first day
+                col_name = f'dow_{d}'
+                extended_names.append(col_name)
+                seasonal_dow_names.append(col_name)
+                extended_cols.append((dow == d).astype(float))
+
+    # Взаимодействия
+    interaction_names = []
+    if include_interactions:
+        if 'price_per_unit' in df_clean.columns and 'drr_pct' in df_clean.columns:
+            col_name = 'price_x_drr'
+            extended_names.append(col_name)
+            interaction_names.append(col_name)
+            extended_cols.append(
+                df_clean['price_per_unit'].values * df_clean['drr_pct'].values
+            )
+        if 'price_per_unit' in df_clean.columns and 'spp_pct' in df_clean.columns:
+            col_name = 'price_x_spp'
+            extended_names.append(col_name)
+            interaction_names.append(col_name)
+            extended_cols.append(
+                df_clean['price_per_unit'].values * df_clean['spp_pct'].values
+            )
+
+    # Лаги
+    lag_names = []
+    if include_lags and 'drr_pct' in df_clean.columns:
+        drr_lag1 = np.roll(df_clean['drr_pct'].values, 1)
+        drr_lag1[0] = 0.0  # fill first value
+        col_name = 'drr_lag1'
+        extended_names.append(col_name)
+        lag_names.append(col_name)
+        extended_cols.append(drr_lag1)
+
+    # Собираем расширенную матрицу
+    X_ext = np.column_stack(extended_cols)
+
+    # Стандартизация расширенных предикторов
+    ext_means = X_ext.mean(axis=0)
+    ext_stds = X_ext.std(axis=0) + 1e-10
+    X_ext_std = (X_ext - ext_means) / ext_stds
+
+    try:
+        X_ext_const = sm.add_constant(X_ext_std)
+        ext_model = sm.OLS(y_std_vals, X_ext_const).fit()
+    except Exception as e:
+        logger.error(f"Extended model failed in multi_factor_margin_drivers: {e}")
+        return {'error': str(e)}
+
+    ext_r2 = float(ext_model.rsquared)
+    ext_adj_r2 = float(ext_model.rsquared_adj)
+    ext_aic = float(ext_model.aic)
+    ext_bic = float(ext_model.bic)
+
+    # --- VIF для каждого предиктора ---
+    n_predictors = X_ext_std.shape[1]
+    vif_values = []
+    for j in range(n_predictors):
+        # Регрессируем предиктор j на все остальные
+        y_j = X_ext_std[:, j]
+        X_others = np.delete(X_ext_std, j, axis=1)
+        if X_others.shape[1] == 0:
+            vif_values.append(1.0)
+            continue
+        X_others_const = sm.add_constant(X_others)
+        try:
+            vif_model = sm.OLS(y_j, X_others_const).fit()
+            r2_j = float(vif_model.rsquared)
+            vif_j = 1.0 / (1.0 - r2_j) if r2_j < 1.0 else float('inf')
+        except Exception:
+            vif_j = float('nan')
+        vif_values.append(round(vif_j, 2))
+
+    # --- Формируем результат по факторам ---
+    factors = []
+    for i, name in enumerate(extended_names):
+        idx = i + 1  # +1 для constant
+        beta = float(ext_model.params[idx])
+        p_value_raw = float(ext_model.pvalues[idx])
+        p_value = p_value_raw if np.isfinite(p_value_raw) else 1.0
+        abs_beta = abs(beta)
+
+        if abs_beta > 0.5:
+            interpretation = 'strong_driver'
+        elif abs_beta > 0.2:
+            interpretation = 'moderate_driver'
+        elif abs_beta > 0.05:
+            interpretation = 'weak_driver'
+        else:
+            interpretation = 'negligible'
+
+        factors.append({
+            'name': name,
+            'beta_std': round(beta, 3),
+            'p_value': round(p_value, 4),
+            'vif': vif_values[i],
+            'is_significant': p_value < 0.05,
+            'direction': 'positive' if beta > 0 else 'negative',
+            'interpretation': interpretation,
+        })
+
+    # Сортируем по абсолютному значению бета (сильнейшие первыми)
+    factors.sort(key=lambda x: abs(x['beta_std']), reverse=True)
+
+    # --- Сезонность ---
+    seasonality = {'significant_months': [], 'day_of_week_effect': False}
+    if include_seasonality:
+        for f in factors:
+            if f['name'] in seasonal_month_names and f['is_significant']:
+                seasonality['significant_months'].append(f['name'])
+            if f['name'] in seasonal_dow_names and f['is_significant']:
+                seasonality['day_of_week_effect'] = True
+
+    # --- Model comparison ---
+    improvement = ext_r2 - base_r2
+
+    return {
+        'factors': factors,
+        'r_squared': round(ext_r2, 3) if np.isfinite(ext_r2) else 0.0,
+        'adj_r_squared': round(ext_adj_r2, 3) if np.isfinite(ext_adj_r2) else 0.0,
+        'aic': round(ext_aic, 2) if np.isfinite(ext_aic) else None,
+        'bic': round(ext_bic, 2) if np.isfinite(ext_bic) else None,
+        'n_observations': len(df_clean),
+        'model_comparison': {
+            'base_r2': round(base_r2, 3) if np.isfinite(base_r2) else 0.0,
+            'extended_r2': round(ext_r2, 3) if np.isfinite(ext_r2) else 0.0,
+            'improvement': round(improvement, 3) if np.isfinite(improvement) else 0.0,
+        },
+        'seasonality': seasonality,
+    }
+
+
+def classify_elastic_policy(
+    elasticity: float,
+    margin_pct: float,
+    turnover_days: float,
+) -> dict:
+    """
+    Классифицирует оптимальную ценовую политику на основе
+    эластичности, маржи и оборачиваемости.
+
+    Returns:
+        dict с ключами:
+        - policy: str ('premium_hold' | 'volume_play' | 'margin_squeeze' | 'clearance' | 'neutral')
+        - action: str ('hold' | 'increase' | 'decrease')
+        - reasoning: str
+        - priority: str ('high' | 'medium' | 'low')
+        - expected_impact: str
+    """
+    abs_e = abs(elasticity)
+
+    # clearance — проверяем первым: оборачиваемость > 90 дней — критично
+    if turnover_days > 90:
+        return {
+            'policy': 'clearance',
+            'action': 'decrease',
+            'reasoning': (
+                f'Оборачиваемость {turnover_days:.0f} дней > 90 — замороженный капитал. '
+                f'Необходимо снижение цены для ускорения оборота независимо от эластичности.'
+            ),
+            'priority': 'high',
+            'expected_impact': (
+                'Ускорение оборота, высвобождение складских остатков и оборотного капитала.'
+            ),
+        }
+
+    # premium_hold — неэластичный спрос, высокая маржа, быстрый оборот
+    if abs_e < 1.0 and margin_pct > 30 and turnover_days < 45:
+        return {
+            'policy': 'premium_hold',
+            'action': 'hold',
+            'reasoning': (
+                f'Неэластичный спрос (|e|={abs_e:.2f}), маржа {margin_pct:.1f}% > 30%, '
+                f'оборачиваемость {turnover_days:.0f} дн < 45. '
+                f'Товар продаётся стабильно по текущей цене — менять незачем.'
+            ),
+            'priority': 'low',
+            'expected_impact': (
+                'Сохранение текущей прибыльности без риска потери объёма.'
+            ),
+        }
+
+    # volume_play — эластичный спрос, хорошая маржа, медленный оборот
+    if abs_e > 1.0 and margin_pct > 25 and turnover_days > 60:
+        return {
+            'policy': 'volume_play',
+            'action': 'decrease',
+            'reasoning': (
+                f'Эластичный спрос (|e|={abs_e:.2f}), маржа {margin_pct:.1f}% > 25% (есть запас), '
+                f'оборачиваемость {turnover_days:.0f} дн > 60 — замороженный капитал. '
+                f'Снижение цены ускорит продажи и компенсирует потерю маржи объёмом.'
+            ),
+            'priority': 'high',
+            'expected_impact': (
+                'Рост объёма продаж, ускорение оборачиваемости, '
+                'потенциальный рост общей прибыли за счёт оборота.'
+            ),
+        }
+
+    # margin_squeeze — неэластичный спрос, низкая маржа
+    if abs_e < 1.0 and margin_pct < 25:
+        return {
+            'policy': 'margin_squeeze',
+            'action': 'increase',
+            'reasoning': (
+                f'Неэластичный спрос (|e|={abs_e:.2f}) — повышение цены слабо снизит объём. '
+                f'Маржа {margin_pct:.1f}% < 25% — есть потенциал для роста. '
+                f'Повышение цены увеличит маржу без существенной потери продаж.'
+            ),
+            'priority': 'high',
+            'expected_impact': (
+                'Рост маржинальности при минимальном снижении объёма продаж.'
+            ),
+        }
+
+    # neutral — всё остальное
+    return {
+        'policy': 'neutral',
+        'action': 'hold',
+        'reasoning': (
+            f'Эластичность |e|={abs_e:.2f}, маржа {margin_pct:.1f}%, '
+            f'оборачиваемость {turnover_days:.0f} дн — нет однозначного сигнала. '
+            f'Рекомендуется сохранить текущую цену и мониторить динамику.'
+        ),
+        'priority': 'medium',
+        'expected_impact': (
+            'Стабильность текущих показателей; пересмотр при изменении условий.'
+        ),
+    }

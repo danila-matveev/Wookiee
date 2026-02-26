@@ -16,7 +16,8 @@ def create_main_menu_keyboard() -> InlineKeyboardMarkup:
     """Main menu keyboard."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="📊 Шаблонные отчёты", callback_data="menu_reports")],
+            [InlineKeyboardButton(text="📊 Финансовые отчёты", callback_data="menu_reports")],
+            [InlineKeyboardButton(text="📈 Маркетинг", callback_data="menu_marketing")],
             [InlineKeyboardButton(text="🤔 Кастомный запрос", callback_data="menu_custom_query")],
             [InlineKeyboardButton(text="💰 Ценовой анализ", callback_data="menu_price_analysis")],
             [InlineKeyboardButton(text="📝 Обратная связь", callback_data="menu_feedback")],
@@ -35,6 +36,31 @@ def create_reports_menu_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="🗓 За период", callback_data="report_period")],
             [InlineKeyboardButton(text="🔙 Назад", callback_data="menu_main")],
         ]
+    )
+
+
+def create_marketing_menu_keyboard() -> InlineKeyboardMarkup:
+    """Marketing reports sub-menu."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📅 За день", callback_data="marketing_daily")],
+            [InlineKeyboardButton(text="📆 За неделю", callback_data="marketing_weekly")],
+            [InlineKeyboardButton(text="📅 За месяц", callback_data="marketing_monthly")],
+            [InlineKeyboardButton(text="🗓 За период", callback_data="marketing_period")],
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="menu_main")],
+        ]
+    )
+
+
+@router.callback_query(F.data == "menu_marketing")
+async def callback_marketing_menu(callback: CallbackQuery):
+    """Show marketing reports sub-menu."""
+    await callback.message.edit_text(
+        "📈 <b>Маркетинговые отчёты</b>\n\n"
+        "Анализ воронки, эффективности рекламы, DRR, ROI по моделям.\n"
+        "Выберите период:",
+        parse_mode="HTML",
+        reply_markup=create_marketing_menu_keyboard(),
     )
 
 
