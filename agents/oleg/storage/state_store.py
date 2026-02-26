@@ -61,6 +61,20 @@ class StateStore:
                     playbook_update TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
+
+                CREATE TABLE IF NOT EXISTS prompt_suggestions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    target TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    suggestion TEXT NOT NULL,
+                    reasoning TEXT,
+                    feedback_ids TEXT,
+                    priority TEXT DEFAULT 'medium',
+                    status TEXT DEFAULT 'sent',
+                    content_hash TEXT,
+                    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    reviewed_at TIMESTAMP
+                );
             """)
         logger.info(f"StateStore initialized at {self.db_path}")
 

@@ -38,3 +38,5 @@ class ChainResult:
     total_cost: float = 0.0
     total_duration_ms: int = 0
     task_type: str = ""
+    review_issues_found: int = 0     # Multi-model review: number of issues found
+    review_notes: str = ""           # Multi-model review: summary of findings

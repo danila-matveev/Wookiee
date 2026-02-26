@@ -24,6 +24,7 @@ from agents.oleg.orchestrator.chain import (
 )
 from agents.oleg.orchestrator.prompts import (
     DECIDE_NEXT_STEP_PROMPT,
+    REVIEW_SYNTHESIS_PROMPT,
     SYNTHESIZE_PROMPT,
 )
 
@@ -42,6 +43,10 @@ class OlegOrchestrator:
         max_chain_steps: int = MAX_CHAIN_STEPS,
         anomaly_margin_threshold: float = 10.0,
         anomaly_drr_threshold: float = 30.0,
+        review_model: Optional[str] = None,
+        review_task_types: Optional[list] = None,
+        review_max_tokens: int = 16000,
+        review_mode: str = "dry_run",
     ):
         self.llm = llm_client
         self.model = model
@@ -50,6 +55,10 @@ class OlegOrchestrator:
         self.max_chain_steps = max_chain_steps
         self.anomaly_margin_threshold = anomaly_margin_threshold
         self.anomaly_drr_threshold = anomaly_drr_threshold
+        self.review_model = review_model
+        self.review_task_types = review_task_types or []
+        self.review_max_tokens = review_max_tokens
+        self.review_mode = review_mode
 
     async def run_chain(
         self, task: str, task_type: str, context: dict = None,
@@ -124,6 +133,30 @@ class OlegOrchestrator:
 
         # Synthesize final answer
         synthesis = await self._synthesize(task, chain_history)
+
+        # Multi-model review (optional, per task_type)
+        review_issues = 0
+        review_notes = ""
+        if self.review_model and task_type in self.review_task_types:
+            reviewed = await self._review_synthesis(
+                synthesis, chain_history, task, task_type,
+            )
+            review_cost = reviewed.get("review_cost", 0.0)
+            review_issues = reviewed.get("issues_found", 0)
+            review_notes = reviewed.get("review_notes", "")
+            total_cost += review_cost
+
+            if review_issues > 0:
+                logger.info(f"Review found {review_issues} issues: {review_notes}")
+
+            # Only replace synthesis in active mode
+            if self.review_mode == "active" and review_issues > 0:
+                synthesis["brief_summary"] = reviewed["brief_summary"]
+                synthesis["detailed_report"] = reviewed["detailed_report"]
+                logger.info("Review: applied corrections to synthesis")
+            elif self.review_mode == "dry_run" and review_issues > 0:
+                logger.info("Review (dry-run): issues found but NOT applied")
+
         total_duration = int((time.time() - start_time) * 1000)
 
         return ChainResult(
@@ -134,6 +167,8 @@ class OlegOrchestrator:
             total_cost=total_cost,
             total_duration_ms=total_duration,
             task_type=task_type,
+            review_issues_found=review_issues,
+            review_notes=review_notes,
         )
 
     async def _decide_next_step(
@@ -339,3 +374,110 @@ class OlegOrchestrator:
                 f"[{step.agent}]: {step.result[:2000]}"
             )
         return "\n\n".join(parts)
+
+    # ── Multi-model review ────────────────────────────────────────
+
+    async def _review_synthesis(
+        self,
+        synthesis: dict,
+        chain_history: list[AgentStep],
+        task: str,
+        task_type: str,
+    ) -> dict:
+        """Review and correct synthesis using a different model (e.g. Gemini).
+
+        Returns dict with brief_summary, detailed_report, review_cost,
+        issues_found, review_notes. On any error returns original synthesis.
+        """
+        brief = synthesis.get("brief_summary", "")
+        detailed = synthesis.get("detailed_report", "")
+        chain_data = self._format_chain_history_full(chain_history)
+
+        prompt = REVIEW_SYNTHESIS_PROMPT.format(
+            task=task,
+            chain_data=chain_data,
+            brief_summary=brief,
+            detailed_report=detailed,
+        )
+
+        try:
+            response = await self.llm.complete(
+                messages=[
+                    {"role": "system", "content": "Ты — ревьюер. Ответь строго в JSON."},
+                    {"role": "user", "content": prompt},
+                ],
+                model=self.review_model,
+                temperature=0.2,
+                max_tokens=self.review_max_tokens,
+                response_format={"type": "json_object"},
+            )
+
+            review_cost = self._calc_review_cost(response.get("usage", {}))
+            content = response.get("content") or ""
+
+            if not content.strip():
+                logger.warning("Review returned empty response, keeping original")
+                return {
+                    "brief_summary": brief,
+                    "detailed_report": detailed,
+                    "review_cost": review_cost,
+                    "issues_found": 0,
+                    "review_notes": "Empty review response",
+                }
+
+            review_data = json.loads(content)
+            return {
+                "brief_summary": review_data.get("brief_summary", brief),
+                "detailed_report": review_data.get("detailed_report", detailed),
+                "review_cost": review_cost,
+                "issues_found": review_data.get("issues_found", 0),
+                "review_notes": review_data.get("review_notes", ""),
+            }
+
+        except json.JSONDecodeError as e:
+            logger.warning(f"Review JSON parse failed: {e}, keeping original")
+            return {
+                "brief_summary": brief,
+                "detailed_report": detailed,
+                "review_cost": 0.0,
+                "issues_found": 0,
+                "review_notes": f"JSON parse failed: {e}",
+            }
+        except Exception as e:
+            logger.error(f"Review failed: {e}, keeping original")
+            return {
+                "brief_summary": brief,
+                "detailed_report": detailed,
+                "review_cost": 0.0,
+                "issues_found": 0,
+                "review_notes": f"Review error: {e}",
+            }
+
+    def _format_chain_history_full(self, history: list[AgentStep]) -> str:
+        """Format chain history WITHOUT truncation — for review validation."""
+        if not history:
+            return ""
+
+        parts = []
+        for i, step in enumerate(history, 1):
+            parts.append(
+                f"Шаг {i} [{step.agent}]:\n"
+                f"Инструкция: {step.instruction}\n"
+                f"Результат ({step.iterations} итераций, ${step.cost_usd:.4f}):\n"
+                f"{step.result}"
+            )
+        return "\n\n---\n\n".join(parts)
+
+    def _calc_review_cost(self, usage: dict) -> float:
+        """Calculate cost of the review LLM call."""
+        if not self.review_model or not usage:
+            return 0.0
+        default_rate = {"input": 0.001, "output": 0.001}
+        rates = self.pricing.get(self.review_model, default_rate)
+        input_tokens = usage.get("input_tokens", 0)
+        output_tokens = usage.get("output_tokens", 0)
+        return round(
+            (input_tokens / 1000) * rates["input"]
+            + (output_tokens / 1000) * rates["output"],
+            6,
+        )
