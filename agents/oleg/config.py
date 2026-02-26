@@ -121,6 +121,30 @@ ANOMALY_MARGIN_THRESHOLD: float = 10.0   # margin change > 10% triggers escalati
 ANOMALY_DRR_THRESHOLD: float = 30.0      # DRR change > 30% triggers escalation
 
 # ============================================================================
+# Multi-Model Review
+# ============================================================================
+REVIEW_ENABLED: bool = os.getenv("OLEG_REVIEW_ENABLED", "true").lower() in ("true", "1", "yes")
+REVIEW_MODE: str = os.getenv("OLEG_REVIEW_MODE", "dry_run")  # "dry_run" | "active"
+REVIEW_MODEL: str = os.getenv("OLEG_REVIEW_MODEL", FALLBACK_MODEL)
+REVIEW_TASK_TYPES: list = [
+    t.strip()
+    for t in os.getenv("OLEG_REVIEW_TASK_TYPES", "daily,weekly,monthly").split(",")
+    if t.strip()
+]
+REVIEW_MAX_TOKENS: int = int(os.getenv("OLEG_REVIEW_MAX_TOKENS", "16000"))
+
+# ============================================================================
+# Anomaly Monitor
+# ============================================================================
+ANOMALY_MONITOR_ENABLED: bool = os.getenv("ANOMALY_MONITOR_ENABLED", "true").lower() in ("true", "1", "yes")
+ANOMALY_MONITOR_INTERVAL_HOURS: int = int(os.getenv("ANOMALY_MONITOR_INTERVAL_HOURS", "4"))
+ANOMALY_REVENUE_THRESHOLD: float = float(os.getenv("ANOMALY_REVENUE_THRESHOLD", "20.0"))
+ANOMALY_MARGIN_PCT_THRESHOLD: float = float(os.getenv("ANOMALY_MARGIN_PCT_THRESHOLD", "10.0"))
+ANOMALY_DRR_THRESHOLD_MONITOR: float = float(os.getenv("ANOMALY_DRR_THRESHOLD_MONITOR", "30.0"))
+ANOMALY_ORDERS_THRESHOLD: float = float(os.getenv("ANOMALY_ORDERS_THRESHOLD", "25.0"))
+ANOMALY_WEEKEND_MULTIPLIER: float = float(os.getenv("ANOMALY_WEEKEND_MULTIPLIER", "1.5"))
+
+# ============================================================================
 # Watchdog
 # ============================================================================
 WATCHDOG_HEARTBEAT_INTERVAL_HOURS: int = 6
