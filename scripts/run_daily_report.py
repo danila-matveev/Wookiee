@@ -13,12 +13,18 @@ logging.basicConfig(
 async def run(target_date: date):
     from agents.oleg.app import OlegApp
     from agents.oleg.pipeline.report_types import ReportRequest, ReportType
+    from agents.oleg.services.time_utils import get_yesterday_msk
 
     app = OlegApp()
     await app.setup()
 
+    # Use CUSTOM type for historical dates to bypass gate checks
+    # (gates check today's ETL, not the target date's ETL)
+    yesterday = get_yesterday_msk()
+    report_type = ReportType.DAILY if target_date == yesterday else ReportType.CUSTOM
+
     request = ReportRequest(
-        report_type=ReportType.DAILY,
+        report_type=report_type,
         start_date=target_date,
         end_date=target_date,
         channel="wb",
