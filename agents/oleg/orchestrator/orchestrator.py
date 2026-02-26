@@ -144,13 +144,13 @@ class OlegOrchestrator:
     ) -> OrchestratorDecision:
         """Use LLM to decide the next step in the chain."""
 
-        # Shortcut for first step of scheduled reports
-        if step == 0 and task_type in ("daily", "weekly", "monthly"):
+        # Shortcut for first step of reports (scheduled or custom)
+        if step == 0 and task_type in ("daily", "weekly", "monthly", "custom"):
             return OrchestratorDecision(
                 done=False,
                 next_agent="reporter",
                 instruction=task,
-                reasoning="Scheduled report always starts with Reporter",
+                reasoning="Report always starts with Reporter",
             )
 
         # Shortcut for feedback
