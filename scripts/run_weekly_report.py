@@ -57,14 +57,11 @@ async def run(reference_date: date):
         )
         if notion.enabled:
             page_url = await notion.sync_report(
-                report_type="weekly",
                 start_date=str(monday),
                 end_date=str(sunday),
-                brief_summary=result.brief_summary or "",
-                detailed_report=result.detailed_report or "",
-                cost_usd=result.cost_usd,
+                report_md=result.detailed_report or result.brief_summary or "",
+                source="CLI (manual)",
                 chain_steps=result.chain_steps,
-                duration_ms=result.duration_ms,
             )
             print(f"\nNotion: {page_url}")
     except Exception as e:
