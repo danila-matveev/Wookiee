@@ -9,7 +9,7 @@
 ### 1. Установка
 
 ```bash
-cd wookiee_sku_database
+cd sku_database
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
@@ -68,7 +68,7 @@ GROUP BY mo.kod ORDER BY sku DESC LIMIT 10"
 ## Структура проекта
 
 ```
-wookiee_sku_database/
+sku_database/
 ├── db.py                   # CLI команда (главная!)
 ├── .env                    # Настройки подключения
 ├── requirements.txt        # Зависимости
@@ -82,19 +82,16 @@ wookiee_sku_database/
 │   ├── schema.sql          # SQL схема (DDL)
 │   └── triggers.sql        # Триггеры версионирования
 │
-├── scripts/
-│   ├── migrate_data.py     # Импорт из Excel
-│   ├── deploy_to_supabase.py # Развертывание схемы в Supabase
-│   └── migrations/         # Миграции БД
-│       ├── 001_add_tip_kollekcii.py
-│       ├── 002_sync_color_statuses.py
-│       ├── 003_fix_database_issues.py
-│       ├── 004_fix_data_integrity.py
-│       └── 005_fix_supabase_security.py
-│
-├── Bitrix/                 # Интеграция Bitrix24
-│
-└── clean_import.sql        # SQL backup
+└── scripts/
+    ├── migrate_data.py     # Импорт из Excel
+    ├── deploy_to_supabase.py # Развертывание схемы в Supabase
+    └── migrations/         # Миграции БД
+        ├── 001_add_tip_kollekcii.py
+        ├── 002_sync_color_statuses.py
+        ├── 003_fix_database_issues.py
+        ├── 004_fix_data_integrity.py
+        ├── 005_fix_supabase_security.py
+        └── 006_fix_remaining_security.py
 ```
 
 ---
@@ -173,7 +170,7 @@ python db.py backup --output backup.sql
 
 ## Безопасность Supabase
 
-### Текущая конфигурация (после миграции 005)
+### Текущая конфигурация (после миграций 005-006)
 
 | Параметр | Значение |
 |----------|----------|
@@ -214,7 +211,6 @@ CREATE POLICY authenticated_select_new_table ON public.new_table
 | Миграция | Описание | Дата |
 |----------|----------|------|
 | `005_fix_supabase_security.py` | RLS + revoke grants + policies | 11.02.2026 |
+| `006_fix_remaining_security.py` | SECURITY DEFINER views + functions + sequences | 25.02.2026 |
 
 Запуск: `python scripts/migrations/005_fix_supabase_security.py`
-
-Скрипт также включает функцию `verify()` для проверки состояния безопасности.
