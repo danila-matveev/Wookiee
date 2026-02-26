@@ -10,6 +10,9 @@ Chain patterns:
 - Daily report (no anomaly): Reporter → synthesize (1 step)
 - Daily report (anomaly): Reporter → Researcher → Reporter verify → synthesize (3 steps)
 - Weekly report: Reporter → Researcher → Reporter verify → synthesize (3 steps)
+- Marketing daily/weekly: Marketer → synthesize (1 step)
+- Marketing monthly: Marketer → Researcher → synthesize (2-3 steps)
+- Financial + DRR anomaly: Reporter → Marketer → synthesize (2 steps)
 - User query: Oleg routes dynamically
 - Feedback: Quality → Reporter verify → Quality decide → synthesize
 """
@@ -180,7 +183,16 @@ class OlegOrchestrator:
     ) -> OrchestratorDecision:
         """Use LLM to decide the next step in the chain."""
 
-        # Shortcut for first step of reports (scheduled or custom)
+        # Shortcut for first step of marketing reports
+        if step == 0 and task_type.startswith("marketing_"):
+            return OrchestratorDecision(
+                done=False,
+                next_agent="marketer",
+                instruction=task,
+                reasoning="Marketing report always starts with Marketer",
+            )
+
+        # Shortcut for first step of financial reports (scheduled or custom)
         if step == 0 and task_type in ("daily", "weekly", "monthly", "custom"):
             return OrchestratorDecision(
                 done=False,
@@ -310,8 +322,8 @@ class OlegOrchestrator:
     ) -> dict:
         """Synthesize final answer from chain results."""
 
-        # If only one step and it's reporter — use its output directly
-        if len(chain_history) == 1 and chain_history[0].agent == "reporter":
+        # If only one step and it's reporter or marketer — use its output directly
+        if len(chain_history) == 1 and chain_history[0].agent in ("reporter", "marketer"):
             return self._parse_report_sections(chain_history[0].result)
 
         chain_results_text = self._format_chain_history(chain_history)

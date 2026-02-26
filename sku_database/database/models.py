@@ -217,7 +217,7 @@ class ModelOsnova(Base):
     # Тип коллекции (добавлено миграцией 001)
     tip_kollekcii: Mapped[Optional[str]] = mapped_column(
         String(30),
-        comment='Тип коллекции (tricot, seamless_wendy, seamless_audrey)'
+        comment='Тип коллекции (Трикотажное белье, Бесшовное белье Jelly, Бесшовное белье Audrey)'
     )
 
     # Логистика и сертификация

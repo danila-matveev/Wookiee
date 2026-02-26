@@ -21,7 +21,7 @@ class OlegApp:
     - Telegram bot (aiogram Dispatcher)
     - APScheduler (cron jobs for reports)
     - Watchdog (health monitoring)
-    - Orchestrator + 3 sub-agents (in memory)
+    - Orchestrator + 4 sub-agents (in memory)
     """
 
     def __init__(self):
@@ -42,6 +42,13 @@ class OlegApp:
         from agents.oleg.storage.state_store import StateStore
         self.state_store = StateStore(config.SQLITE_DB_PATH)
         self.state_store.init_db()
+
+        # LearningStore (price analysis caching and learning)
+        from agents.oleg.services.price_analysis.learning_store import LearningStore
+        from agents.oleg.services.price_tools import set_learning_store
+        self.learning_store = LearningStore()
+        set_learning_store(self.learning_store)
+        logger.info("LearningStore initialized at %s", self.learning_store.db_path)
 
         # LLM client (shared by all agents)
         from shared.clients.openrouter_client import OpenRouterClient
@@ -86,6 +93,17 @@ class OlegApp:
             total_timeout_sec=config.TOTAL_TIMEOUT_SEC,
         )
 
+        from agents.oleg.agents.marketer.agent import MarketerAgent
+        marketer = MarketerAgent(
+            llm_client=llm_client,
+            model=config.ANALYTICS_MODEL,
+            pricing=config.PRICING,
+            playbook_path=config.MARKETING_PLAYBOOK_PATH,
+            max_iterations=config.MAX_ITERATIONS,
+            tool_timeout_sec=config.TOOL_TIMEOUT_SEC,
+            total_timeout_sec=config.TOTAL_TIMEOUT_SEC,
+        )
+
         # ── Orchestrator ────────────────────────────────────────────
 
         from agents.oleg.orchestrator.orchestrator import OlegOrchestrator
@@ -96,6 +114,7 @@ class OlegApp:
                 "reporter": reporter,
                 "researcher": researcher,
                 "quality": quality,
+                "marketer": marketer,
             },
             pricing=config.PRICING,
             review_model=config.REVIEW_MODEL if config.REVIEW_ENABLED else None,
@@ -146,6 +165,11 @@ class OlegApp:
                 weekend_multiplier=config.ANOMALY_WEEKEND_MULTIPLIER,
             )
 
+        # ── Auth (auto-registers users for notifications) ─────────
+
+        from agents.oleg.bot.handlers.auth import AuthService
+        self.auth_service = AuthService()
+
         # ── Telegram Bot ───────────────────────────────────────────
 
         from agents.oleg.bot.telegram_bot import OlegTelegramBot
@@ -154,13 +178,15 @@ class OlegApp:
             pipeline=self.pipeline,
             watchdog=self.watchdog,
             state_store=self.state_store,
+            auth_service=self.auth_service,
         )
         await self.bot.setup()
 
-        # Wire bot reference to alerter for watchdog alerts
+        # Wire bot reference and auth_service to alerter for watchdog alerts
         if self.bot.bot:
             alerter.bot = self.bot.bot
             alerter.admin_chat_id = config.ADMIN_CHAT_ID
+            alerter.auth_service = self.auth_service
 
         # ── Scheduler ──────────────────────────────────────────────
 
@@ -227,6 +253,26 @@ class OlegApp:
             replace_existing=True,
         )
 
+        # Marketing weekly report (Monday)
+        mkt_weekly_h, mkt_weekly_m = (int(x) for x in config.MARKETING_WEEKLY_REPORT_TIME.split(":"))
+        self.scheduler.add_job(
+            self._run_marketing_weekly_report,
+            CronTrigger(day_of_week="mon", hour=mkt_weekly_h, minute=mkt_weekly_m, timezone=tz),
+            id="marketing_weekly_report",
+            name=f"Marketing Weekly Report (Mon {mkt_weekly_h:02d}:{mkt_weekly_m:02d} MSK)",
+            replace_existing=True,
+        )
+
+        # Marketing monthly report (first Monday of month)
+        mkt_monthly_h, mkt_monthly_m = (int(x) for x in config.MARKETING_MONTHLY_REPORT_TIME.split(":"))
+        self.scheduler.add_job(
+            self._run_marketing_monthly_report,
+            CronTrigger(day="1-7", day_of_week="mon", hour=mkt_monthly_h, minute=mkt_monthly_m, timezone=tz),
+            id="marketing_monthly_report",
+            name=f"Marketing Monthly Report (1st Mon {mkt_monthly_h:02d}:{mkt_monthly_m:02d} MSK)",
+            replace_existing=True,
+        )
+
         # Anomaly monitor (every N hours, offset at :30 to avoid collision)
         if self.anomaly_monitor:
             self.scheduler.add_job(
@@ -256,12 +302,19 @@ class OlegApp:
         RETRY_INTERVAL_MIN = 30
         yesterday = get_yesterday_msk()
 
-        # Step 1: Pre-check gates and notify
-        gate_result = self.pipeline.gate_checker.check_all("wb")
-        status_msg = gate_result.format_status_message(str(yesterday))
+        # Step 1: Pre-check gates for both marketplaces
+        wb_result = self.pipeline.gate_checker.check_all("wb")
+        ozon_result = self.pipeline.gate_checker.check_all("ozon")
+        both_ready = wb_result.can_generate and ozon_result.can_generate
 
-        if not gate_result.can_generate:
-            attempt_info = f" (попытка {_retry_attempt + 1}/{MAX_RETRIES + 1})"
+        status_parts = [
+            wb_result.format_status_message(str(yesterday), marketplace="wb"),
+            ozon_result.format_status_message(str(yesterday), marketplace="ozon"),
+        ]
+        status_msg = "\n\n".join(status_parts)
+
+        if not both_ready:
+            attempt_info = f"\n\n(попытка {_retry_attempt + 1}/{MAX_RETRIES + 1})"
             status_msg += attempt_info
 
             if _retry_attempt < MAX_RETRIES:
@@ -360,18 +413,91 @@ class OlegApp:
             logger.error(f"Monthly report failed: {e}", exc_info=True)
             await self.watchdog.on_report_failure("monthly", marketplace="wb")
 
+    async def _run_marketing_weekly_report(self) -> None:
+        """Scheduled marketing weekly report callback."""
+        from agents.oleg.pipeline.report_types import ReportType, ReportRequest
+        from agents.oleg.services.time_utils import get_last_week_bounds_msk
+
+        monday, sunday = get_last_week_bounds_msk()
+
+        await self._send_admin_message(
+            f"Генерирую еженедельный маркетинговый отчёт за {monday} — {sunday}..."
+        )
+
+        request = ReportRequest(
+            report_type=ReportType.MARKETING_WEEKLY,
+            start_date=str(monday),
+            end_date=str(sunday),
+        )
+
+        try:
+            result = await self.pipeline.generate_report(request)
+            if result:
+                await self._deliver_report(result, request)
+                await self.watchdog.on_report_success("marketing_weekly", result.cost_usd)
+            else:
+                await self.watchdog.on_report_failure("marketing_weekly", marketplace="wb")
+        except Exception as e:
+            logger.error(f"Marketing weekly report failed: {e}", exc_info=True)
+            await self.watchdog.on_report_failure("marketing_weekly", marketplace="wb")
+
+    async def _run_marketing_monthly_report(self) -> None:
+        """Scheduled marketing monthly report callback (first Monday of month)."""
+        from agents.oleg.pipeline.report_types import ReportType, ReportRequest
+        from agents.oleg.services.time_utils import get_last_month_bounds_msk
+
+        first, last = get_last_month_bounds_msk()
+
+        await self._send_admin_message(
+            f"Генерирую месячный маркетинговый отчёт за {first} — {last}..."
+        )
+
+        request = ReportRequest(
+            report_type=ReportType.MARKETING_MONTHLY,
+            start_date=str(first),
+            end_date=str(last),
+        )
+
+        try:
+            result = await self.pipeline.generate_report(request)
+            if result:
+                await self._deliver_report(result, request)
+                await self.watchdog.on_report_success("marketing_monthly", result.cost_usd)
+            else:
+                await self.watchdog.on_report_failure("marketing_monthly", marketplace="wb")
+        except Exception as e:
+            logger.error(f"Marketing monthly report failed: {e}", exc_info=True)
+            await self.watchdog.on_report_failure("marketing_monthly", marketplace="wb")
+
+    def _get_notification_recipients(self) -> list:
+        """Get all chat IDs that should receive notifications.
+
+        Primary: all users who have interacted with the bot (auto-registered).
+        Fallback: ADMIN_CHAT_ID from config (for first-run before anyone has chatted).
+        """
+        recipients = set()
+        if self.auth_service:
+            recipients.update(self.auth_service._authenticated)
+        # Fallback: always include ADMIN_CHAT_ID if set
+        if config.ADMIN_CHAT_ID:
+            recipients.add(config.ADMIN_CHAT_ID)
+        return list(recipients)
+
     async def _send_admin_message(self, text: str) -> None:
-        """Send a plain-text message to admin chat."""
-        if self.bot and config.ADMIN_CHAT_ID:
+        """Send a plain-text message to all notification recipients."""
+        if not self.bot:
+            return
+        for chat_id in self._get_notification_recipients():
             try:
-                await self.bot.send_message(config.ADMIN_CHAT_ID, text)
+                await self.bot.send_message(chat_id, text)
             except Exception as e:
-                logger.warning(f"Failed to send admin message: {e}")
+                logger.warning(f"Failed to send message to {chat_id}: {e}")
 
     async def _check_data_ready(self) -> None:
         """Hourly check: notify admin as soon as yesterday's data is loaded by ETL.
 
-        Sends one notification per date, tracked via state_store key 'data_ready_notified'.
+        Checks both WB and Ozon. Sends one notification per date when BOTH are ready,
+        tracked via state_store key 'data_ready_notified'.
         """
         if not self.pipeline:
             return
@@ -387,15 +513,22 @@ class OlegApp:
             if last_notified == str(yesterday):
                 return  # Already notified today
 
-        # Run gate check to see if data is ready
+        # Run gate checks for both marketplaces
         try:
-            gate_result = self.pipeline.gate_checker.check_all("wb")
+            wb_result = self.pipeline.gate_checker.check_all("wb")
+            ozon_result = self.pipeline.gate_checker.check_all("ozon")
         except Exception as e:
             logger.warning(f"Data ready check failed: {e}")
             return
 
-        if gate_result.can_generate:
-            status_msg = gate_result.format_status_message(str(yesterday))
+        both_ready = wb_result.can_generate and ozon_result.can_generate
+
+        if both_ready:
+            status_parts = [
+                wb_result.format_status_message(str(yesterday), marketplace="wb"),
+                ozon_result.format_status_message(str(yesterday), marketplace="ozon"),
+            ]
+            status_msg = "\n\n".join(status_parts)
             await self._send_admin_message(status_msg)
 
             # Mark as notified
@@ -447,13 +580,14 @@ class OlegApp:
         ))
         text = "\n".join(parts)
 
-        # 3. Send to admin chat
-        if self.bot and config.ADMIN_CHAT_ID:
-            try:
-                await self.bot.send_message(config.ADMIN_CHAT_ID, text)
-            except Exception as e:
-                logger.error(f"TG delivery failed: {e}", exc_info=True)
-                # Don't let TG failures propagate — report was generated and saved to Notion
+        # 3. Send to all notification recipients
+        if self.bot:
+            for chat_id in self._get_notification_recipients():
+                try:
+                    await self.bot.send_message(chat_id, text)
+                except Exception as e:
+                    logger.error(f"TG delivery to {chat_id} failed: {e}", exc_info=True)
+                    # Don't let TG failures propagate — report was generated and saved to Notion
 
     async def run(self) -> None:
         """Run the application."""
