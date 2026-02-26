@@ -80,6 +80,44 @@ SUPABASE_ENV_PATH: str = os.getenv(
 SQLITE_DB_PATH: str = str(Path(__file__).parent / "data" / "oleg.db")
 
 # ============================================================================
+# Marketplace API Keys (два кабинета: IP и OOO)
+# ============================================================================
+WB_API_KEY_IP: str = os.getenv("WB_API_KEY_IP", "")
+WB_API_KEY_OOO: str = os.getenv("WB_API_KEY_OOO", "")
+
+OZON_CLIENT_ID_IP: str = os.getenv("OZON_CLIENT_ID_IP", "")
+OZON_API_KEY_IP: str = os.getenv("OZON_API_KEY_IP", "")
+OZON_CLIENT_ID_OOO: str = os.getenv("OZON_CLIENT_ID_OOO", "")
+OZON_API_KEY_OOO: str = os.getenv("OZON_API_KEY_OOO", "")
+
+
+def get_wb_clients() -> dict:
+    """Return dict {cabinet_name: WBClient} for all configured cabinets."""
+    from shared.clients.wb_client import WBClient
+    clients = {}
+    if WB_API_KEY_IP:
+        clients['IP'] = WBClient(api_key=WB_API_KEY_IP, cabinet_name='IP')
+    if WB_API_KEY_OOO:
+        clients['OOO'] = WBClient(api_key=WB_API_KEY_OOO, cabinet_name='OOO')
+    return clients
+
+
+def get_ozon_clients() -> dict:
+    """Return dict {cabinet_name: OzonClient} for all configured cabinets."""
+    from shared.clients.ozon_client import OzonClient
+    clients = {}
+    if OZON_CLIENT_ID_IP and OZON_API_KEY_IP:
+        clients['IP'] = OzonClient(
+            client_id=OZON_CLIENT_ID_IP, api_key=OZON_API_KEY_IP, cabinet_name='IP',
+        )
+    if OZON_CLIENT_ID_OOO and OZON_API_KEY_OOO:
+        clients['OOO'] = OzonClient(
+            client_id=OZON_CLIENT_ID_OOO, api_key=OZON_API_KEY_OOO, cabinet_name='OOO',
+        )
+    return clients
+
+
+# ============================================================================
 # Notion
 # ============================================================================
 NOTION_TOKEN: str = os.getenv("NOTION_TOKEN", "")
@@ -89,6 +127,7 @@ NOTION_DATABASE_ID: str = os.getenv("NOTION_DATABASE_ID", "")
 # Paths
 # ============================================================================
 PLAYBOOK_PATH: str = str(Path(__file__).parent / "playbook.md")
+MARKETING_PLAYBOOK_PATH: str = str(Path(__file__).parent / "marketing_playbook.md")
 
 # ============================================================================
 # Scheduler (MSK)
@@ -97,6 +136,10 @@ TIMEZONE: str = "Europe/Moscow"
 DAILY_REPORT_TIME: str = os.getenv("DAILY_REPORT_TIME", "09:00")
 WEEKLY_REPORT_TIME: str = os.getenv("WEEKLY_REPORT_TIME", "10:15")
 MONTHLY_REPORT_TIME: str = os.getenv("MONTHLY_REPORT_TIME", "10:30")
+WEEKLY_PRICE_REVIEW_TIME: str = os.getenv("WEEKLY_PRICE_REVIEW_TIME", "10:45")
+MARKETING_WEEKLY_REPORT_TIME: str = os.getenv("MARKETING_WEEKLY_REPORT_TIME", "11:00")
+MARKETING_MONTHLY_REPORT_TIME: str = os.getenv("MARKETING_MONTHLY_REPORT_TIME", "11:30")
+PROMOTION_SCAN_ENABLED: bool = os.getenv("PROMOTION_SCAN_ENABLED", "false").lower() in ("true", "1", "yes")
 
 # ============================================================================
 # Executor

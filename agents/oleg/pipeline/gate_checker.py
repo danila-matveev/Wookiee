@@ -8,13 +8,25 @@ v1 had 6 hard gates → all-or-nothing → silent death.
 v2 has 3 hard + 3 soft → graceful degradation.
 """
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, date, timedelta
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from agents.oleg.services.time_utils import get_today_msk, get_yesterday_msk
 
 logger = logging.getLogger(__name__)
+
+
+_MONTH_NAMES_RU = {
+    1: "января", 2: "февраля", 3: "марта", 4: "апреля",
+    5: "мая", 6: "июня", 7: "июля", 8: "августа",
+    9: "сентября", 10: "октября", 11: "ноября", 12: "декабря",
+}
+
+
+def _format_date_ru(d: date) -> str:
+    """'2026-02-25' → '25 февраля'."""
+    return f"{d.day} {_MONTH_NAMES_RU[d.month]}"
 
 
 @dataclass
@@ -26,6 +38,7 @@ class GateResult:
     value: Optional[float] = None
     threshold: Optional[float] = None
     detail: str = ""
+    extra: Dict = field(default_factory=dict)
 
     @property
     def severity(self) -> str:
@@ -58,22 +71,75 @@ class GateCheckResult:
     def soft_total(self) -> int:
         return sum(1 for g in self.gates if not g.is_hard)
 
-    def format_status_message(self, target_date: str = "") -> str:
-        """Format gate check results as a human-readable Telegram message."""
-        lines = []
+    def format_status_message(self, target_date: str = "", marketplace: str = "") -> str:
+        """Format gate check results as a compact, human-readable Telegram message."""
+        # Parse target_date for nice formatting
+        try:
+            d = date.fromisoformat(target_date) if target_date else None
+            date_label = _format_date_ru(d) if d else target_date
+        except ValueError:
+            date_label = target_date
+
+        mp_label = f" ({marketplace.upper()})" if marketplace else ""
+
+        # Gate lookup by name
+        gate_map = {g.name: g for g in self.gates}
+
         if self.can_generate:
-            lines.append(f"✅ Данные за {target_date} готовы.")
+            lines = [f"✅ Данные за {date_label} готовы{mp_label}"]
         else:
-            lines.append(f"❌ Данные за {target_date} не готовы.")
+            lines = [f"❌ Данные за {date_label} не готовы{mp_label}"]
 
-        for g in self.gates:
-            icon = "✅" if g.passed else ("❌" if g.is_hard else "⚠️")
-            lines.append(f"  {icon} {g.name}: {g.detail}")
+        lines.append("")  # blank line
 
-        lines.append(
-            f"\nHard: {self.hard_passed}/{self.hard_total}, "
-            f"Soft: {self.soft_passed}/{self.soft_total}"
-        )
+        # --- ETL update time ---
+        etl = gate_map.get("ETL ran today")
+        if etl:
+            update_time = etl.extra.get("update_time")
+            if etl.passed and update_time:
+                lines.append(f"Обновлено в {update_time} МСК")
+            elif not etl.passed:
+                last = etl.extra.get("last_update_label", "неизвестно")
+                lines.append(f"⏳ Данные не обновлены (последнее: {last})")
+
+        # --- Source orders ---
+        src = gate_map.get("Source data loaded today")
+        if src and not src.passed:
+            lines.append("⚠️ Нет заказов за вчера")
+
+        # --- Logistics ---
+        logi = gate_map.get("Logistics > 0")
+        if logi and not logi.passed:
+            lines.append("⚠️ Нет данных по логистике")
+
+        # --- Orders volume ---
+        orders = gate_map.get("Orders volume vs avg")
+        if orders and orders.extra:
+            count = orders.extra.get("count", "?")
+            ratio = orders.extra.get("ratio")
+            if orders.passed:
+                lines.append(f"Заказов: {count} (норма)")
+            else:
+                lines.append(f"⚠️ Заказов: {count} ({ratio:.0f}% от нормы)")
+
+        # --- Revenue ---
+        rev = gate_map.get("Revenue vs 7-day avg")
+        if rev and rev.extra:
+            ratio = rev.extra.get("ratio")
+            if rev.passed:
+                lines.append(f"Выручка: {ratio:.0f}% от нормы")
+            else:
+                lines.append(f"⚠️ Выручка: {ratio:.0f}% от нормы")
+
+        # --- Margin ---
+        margin = gate_map.get("Margin fill")
+        if margin and margin.extra:
+            pct = margin.extra.get("pct")
+            if margin.passed:
+                lines.append(f"Маржа: у {pct:.0f}% артикулов")
+            else:
+                lines.append(f"⚠️ Маржа: только у {pct:.0f}% артикулов")
+
         return "\n".join(lines)
 
 
@@ -156,27 +222,42 @@ class GateChecker:
         return result
 
     def _check_etl_ran_today(self, marketplace: str) -> None:
-        """Hard gate 1: ETL ran today (abc_date updated today)."""
+        """Hard gate 1: ETL ran today (yesterday's abc_date updated today)."""
         try:
             from shared.data_layer import _get_wb_connection, _get_ozon_connection, _db_cursor
 
             conn_factory = _get_wb_connection if marketplace == "wb" else _get_ozon_connection
             col = self._col(marketplace, "dateupdate")
+            yesterday = get_yesterday_msk()
             with _db_cursor(conn_factory) as (conn, cur):
-                cur.execute(f"SELECT MAX({col}) FROM abc_date")
+                cur.execute(
+                    f"SELECT MAX({col}) FROM abc_date WHERE date = %s",
+                    (yesterday,),
+                )
                 row = cur.fetchone()
                 last_update = row[0] if row else None
 
             today = get_today_msk()
-            # Normalize: datetime → date (datetime is subclass of date)
-            update_date = last_update.date() if isinstance(last_update, datetime) else last_update
+            # Normalize: datetime → date for safe comparison
+            try:
+                update_date = last_update.date()  # works for datetime objects
+            except AttributeError:
+                update_date = last_update          # already a date object
             passed = update_date is not None and update_date == today
+
+            # Extra for human-friendly formatting
+            extra = {}
+            if last_update and isinstance(last_update, datetime):
+                extra["update_time"] = last_update.strftime("%H:%M")
+            if update_date and update_date != today:
+                extra["last_update_label"] = _format_date_ru(update_date)
 
             self._gates.append(GateResult(
                 name="ETL ran today",
                 passed=passed,
                 is_hard=True,
                 detail=f"Last ETL update: {last_update}, today: {today}",
+                extra=extra,
             ))
         except Exception as e:
             self._gates.append(GateResult(
@@ -214,6 +295,7 @@ class GateChecker:
                 value=count,
                 detail=f"Orders for {yesterday} loaded today: {count} rows"
                     if passed else f"No orders for {yesterday} loaded today",
+                extra={"order_count": count},
             ))
         except Exception as e:
             self._gates.append(GateResult(
@@ -248,6 +330,7 @@ class GateChecker:
                 is_hard=True,
                 value=total_logistics,
                 detail=f"Logistics sum for {yesterday}: {total_logistics}",
+                extra={"logistics_sum": total_logistics},
             ))
         except Exception as e:
             self._gates.append(GateResult(
@@ -295,6 +378,7 @@ class GateChecker:
                 threshold=70,
                 detail=f"Orders {yesterday_count} = {ratio:.0f}% of 7d avg {avg_count:.0f}"
                     if not passed else f"Orders volume OK: {ratio:.0f}% of 7d avg",
+                extra={"count": yesterday_count, "ratio": ratio},
             ))
         except Exception as e:
             self._gates.append(GateResult(
@@ -343,6 +427,7 @@ class GateChecker:
                 threshold=70,
                 detail=f"Yesterday revenue {yesterday_rev:,.0f} = {ratio:.0f}% of 7d avg {avg_rev:,.0f}"
                     if not passed else f"Revenue OK: {ratio:.0f}% of 7d avg",
+                extra={"ratio": ratio},
             ))
         except Exception as e:
             self._gates.append(GateResult(
@@ -382,6 +467,7 @@ class GateChecker:
                 value=round(fill_pct, 1),
                 threshold=50,
                 detail=f"Margin: {filled}/{total} articles ({fill_pct:.0f}%, threshold 50%)",
+                extra={"filled": filled, "total": total, "pct": fill_pct},
             ))
         except Exception as e:
             self._gates.append(GateResult(
