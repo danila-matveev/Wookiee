@@ -33,6 +33,7 @@ class OlegApp:
         self.state_store = None
         self._running = False
         self._sent_msg_hashes: dict = {}  # message dedup: hash -> timestamp
+        self._daily_report_lock = asyncio.Lock()
 
     async def setup(self) -> None:
         """Initialize all components."""
@@ -325,13 +326,38 @@ class OlegApp:
         )
 
     async def _run_daily_report(self, _retry_attempt: int = 0) -> None:
-        """Scheduled daily report callback with gate notification and retry."""
+        """Scheduled daily report callback with gate notification and retry.
+
+        Protected by asyncio.Lock against concurrent execution and
+        state_store check against duplicate runs for the same date.
+        """
+        # Guard: skip if another call is already running
+        if self._daily_report_lock.locked():
+            logger.warning("_run_daily_report already running, skipping duplicate trigger")
+            return
+
+        async with self._daily_report_lock:
+            await self._run_daily_report_impl(_retry_attempt)
+
+    async def _run_daily_report_impl(self, _retry_attempt: int = 0) -> None:
+        """Inner implementation of daily report (runs under lock)."""
         from agents.oleg.pipeline.report_types import ReportType, ReportRequest
         from agents.oleg.services.time_utils import get_yesterday_msk
 
         MAX_RETRIES = 3
         RETRY_INTERVAL_MIN = 30
         yesterday = get_yesterday_msk()
+
+        source = "cron" if _retry_attempt == 0 else f"retry_{_retry_attempt}"
+        logger.info(f"_run_daily_report triggered: source={source}, date={yesterday}")
+
+        # Clean up stale retry jobs from previous runs (on fresh cron trigger)
+        if _retry_attempt == 0 and self.scheduler:
+            for i in range(1, MAX_RETRIES + 1):
+                job_id = f"daily_report_retry_{i}"
+                if self.scheduler.get_job(job_id):
+                    self.scheduler.remove_job(job_id)
+                    logger.info(f"Cancelled stale retry job: {job_id}")
 
         # Step 1: Pre-check gates for both marketplaces
         wb_result = self.pipeline.gate_checker.check_all("wb")
@@ -372,7 +398,18 @@ class OlegApp:
                 await self.watchdog.on_report_failure("daily", marketplace="wb")
                 return
 
-        # Gates passed — notify about report generation (data readiness already notified by _check_data_ready)
+        # Idempotency: don't start report if already started for this date
+        state_key = "daily_report_started"
+        if self.state_store:
+            last_started = self.state_store.get_state(state_key)
+            if last_started == str(yesterday):
+                logger.warning(f"Daily report already started for {yesterday}, skipping duplicate")
+                return
+
+        # Gates passed — mark as started and notify
+        if self.state_store:
+            self.state_store.set_state(state_key, str(yesterday))
+
         await self._send_admin_message(f"Запускаю расчёт за {yesterday}...")
 
         request = ReportRequest(
