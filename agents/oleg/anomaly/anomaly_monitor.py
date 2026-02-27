@@ -13,7 +13,7 @@ import asyncio
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -59,6 +59,7 @@ class AnomalyMonitor:
         classify_model: str = "z-ai/glm-4.7-flash",
         thresholds: Optional[Dict] = None,
         weekend_multiplier: float = 1.5,
+        gate_checker=None,
     ):
         self.state_store = state_store
         self.alerter = alerter
@@ -66,6 +67,7 @@ class AnomalyMonitor:
         self.classify_model = classify_model
         self.thresholds = thresholds or self.DEFAULT_THRESHOLDS
         self.weekend_multiplier = weekend_multiplier
+        self.gate_checker = gate_checker
 
     async def check_and_alert(self) -> None:
         """Main entry point: check metrics for WB and OZON, detect anomalies, alert."""
@@ -74,6 +76,14 @@ class AnomalyMonitor:
 
         for channel in ("wb", "ozon"):
             try:
+                # Skip channel if data not loaded yet (prevents false alerts on 0-revenue)
+                if self.gate_checker:
+                    gate_result = self.gate_checker.check_all(channel)
+                    if not gate_result.can_generate:
+                        failed = [g.name for g in gate_result.gates if g.is_hard and not g.passed]
+                        logger.info(f"Anomaly check: skipping {channel} — hard gates failed: {failed}")
+                        continue
+
                 metrics = await self._fetch_metrics(channel)
                 if not metrics:
                     logger.info(f"Anomaly check: no data for {channel}")
@@ -90,12 +100,13 @@ class AnomalyMonitor:
             logger.info("Anomaly check: no new anomalies detected")
             return
 
-        # Format and send alert
+        # Format alert
         message = await self._format_alert_message(new_anomalies)
-        await self.alerter.send_alert(message)
 
-        # Save state for dedup
+        # Save state BEFORE send — prevents re-sending on crash/restart
         self._save_alert_state(new_anomalies)
+
+        await self.alerter.send_alert(message)
         logger.info(f"Anomaly alert sent: {len(new_anomalies)} anomalies")
 
     def _get_effective_thresholds(self) -> dict:
@@ -231,7 +242,9 @@ class AnomalyMonitor:
 
         if prev.get("direction") == alert.direction:
             prev_time = datetime.fromisoformat(prev.get("timestamp", "2000-01-01"))
-            if (datetime.utcnow() - prev_time).total_seconds() < DEDUP_WINDOW_SEC:
+            if prev_time.tzinfo is None:
+                prev_time = prev_time.replace(tzinfo=timezone.utc)
+            if (datetime.now(timezone.utc) - prev_time).total_seconds() < DEDUP_WINDOW_SEC:
                 return True
         return False
 
@@ -244,7 +257,7 @@ class AnomalyMonitor:
         except (json.JSONDecodeError, TypeError):
             state = {}
 
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         for a in alerts:
             key = f"{a.channel}:{a.metric}"
             state[key] = {"direction": a.direction, "timestamp": now}

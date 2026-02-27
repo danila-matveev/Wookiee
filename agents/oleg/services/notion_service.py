@@ -14,6 +14,47 @@ logger = logging.getLogger(__name__)
 API_BASE = "https://api.notion.com/v1"
 NOTION_VERSION = "2022-06-28"
 
+_MONTHS_RU = {
+    1: "января", 2: "февраля", 3: "марта", 4: "апреля",
+    5: "мая", 6: "июня", 7: "июля", 8: "августа",
+    9: "сентября", 10: "октября", 11: "ноября", 12: "декабря",
+}
+
+# Maps every possible report_type input → (Notion "Тип анализа" label, title prefix)
+_REPORT_TYPE_MAP: dict[str, tuple[str, str]] = {
+    "daily":              ("Ежедневный фин анализ",     "Ежедневный фин анализ"),
+    "weekly":             ("Еженедельный фин анализ",   "Еженедельный фин анализ"),
+    "monthly":            ("Ежемесячный фин анализ",    "Ежемесячный фин анализ"),
+    "custom":             ("Фин анализ",                "Фин анализ"),
+    "marketing_daily":    ("Маркетинговый анализ",      "Ежедневный маркетинговый анализ"),
+    "marketing_weekly":   ("Маркетинговый анализ",      "Еженедельный маркетинговый анализ"),
+    "marketing_monthly":  ("Маркетинговый анализ",      "Ежемесячный маркетинговый анализ"),
+    "marketing_custom":   ("Маркетинговый анализ",      "Маркетинговый анализ"),
+    "Ценовой анализ":        ("Ценовой анализ",        "Ценовой анализ"),
+    "Регрессионный анализ":  ("Регрессионный анализ",  "Регрессионный анализ"),
+    "Анализ акций":          ("Анализ акций",          "Анализ акций"),
+}
+
+
+def _format_date_range_ru(start_date: str, end_date: str) -> str:
+    """Format date range in Russian: '16-22 февраля 2026' or '28 января — 3 февраля 2026'."""
+    try:
+        sy, sm, sd = start_date.split("-")
+        ey, em, ed = end_date.split("-")
+        s_day, s_month, s_year = int(sd), int(sm), int(sy)
+        e_day, e_month, e_year = int(ed), int(em), int(ey)
+
+        if start_date == end_date:
+            return f"{s_day} {_MONTHS_RU[s_month]} {s_year}"
+        elif s_year == e_year and s_month == e_month:
+            return f"{s_day}-{e_day} {_MONTHS_RU[s_month]} {s_year}"
+        elif s_year == e_year:
+            return f"{s_day} {_MONTHS_RU[s_month]} — {e_day} {_MONTHS_RU[e_month]} {s_year}"
+        else:
+            return f"{s_day} {_MONTHS_RU[s_month]} {s_year} — {e_day} {_MONTHS_RU[e_month]} {e_year}"
+    except (ValueError, KeyError):
+        return f"{start_date} — {end_date}"
+
 
 class NotionService:
     """Sync reports to Notion database with chain metadata."""
@@ -60,12 +101,19 @@ class NotionService:
             return None
 
         try:
-            title = f"Аналитика {start_date.replace('-', '.')} — {end_date.replace('-', '.')}"
+            _map = _REPORT_TYPE_MAP.get(report_type)
+            if _map:
+                notion_label, title_prefix = _map
+            else:
+                notion_label, title_prefix = report_type, report_type
+
+            title = f"{title_prefix} за {_format_date_range_ru(start_date, end_date)}"
+            report_type = notion_label
 
             report_md = _remove_empty_sections(report_md)
             blocks = md_to_notion_blocks(report_md)
 
-            existing = await self._find_existing_page(start_date, end_date)
+            existing = await self._find_existing_page(start_date, end_date, report_type)
 
             if existing:
                 page_id = existing["id"]
@@ -138,15 +186,16 @@ class NotionService:
         except Exception as e:
             logger.warning(f"Notion comment failed: {e}")
 
-    async def _find_existing_page(self, start_date: str, end_date: str) -> Optional[dict]:
-        """Find page by period dates."""
+    async def _find_existing_page(self, start_date: str, end_date: str, report_type: str = None) -> Optional[dict]:
+        """Find page by period dates and optionally by report type."""
+        conditions = [
+            {"property": "Период начала", "date": {"equals": start_date}},
+            {"property": "Период конца", "date": {"equals": end_date}},
+        ]
+        if report_type:
+            conditions.append({"property": "Тип анализа", "select": {"equals": report_type}})
         payload = {
-            "filter": {
-                "and": [
-                    {"property": "Период начала", "date": {"equals": start_date}},
-                    {"property": "Период конца", "date": {"equals": end_date}},
-                ]
-            }
+            "filter": {"and": conditions}
         }
         result = await self._request("POST", f"databases/{self.database_id}/query", payload)
         pages = result.get("results", [])
