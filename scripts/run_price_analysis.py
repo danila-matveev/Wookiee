@@ -366,19 +366,39 @@ def _format_summary(report: dict, model_statuses: dict, channel_name: str) -> st
     total = report.get('models_total', 0)
     with_elast = report.get('models_with_elasticity', 0)
     policies = report.get('policies', {})
-    elasticities = report.get('elasticities', {})
+    margin_factors = report.get('margin_factors', {})
+    deep_drivers = report.get('deep_margin_drivers', {})
+    roi_dashboard = report.get('roi_dashboard', [])
 
     action_counts = {'hold': 0, 'increase': 0, 'decrease': 0}
     for p in policies.values():
         action = p.get('action', 'hold')
         action_counts[action] = action_counts.get(action, 0) + 1
 
-    all_models = list(elasticities.keys())
-    phasing_out = [m for m in all_models if model_statuses.get(m.lower()) == 'Выводим']
+    # Модели на выводе — из всех известных моделей, не только из elasticities
+    all_model_names = set()
+    for item in roi_dashboard:
+        m = item.get('model', '')
+        if m:
+            all_model_names.add(m)
+    all_model_names.update(margin_factors.keys())
+    all_model_names.update(deep_drivers.keys())
+
+    phasing_out = sorted(m for m in all_model_names if model_statuses.get(m.lower()) == 'Выводим')
+
+    # ROI-категории
+    roi_categories = {}
+    for item in roi_dashboard:
+        cat = item.get('category', '')
+        if cat:
+            roi_categories[cat] = roi_categories.get(cat, 0) + 1
 
     md = "## Краткие итоги\n\n"
     md += f"Проанализировано **{total} моделей** на {channel_name} "
     md += f"за период {report.get('period', '?')}.\n\n"
+
+    with_factors = len(set(margin_factors.keys()) | set(deep_drivers.keys()))
+    md += f"- Факторный анализ маржи: {with_factors} моделей\n"
     md += f"- Рассчитана эластичность: {with_elast} моделей"
     if total > with_elast:
         md += f" ({total - with_elast} — недостаточно данных)"
@@ -386,6 +406,11 @@ def _format_summary(report: dict, model_statuses: dict, channel_name: str) -> st
 
     if phasing_out:
         md += f"- Модели на выводе: {len(phasing_out)} ({', '.join(phasing_out)})\n"
+
+    if roi_categories.get('roi_leader', 0):
+        md += f"- Лидеры ROI: {roi_categories['roi_leader']} моделей\n"
+    if roi_categories.get('deadstock_risk', 0):
+        md += f"- Риск залёживания: {roi_categories['deadstock_risk']} моделей\n"
 
     if action_counts.get('increase', 0):
         md += f"- Рекомендовано повысить цену: {action_counts['increase']} моделей\n"
@@ -407,18 +432,21 @@ def _format_model_blocks(
     deep_drivers: dict,
     roi_dashboard: list,
 ) -> str:
-    """Генерация текстовых блоков по каждой модели."""
+    """Генерация текстовых блоков по каждой модели.
+
+    Использует ВСЕ источники данных: ROI dashboard, margin factors,
+    deep drivers, elasticities, policies. Модели без эластичности
+    всё равно показываются с метриками ROI и факторами маржи.
+    """
     from agents.oleg.services.price_analysis.translations import (
         translate_policy,
+        translate_roi_category,
         interpret_elasticity,
         interpret_r2,
         factor_impact_text,
         POLICY_EMOJI,
         POLICY_DESCRIPTIONS_RU,
     )
-
-    if not elasticities and not policies:
-        return ""
 
     # ROI-словарь для быстрого доступа
     roi_map = {}
@@ -427,31 +455,74 @@ def _format_model_blocks(
         if model_name:
             roi_map[model_name] = item
 
-    md = "## Рекомендации по моделям\n\n"
+    # Собираем ВСЕ модели из всех источников
+    all_model_names = set()
+    all_model_names.update(elasticities.keys())
+    all_model_names.update(policies.keys())
+    all_model_names.update(margin_factors.keys())
+    all_model_names.update(deep_drivers.keys())
+    all_model_names.update(roi_map.keys())
 
-    # Сортировка: сначала модели с рекомендацией действий (increase/decrease), потом hold
+    # Фильтруем модели без значимых данных (нет факторов, нет ROI с продажами)
+    def has_meaningful_data(model):
+        if model in margin_factors or model in deep_drivers:
+            return True
+        if model in elasticities or model in policies:
+            return True
+        roi = roi_map.get(model, {})
+        if roi.get('daily_sales', 0) > 0 or (roi.get('margin_pct') is not None and roi.get('turnover_days', 9999) < 9999):
+            return True
+        return False
+
+    meaningful_models = {m for m in all_model_names if has_meaningful_data(m)}
+
+    if not meaningful_models:
+        return ""
+
+    md = "## Обзор моделей\n\n"
+
+    # Сортировка: по ROI категории (лидеры первые), затем по annual_roi убывание
+    category_order = {'roi_leader': 0, 'healthy': 1, 'underperformer': 2, 'deadstock_risk': 3}
+
     def sort_key(model):
+        # Модели с ценовой рекомендацией (increase/decrease) — в топ
         p = policies.get(model, {})
         action = p.get('action', 'hold')
-        priority_order = {'high': 0, 'medium': 1, 'low': 2}
-        action_order = {'increase': 0, 'decrease': 0, 'hold': 1}
-        return (action_order.get(action, 1), priority_order.get(p.get('priority', 'low'), 2), model)
+        has_action = 0 if action in ('increase', 'decrease') else 1
 
-    all_models = sorted(set(list(elasticities.keys()) + list(policies.keys())), key=sort_key)
+        roi = roi_map.get(model, {})
+        cat = roi.get('category', 'underperformer')
+        annual_roi = roi.get('annual_roi', 0)
 
-    for model in all_models:
+        return (has_action, category_order.get(cat, 2), -annual_roi, model)
+
+    sorted_models = sorted(meaningful_models, key=sort_key)
+
+    for model in sorted_models:
         elast = elasticities.get(model, {})
         policy = policies.get(model, {})
         roi_info = roi_map.get(model, {})
+        status = model_statuses.get(model.lower(), 'Продаётся')
+        is_phasing_out = (status == 'Выводим')
 
-        policy_code = policy.get('policy', 'neutral')
-        policy_name = translate_policy(policy_code)
-        emoji = POLICY_EMOJI.get(policy_code, '')
+        # Заголовок: модель + политика или ROI категория
+        policy_code = policy.get('policy', '')
+        roi_category = roi_info.get('category', '')
 
-        md += f"### {model} {emoji} {policy_name}\n\n"
+        if policy_code:
+            policy_name = translate_policy(policy_code)
+            emoji = POLICY_EMOJI.get(policy_code, '')
+            md += f"### {model} {emoji} {policy_name}\n\n"
+        elif is_phasing_out:
+            md += f"### {model} 🔄 Контролируемый вывод\n\n"
+        elif roi_category:
+            cat_name = translate_roi_category(roi_category)
+            cat_emoji = {'roi_leader': '🟢', 'healthy': '🟡', 'underperformer': '🟠', 'deadstock_risk': '🔴'}.get(roi_category, '')
+            md += f"### {model} {cat_emoji} {cat_name}\n\n"
+        else:
+            md += f"### {model}\n\n"
 
         # Метрики модели
-        status = model_statuses.get(model.lower(), 'Продаётся')
         meta_parts = [f"**Статус:** {status}"]
 
         e_val = elast.get('elasticity')
@@ -465,10 +536,34 @@ def _format_model_blocks(
             meta_parts.append(f"**Маржа:** {margin_pct:.1f}%")
 
         turnover = roi_info.get('turnover_days')
-        if turnover is not None:
+        if turnover is not None and turnover < 9999:
             meta_parts.append(f"**Оборачиваемость:** {turnover:.0f} дн.")
 
+        annual_roi = roi_info.get('annual_roi')
+        if annual_roi is not None:
+            meta_parts.append(f"**ROI:** {annual_roi:.0f}%")
+
+        daily_sales = roi_info.get('daily_sales')
+        if daily_sales is not None:
+            meta_parts.append(f"**Продажи:** {daily_sales:.1f} шт/день")
+
         md += " | ".join(meta_parts) + "\n\n"
+
+        # Текстовое описание для моделей на выводе
+        if is_phasing_out and not policy_code:
+            if margin_pct is not None:
+                if margin_pct > 20:
+                    md += (
+                        f"Модель выводится из ассортимента. Маржа достаточная ({margin_pct:.1f}%), "
+                        f"агрессивное снижение цены не требуется. Остатки распродаются планово.\n\n"
+                    )
+                else:
+                    md += (
+                        f"Модель выводится из ассортимента. Маржа низкая ({margin_pct:.1f}%). "
+                        f"Рассмотреть ускорение распродажи остатков.\n\n"
+                    )
+            else:
+                md += "Модель выводится из ассортимента. Остатки распродаются планово.\n\n"
 
         # Текстовое описание эластичности
         if e_val is not None:
@@ -504,12 +599,16 @@ def _format_model_blocks(
             else:
                 md += "\n\n"
 
-        # Текст рекомендации (из policy.reasoning)
+        # Текст рекомендации (из policy.reasoning или ROI recommendation)
         reasoning = policy.get('reasoning', '')
         if reasoning:
             md += f"**Вывод:** {reasoning}\n\n"
-        elif policy_code in POLICY_DESCRIPTIONS_RU:
+        elif policy_code and policy_code in POLICY_DESCRIPTIONS_RU:
             md += f"**Вывод:** {POLICY_DESCRIPTIONS_RU[policy_code]}\n\n"
+        elif not is_phasing_out:
+            roi_rec = roi_info.get('recommendation', '')
+            if roi_rec:
+                md += f"**Вывод:** {roi_rec}\n\n"
 
         # Факторы маржи — текстовый формат
         factors_data = margin_factors.get(model, {})
@@ -523,7 +622,12 @@ def _format_model_blocks(
             sig_factors.sort(key=lambda x: abs(x.get('beta_std', 0)), reverse=True)
 
             if sig_factors:
-                md += "**Что влияет на маржу:**\n"
+                r2 = deep.get('r_squared', factors_data.get('r_squared'))
+                header = "**Что влияет на маржу"
+                if r2 is not None and isinstance(r2, (int, float)):
+                    header += f" (R² = {r2:.2f})"
+                header += ":**\n"
+                md += header
                 for i, f in enumerate(sig_factors[:5], 1):
                     name = f.get('name', '?')
                     beta = f.get('beta_std', 0)
@@ -535,7 +639,12 @@ def _format_model_blocks(
             sig_items.sort(key=lambda x: abs(x[1].get('standardized_beta', 0)), reverse=True)
 
             if sig_items:
-                md += "**Что влияет на маржу:**\n"
+                r2 = factors_data.get('r_squared')
+                header = "**Что влияет на маржу"
+                if r2 is not None and isinstance(r2, (int, float)):
+                    header += f" (R² = {r2:.2f})"
+                header += ":**\n"
+                md += header
                 for i, (name, vals) in enumerate(sig_items[:5], 1):
                     beta = vals.get('standardized_beta', 0)
                     pval = vals.get('p_value', 1)
