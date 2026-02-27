@@ -280,12 +280,14 @@ class OlegOrchestrator:
         brief = ""
         detailed = ""
 
-        # Try to split by section headers (case-insensitive, flexible whitespace)
+        # Try to split by section headers (case-insensitive, flexible whitespace).
+        # Matches variations like: # brief_summary, ## BRIEF SUMMARY,
+        # ## 📊 BRIEF SUMMARY (Telegram), etc.
         brief_pattern = re.compile(
-            r'^#+\s*brief[_\s]?summary\s*$', re.IGNORECASE | re.MULTILINE,
+            r'^#+\s*\S?\s*.*?brief[_\s]?summary.*$', re.IGNORECASE | re.MULTILINE,
         )
         detailed_pattern = re.compile(
-            r'^#+\s*detailed[_\s]?report\s*$', re.IGNORECASE | re.MULTILINE,
+            r'^#+\s*\S?\s*.*?detailed[_\s]?report.*$', re.IGNORECASE | re.MULTILINE,
         )
 
         brief_match = brief_pattern.search(content)

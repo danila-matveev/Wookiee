@@ -441,21 +441,60 @@ async def _handle_organic_vs_paid(
     """Organic vs Paid funnel for WB."""
     current_start, prev_start, current_end = _calc_comparison_dates(start_date, end_date)
 
-    results = await asyncio.to_thread(
+    organic_results, paid_results = await asyncio.to_thread(
         get_wb_organic_vs_paid_funnel, current_start, prev_start, current_end, lk
     )
 
     current = {}
     previous = {}
-    for row in results:
-        period = row[0]
+
+    # Parse organic funnel (content_analysis):
+    # period, card_opens, add_to_cart, funnel_orders, buyouts,
+    # card_to_cart_pct, cart_to_order_pct, order_to_buyout_pct
+    organic_by_period: dict = {}
+    for row in organic_results:
+        organic_by_period[row[0]] = {
+            "card_opens": to_float(row[1]),
+            "add_to_cart": to_float(row[2]),
+            "funnel_orders": to_float(row[3]),
+            "buyouts": to_float(row[4]),
+            "card_to_cart_pct": to_float(row[5]),
+            "cart_to_order_pct": to_float(row[6]),
+            "order_to_buyout_pct": to_float(row[7]),
+        }
+
+    # Parse paid funnel (wb_adv):
+    # period, ad_views, ad_clicks, ad_to_cart, ad_orders, ad_spend, ctr, cpc
+    paid_by_period: dict = {}
+    for row in paid_results:
+        paid_by_period[row[0]] = {
+            "ad_views": to_float(row[1]),
+            "ad_clicks": to_float(row[2]),
+            "ad_to_cart": to_float(row[3]),
+            "ad_orders": to_float(row[4]),
+            "ad_spend": to_float(row[5]),
+            "ctr": to_float(row[6]),
+            "cpc": to_float(row[7]),
+        }
+
+    # Merge organic + paid into unified per-period dicts
+    for period_key in ("current", "previous"):
+        org = organic_by_period.get(period_key, {})
+        paid = paid_by_period.get(period_key, {})
         parsed = {
-            "organic_views": to_float(row[1]),
-            "organic_orders": to_float(row[2]),
-            "paid_views": to_float(row[3]),
-            "paid_clicks": to_float(row[4]),
-            "paid_orders": to_float(row[5]),
-            "paid_spend": to_float(row[6]),
+            "organic_views": org.get("card_opens", 0),
+            "organic_add_to_cart": org.get("add_to_cart", 0),
+            "organic_orders": org.get("funnel_orders", 0),
+            "organic_buyouts": org.get("buyouts", 0),
+            "organic_card_to_cart_pct": org.get("card_to_cart_pct", 0),
+            "organic_cart_to_order_pct": org.get("cart_to_order_pct", 0),
+            "organic_order_to_buyout_pct": org.get("order_to_buyout_pct", 0),
+            "paid_views": paid.get("ad_views", 0),
+            "paid_clicks": paid.get("ad_clicks", 0),
+            "paid_to_cart": paid.get("ad_to_cart", 0),
+            "paid_orders": paid.get("ad_orders", 0),
+            "paid_spend": paid.get("ad_spend", 0),
+            "paid_ctr_pct": paid.get("ctr", 0),
         }
         total_views = parsed["organic_views"] + parsed["paid_views"]
         total_orders = parsed["organic_orders"] + parsed["paid_orders"]
@@ -484,7 +523,7 @@ async def _handle_organic_vs_paid(
         parsed["total_views"] = total_views
         parsed["total_orders"] = total_orders
 
-        if period == "current":
+        if period_key == "current":
             current = parsed
         else:
             previous = parsed
@@ -534,34 +573,39 @@ async def _handle_external_ad_breakdown(
                 get_ozon_external_ad_breakdown, current_start, prev_start, current_end, lk
             )
 
+        # SQL returns ONE row per period with spend columns per ad type.
+        # WB: period, adv_internal, adv_bloggers, adv_vk, adv_creators, adv_total
+        # OZON: period, adv_internal, adv_external, adv_vk, adv_total
         current_types = {}
         previous_types = {}
         for row in rows:
             period = row[0]
-            ad_type = row[1]
-            data = {
-                "ad_type": ad_type,
-                "spend": to_float(row[2]),
-                "orders": to_float(row[3]),
-                "revenue": to_float(row[4]),
-            }
-            data["drr_pct"] = round(_safe_div(data["spend"], data["revenue"]) * 100, 1)
-            data["cpo_rub"] = round(_safe_div(data["spend"], data["orders"]), 1)
-
+            if ch == "wb":
+                types_map = {
+                    "Внутренняя МП": to_float(row[1]),
+                    "Блогеры": to_float(row[2]),
+                    "VK Реклама": to_float(row[3]),
+                    "Creators": to_float(row[4]),
+                }
+            else:
+                types_map = {
+                    "Внутренняя МП": to_float(row[1]),
+                    "Внешняя реклама": to_float(row[2]),
+                    "VK Реклама": to_float(row[3]),
+                }
             target = current_types if period == "current" else previous_types
-            target[ad_type] = data
+            for ad_type, spend in types_map.items():
+                target[ad_type] = {"ad_type": ad_type, "spend": spend}
 
         # Build list with changes
         breakdown = []
         all_types = set(current_types.keys()) | set(previous_types.keys())
         for ad_type in sorted(all_types):
-            curr = current_types.get(ad_type, {"ad_type": ad_type, "spend": 0, "orders": 0, "revenue": 0, "drr_pct": 0, "cpo_rub": 0})
+            curr = current_types.get(ad_type, {"ad_type": ad_type, "spend": 0})
             prev = previous_types.get(ad_type, {})
             entry = {**curr}
-            entry["spend_change_pct"] = _pct_change(curr["spend"], prev.get("spend", 0))
-            entry["orders_change_pct"] = _pct_change(curr["orders"], prev.get("orders", 0))
-            entry["drr_change_pp"] = round(
-                curr.get("drr_pct", 0) - prev.get("drr_pct", 0), 1
+            entry["spend_change_pct"] = _pct_change(
+                curr["spend"], prev.get("spend", 0)
             )
             breakdown.append(entry)
 
@@ -600,6 +644,7 @@ async def _handle_campaign_performance(
             get_wb_campaign_stats, current_start, prev_start, current_end
         )
 
+        # SQL: period, campaign, views, clicks, spend, to_cart, orders, ctr, cpc
         current_campaigns = {}
         previous_campaigns = {}
         for row in rows:
@@ -607,10 +652,11 @@ async def _handle_campaign_performance(
             campaign = row[1]
             data = {
                 "campaign": campaign,
-                "spend": to_float(row[2]),
-                "views": to_float(row[3]),
-                "clicks": to_float(row[4]),
-                "orders": to_float(row[5]),
+                "views": to_float(row[2]),
+                "clicks": to_float(row[3]),
+                "spend": to_float(row[4]),
+                "to_cart": to_float(row[5]),
+                "orders": to_float(row[6]),
             }
             data["ctr_pct"] = round(_safe_div(data["clicks"], data["views"]) * 100, 2)
             data["cpc_rub"] = round(_safe_div(data["spend"], data["clicks"]), 1)
@@ -663,6 +709,8 @@ async def _handle_model_ad_efficiency(
                 get_ozon_model_ad_roi, current_start, prev_start, current_end, lk
             )
 
+        # SQL returns: period, model, ad_spend, ad_orders, revenue, margin,
+        #               drr_pct, romi
         current_models = {}
         previous_models = {}
         for row in rows:
@@ -675,36 +723,27 @@ async def _handle_model_ad_efficiency(
                 target[model] = {
                     "model": model,
                     "ad_spend": 0,
-                    "ad_views": 0,
-                    "ad_clicks": 0,
                     "ad_orders": 0,
                     "revenue": 0,
                     "margin": 0,
                 }
             target[model]["ad_spend"] += to_float(row[2])
-            target[model]["ad_views"] += to_float(row[3])
-            target[model]["ad_clicks"] += to_float(row[4])
-            target[model]["ad_orders"] += to_float(row[5])
-            target[model]["revenue"] += to_float(row[6])
-            target[model]["margin"] += to_float(row[7])
+            target[model]["ad_orders"] += to_float(row[3])
+            target[model]["revenue"] += to_float(row[4])
+            target[model]["margin"] += to_float(row[5])
 
         # Enrich with derived metrics
         for d in (current_models, previous_models):
             for model_name in list(d.keys()):
                 data = d[model_name]
                 spend = data["ad_spend"]
-                views = data["ad_views"]
-                clicks = data["ad_clicks"]
                 orders = data["ad_orders"]
                 rev = data["revenue"]
                 margin = data["margin"]
 
                 data["drr_pct"] = round(_safe_div(spend, rev) * 100, 1)
                 data["romi_pct"] = round(_safe_div(margin - spend, spend) * 100, 1)
-                data["ctr_pct"] = round(_safe_div(clicks, views) * 100, 2)
-                data["cpc_rub"] = round(_safe_div(spend, clicks), 1)
                 data["cpo_rub"] = round(_safe_div(spend, orders), 1)
-                data["cpm_rub"] = round(_safe_div(spend, views) * 1000, 1)
 
         # Build list with changes
         models_list = []
@@ -775,13 +814,27 @@ async def _handle_ad_daily_trend(
 
         days = []
         for row in rows:
-            day = {
-                "date": str(row[0]),
-                "ad_spend": to_float(row[1]),
-                "ad_views": to_float(row[2]),
-                "ad_clicks": to_float(row[3]),
-                "ad_orders": to_float(row[4]),
-            }
+            if ch == "wb":
+                # WB SQL: date, views, clicks, spend, to_cart, orders, ctr, cpc
+                day = {
+                    "date": str(row[0]),
+                    "ad_views": to_float(row[1]),
+                    "ad_clicks": to_float(row[2]),
+                    "ad_spend": to_float(row[3]),
+                    "ad_to_cart": to_float(row[4]),
+                    "ad_orders": to_float(row[5]),
+                }
+            else:
+                # OZON SQL: date, views, clicks, orders, spend, avg_bid, ctr, cpc
+                # NB: orders from adv_stats_daily are per-campaign,
+                # may overcount when same order spans multiple campaigns
+                day = {
+                    "date": str(row[0]),
+                    "ad_views": to_float(row[1]),
+                    "ad_clicks": to_float(row[2]),
+                    "ad_orders": to_float(row[3]),
+                    "ad_spend": to_float(row[4]),
+                }
             day["ctr_pct"] = round(_safe_div(day["ad_clicks"], day["ad_views"]) * 100, 2)
             day["cpc_rub"] = round(_safe_div(day["ad_spend"], day["ad_clicks"]), 1)
             day["cpo_rub"] = round(_safe_div(day["ad_spend"], day["ad_orders"]), 1)
@@ -813,22 +866,33 @@ async def _handle_ad_budget_utilization(
     start_date: str, end_date: str,
 ) -> dict:
     """WB ad budget utilization: daily spend distribution, peaks, lows."""
-    rows = await asyncio.to_thread(
+    # Returns (budget_rows, actual_rows):
+    #   budget_rows: (date, budget)
+    #   actual_rows: (date, actual_spend, views, clicks, orders)
+    budget_rows, actual_rows = await asyncio.to_thread(
         get_wb_ad_budget_utilization, start_date, end_date
     )
 
+    # Build budget lookup by date
+    budget_by_date = {}
+    for row in budget_rows:
+        budget_by_date[str(row[0])] = to_float(row[1])
+
     days = []
     total_spend = 0.0
-    for row in rows:
+    for row in actual_rows:
+        date_str = str(row[0])
+        actual_spend = to_float(row[1])
+        planned = budget_by_date.get(date_str, 0)
         day = {
-            "date": str(row[0]),
-            "budget_planned": to_float(row[1]),
-            "budget_spent": to_float(row[2]),
+            "date": date_str,
+            "budget_planned": planned,
+            "budget_spent": actual_spend,
             "utilization_pct": round(
-                _safe_div(to_float(row[2]), to_float(row[1])) * 100, 1
+                _safe_div(actual_spend, planned) * 100, 1
             ),
         }
-        total_spend += day["budget_spent"]
+        total_spend += actual_spend
         days.append(day)
 
     num_days = len(days) or 1
@@ -888,10 +952,11 @@ async def _handle_ad_spend_correlation(
         if model not in model_data:
             model_data[model] = {"ad_spend": 0, "ad_orders": 0, "revenue": 0, "margin": 0}
 
+        # SQL: period, model, ad_spend, ad_orders, revenue, margin, drr_pct, romi
         model_data[model]["ad_spend"] += to_float(row[2])
-        model_data[model]["ad_orders"] += to_float(row[5])
-        model_data[model]["revenue"] += to_float(row[6])
-        model_data[model]["margin"] += to_float(row[7])
+        model_data[model]["ad_orders"] += to_float(row[3])
+        model_data[model]["revenue"] += to_float(row[4])
+        model_data[model]["margin"] += to_float(row[5])
 
     if len(model_data) < 3:
         return {
