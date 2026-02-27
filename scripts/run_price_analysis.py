@@ -98,7 +98,9 @@ def analyze_channel(channel: str, start_date: str, end_date: str, learning_store
         get_ozon_stock_daily_by_model,
         get_wb_price_margin_by_model_period,
         get_ozon_price_margin_by_model_period,
-        get_model_statuses,
+        get_wb_price_margin_by_submodel_period,
+        get_wb_turnover_by_submodel,
+        get_model_statuses_mapped,
     )
 
     report = {
@@ -112,9 +114,9 @@ def analyze_channel(channel: str, start_date: str, end_date: str, learning_store
     report['models_total'] = len(model_names)
     logger.info(f"[{channel}] Found {len(model_names)} models: {model_names}")
 
-    model_statuses = get_model_statuses()
+    model_statuses = get_model_statuses_mapped()
     report['model_statuses'] = model_statuses
-    phasing_out = [m for m in model_names if model_statuses.get(m.lower()) == 'Выводим']
+    phasing_out = [m for m in model_names if model_statuses.get(m) == 'Выводим']
     if phasing_out:
         logger.info(f"[{channel}] Models phasing out: {phasing_out}")
 
@@ -168,6 +170,19 @@ def analyze_channel(channel: str, start_date: str, end_date: str, learning_store
         logger.warning(f"[{channel}] ROI dashboard failed: {e}")
     report['roi_dashboard'] = roi_dashboard
 
+    # 4b. Submodel breakdown (knitwear collection: Vuki-N, Vuki-W, Moon-W, etc.)
+    submodel_data = []
+    submodel_turnover = {}
+    try:
+        if channel == 'wb':
+            submodel_data = get_wb_price_margin_by_submodel_period(start_date, end_date)
+            submodel_turnover = get_wb_turnover_by_submodel(start_date, end_date) or {}
+        # TODO: add ozon submodel queries when needed
+    except Exception as e:
+        logger.warning(f"[{channel}] Submodel data failed: {e}")
+    report['submodel_data'] = submodel_data
+    report['submodel_turnover'] = submodel_turnover
+
     # 5. Classify pricing policies (uses elasticity + turnover + model status)
     policies = {}
     for model, elast in elasticities.items():
@@ -176,7 +191,7 @@ def analyze_channel(channel: str, start_date: str, end_date: str, learning_store
         t_info = turnover_map.get(model, {})
         t_days = float(t_info.get('turnover_days', 30.0)) if isinstance(t_info, dict) else 30.0
         try:
-            status = model_statuses.get(model.lower(), 'Продается')
+            status = model_statuses.get(model, 'Неизвестен')
             is_phasing_out = (status == 'Выводим')
             policy = classify_elastic_policy(e_val, margin_pct, t_days, is_phasing_out=is_phasing_out)
             policies[model] = policy
@@ -344,6 +359,9 @@ def format_comprehensive_report(report: dict) -> str:
     md += _format_model_blocks(report, model_statuses, elasticities, policies,
                                 margin_factors, deep_drivers, roi_dashboard)
 
+    # -- Разбивка по подмоделям (трикотажная коллекция) --
+    md += _format_submodel_breakdown(report)
+
     # -- Ценовые паттерны --
     if price_patterns:
         md += "---\n\n## Ценовые паттерны\n\n"
@@ -384,7 +402,7 @@ def _format_summary(report: dict, model_statuses: dict, channel_name: str) -> st
     all_model_names.update(margin_factors.keys())
     all_model_names.update(deep_drivers.keys())
 
-    phasing_out = sorted(m for m in all_model_names if model_statuses.get(m.lower()) == 'Выводим')
+    phasing_out = sorted(m for m in all_model_names if model_statuses.get(m) == 'Выводим')
 
     # ROI-категории
     roi_categories = {}
@@ -502,7 +520,7 @@ def _format_model_blocks(
         elast = elasticities.get(model, {})
         policy = policies.get(model, {})
         roi_info = roi_map.get(model, {})
-        status = model_statuses.get(model.lower(), 'Продаётся')
+        status = model_statuses.get(model, 'Неизвестен')
         is_phasing_out = (status == 'Выводим')
 
         # Заголовок: модель + политика или ROI категория
@@ -652,6 +670,70 @@ def _format_model_blocks(
                 md += "\n"
 
         md += "---\n\n"
+
+    return md
+
+
+def _format_submodel_breakdown(report: dict) -> str:
+    """Разбивка трикотажной коллекции по подмоделям (Vuki-N, Vuki-W, Moon-W и т.д.)."""
+    from shared.model_mapping import KNITWEAR_MODELS
+    from agents.oleg.services.price_analysis.roi_optimizer import compute_annual_roi
+
+    submodel_data = report.get('submodel_data', [])
+    submodel_turnover = report.get('submodel_turnover', {})
+
+    if not submodel_data:
+        return ""
+
+    # Фильтруем только трикотажную коллекцию
+    knitwear_rows = [r for r in submodel_data if r.get('model') in KNITWEAR_MODELS]
+    if not knitwear_rows:
+        return ""
+
+    # Группируем по osnova-модели
+    by_osnova = {}
+    for row in knitwear_rows:
+        osnova = row['model']
+        if osnova not in by_osnova:
+            by_osnova[osnova] = []
+        by_osnova[osnova].append(row)
+
+    # Показываем только модели, где есть > 1 подмодель
+    models_with_subs = {k: v for k, v in by_osnova.items() if len(v) > 1}
+    if not models_with_subs:
+        return ""
+
+    md = "---\n\n## Разбивка по подмоделям (трикотажная коллекция)\n\n"
+
+    for osnova in sorted(models_with_subs.keys()):
+        subs = models_with_subs[osnova]
+        # Сортировка по выручке (убывание)
+        subs.sort(key=lambda x: x.get('revenue', 0) or 0, reverse=True)
+
+        md += f"### {osnova}\n\n"
+        md += "| Подмодель | Продажи, шт | Выручка, руб | Маржа, % | Оборач., дн. | ROI, % |\n"
+        md += "|-----------|------------|-------------|---------|-------------|--------|\n"
+
+        for sub in subs:
+            submodel = sub.get('submodel', '?')
+            sales = sub.get('sales_count', 0) or 0
+            revenue = sub.get('revenue', 0) or 0
+            margin_pct = sub.get('margin_pct')
+            t_info = submodel_turnover.get(submodel, {})
+            turnover_days = t_info.get('turnover_days', None) if isinstance(t_info, dict) else None
+
+            # ROI расчёт
+            roi = None
+            if margin_pct is not None and turnover_days and turnover_days > 0:
+                roi = compute_annual_roi(margin_pct, turnover_days)
+
+            margin_str = f"{margin_pct:.1f}" if margin_pct is not None else "—"
+            turnover_str = f"{turnover_days:.0f}" if turnover_days else "—"
+            roi_str = f"{roi:.0f}" if roi is not None else "—"
+
+            md += f"| {submodel} | {sales:,.0f} | {revenue:,.0f} | {margin_str} | {turnover_str} | {roi_str} |\n"
+
+        md += "\n"
 
     return md
 

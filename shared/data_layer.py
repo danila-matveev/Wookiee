@@ -492,6 +492,43 @@ def get_artikuly_statuses():
         return {}
 
 
+def get_artikul_to_submodel_mapping() -> dict:
+    """Маппинг артикул → kod модели из Supabase (VukiN, VukiW, RubyP, ...).
+
+    Returns: {"компбел-ж-бесшов/leo_brown": "VukiN", "vuki/washed_black": "VukiW", ...}
+    Ключи lowercase.
+    """
+    if os.path.exists(SUPABASE_ENV_PATH):
+        load_dotenv(SUPABASE_ENV_PATH)
+
+    supabase_config = {
+        'host': os.getenv('POSTGRES_HOST', 'aws-0-eu-central-1.pooler.supabase.com'),
+        'port': int(os.getenv('POSTGRES_PORT', 6543)),
+        'database': os.getenv('POSTGRES_DB', 'postgres'),
+        'user': os.getenv('POSTGRES_USER', 'postgres'),
+        'password': os.getenv('POSTGRES_PASSWORD', '')
+    }
+
+    try:
+        conn = psycopg2.connect(**supabase_config)
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT a.artikul, m.kod as model_kod, mo.kod as osnova_kod
+            FROM artikuly a
+            JOIN modeli m ON a.model_id = m.id
+            JOIN modeli_osnova mo ON m.model_osnova_id = mo.id
+        """)
+        result = {}
+        for row in cur.fetchall():
+            result[row[0].lower()] = {'model_kod': row[1], 'osnova_kod': row[2]}
+        cur.close()
+        conn.close()
+        return result
+    except Exception as e:
+        print(f"Предупреждение: не удалось получить маппинг подмоделей: {e}")
+        return {}
+
+
 def get_model_statuses() -> dict:
     """Статусы моделей-основ из Supabase.
 
@@ -551,6 +588,72 @@ def get_model_statuses() -> dict:
     except Exception as e:
         print(f"Предупреждение: не удалось получить статусы моделей: {e}")
         return {}
+
+
+def get_model_statuses_mapped() -> dict:
+    """Статусы моделей, приведённые к именам из отчёта (через MODEL_OSNOVA_MAPPING).
+
+    Returns:
+        dict: {mapped_model_name: status}
+        Пример: {'Vuki': 'Продается', 'Other': 'Выводим', 'Olivia': 'Выводим'}
+
+    Логика:
+    1. get_model_statuses() → статусы по modeli_osnova.kod
+    2. get_artikuly_statuses() → fallback для моделей без записи в modeli
+    3. Перепроецировать ключи через map_to_osnova()
+    4. Агрегировать: worst-status-wins (Выводим > Архив > остальные)
+    5. Fallback: KNOWN_PHASING_OUT для моделей без записи нигде
+    """
+    from shared.model_mapping import map_to_osnova, KNOWN_PHASING_OUT
+
+    # Best-status-wins: если хоть одна подмодель продаётся, группа активна.
+    # Продается побеждает Выводим при агрегации в одну группу (напр. "Vuki").
+    best_priority = {
+        'Продается': 0, 'Запуск': 1, 'Новый': 2,
+        'Подготовка': 3, 'Выводим': 4, 'Архив': 5,
+    }
+
+    # 1. Статусы из modeli → modeli_osnova
+    raw_statuses = get_model_statuses()  # {"mia": "Выводим", "vuki": "Продается", ...}
+
+    # 2. Artikuly-level fallback: извлекаем модель из артикула (до '/')
+    artikuly_statuses = get_artikuly_statuses()  # {"olivia/black": "Выводим", ...}
+
+    artikuly_model_statuses = {}
+    for artikul, status in artikuly_statuses.items():
+        if not status:
+            continue
+        raw_model = artikul.split('/')[0].strip().lower()
+        if raw_model and raw_model not in raw_statuses:
+            if raw_model not in artikuly_model_statuses:
+                artikuly_model_statuses[raw_model] = status
+            else:
+                cur_p = best_priority.get(artikuly_model_statuses[raw_model], 99)
+                new_p = best_priority.get(status, 99)
+                if new_p < cur_p:
+                    artikuly_model_statuses[raw_model] = status
+
+    # 3. Объединяем: raw_statuses имеют приоритет над artikuly
+    all_raw = {**artikuly_model_statuses, **raw_statuses}
+
+    # 3.5. Бизнес-правило: переопределяем статус для подтверждённо выводимых моделей
+    for raw_name in KNOWN_PHASING_OUT:
+        all_raw[raw_name] = 'Выводим'
+
+    # 4. Перепроецируем через MODEL_OSNOVA_MAPPING → ключи отчёта
+    #    Best-status-wins: "Vuki" = Продается (vuki) + Выводим (компбел) → Продается
+    mapped = {}
+    for raw_key, status in all_raw.items():
+        mapped_name = map_to_osnova(raw_key)
+        if mapped_name not in mapped:
+            mapped[mapped_name] = status
+        else:
+            cur_p = best_priority.get(mapped[mapped_name], 99)
+            new_p = best_priority.get(status, 99)
+            if new_p < cur_p:
+                mapped[mapped_name] = status
+
+    return mapped
 
 
 # =============================================================================
@@ -1340,7 +1443,7 @@ def get_ozon_price_margin_daily(start_date, end_date, model=None):
     )
     SELECT
         a.date,
-        LOWER(SPLIT_PART(a.article, '/', 1)) as model,
+        SPLIT_PART(LOWER(a.article), '/', 1) as model,
         -- Цена за единицу (реализованная, из abc_date)
         CASE WHEN SUM(a.count_end) > 0
             THEN SUM(a.price_end) / SUM(a.count_end)
@@ -1604,6 +1707,96 @@ def get_wb_price_margin_by_model_period(start_date, end_date):
     return results
 
 
+def get_wb_price_margin_by_submodel_period(start_date, end_date):
+    """
+    WB: агрегированные цена+маржа по ПОДМОДЕЛЯМ (VukiN, VukiW, VukiP, ...) за период.
+
+    Подмодель определяется через маппинг артикулов из Supabase (artikuly → modeli).
+    Артикулы без маппинга группируются по osnova.
+
+    Возвращает список dict с ключами: model (osnova), submodel (model_kod),
+    avg_price_per_unit, sales_count, margin, margin_pct, revenue.
+    """
+    # 1. Получаем маппинг артикул → подмодель из Supabase
+    art_mapping = get_artikul_to_submodel_mapping()
+
+    # 2. Получаем данные из abc_date по артикулам
+    conn = _get_wb_connection()
+    cur = conn.cursor()
+    query = f"""
+    SELECT
+        LOWER(article) as article,
+        SUM(full_counts) as sales_count,
+        {WB_MARGIN_SQL} as margin,
+        SUM(revenue_spp) - COALESCE(SUM(revenue_return_spp), 0) as revenue,
+        SUM(spp) as spp_total,
+        SUM(revenue_spp) as revenue_spp_total,
+        SUM(reclama + reclama_vn) as reclama_total
+    FROM abc_date
+    WHERE date >= %s AND date < %s
+    GROUP BY LOWER(article)
+    HAVING SUM(full_counts) > 0;
+    """
+    cur.execute(query, (start_date, end_date))
+    columns = [desc[0] for desc in cur.description]
+    raw_rows = [dict(zip(columns, row)) for row in cur.fetchall()]
+    cur.close()
+    conn.close()
+
+    # 3. Группировка по подмодели
+    submodel_agg = {}  # key: (osnova, model_kod)
+    for row in raw_rows:
+        article = row['article']
+        info = art_mapping.get(article)
+        if info:
+            osnova = info['osnova_kod']
+            model_kod = info['model_kod']
+        else:
+            raw_model = article.split('/')[0].strip()
+            osnova = map_to_osnova(raw_model)
+            model_kod = osnova  # Без маппинга — osnova = submodel
+
+        key = (osnova, model_kod)
+        if key not in submodel_agg:
+            submodel_agg[key] = {
+                'sales_count': 0, 'margin': 0, 'revenue': 0,
+                'spp_total': 0, 'revenue_spp_total': 0, 'reclama_total': 0,
+            }
+        agg = submodel_agg[key]
+        agg['sales_count'] += to_float(row['sales_count']) or 0
+        agg['margin'] += to_float(row['margin']) or 0
+        agg['revenue'] += to_float(row['revenue']) or 0
+        agg['spp_total'] += to_float(row['spp_total']) or 0
+        agg['revenue_spp_total'] += to_float(row['revenue_spp_total']) or 0
+        agg['reclama_total'] += to_float(row['reclama_total']) or 0
+
+    # 4. Финальный расчёт метрик
+    results = []
+    for (osnova, model_kod), agg in submodel_agg.items():
+        sales = agg['sales_count']
+        revenue = agg['revenue']
+        margin = agg['margin']
+        margin_pct = (margin / revenue * 100) if revenue > 0 else None
+        avg_price = (revenue / sales) if sales > 0 else None
+        spp_pct = (agg['spp_total'] / agg['revenue_spp_total'] * 100) if agg['revenue_spp_total'] > 0 else None
+        drr_pct = (agg['reclama_total'] / revenue * 100) if revenue > 0 else None
+
+        results.append({
+            'model': osnova,
+            'submodel': model_kod,
+            'avg_price_per_unit': avg_price,
+            'sales_count': sales,
+            'margin': margin,
+            'margin_pct': margin_pct,
+            'revenue': revenue,
+            'spp_pct': spp_pct,
+            'drr_pct': drr_pct,
+        })
+
+    results.sort(key=lambda r: (r['model'], -(r['revenue'] or 0)))
+    return results
+
+
 def get_ozon_price_margin_by_model_period(start_date, end_date):
     """
     OZON: агрегированные цена+маржа по моделям за весь период.
@@ -1738,18 +1931,22 @@ def get_wb_price_margin_daily_by_article(start_date, end_date, article=None, mod
 
     filters_abc = []
     filters_orders = []
-    params = [start_date, end_date, start_date, end_date]
+    params_orders = []
+    params_abc = []
     if article:
         filters_abc.append("AND LOWER(a.article) = %s")
         filters_orders.append("AND LOWER(supplierarticle) = %s")
-        params.append(article.lower())
+        params_orders.append(article.lower())
+        params_abc.append(article.lower())
     if model:
         filters_abc.append("AND LOWER(SPLIT_PART(a.article, '/', 1)) = %s")
         filters_orders.append("AND LOWER(SPLIT_PART(supplierarticle, '/', 1)) = %s")
-        params.append(model.lower())
+        params_orders.append(model.lower())
+        params_abc.append(model.lower())
 
     filter_abc_sql = " ".join(filters_abc)
     filter_orders_sql = " ".join(filters_orders)
+    params = [start_date, end_date] + params_orders + [start_date, end_date] + params_abc
 
     query = f"""
     WITH raw_orders AS (
@@ -1767,7 +1964,7 @@ def get_wb_price_margin_daily_by_article(start_date, end_date, article=None, mod
     SELECT
         a.date,
         LOWER(a.article) as article,
-        LOWER(SPLIT_PART(a.article, '/', 1)) as model,
+        SPLIT_PART(LOWER(a.article), '/', 1) as model,
         -- Цена за единицу (реализованная, из abc_date)
         CASE WHEN SUM(a.full_counts) > 0
             THEN (SUM(a.revenue_spp) - COALESCE(SUM(a.revenue_return_spp), 0))
@@ -1852,17 +2049,21 @@ def get_ozon_price_margin_daily_by_article(start_date, end_date, article=None, m
 
     filters_abc = []
     filters_orders = []
-    params = [start_date, end_date, start_date, end_date]
+    params_orders = []
+    params_abc = []
     if article:
         filters_abc.append("AND LOWER(REGEXP_REPLACE(a.article, '_[^_]+$', '')) = %s")
         filters_orders.append("AND LOWER(REGEXP_REPLACE(offer_id, '_[^_]+$', '')) = %s")
-        params.append(article.lower())
+        params_orders.append(article.lower())
+        params_abc.append(article.lower())
     if model:
         filters_abc.append("AND LOWER(SPLIT_PART(a.article, '/', 1)) = %s")
         filters_orders.append("AND LOWER(SPLIT_PART(offer_id, '/', 1)) = %s")
-        params.append(model.lower())
+        params_orders.append(model.lower())
+        params_abc.append(model.lower())
 
     filter_abc_sql = " ".join(filters_abc)
+    params = [start_date, end_date] + params_orders + [start_date, end_date] + params_abc
     filter_orders_sql = " ".join(filters_orders)
 
     query = f"""
@@ -2012,6 +2213,59 @@ def get_ozon_turnover_by_model(start_date, end_date):
         daily_sales = md['sales_count'] / days if md['sales_count'] > 0 else 0
         turnover_days = md['stock_total'] / daily_sales if daily_sales > 0 else 0
         result[model_name] = {
+            'avg_stock': round(md['stock_total'], 0),
+            'daily_sales': round(daily_sales, 1),
+            'turnover_days': round(turnover_days, 1),
+            'sales_count': md['sales_count'],
+            'revenue': round(md['revenue'], 0),
+            'margin': round(md['margin'], 0),
+        }
+
+    return result
+
+
+def get_wb_turnover_by_submodel(start_date, end_date):
+    """
+    WB оборачиваемость по ПОДМОДЕЛЯМ (VukiN, VukiW, ...).
+    Использует маппинг артикулов из Supabase для определения подмодели.
+    """
+    art_mapping = get_artikul_to_submodel_mapping()
+    stock_by_article = get_wb_avg_stock(start_date, end_date)
+    articles = get_wb_by_article(start_date, end_date)
+
+    days = max(1, (datetime.strptime(end_date, '%Y-%m-%d') - datetime.strptime(start_date, '%Y-%m-%d')).days)
+
+    submodel_data = {}
+    for art in articles:
+        article_key = art.get('article', '').lower()
+        info = art_mapping.get(article_key)
+        if info:
+            submodel_name = info['model_kod']
+        else:
+            submodel_name = art['model']  # fallback to osnova
+
+        if submodel_name not in submodel_data:
+            submodel_data[submodel_name] = {'sales_count': 0, 'stock_total': 0, 'revenue': 0, 'margin': 0}
+        submodel_data[submodel_name]['sales_count'] += art['sales_count']
+        submodel_data[submodel_name]['revenue'] += art['revenue']
+        submodel_data[submodel_name]['margin'] += art['margin']
+
+    for art_key, stock_val in stock_by_article.items():
+        art_lower = art_key.lower()
+        info = art_mapping.get(art_lower)
+        if info:
+            submodel_name = info['model_kod']
+        else:
+            base_name = art_key.split('/')[0] if '/' in art_key else art_key
+            submodel_name = map_to_osnova(base_name)
+        if submodel_name in submodel_data:
+            submodel_data[submodel_name]['stock_total'] += stock_val
+
+    result = {}
+    for submodel_name, md in submodel_data.items():
+        daily_sales = md['sales_count'] / days if md['sales_count'] > 0 else 0
+        turnover_days = md['stock_total'] / daily_sales if daily_sales > 0 else 0
+        result[submodel_name] = {
             'avg_stock': round(md['stock_total'], 0),
             'daily_sales': round(daily_sales, 1),
             'turnover_days': round(turnover_days, 1),

@@ -284,10 +284,12 @@ class OlegOrchestrator:
         # Matches variations like: # brief_summary, ## BRIEF SUMMARY,
         # ## 📊 BRIEF SUMMARY (Telegram), etc.
         brief_pattern = re.compile(
-            r'^#+\s*\S?\s*.*?brief[_\s]?summary.*$', re.IGNORECASE | re.MULTILINE,
+            r'^#+\s*\S?\s*.*?(?:brief[_\s]?summary|краткая[_\s]?сводка).*$',
+            re.IGNORECASE | re.MULTILINE,
         )
         detailed_pattern = re.compile(
-            r'^#+\s*\S?\s*.*?detailed[_\s]?report.*$', re.IGNORECASE | re.MULTILINE,
+            r'^#+\s*\S?\s*.*?(?:detailed[_\s]?report|подробный[_\s]?отч[её]т).*$',
+            re.IGNORECASE | re.MULTILINE,
         )
 
         brief_match = brief_pattern.search(content)
