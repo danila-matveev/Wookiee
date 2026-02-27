@@ -32,6 +32,7 @@ class OlegApp:
         self.watchdog = None
         self.state_store = None
         self._running = False
+        self._sent_msg_hashes: dict = {}  # message dedup: hash -> timestamp
 
     async def setup(self) -> None:
         """Initialize all components."""
@@ -163,6 +164,7 @@ class OlegApp:
                     "orders_count": {"threshold": config.ANOMALY_ORDERS_THRESHOLD, "direction": "down"},
                 },
                 weekend_multiplier=config.ANOMALY_WEEKEND_MULTIPLIER,
+                gate_checker=gate_checker,
             )
 
         # ── Auth (auto-registers users for notifications) ─────────
@@ -284,6 +286,35 @@ class OlegApp:
                 ),
                 id="anomaly_monitor",
                 name=f"Anomaly Monitor (every {config.ANOMALY_MONITOR_INTERVAL_HOURS}h)",
+                replace_existing=True,
+            )
+
+        # Weekly price review (Monday, after weekly report)
+        price_h, price_m = (int(x) for x in config.WEEKLY_PRICE_REVIEW_TIME.split(":"))
+        self.scheduler.add_job(
+            self._run_weekly_price_review,
+            CronTrigger(day_of_week="mon", hour=price_h, minute=price_m, timezone=tz),
+            id="weekly_price_review",
+            name=f"Weekly Price Review (Mon {price_h:02d}:{price_m:02d} MSK)",
+            replace_existing=True,
+        )
+
+        # Monthly regression refresh (1st of month, 03:00 MSK)
+        self.scheduler.add_job(
+            self._refresh_regression_models,
+            CronTrigger(day="1", hour=3, minute=0, timezone=tz),
+            id="regression_refresh",
+            name="Monthly Regression Refresh (1st, 03:00 MSK)",
+            replace_existing=True,
+        )
+
+        # Promotion scanning (every 12h, if enabled)
+        if config.PROMOTION_SCAN_ENABLED:
+            self.scheduler.add_job(
+                self._scan_promotions,
+                CronTrigger(hour="*/12", minute=15, timezone=tz),
+                id="promotion_scan",
+                name="Promotion Scan (every 12h)",
                 replace_existing=True,
             )
 
@@ -469,6 +500,261 @@ class OlegApp:
             logger.error(f"Marketing monthly report failed: {e}", exc_info=True)
             await self.watchdog.on_report_failure("marketing_monthly", marketplace="wb")
 
+    async def _run_weekly_price_review(self) -> None:
+        """Scheduled weekly price review: run full analysis and format readable report."""
+        from agents.oleg.services.time_utils import get_last_week_bounds_msk
+        from agents.oleg.services.price_tools import _learning_store
+        from scripts.run_price_analysis import analyze_channel, format_comprehensive_report
+
+        monday, sunday = get_last_week_bounds_msk()
+        start_date = str(monday)
+        end_date = str(sunday)
+
+        await self._send_admin_message(
+            f"Генерирую еженедельный ценовой обзор за {start_date} — {end_date}..."
+        )
+
+        for channel in ('wb', 'ozon'):
+            try:
+                report = analyze_channel(channel, start_date, end_date, _learning_store)
+                report_md = format_comprehensive_report(report)
+
+                total = report.get('models_total', 0)
+                with_elast = report.get('models_with_elasticity', 0)
+                policies = report.get('policies', {})
+                actions = {}
+                for p in policies.values():
+                    a = p.get('action', 'hold')
+                    actions[a] = actions.get(a, 0) + 1
+
+                brief_parts = [f"Ценовой обзор {channel.upper()}: {total} моделей, {with_elast} с эластичностью"]
+                if actions.get('increase'):
+                    brief_parts.append(f"повысить: {actions['increase']}")
+                if actions.get('decrease'):
+                    brief_parts.append(f"снизить: {actions['decrease']}")
+
+                await self._deliver_price_report(
+                    report_md=report_md,
+                    report_type="Ценовой анализ",
+                    start_date=start_date,
+                    end_date=end_date,
+                    brief_summary=", ".join(brief_parts),
+                )
+
+                # Save ROI snapshots to learning store
+                if _learning_store:
+                    for item in report.get('roi_dashboard', []):
+                        try:
+                            _learning_store.save_roi_snapshot(
+                                item.get('model', ''), channel, item,
+                            )
+                        except Exception:
+                            pass
+
+            except Exception as e:
+                logger.error(f"Weekly price review for {channel} failed: {e}", exc_info=True)
+                await self._send_admin_message(f"Ошибка ценового обзора {channel.upper()}: {e}")
+
+    async def _refresh_regression_models(self) -> None:
+        """Monthly regression refresh: re-estimate all model elasticities."""
+        from agents.oleg.services.time_utils import get_last_month_bounds_msk
+        from agents.oleg.services.price_analysis.regression_engine import estimate_price_elasticity
+        from agents.oleg.services.price_tools import _learning_store, _get_data
+
+        first, last = get_last_month_bounds_msk()
+        end_date = str(last)
+        # Use 365 days of data for robust estimation
+        from datetime import datetime, timedelta
+        start_date = (datetime.strptime(end_date, '%Y-%m-%d') - timedelta(days=365)).strftime('%Y-%m-%d')
+
+        await self._send_admin_message("Пересчёт регрессионных моделей...")
+
+        updated = 0
+        changed_models = []
+
+        for channel in ('wb', 'ozon'):
+            try:
+                if channel == 'wb':
+                    from shared.data_layer import get_wb_price_margin_by_model_period
+                    models = get_wb_price_margin_by_model_period(start_date, end_date)
+                else:
+                    from shared.data_layer import get_ozon_price_margin_by_model_period
+                    models = get_ozon_price_margin_by_model_period(start_date, end_date)
+
+                if not models:
+                    continue
+
+                model_names = list({m.get('model', '') for m in models if m.get('model')})
+
+                for model_name in model_names:
+                    try:
+                        data = _get_data(channel, start_date, end_date, model_name)
+                        if not data or len(data) < 14:
+                            continue
+
+                        # Get old cached value
+                        old_cached = None
+                        if _learning_store:
+                            old_cached = _learning_store.get_elasticity_cached(model_name, channel)
+
+                        # Estimate new elasticity
+                        result = estimate_price_elasticity(data)
+                        if 'error' in result:
+                            continue
+
+                        # Cache new result
+                        if _learning_store:
+                            _learning_store.cache_elasticity(
+                                model_name, channel, result, start_date, end_date,
+                            )
+
+                        updated += 1
+
+                        # Check if model type changed
+                        if old_cached and 'error' not in old_cached:
+                            old_model = old_cached.get('selected_model', '')
+                            new_model = result.get('selected_model', '')
+                            if old_model and new_model and old_model != new_model:
+                                changed_models.append(
+                                    f"{model_name} ({channel}): {old_model} → {new_model}"
+                                )
+
+                    except Exception as e:
+                        logger.warning(f"Regression refresh for {model_name}/{channel}: {e}")
+
+            except Exception as e:
+                logger.error(f"Regression refresh for {channel} failed: {e}", exc_info=True)
+
+        # Check old unchecked recommendations (>7 days)
+        unchecked = []
+        if _learning_store:
+            try:
+                unchecked = _learning_store.get_unchecked_recommendations(min_age_days=7)
+                logger.info(f"Found {len(unchecked)} unchecked recommendations (>7 days)")
+            except Exception as e:
+                logger.warning(f"Failed to get unchecked recommendations: {e}")
+
+        # Report — readable Russian text
+        report_md = f"# Пересчёт эластичности моделей\n\n"
+        report_md += f"**Период данных:** {start_date} — {end_date}\n\n"
+        report_md += f"Обновлено **{updated} моделей** на обоих каналах (WB + Ozon).\n\n"
+
+        if changed_models:
+            report_md += "## Изменения в моделях\n\n"
+            report_md += "Следующие модели изменили тип регрессии (это значит, что характер зависимости цены и объёма изменился):\n\n"
+            for cm in changed_models:
+                report_md += f"- {cm}\n"
+            report_md += "\n"
+
+        if unchecked:
+            report_md += f"## Непроверенные рекомендации ({len(unchecked)})\n\n"
+            report_md += "Рекомендации, выданные более 7 дней назад, по которым нет данных о фактическом результате:\n\n"
+            for rec in unchecked[:20]:
+                model = rec.get('model', '?')
+                channel_rec = rec.get('channel', '?')
+                created = rec.get('created_at', '?')
+                report_md += f"- **{model}** ({channel_rec}) — создана {created}\n"
+
+        brief = f"Эластичность пересчитана: {updated} моделей"
+        if changed_models:
+            brief += f", {len(changed_models)} сменили тип"
+        if unchecked:
+            brief += f", {len(unchecked)} непроверенных рекомендаций"
+
+        await self._deliver_price_report(
+            report_md=report_md,
+            report_type="Регрессионный анализ",
+            start_date=str(first),
+            end_date=end_date,
+            brief_summary=brief,
+        )
+
+    async def _scan_promotions(self) -> None:
+        """Scan marketplaces for new promotions and analyze them."""
+        from agents.oleg import config
+        from agents.oleg.services.price_analysis.promotion_analyzer import PromotionAnalyzer
+        from agents.oleg.services.price_tools import _learning_store
+
+        for channel in ('wb', 'ozon'):
+            try:
+                if channel == 'wb':
+                    clients = config.get_wb_clients()
+                    if not clients:
+                        continue
+                    analyzer = PromotionAnalyzer(wb_clients=clients)
+                else:
+                    clients = config.get_ozon_clients()
+                    if not clients:
+                        continue
+                    analyzer = PromotionAnalyzer(ozon_clients=clients)
+
+                promotions = analyzer.scan_promotions(channel)
+                if not promotions:
+                    logger.info(f"[{channel}] No promotions found")
+                    continue
+
+                # Analyze each promotion
+                results = []
+                participate_count = 0
+                skip_count = 0
+
+                for promo in promotions:
+                    try:
+                        analysis = analyzer.analyze_promotion(
+                            promotion=promo,
+                            model_metrics={},
+                            elasticity=None,
+                        )
+                        results.append(analysis)
+                        rec = analysis.get('recommendation', '')
+                        if 'участвовать' in rec.lower() or 'participate' in rec.lower():
+                            participate_count += 1
+                        else:
+                            skip_count += 1
+                    except Exception as e:
+                        logger.warning(f"[{channel}] Promo analysis failed: {e}")
+
+                # Build report
+                report_md = f"# Сканирование акций {channel.upper()}\n\n"
+                report_md += f"Обнаружено акций: {len(promotions)}\n\n"
+                if results:
+                    report_md += "## Результаты анализа\n\n"
+                    for r in results:
+                        name = r.get('promotion_name', r.get('name', 'Без названия'))
+                        rec = r.get('recommendation', 'Не определено')
+                        report_md += f"- **{name}**: {rec}\n"
+
+                from datetime import date
+                today = str(date.today())
+
+                brief = (
+                    f"Обнаружено {len(promotions)} акций на {channel.upper()}. "
+                    f"Участвовать: {participate_count}, пропустить: {skip_count}."
+                )
+
+                await self._deliver_price_report(
+                    report_md=report_md,
+                    report_type="Анализ акций",
+                    start_date=today,
+                    end_date=today,
+                    brief_summary=brief,
+                )
+
+                # Save recommendations to LearningStore
+                if _learning_store and results:
+                    for r in results:
+                        try:
+                            _learning_store.save_recommendation(
+                                model=r.get('model', 'all'),
+                                channel=channel,
+                                recommendation=r,
+                            )
+                        except Exception:
+                            pass
+
+            except Exception as e:
+                logger.error(f"[{channel}] Promotion scan failed: {e}", exc_info=True)
+
     def _get_notification_recipients(self) -> list:
         """Get all chat IDs that should receive notifications.
 
@@ -487,6 +773,21 @@ class OlegApp:
         """Send a plain-text message to all notification recipients."""
         if not self.bot:
             return
+
+        # Dedup: skip if same message sent in last 5 minutes
+        import hashlib
+        import time
+        msg_hash = hashlib.sha256(text.encode()).hexdigest()[:16]
+        now = time.time()
+        self._sent_msg_hashes = {
+            h: ts for h, ts in self._sent_msg_hashes.items()
+            if now - ts < 300
+        }
+        if msg_hash in self._sent_msg_hashes:
+            logger.debug(f"Admin message deduplicated (hash={msg_hash})")
+            return
+        self._sent_msg_hashes[msg_hash] = now
+
         for chat_id in self._get_notification_recipients():
             try:
                 await self.bot.send_message(chat_id, text)
@@ -536,6 +837,42 @@ class OlegApp:
                 self.state_store.set_state(state_key, str(yesterday))
 
             logger.info(f"Data ready notification sent for {yesterday}")
+
+    async def _deliver_price_report(
+        self,
+        report_md: str,
+        report_type: str,
+        start_date: str,
+        end_date: str,
+        brief_summary: str,
+        source: str = "PriceCoordinator (auto)",
+    ) -> Optional[str]:
+        """Deliver a price analysis report via Notion + Telegram notification."""
+        page_url = None
+        try:
+            from agents.oleg.services.notion_service import NotionService
+            notion = NotionService(
+                token=config.NOTION_TOKEN,
+                database_id=config.NOTION_DATABASE_ID,
+            )
+            page_url = await notion.sync_report(
+                start_date=start_date,
+                end_date=end_date,
+                report_md=report_md,
+                report_type=report_type,
+                source=source,
+            )
+        except Exception as e:
+            logger.warning(f"Notion save for price report failed: {e}")
+
+        # Telegram notification
+        parts = []
+        if page_url:
+            parts.append(f'<a href="{page_url}">📊 {report_type} в Notion</a>')
+        parts.append(brief_summary)
+        await self._send_admin_message("\n\n".join(parts))
+
+        return page_url
 
     async def _deliver_report(self, result, request=None) -> None:
         """Deliver a report via Notion (first) + Telegram (with Notion link)."""

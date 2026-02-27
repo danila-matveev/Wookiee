@@ -492,6 +492,67 @@ def get_artikuly_statuses():
         return {}
 
 
+def get_model_statuses() -> dict:
+    """Статусы моделей-основ из Supabase.
+
+    Returns:
+        dict: {model_osnova_lower: status_name}
+        Пример: {'wendy': 'Продается', 'luna': 'Выводим'}
+
+    Если у модели-основы несколько моделей с разными статусами,
+    берётся "худший" (Выводим > Архив > остальные).
+    """
+    if os.path.exists(SUPABASE_ENV_PATH):
+        load_dotenv(SUPABASE_ENV_PATH)
+
+    supabase_config = {
+        'host': os.getenv('POSTGRES_HOST', 'aws-0-eu-central-1.pooler.supabase.com'),
+        'port': int(os.getenv('POSTGRES_PORT', 6543)),
+        'database': os.getenv('POSTGRES_DB', 'postgres'),
+        'user': os.getenv('POSTGRES_USER', 'postgres'),
+        'password': os.getenv('POSTGRES_PASSWORD', '')
+    }
+
+    try:
+        conn = psycopg2.connect(**supabase_config)
+        cur = conn.cursor()
+
+        query = """
+        SELECT
+            LOWER(mo.kod) as model_osnova,
+            s.nazvanie as status
+        FROM modeli m
+        LEFT JOIN statusy s ON m.status_id = s.id
+        LEFT JOIN modeli_osnova mo ON m.model_osnova_id = mo.id
+        WHERE mo.kod IS NOT NULL AND s.nazvanie IS NOT NULL
+        ORDER BY mo.kod
+        """
+        cur.execute(query)
+        results = cur.fetchall()
+
+        cur.close()
+        conn.close()
+
+        # Если у модели-основы несколько записей — приоритет: Выводим > Архив > остальные
+        priority = {'Выводим': 0, 'Архив': 1}
+        statuses = {}
+        for row in results:
+            model = row[0]
+            status = row[1]
+            if model not in statuses:
+                statuses[model] = status
+            else:
+                cur_priority = priority.get(statuses[model], 99)
+                new_priority = priority.get(status, 99)
+                if new_priority < cur_priority:
+                    statuses[model] = status
+
+        return statuses
+    except Exception as e:
+        print(f"Предупреждение: не удалось получить статусы моделей: {e}")
+        return {}
+
+
 # =============================================================================
 # ABC-АНАЛИЗ — PER-ARTICLE ДАННЫЕ
 # =============================================================================
@@ -517,7 +578,7 @@ def get_wb_by_article(start_date, end_date):
     FROM abc_date
     WHERE date >= %s AND date < %s
       AND article IS NOT NULL AND article != '' AND article != '0'
-    GROUP BY 1
+    GROUP BY 1, 2
     ORDER BY 6 DESC;
     """
     cur.execute(query, (start_date, end_date))
@@ -1144,13 +1205,16 @@ def get_wb_price_margin_daily(start_date, end_date, model=None):
 
     model_filter_abc = ""
     model_filter_orders = ""
-    params = [start_date, end_date, start_date, end_date]
+    model_val = model.lower() if model else None
+    # Params must match placeholder order: CTE dates, [CTE model], main dates, [main model]
+    params = [start_date, end_date]
+    if model:
+        model_filter_orders = "AND LOWER(SPLIT_PART(supplierarticle, '/', 1)) = %s"
+        params.append(model_val)
+    params.extend([start_date, end_date])
     if model:
         model_filter_abc = "AND LOWER(SPLIT_PART(a.article, '/', 1)) = %s"
-        model_filter_orders = "AND LOWER(SPLIT_PART(supplierarticle, '/', 1)) = %s"
-        # Добавляем дважды: первый %s — в CTE raw_orders, второй %s — в основном WHERE
-        params.append(model.lower())  # для CTE
-        params.append(model.lower())  # для abc_date
+        params.append(model_val)
 
     query = f"""
     WITH raw_orders AS (
@@ -1251,13 +1315,16 @@ def get_ozon_price_margin_daily(start_date, end_date, model=None):
 
     model_filter_abc = ""
     model_filter_orders = ""
-    params = [start_date, end_date, start_date, end_date]
+    model_val = model.lower() if model else None
+    # Params must match placeholder order: CTE dates, [CTE model], main dates, [main model]
+    params = [start_date, end_date]
+    if model:
+        model_filter_orders = "AND LOWER(SPLIT_PART(offer_id, '/', 1)) = %s"
+        params.append(model_val)
+    params.extend([start_date, end_date])
     if model:
         model_filter_abc = "AND LOWER(SPLIT_PART(a.article, '/', 1)) = %s"
-        model_filter_orders = "AND LOWER(SPLIT_PART(offer_id, '/', 1)) = %s"
-        # Добавляем дважды: первый %s — в CTE raw_orders, второй %s — в основном WHERE
-        params.append(model.lower())  # для CTE
-        params.append(model.lower())  # для abc_date
+        params.append(model_val)
 
     query = f"""
     WITH raw_orders AS (
@@ -1503,9 +1570,9 @@ def get_wb_price_margin_by_model_period(start_date, end_date):
                  / SUM(full_counts)
             ELSE NULL END as avg_price_per_unit,
         SUM(full_counts) as sales_count,
-        {{WB_MARGIN_SQL}} as margin,
+        {WB_MARGIN_SQL} as margin,
         CASE WHEN (SUM(revenue_spp) - COALESCE(SUM(revenue_return_spp), 0)) > 0
-            THEN ({{WB_MARGIN_SQL}}) /
+            THEN ({WB_MARGIN_SQL}) /
                  (SUM(revenue_spp) - COALESCE(SUM(revenue_return_spp), 0)) * 100
             ELSE NULL END as margin_pct,
         SUM(revenue_spp) - COALESCE(SUM(revenue_return_spp), 0) as revenue,
