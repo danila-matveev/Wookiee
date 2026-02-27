@@ -1371,20 +1371,59 @@ def classify_elastic_policy(
     elasticity: float,
     margin_pct: float,
     turnover_days: float,
+    is_phasing_out: bool = False,
 ) -> dict:
     """
     Классифицирует оптимальную ценовую политику на основе
     эластичности, маржи и оборачиваемости.
 
+    Args:
+        elasticity: ценовая эластичность спроса
+        margin_pct: маржинальность, %
+        turnover_days: оборачиваемость, дней
+        is_phasing_out: модель со статусом "Выводим" (распродажа остатков)
+
     Returns:
         dict с ключами:
-        - policy: str ('premium_hold' | 'volume_play' | 'margin_squeeze' | 'clearance' | 'neutral')
+        - policy: str
         - action: str ('hold' | 'increase' | 'decrease')
         - reasoning: str
         - priority: str ('high' | 'medium' | 'low')
         - expected_impact: str
     """
     abs_e = abs(elasticity)
+
+    # Модель выводится — особая логика
+    if is_phasing_out:
+        if margin_pct > 20:
+            return {
+                'policy': 'controlled_exit',
+                'action': 'hold',
+                'reasoning': (
+                    f'Модель выводится из ассортимента. Маржа {margin_pct:.1f}% > 20% — '
+                    f'достаточная для планового вывода. Оборачиваемость {turnover_days:.0f} дн. — '
+                    f'это нормально для выводимой модели, остатки распродаются планово.'
+                ),
+                'priority': 'low',
+                'expected_impact': (
+                    'Плановая распродажа остатков с сохранением маржи. '
+                    'Агрессивное снижение цены не требуется.'
+                ),
+            }
+        else:
+            return {
+                'policy': 'controlled_exit',
+                'action': 'decrease',
+                'reasoning': (
+                    f'Модель выводится из ассортимента. Маржа {margin_pct:.1f}% < 20% — '
+                    f'низкая, но модель всё равно нужно распродать. '
+                    f'Умеренное снижение цены для ускорения вывода остатков.'
+                ),
+                'priority': 'medium',
+                'expected_impact': (
+                    'Ускорение вывода остатков и высвобождение оборотного капитала.'
+                ),
+            }
 
     # clearance — проверяем первым: оборачиваемость > 90 дней — критично
     if turnover_days > 90:

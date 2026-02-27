@@ -76,6 +76,7 @@ async def run(start: date, end: date, report_type_str: str):
                 start_date=str(start),
                 end_date=str(end),
                 report_md=result.detailed_report or result.brief_summary or "",
+                report_type=report_type_str,
                 source="CLI (manual)",
                 chain_steps=result.chain_steps,
             )

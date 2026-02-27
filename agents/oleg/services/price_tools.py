@@ -461,6 +461,67 @@ PRICE_TOOL_DEFINITIONS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_margin_drivers_deep",
+            "description": (
+                "Расширенная факторная регрессия маржи с сезонными контролями, "
+                "взаимодействиями цена×реклама, лагами и VIF. "
+                "AIC/BIC для сравнения моделей. Глубже чем get_margin_factor_regression."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "model": {"type": "string", "description": "Модель"},
+                    "channel": {"type": "string", "enum": ["wb", "ozon"], "description": "Канал"},
+                    "lookback_days": {"type": "integer", "description": "Период (дни)", "default": 180},
+                },
+                "required": ["model", "channel"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_price_pattern_analysis",
+            "description": (
+                "Анализ исторических ценовых решений: какие изменения цены привели к улучшению метрик. "
+                "Показывает паттерны: «70% повышений цены привели к росту маржи». "
+                "Основа для принятия решений о ценообразовании."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "model": {"type": "string", "description": "Модель"},
+                    "channel": {"type": "string", "enum": ["wb", "ozon"], "description": "Канал"},
+                    "lookback_days": {"type": "integer", "description": "Период (дни)", "default": 365},
+                    "min_change_pct": {"type": "number", "description": "Мин. изменение цены для анализа (%)", "default": 3.0},
+                },
+                "required": ["model", "channel"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_turnover_optimized_recommendation",
+            "description": (
+                "Рекомендация по цене с оптимизацией ROI через оборачиваемость. "
+                "Для моделей с высокой маржой но низкой оборачиваемостью: может рекомендовать "
+                "снижение цены для ускорения оборота, если annual_roi вырастет."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "model": {"type": "string", "description": "Модель"},
+                    "channel": {"type": "string", "enum": ["wb", "ozon"], "description": "Канал"},
+                    "lookback_days": {"type": "integer", "description": "Период данных (дни)", "default": 90},
+                },
+                "required": ["model", "channel"],
+            },
+        },
+    },
 ]
 
 
@@ -1009,6 +1070,90 @@ async def _handle_margin_factor_regression(model: str, channel: str, lookback_da
     return result
 
 
+async def _handle_margin_drivers_deep(model: str, channel: str, lookback_days: int = 180) -> dict:
+    """Обработчик get_margin_drivers_deep."""
+    from agents.oleg.services.price_analysis.regression_engine import multi_factor_margin_drivers
+
+    model = model.lower()
+    now_msk = get_now_msk()
+    end_date = now_msk.strftime('%Y-%m-%d')
+    start_date = (now_msk - timedelta(days=lookback_days)).strftime('%Y-%m-%d')
+
+    data = _get_data(channel, start_date, end_date, model)
+    if not data:
+        return {'error': f'No data for {model} on {channel}'}
+
+    result = multi_factor_margin_drivers(data)
+    result['model'] = model
+    result['channel'] = channel
+    result['period'] = f"{start_date} — {end_date}"
+    return result
+
+
+async def _handle_price_pattern_analysis(model: str, channel: str, lookback_days: int = 365, min_change_pct: float = 3.0) -> dict:
+    """Обработчик get_price_pattern_analysis."""
+    from agents.oleg.services.price_analysis.price_pattern_analyzer import summarize_pricing_patterns
+
+    model = model.lower()
+    now_msk = get_now_msk()
+    end_date = now_msk.strftime('%Y-%m-%d')
+    start_date = (now_msk - timedelta(days=lookback_days)).strftime('%Y-%m-%d')
+
+    data = _get_data(channel, start_date, end_date, model)
+    if not data:
+        return {'error': f'No data for {model} on {channel}'}
+
+    result = summarize_pricing_patterns(data, min_change_pct=min_change_pct)
+    result['model'] = model
+    result['channel'] = channel
+    result['period'] = f"{start_date} — {end_date}"
+    return result
+
+
+async def _handle_turnover_optimized_recommendation(model: str, channel: str, lookback_days: int = 90) -> dict:
+    """Обработчик get_turnover_optimized_recommendation."""
+    from agents.oleg.services.price_analysis.recommendation_engine import generate_turnover_optimized_recommendation
+
+    model = model.lower()
+    now_msk = get_now_msk()
+    end_date = now_msk.strftime('%Y-%m-%d')
+    start_date = (now_msk - timedelta(days=lookback_days)).strftime('%Y-%m-%d')
+
+    data = _get_data(channel, start_date, end_date, model)
+    if not data:
+        return {'error': f'No data for {model} on {channel}'}
+
+    # Get turnover and stock data
+    if channel == 'wb':
+        turnover = get_wb_turnover_by_model(start_date, end_date)
+        stock = get_wb_stock_daily_by_model(start_date, end_date, model)
+    else:
+        turnover = get_ozon_turnover_by_model(start_date, end_date)
+        stock = get_ozon_stock_daily_by_model(start_date, end_date, model)
+
+    # Find this model's turnover
+    turnover_days = 30.0  # default
+    for t in (turnover or []):
+        if t.get('model', '').lower() == model:
+            turnover_days = float(t.get('turnover_days', 30))
+            break
+
+    # Average stock
+    avg_stock = 0.0
+    if stock:
+        stock_values = [float(s.get('stock', 0)) for s in stock if s.get('stock')]
+        avg_stock = sum(stock_values) / len(stock_values) if stock_values else 0.0
+
+    result = generate_turnover_optimized_recommendation(
+        data=data,
+        model=model,
+        channel=channel,
+        turnover_days=turnover_days,
+        avg_stock=avg_stock,
+    )
+    return result
+
+
 # =============================================================================
 # HANDLERS MAP
 # =============================================================================
@@ -1033,4 +1178,7 @@ PRICE_TOOL_HANDLERS = {
     "get_promotion_plan": _handle_promotion_plan,
     "get_deep_price_analysis": _handle_deep_price_analysis,
     "get_margin_factor_regression": _handle_margin_factor_regression,
+    "get_margin_drivers_deep": _handle_margin_drivers_deep,
+    "get_price_pattern_analysis": _handle_price_pattern_analysis,
+    "get_turnover_optimized_recommendation": _handle_turnover_optimized_recommendation,
 }

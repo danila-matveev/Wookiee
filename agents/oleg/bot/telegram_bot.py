@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Telegram Bot — aiogram setup, middleware, direct delivery.
 
@@ -5,6 +6,7 @@ Single process: bot receives messages → orchestrator processes → bot.send_me
 No delivery queue, no polling.
 """
 import logging
+
 from typing import Optional
 
 from aiogram import Bot, Dispatcher, Router

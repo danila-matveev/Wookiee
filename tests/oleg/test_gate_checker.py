@@ -50,7 +50,8 @@ def _good_rows():
     """Rows that make all 6 gates pass."""
     return [
         (date.today(),),   # Gate 1: ETL dateupdate = today
-        (50,),             # Gate 2: source orders loaded today (count > 0)
+        (50,),             # Gate 2a: source orders loaded today (count)
+        (50.0,),           # Gate 2b: 7-day avg count → 50/50 = 100% ≥ 30%
         (50000.0,),        # Gate 3: logistics > 0
         (100,),            # Gate 4a: yesterday orders count
         (90.0,),           # Gate 4b: 7-day avg count
@@ -76,7 +77,8 @@ def test_hard_gate_etl_fails():
 
     rows = [
         (old_date,),       # Gate 1: ETL NOT today
-        (50,),             # Gate 2
+        (50,),             # Gate 2a
+        (50.0,),           # Gate 2b: 7d avg
         (50000.0,),        # Gate 3
         (100,),            # Gate 4a
         (90.0,),           # Gate 4b
@@ -100,7 +102,8 @@ def test_hard_gate_source_not_loaded():
     """No source orders loaded today → hard fail."""
     rows = [
         (date.today(),),   # Gate 1: pass
-        (0,),              # Gate 2: NO orders loaded today
+        (0,),              # Gate 2a: NO orders loaded today
+        (100.0,),          # Gate 2b: 7d avg = 100 → 0/100 = 0% < 30%
         (50000.0,),        # Gate 3
         (100,),            # Gate 4a
         (90.0,),           # Gate 4b
@@ -124,7 +127,8 @@ def test_soft_gate_orders_volume_low():
     """Orders volume < 70% of avg → soft fail with caveat."""
     rows = [
         (date.today(),),   # Gate 1: pass
-        (50,),             # Gate 2: pass
+        (50,),             # Gate 2a: pass
+        (50.0,),           # Gate 2b: 7d avg = 50 → 100% ≥ 30%
         (50000.0,),        # Gate 3: pass
         (30,),             # Gate 4a: yesterday count = 30
         (100.0,),          # Gate 4b: avg = 100 → 30% < 70%
@@ -148,7 +152,8 @@ def test_soft_gate_caveat():
     """Soft gate fails → report with caveat."""
     rows = [
         (date.today(),),   # Gate 1: pass
-        (50,),             # Gate 2: pass
+        (50,),             # Gate 2a: pass
+        (50.0,),           # Gate 2b: 7d avg = 50 → 100% ≥ 30%
         (50000.0,),        # Gate 3: pass
         (0,),              # Gate 4a: orders = 0
         (100.0,),          # Gate 4b: avg = 100 → 0% < 70%
@@ -222,7 +227,8 @@ def test_extra_dict_populated():
     now = datetime(today.year, today.month, today.day, 7, 30, 0)
     rows = [
         (now,),            # Gate 1: ETL dateupdate = today as datetime
-        (50,),             # Gate 2: source orders
+        (50,),             # Gate 2a: source orders count
+        (50.0,),           # Gate 2b: 7d avg → 100% ≥ 30%
         (50000.0,),        # Gate 3: logistics
         (100,),            # Gate 4a: yesterday orders count
         (90.0,),           # Gate 4b: 7-day avg count
@@ -280,7 +286,8 @@ def test_format_status_message_fail():
     old_date = date.today() - timedelta(days=3)
     rows = [
         (old_date,),       # Gate 1: ETL NOT today
-        (0,),              # Gate 2: NO orders
+        (0,),              # Gate 2a: NO orders
+        (100.0,),          # Gate 2b: 7d avg
         (0,),              # Gate 3: no logistics
         (100,),            # Gate 4a
         (90.0,),           # Gate 4b

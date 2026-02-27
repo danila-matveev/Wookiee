@@ -1,0 +1,717 @@
+"""
+Bulk Price Analysis — comprehensive price report for a long historical period.
+
+Generates a single comprehensive report per channel with:
+- Elasticity analysis per model
+- Factor regression (what drives margin)
+- ROI dashboard
+- Price management recommendations
+- Price patterns
+- Hypothesis testing
+- Model status awareness (phasing-out models treated differently)
+
+All output in Russian. Saves to JSON + Notion + Telegram notification.
+
+Usage:
+    python scripts/run_price_analysis.py --start 2024-03-01 --end 2026-02-25 --channels wb,ozon
+"""
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import logging
+import sys
+from datetime import datetime
+from pathlib import Path
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# Data helpers
+# ============================================================================
+
+def get_all_models(channel: str, start_date: str, end_date: str) -> list[str]:
+    """Get all unique model names for a channel."""
+    from shared.data_layer import (
+        get_wb_price_margin_by_model_period,
+        get_ozon_price_margin_by_model_period,
+    )
+    if channel == 'wb':
+        models_data = get_wb_price_margin_by_model_period(start_date, end_date)
+    else:
+        models_data = get_ozon_price_margin_by_model_period(start_date, end_date)
+
+    if not models_data:
+        return []
+
+    return list({m.get('model', '') for m in models_data if m.get('model')})
+
+
+def get_model_data(channel: str, start_date: str, end_date: str, model: str) -> list[dict]:
+    """Get daily price/margin data for a model."""
+    from shared.data_layer import (
+        get_wb_price_margin_daily,
+        get_ozon_price_margin_daily,
+    )
+    if channel == 'wb':
+        return get_wb_price_margin_daily(start_date, end_date, model) or []
+    else:
+        return get_ozon_price_margin_daily(start_date, end_date, model) or []
+
+
+# ============================================================================
+# Analysis pipeline
+# ============================================================================
+
+def analyze_channel(channel: str, start_date: str, end_date: str, learning_store) -> dict:
+    """Run full price analysis for one channel. Returns report dict."""
+    from agents.oleg.services.price_analysis.regression_engine import (
+        estimate_price_elasticity,
+        margin_factor_regression,
+        run_full_analysis,
+        classify_elastic_policy,
+        multi_factor_margin_drivers,
+    )
+    from agents.oleg.services.price_analysis.price_plan_generator import (
+        generate_price_management_plan,
+        generate_article_level_plan,
+    )
+    from agents.oleg.services.price_analysis.roi_optimizer import (
+        compute_model_roi_dashboard,
+    )
+    from agents.oleg.services.price_analysis.hypothesis_tester import (
+        run_all_hypotheses,
+    )
+    from agents.oleg.services.price_analysis.price_pattern_analyzer import (
+        summarize_pricing_patterns,
+    )
+    from shared.data_layer import (
+        get_wb_turnover_by_model,
+        get_ozon_turnover_by_model,
+        get_wb_stock_daily_by_model,
+        get_ozon_stock_daily_by_model,
+        get_wb_price_margin_by_model_period,
+        get_ozon_price_margin_by_model_period,
+        get_model_statuses,
+    )
+
+    report = {
+        'channel': channel,
+        'period': f"{start_date} — {end_date}",
+        'generated_at': datetime.now().isoformat(),
+    }
+
+    # 1. Discover all models + statuses
+    model_names = get_all_models(channel, start_date, end_date)
+    report['models_total'] = len(model_names)
+    logger.info(f"[{channel}] Found {len(model_names)} models: {model_names}")
+
+    model_statuses = get_model_statuses()
+    report['model_statuses'] = model_statuses
+    phasing_out = [m for m in model_names if model_statuses.get(m.lower()) == 'Выводим']
+    if phasing_out:
+        logger.info(f"[{channel}] Models phasing out: {phasing_out}")
+
+    # 2. Per-model elasticity matrix
+    elasticities = {}
+    elasticity_errors = {}
+    for model in model_names:
+        try:
+            data = get_model_data(channel, start_date, end_date, model)
+            if len(data) < 14:
+                elasticity_errors[model] = f"insufficient_data ({len(data)} days)"
+                continue
+
+            result = estimate_price_elasticity(data)
+            if 'error' in result:
+                elasticity_errors[model] = result['error']
+            else:
+                elasticities[model] = result
+                # Cache in LearningStore
+                if learning_store:
+                    try:
+                        learning_store.cache_elasticity(model, channel, result, start_date, end_date)
+                    except Exception:
+                        pass
+
+            logger.info(f"[{channel}] Elasticity for {model}: {'OK' if 'error' not in result else result['error']}")
+        except Exception as e:
+            elasticity_errors[model] = str(e)
+            logger.warning(f"[{channel}] Elasticity failed for {model}: {e}")
+
+    report['elasticities'] = elasticities
+    report['elasticity_errors'] = elasticity_errors
+    report['models_with_elasticity'] = len(elasticities)
+
+    # 3. Turnover data
+    if channel == 'wb':
+        turnover_map = get_wb_turnover_by_model(start_date, end_date) or {}
+    else:
+        turnover_map = get_ozon_turnover_by_model(start_date, end_date) or {}
+
+    # 4. ROI dashboard
+    roi_dashboard = []
+    try:
+        if channel == 'wb':
+            models_data = get_wb_price_margin_by_model_period(start_date, end_date)
+        else:
+            models_data = get_ozon_price_margin_by_model_period(start_date, end_date)
+        if models_data and turnover_map:
+            roi_dashboard = compute_model_roi_dashboard(models_data, turnover_map)
+    except Exception as e:
+        logger.warning(f"[{channel}] ROI dashboard failed: {e}")
+    report['roi_dashboard'] = roi_dashboard
+
+    # 5. Classify pricing policies (uses elasticity + turnover + model status)
+    policies = {}
+    for model, elast in elasticities.items():
+        e_val = elast.get('elasticity', -1.0)
+        margin_pct = elast.get('avg_margin_pct', 25.0)
+        t_info = turnover_map.get(model, {})
+        t_days = float(t_info.get('turnover_days', 30.0)) if isinstance(t_info, dict) else 30.0
+        try:
+            status = model_statuses.get(model.lower(), 'Продается')
+            is_phasing_out = (status == 'Выводим')
+            policy = classify_elastic_policy(e_val, margin_pct, t_days, is_phasing_out=is_phasing_out)
+            policies[model] = policy
+        except Exception:
+            pass
+    report['policies'] = policies
+
+    # 6. Margin factor regression per model
+    margin_factors = {}
+    for model in model_names:
+        try:
+            data = get_model_data(channel, start_date, end_date, model)
+            if len(data) < 20:
+                continue
+            result = margin_factor_regression(data)
+            if 'error' not in result:
+                margin_factors[model] = result
+        except Exception as e:
+            logger.warning(f"[{channel}] Margin regression failed for {model}: {e}")
+    report['margin_factors'] = margin_factors
+
+    # 7. Price management plan
+    try:
+        plan = generate_price_management_plan(
+            channel=channel,
+            period_start=start_date,
+            period_end=end_date,
+            learning_store=learning_store,
+        )
+        report['price_plan'] = plan
+    except Exception as e:
+        logger.error(f"[{channel}] Price management plan failed: {e}")
+        report['price_plan'] = {'error': str(e)}
+
+    # 8. Price pattern analysis per model
+    price_patterns = {}
+    for model in model_names:
+        try:
+            data = get_model_data(channel, start_date, end_date, model)
+            if len(data) < 30:
+                continue
+            patterns = summarize_pricing_patterns(data)
+            if 'error' not in patterns:
+                price_patterns[model] = patterns
+        except Exception as e:
+            logger.warning(f"[{channel}] Price patterns failed for {model}: {e}")
+    report['price_patterns'] = price_patterns
+
+    # 9. Hypothesis testing
+    try:
+        all_models_data = {}
+        for model in model_names:
+            data = get_model_data(channel, start_date, end_date, model)
+            if data:
+                all_models_data[model] = data
+
+        if all_models_data:
+            stock_daily_data = {}
+            for model in model_names:
+                try:
+                    if channel == 'wb':
+                        stock = get_wb_stock_daily_by_model(start_date, end_date, model)
+                    else:
+                        stock = get_ozon_stock_daily_by_model(start_date, end_date, model)
+                    if stock:
+                        stock_daily_data[model] = stock
+                except Exception:
+                    pass
+
+            hypotheses = run_all_hypotheses(
+                models_daily_data=all_models_data,
+                article_data=None,
+                stock_daily_data=stock_daily_data or None,
+                turnover_data=turnover_map or None,
+                product_lines=None,
+            )
+            report['hypotheses'] = hypotheses
+    except Exception as e:
+        logger.error(f"[{channel}] Hypothesis testing failed: {e}")
+        report['hypotheses'] = {'error': str(e)}
+
+    # 10. Article-level plan per model
+    article_plans = {}
+    for model in model_names:
+        try:
+            plan = generate_article_level_plan(
+                channel=channel,
+                model=model,
+                period_start=start_date,
+                period_end=end_date,
+            )
+            if plan and 'error' not in plan:
+                article_plans[model] = plan
+        except Exception as e:
+            logger.warning(f"[{channel}] Article-level plan failed for {model}: {e}")
+    report['article_plans'] = article_plans
+
+    # 11. Full statistical analysis per model
+    full_analyses = {}
+    for model in model_names:
+        try:
+            data = get_model_data(channel, start_date, end_date, model)
+            if len(data) < 30:
+                continue
+            analysis = run_full_analysis(data, model_name=model, channel=channel)
+            if 'error' not in analysis:
+                full_analyses[model] = analysis
+        except Exception as e:
+            logger.warning(f"[{channel}] Full analysis failed for {model}: {e}")
+    report['full_analyses'] = full_analyses
+
+    # 12. Deep margin drivers (multi-factor with seasonality)
+    deep_margin_drivers = {}
+    for model in model_names:
+        try:
+            data = get_model_data(channel, start_date, end_date, model)
+            if len(data) < 30:
+                continue
+            result = multi_factor_margin_drivers(data)
+            if 'error' not in result:
+                deep_margin_drivers[model] = result
+        except Exception as e:
+            logger.warning(f"[{channel}] Deep margin drivers failed for {model}: {e}")
+    report['deep_margin_drivers'] = deep_margin_drivers
+
+    return report
+
+
+# ============================================================================
+# Report formatting — readable Russian text
+# ============================================================================
+
+def format_comprehensive_report(report: dict) -> str:
+    """Форматирование единого читаемого отчёта на русском языке.
+
+    Принципы:
+    - Текстовые выводы вместо сырых таблиц
+    - Все термины на русском
+    - Статус модели учитывается в интерпретации
+    - Один отчёт объединяет ценовой + регрессионный анализ
+    """
+    from agents.oleg.services.price_analysis.translations import (
+        POLICY_EMOJI,
+        POLICY_DESCRIPTIONS_RU,
+    )
+
+    channel = report.get('channel', '?').upper()
+    period = report.get('period', '?')
+    model_statuses = report.get('model_statuses', {})
+    elasticities = report.get('elasticities', {})
+    policies = report.get('policies', {})
+    margin_factors = report.get('margin_factors', {})
+    deep_drivers = report.get('deep_margin_drivers', {})
+    roi_dashboard = report.get('roi_dashboard', [])
+    price_patterns = report.get('price_patterns', {})
+
+    channel_name = 'Wildberries' if channel == 'WB' else 'Ozon' if channel == 'OZON' else channel
+
+    md = f"# Ценовой анализ {channel_name}: {period}\n\n"
+
+    # -- Краткие итоги --
+    md += _format_summary(report, model_statuses, channel_name)
+
+    # -- Рекомендации по моделям (основной блок) --
+    md += _format_model_blocks(report, model_statuses, elasticities, policies,
+                                margin_factors, deep_drivers, roi_dashboard)
+
+    # -- Ценовые паттерны --
+    if price_patterns:
+        md += "---\n\n## Ценовые паттерны\n\n"
+        for model, pat in sorted(price_patterns.items()):
+            insights = pat.get('insights', [])
+            if insights:
+                md += f"### {model}\n\n"
+                for insight in insights:
+                    md += f"- {insight}\n"
+                md += "\n"
+
+    # -- Тестирование гипотез --
+    md += _format_hypotheses(report)
+
+    return md
+
+
+def _format_summary(report: dict, model_statuses: dict, channel_name: str) -> str:
+    """Краткие итоги анализа."""
+    total = report.get('models_total', 0)
+    with_elast = report.get('models_with_elasticity', 0)
+    policies = report.get('policies', {})
+    elasticities = report.get('elasticities', {})
+
+    action_counts = {'hold': 0, 'increase': 0, 'decrease': 0}
+    for p in policies.values():
+        action = p.get('action', 'hold')
+        action_counts[action] = action_counts.get(action, 0) + 1
+
+    all_models = list(elasticities.keys())
+    phasing_out = [m for m in all_models if model_statuses.get(m.lower()) == 'Выводим']
+
+    md = "## Краткие итоги\n\n"
+    md += f"Проанализировано **{total} моделей** на {channel_name} "
+    md += f"за период {report.get('period', '?')}.\n\n"
+    md += f"- Рассчитана эластичность: {with_elast} моделей"
+    if total > with_elast:
+        md += f" ({total - with_elast} — недостаточно данных)"
+    md += "\n"
+
+    if phasing_out:
+        md += f"- Модели на выводе: {len(phasing_out)} ({', '.join(phasing_out)})\n"
+
+    if action_counts.get('increase', 0):
+        md += f"- Рекомендовано повысить цену: {action_counts['increase']} моделей\n"
+    if action_counts.get('decrease', 0):
+        md += f"- Рекомендовано снизить цену: {action_counts['decrease']} моделей\n"
+    if action_counts.get('hold', 0):
+        md += f"- Удерживать текущую цену: {action_counts['hold']} моделей\n"
+
+    md += "\n---\n\n"
+    return md
+
+
+def _format_model_blocks(
+    report: dict,
+    model_statuses: dict,
+    elasticities: dict,
+    policies: dict,
+    margin_factors: dict,
+    deep_drivers: dict,
+    roi_dashboard: list,
+) -> str:
+    """Генерация текстовых блоков по каждой модели."""
+    from agents.oleg.services.price_analysis.translations import (
+        translate_policy,
+        interpret_elasticity,
+        interpret_r2,
+        factor_impact_text,
+        POLICY_EMOJI,
+        POLICY_DESCRIPTIONS_RU,
+    )
+
+    if not elasticities and not policies:
+        return ""
+
+    # ROI-словарь для быстрого доступа
+    roi_map = {}
+    for item in roi_dashboard:
+        model_name = item.get('model', '')
+        if model_name:
+            roi_map[model_name] = item
+
+    md = "## Рекомендации по моделям\n\n"
+
+    # Сортировка: сначала модели с рекомендацией действий (increase/decrease), потом hold
+    def sort_key(model):
+        p = policies.get(model, {})
+        action = p.get('action', 'hold')
+        priority_order = {'high': 0, 'medium': 1, 'low': 2}
+        action_order = {'increase': 0, 'decrease': 0, 'hold': 1}
+        return (action_order.get(action, 1), priority_order.get(p.get('priority', 'low'), 2), model)
+
+    all_models = sorted(set(list(elasticities.keys()) + list(policies.keys())), key=sort_key)
+
+    for model in all_models:
+        elast = elasticities.get(model, {})
+        policy = policies.get(model, {})
+        roi_info = roi_map.get(model, {})
+
+        policy_code = policy.get('policy', 'neutral')
+        policy_name = translate_policy(policy_code)
+        emoji = POLICY_EMOJI.get(policy_code, '')
+
+        md += f"### {model} {emoji} {policy_name}\n\n"
+
+        # Метрики модели
+        status = model_statuses.get(model.lower(), 'Продаётся')
+        meta_parts = [f"**Статус:** {status}"]
+
+        e_val = elast.get('elasticity')
+        if e_val is not None:
+            e_interp = interpret_elasticity(e_val)
+            short_interp = e_interp.split('(')[0].strip()
+            meta_parts.append(f"**Эластичность:** {e_val:.2f} ({short_interp})")
+
+        margin_pct = roi_info.get('margin_pct', elast.get('avg_margin_pct'))
+        if margin_pct is not None:
+            meta_parts.append(f"**Маржа:** {margin_pct:.1f}%")
+
+        turnover = roi_info.get('turnover_days')
+        if turnover is not None:
+            meta_parts.append(f"**Оборачиваемость:** {turnover:.0f} дн.")
+
+        md += " | ".join(meta_parts) + "\n\n"
+
+        # Текстовое описание эластичности
+        if e_val is not None:
+            r2 = elast.get('r_squared', 0)
+            r2_quality = interpret_r2(r2) if isinstance(r2, (int, float)) else 'неизвестное'
+
+            abs_e = abs(e_val)
+            if abs_e < 0.5:
+                md += (
+                    f"Спрос на модель **практически не реагирует** на изменение цены "
+                    f"(эластичность {e_val:.2f}). Повышение цены на 10% приведёт к снижению "
+                    f"продаж всего на ~{abs_e * 10:.0f}%."
+                )
+            elif abs_e < 1.0:
+                md += (
+                    f"Спрос на модель **слабо реагирует** на изменение цены "
+                    f"(эластичность {e_val:.2f}). Повышение цены на 10% приведёт к снижению "
+                    f"продаж на ~{abs_e * 10:.0f}%."
+                )
+            elif abs_e < 1.5:
+                md += (
+                    f"Спрос на модель **умеренно чувствителен** к цене "
+                    f"(эластичность {e_val:.2f}). Изменение цены заметно влияет на продажи."
+                )
+            else:
+                md += (
+                    f"Спрос на модель **сильно чувствителен** к цене "
+                    f"(эластичность {e_val:.2f}). Любое изменение цены значительно влияет на объём продаж."
+                )
+
+            if isinstance(r2, (int, float)):
+                md += f" Качество модели: {r2_quality} (R² = {r2:.2f}).\n\n"
+            else:
+                md += "\n\n"
+
+        # Текст рекомендации (из policy.reasoning)
+        reasoning = policy.get('reasoning', '')
+        if reasoning:
+            md += f"**Вывод:** {reasoning}\n\n"
+        elif policy_code in POLICY_DESCRIPTIONS_RU:
+            md += f"**Вывод:** {POLICY_DESCRIPTIONS_RU[policy_code]}\n\n"
+
+        # Факторы маржи — текстовый формат
+        factors_data = margin_factors.get(model, {})
+        factors_dict = factors_data.get('factors', {})
+        deep = deep_drivers.get(model, {})
+        deep_factors = deep.get('factors', [])
+
+        # Предпочитаем deep_drivers (более полные), fallback на margin_factors
+        if deep_factors:
+            sig_factors = [f for f in deep_factors if f.get('p_value', 1) < 0.1]
+            sig_factors.sort(key=lambda x: abs(x.get('beta_std', 0)), reverse=True)
+
+            if sig_factors:
+                md += "**Что влияет на маржу:**\n"
+                for i, f in enumerate(sig_factors[:5], 1):
+                    name = f.get('name', '?')
+                    beta = f.get('beta_std', 0)
+                    pval = f.get('p_value', 1)
+                    md += f"{i}. {factor_impact_text(name, beta, pval)}\n"
+                md += "\n"
+        elif factors_dict:
+            sig_items = [(n, v) for n, v in factors_dict.items() if v.get('p_value', 1) < 0.1]
+            sig_items.sort(key=lambda x: abs(x[1].get('standardized_beta', 0)), reverse=True)
+
+            if sig_items:
+                md += "**Что влияет на маржу:**\n"
+                for i, (name, vals) in enumerate(sig_items[:5], 1):
+                    beta = vals.get('standardized_beta', 0)
+                    pval = vals.get('p_value', 1)
+                    md += f"{i}. {factor_impact_text(name, beta, pval)}\n"
+                md += "\n"
+
+        md += "---\n\n"
+
+    return md
+
+
+def _format_hypotheses(report: dict) -> str:
+    """Форматирование гипотез в читаемом виде."""
+    hyp = report.get('hypotheses', {})
+    if not hyp or 'error' in hyp:
+        return ""
+
+    hyp_results = hyp.get('results', {})
+    if not hyp_results:
+        return ""
+
+    md = "## Тестирование гипотез\n\n"
+    md += "| Гипотеза | Результат | Вывод |\n"
+    md += "|----------|-----------|-------|\n"
+
+    for key, h in sorted(hyp_results.items()):
+        name = h.get('hypothesis', key)
+        result = h.get('result', '?')
+        pval = h.get('p_value', None)
+        conclusion = h.get('conclusion', h.get('interpretation', ''))
+
+        if result in ('confirmed', 'significant', True, 'true', 'Подтверждена'):
+            icon = 'Подтверждена'
+        elif result in ('rejected', 'not_significant', False, 'false', 'Не подтверждена'):
+            icon = 'Не подтверждена'
+        else:
+            icon = str(result)
+
+        if not conclusion and pval is not None and isinstance(pval, (int, float)):
+            if pval < 0.05:
+                conclusion = f'Статистически значимо (p = {pval:.3f})'
+            else:
+                conclusion = f'Статистически незначимо (p = {pval:.3f})'
+
+        md += f"| {name} | {icon} | {conclusion} |\n"
+
+    summary = hyp.get('summary', '')
+    if summary:
+        md += f"\n**Общий итог:** {summary}\n"
+
+    md += "\n"
+    return md
+
+
+# ============================================================================
+# Delivery: Notion + Telegram
+# ============================================================================
+
+async def deliver_to_notion(report_md: str, channel: str, start_date: str, end_date: str) -> str | None:
+    """Save report to Notion, return page URL."""
+    try:
+        from agents.oleg import config
+        from agents.oleg.services.notion_service import NotionService
+        notion = NotionService(
+            token=config.NOTION_TOKEN,
+            database_id=config.NOTION_DATABASE_ID,
+        )
+        if not notion.enabled:
+            logger.warning("Notion not configured")
+            return None
+
+        page_url = await notion.sync_report(
+            start_date=start_date,
+            end_date=end_date,
+            report_md=report_md,
+            report_type="Ценовой анализ",
+            source="CLI (bulk analysis)",
+        )
+        return page_url
+    except Exception as e:
+        logger.error(f"Notion delivery failed: {e}")
+        return None
+
+
+async def notify_telegram(message: str):
+    """Send notification to Telegram."""
+    try:
+        from agents.oleg import config
+        if not config.TELEGRAM_BOT_TOKEN or not config.ADMIN_CHAT_ID:
+            return
+
+        from aiogram import Bot
+        from aiogram.client.default import DefaultBotProperties
+        bot = Bot(token=config.TELEGRAM_BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
+        try:
+            await bot.send_message(config.ADMIN_CHAT_ID, message)
+        finally:
+            await bot.session.close()
+    except Exception as e:
+        logger.warning(f"Telegram notification failed: {e}")
+
+
+# ============================================================================
+# Main
+# ============================================================================
+
+async def main():
+    parser = argparse.ArgumentParser(description="Bulk Price Analysis")
+    parser.add_argument("--start", required=True, help="Start date YYYY-MM-DD")
+    parser.add_argument("--end", required=True, help="End date YYYY-MM-DD")
+    parser.add_argument("--channels", default="wb,ozon", help="Channels (comma-separated)")
+    parser.add_argument("--no-notion", action="store_true", help="Skip Notion delivery")
+    parser.add_argument("--telegram", action="store_true", help="Send Telegram notification (off by default for CLI runs)")
+    args = parser.parse_args()
+
+    channels = [c.strip() for c in args.channels.split(",")]
+
+    # Initialize LearningStore
+    from agents.oleg.services.price_analysis.learning_store import LearningStore
+    from agents.oleg.services.price_tools import set_learning_store
+    learning_store = LearningStore()
+    set_learning_store(learning_store)
+
+    data_dir = Path(__file__).parent.parent / "agents" / "oleg" / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    for channel in channels:
+        print(f"\n{'='*60}")
+        print(f"Analyzing {channel.upper()}: {args.start} — {args.end}")
+        print(f"{'='*60}\n")
+
+        # Run analysis
+        report = analyze_channel(channel, args.start, args.end, learning_store)
+
+        # Save JSON
+        today = datetime.now().strftime('%Y-%m-%d')
+        json_path = data_dir / f"price_report_{channel}_{today}.json"
+        with open(json_path, 'w', encoding='utf-8') as f:
+            json.dump(report, f, ensure_ascii=False, indent=2, default=str)
+        print(f"JSON saved: {json_path}")
+
+        # Format single comprehensive Markdown report
+        report_md = format_comprehensive_report(report)
+
+        # Save Markdown
+        md_path = data_dir / f"price_report_{channel}_{today}.md"
+        with open(md_path, 'w', encoding='utf-8') as f:
+            f.write(report_md)
+        print(f"Markdown saved: {md_path}")
+
+        # Deliver to Notion (single report)
+        page_url = None
+        if not args.no_notion:
+            page_url = await deliver_to_notion(report_md, channel, args.start, args.end)
+            if page_url:
+                print(f"Notion: {page_url}")
+
+        # Telegram notification (opt-in for CLI runs)
+        if args.telegram:
+            total = report.get('models_total', 0)
+            with_elast = report.get('models_with_elasticity', 0)
+            msg_parts = [
+                f"Ценовой анализ {channel.upper()} за {args.start} — {args.end} завершён.",
+                f"{total} моделей, {with_elast} с эластичностью.",
+            ]
+            if page_url:
+                msg_parts.insert(0, f'<a href="{page_url}">Отчёт в Notion</a>')
+            await notify_telegram("\n".join(msg_parts))
+
+        # Print summary
+        print(f"\nSummary for {channel.upper()}:")
+        print(f"  Models: {report.get('models_total', 0)}")
+        print(f"  With elasticity: {report.get('models_with_elasticity', 0)}")
+        print(f"  Margin factors: {len(report.get('margin_factors', {}))}")
+        print(f"  Price patterns: {len(report.get('price_patterns', {}))}")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

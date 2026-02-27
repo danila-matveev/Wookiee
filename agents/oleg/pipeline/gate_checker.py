@@ -105,7 +105,12 @@ class GateCheckResult:
         # --- Source orders ---
         src = gate_map.get("Source data loaded today")
         if src and not src.passed:
-            lines.append("⚠️ Нет заказов за вчера")
+            ratio = src.extra.get("ratio_pct")
+            count = src.extra.get("order_count", 0)
+            if ratio is not None and count > 0:
+                lines.append(f"⚠️ Частичная загрузка: {count} ({ratio:.0f}% от нормы)")
+            else:
+                lines.append("⚠️ Нет заказов за вчера")
 
         # --- Logistics ---
         logi = gate_map.get("Logistics > 0")
@@ -268,7 +273,13 @@ class GateChecker:
             ))
 
     def _check_source_loaded_today(self, marketplace: str) -> None:
-        """Hard gate 2: Orders for yesterday were loaded by today's ETL."""
+        """Hard gate 2: Orders for yesterday were loaded by today's ETL.
+
+        Requires loaded count >= 30% of 7-day average to catch partial loads.
+        Falls back to count > 0 if no historical data available.
+        """
+        MIN_RATIO_PCT = 30
+
         try:
             from shared.data_layer import _get_wb_connection, _get_ozon_connection, _db_cursor
 
@@ -276,8 +287,10 @@ class GateChecker:
             cfg = self._ORDERS_CONFIG[marketplace]
             yesterday = get_yesterday_msk()
             today = get_today_msk()
+            week_ago = today - timedelta(days=8)
 
             with _db_cursor(conn_factory) as (conn, cur):
+                # Count orders loaded today for yesterday
                 cur.execute(
                     f"SELECT COUNT(*) FROM {cfg['table']} "
                     f"WHERE {cfg['date_col']} = %s AND dateupdate::date = %s",
@@ -286,16 +299,50 @@ class GateChecker:
                 row = cur.fetchone()
                 count = int(row[0]) if row else 0
 
-            passed = count > 0
+                # 7-day average order count for volume comparison
+                cur.execute(
+                    f"SELECT COALESCE(AVG(cnt), 0) FROM ("
+                    f"  SELECT COUNT(*) as cnt FROM {cfg['table']} "
+                    f"  WHERE {cfg['date_col']} >= %s AND {cfg['date_col']} < %s "
+                    f"  GROUP BY {cfg['date_col']}"
+                    f") sub",
+                    (week_ago, yesterday),
+                )
+                avg_row = cur.fetchone()
+                avg_count = float(avg_row[0]) if avg_row else 0
+
+            # Determine pass criteria
+            if avg_count > 0:
+                ratio = count / avg_count * 100
+                passed = ratio >= MIN_RATIO_PCT
+                detail = (
+                    f"Orders for {yesterday} loaded today: {count} rows "
+                    f"({ratio:.0f}% of 7d avg {avg_count:.0f})"
+                    if passed else
+                    f"Partial load for {yesterday}: {count} rows = "
+                    f"{ratio:.0f}% of 7d avg {avg_count:.0f} (need ≥{MIN_RATIO_PCT}%)"
+                )
+            else:
+                # No historical data — fall back to simple count > 0
+                ratio = 100.0 if count > 0 else 0.0
+                passed = count > 0
+                detail = (
+                    f"Orders for {yesterday} loaded today: {count} rows "
+                    f"(no 7d history for comparison)"
+                )
 
             self._gates.append(GateResult(
                 name="Source data loaded today",
                 passed=passed,
                 is_hard=True,
                 value=count,
-                detail=f"Orders for {yesterday} loaded today: {count} rows"
-                    if passed else f"No orders for {yesterday} loaded today",
-                extra={"order_count": count},
+                threshold=MIN_RATIO_PCT,
+                detail=detail,
+                extra={
+                    "order_count": count,
+                    "avg_7d": avg_count,
+                    "ratio_pct": round(ratio, 1),
+                },
             ))
         except Exception as e:
             self._gates.append(GateResult(
