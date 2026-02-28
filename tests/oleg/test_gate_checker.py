@@ -50,7 +50,7 @@ def _good_rows():
     """Rows that make all 6 gates pass."""
     return [
         (date.today(),),   # Gate 1: ETL dateupdate = today
-        (50,),             # Gate 2a: source orders loaded today (count)
+        (50,),             # Gate 2a: source orders count for yesterday
         (50.0,),           # Gate 2b: 7-day avg count → 50/50 = 100% ≥ 30%
         (50000.0,),        # Gate 3: logistics > 0
         (100,),            # Gate 4a: yesterday orders count
@@ -99,10 +99,10 @@ def test_hard_gate_etl_fails():
 
 
 def test_hard_gate_source_not_loaded():
-    """No source orders loaded today → hard fail."""
+    """No orders for yesterday → hard fail."""
     rows = [
         (date.today(),),   # Gate 1: pass
-        (0,),              # Gate 2a: NO orders loaded today
+        (0,),              # Gate 2a: NO orders for yesterday
         (100.0,),          # Gate 2b: 7d avg = 100 → 0/100 = 0% < 30%
         (50000.0,),        # Gate 3
         (100,),            # Gate 4a
