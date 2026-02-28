@@ -154,7 +154,7 @@ class GateChecker:
 
     Hard gates (data must exist):
     1. ETL ran today — abc_date updated today
-    2. Source data loaded today — orders for yesterday have today's dateupdate
+    2. Source data present — orders for yesterday exist and volume is sufficient
     3. Logistics > 0 — logistics data present
 
     Soft gates (report with caveat if failed):
@@ -273,10 +273,11 @@ class GateChecker:
             ))
 
     def _check_source_loaded_today(self, marketplace: str) -> None:
-        """Hard gate 2: Orders for yesterday were loaded by today's ETL.
+        """Hard gate 2: Orders for yesterday exist and volume is sufficient.
 
-        Requires loaded count >= 30% of 7-day average to catch partial loads.
+        Requires order count >= 30% of 7-day average to catch missing data.
         Falls back to count > 0 if no historical data available.
+        ETL freshness is already checked by gate 1 (abc_date dateupdate).
         """
         MIN_RATIO_PCT = 30
 
@@ -290,11 +291,11 @@ class GateChecker:
             week_ago = today - timedelta(days=8)
 
             with _db_cursor(conn_factory) as (conn, cur):
-                # Count orders loaded today for yesterday
+                # Count all orders for yesterday
                 cur.execute(
                     f"SELECT COUNT(*) FROM {cfg['table']} "
-                    f"WHERE {cfg['date_col']} = %s AND dateupdate::date = %s",
-                    (yesterday, today),
+                    f"WHERE {cfg['date_col']} = %s",
+                    (yesterday,),
                 )
                 row = cur.fetchone()
                 count = int(row[0]) if row else 0
@@ -316,10 +317,10 @@ class GateChecker:
                 ratio = count / avg_count * 100
                 passed = ratio >= MIN_RATIO_PCT
                 detail = (
-                    f"Orders for {yesterday} loaded today: {count} rows "
+                    f"Orders for {yesterday}: {count} rows "
                     f"({ratio:.0f}% of 7d avg {avg_count:.0f})"
                     if passed else
-                    f"Partial load for {yesterday}: {count} rows = "
+                    f"Low volume for {yesterday}: {count} rows = "
                     f"{ratio:.0f}% of 7d avg {avg_count:.0f} (need ≥{MIN_RATIO_PCT}%)"
                 )
             else:
@@ -327,7 +328,7 @@ class GateChecker:
                 ratio = 100.0 if count > 0 else 0.0
                 passed = count > 0
                 detail = (
-                    f"Orders for {yesterday} loaded today: {count} rows "
+                    f"Orders for {yesterday}: {count} rows "
                     f"(no 7d history for comparison)"
                 )
 
