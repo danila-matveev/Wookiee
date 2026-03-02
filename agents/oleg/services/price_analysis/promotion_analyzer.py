@@ -52,15 +52,30 @@ class PromotionAnalyzer:
         return []
 
     def _scan_wb_promotions(self) -> list[dict]:
-        """Получить акции WB через Seller API."""
+        """Получить акции WB через Calendar API.
+
+        Фильтрует: убирает auto-скидки, "Распродажа в счет долга", тесты.
+        """
         all_promotions = []
+        seen_ids = set()
         for name, client in self.wb_clients.items():
             try:
                 promos = client.get_promotions_list()
                 for p in promos:
+                    pid = p.get('id')
+                    if pid in seen_ids:
+                        continue
+                    seen_ids.add(pid)
+                    # Фильтруем нерелевантные
+                    ptype = p.get('type', '')
+                    pname = (p.get('name') or '').lower()
+                    if ptype == 'auto':
+                        continue
+                    if 'долг' in pname or 'тест' in pname:
+                        continue
                     p['cabinet'] = name
                     p['channel'] = 'wb'
-                all_promotions.extend(promos)
+                    all_promotions.append(p)
             except Exception as e:
                 logger.error(f"WB promotions scan failed for {name}: {e}")
         return all_promotions
@@ -428,6 +443,325 @@ class PromotionAnalyzer:
                 f"{len(skip)} — исключить."
             ),
         }
+
+
+    def analyze_promotion_by_article(
+        self,
+        channel: str,
+        promotion: dict,
+        article_metrics: dict,
+        nm_to_article: dict,
+        volume_lift_pct: float = None,
+    ) -> dict:
+        """
+        Анализ акции на уровне артикулов.
+
+        Args:
+            channel: 'wb' или 'ozon'
+            promotion: данные акции (id, name, dates, etc.)
+            article_metrics: {article_lower: {sales_count, margin, revenue, ...}}
+            nm_to_article: {nm_id: article_lower} из Supabase
+            volume_lift_pct: ожидаемый подъём объёма (если None — дефолт)
+
+        Returns:
+            dict с артикульным анализом и summary.
+        """
+        promo_id = promotion.get('id')
+        promo_name = promotion.get('name', promotion.get('title', 'Без названия'))
+        required_discount_pct = promotion.get('required_discount', 0)
+        if required_discount_pct <= 0:
+            required_discount_pct = promotion.get('discount', 0)
+        # WB calendar API не возвращает скидку — используем типичную 15%
+        if required_discount_pct <= 0:
+            required_discount_pct = 15.0
+
+        if volume_lift_pct is None:
+            volume_lift_pct = DEFAULT_VOLUME_LIFT_PCT.get(channel, 25.0)
+
+        # WB API возвращает startDateTime/endDateTime, другие — startDate/date_start
+        promo_start = (
+            promotion.get('startDateTime')
+            or promotion.get('startDate')
+            or promotion.get('date_start', '')
+        )
+        promo_end = (
+            promotion.get('endDateTime')
+            or promotion.get('endDate')
+            or promotion.get('date_end', '')
+        )
+        try:
+            days = (
+                datetime.strptime(str(promo_end)[:10], '%Y-%m-%d')
+                - datetime.strptime(str(promo_start)[:10], '%Y-%m-%d')
+            ).days
+        except (ValueError, TypeError):
+            days = 7
+        days = max(days, 1)
+
+        # Вычислить urgency
+        try:
+            start_dt = datetime.strptime(str(promo_start)[:10], '%Y-%m-%d').date()
+            days_until = (start_dt - get_now_msk().date()).days
+        except (ValueError, TypeError):
+            days_until = 999
+
+        if days_until <= 2:
+            urgency = 'СРОЧНО'
+        elif days_until <= 5:
+            urgency = 'СКОРО'
+        else:
+            urgency = 'ПЛАНОВО'
+
+        # Анализируем все артикулы с продажами
+        articles_analysis = []
+        for article_lower, metrics in article_metrics.items():
+            if metrics.get('sales_count', 0) <= 0:
+                continue
+            nm_id = None
+            # Попробовать найти nm_id по артикулу (обратный маппинг)
+            for nm, art in nm_to_article.items():
+                if art == article_lower:
+                    nm_id = nm
+                    break
+            analysis = self._analyze_single_article(
+                article_lower, metrics, required_discount_pct,
+                volume_lift_pct, days, nm_id,
+            )
+            articles_analysis.append(analysis)
+
+        # Сортировка: сначала participate по total_impact desc, потом skip
+        participate = [a for a in articles_analysis if a['recommendation'] == 'participate']
+        skip = [a for a in articles_analysis if a['recommendation'] == 'skip']
+        participate.sort(key=lambda x: x['total_impact'], reverse=True)
+        skip.sort(key=lambda x: x['total_impact'])
+
+        total_positive = sum(a['total_impact'] for a in participate)
+        total_negative = sum(a['total_impact'] for a in skip)
+
+        return {
+            'promotion': {
+                'id': promo_id,
+                'name': promo_name,
+                'dates': f"{str(promo_start)[:10]} — {str(promo_end)[:10]}",
+                'days': days,
+                'discount_pct': required_discount_pct,
+                'urgency': urgency,
+                'days_until_start': days_until,
+            },
+            'channel': channel,
+            'total_promo_nms': 0,
+            'matched_articles': len(articles_analysis),
+            'participate': participate,
+            'skip': skip,
+            'summary': {
+                'participate_count': len(participate),
+                'skip_count': len(skip),
+                'total_positive_impact': round(total_positive),
+                'total_negative_impact': round(total_negative),
+                'net_impact': round(total_positive + total_negative),
+            },
+        }
+
+    def _analyze_single_article(
+        self,
+        article: str,
+        metrics: dict,
+        discount_pct: float,
+        volume_lift_pct: float,
+        promo_days: int,
+        nm_id: int = None,
+    ) -> dict:
+        """Финансовый анализ одного артикула при участии в акции."""
+        sales = metrics.get('sales_count', 0)
+        margin = metrics.get('margin', 0)
+        revenue = metrics.get('revenue', 0)
+
+        if sales <= 0 or revenue <= 0:
+            return {
+                'article': article,
+                'nm_id': nm_id,
+                'recommendation': 'skip',
+                'total_impact': 0,
+                'reasoning': 'Нет продаж за период',
+            }
+
+        price_per_unit = revenue / sales
+        margin_per_unit = margin / sales
+        daily_sales = sales / 30  # article_metrics за 30 дней
+
+        promo_price = price_per_unit * (1 - discount_pct / 100)
+        price_delta = promo_price - price_per_unit
+        new_margin_per_unit = margin_per_unit + price_delta
+        expected_daily_sales = daily_sales * (1 + volume_lift_pct / 100)
+
+        daily_margin_current = daily_sales * margin_per_unit
+        daily_margin_promo = expected_daily_sales * new_margin_per_unit
+        daily_delta = daily_margin_promo - daily_margin_current
+        total_impact = daily_delta * promo_days
+
+        recommendation = 'participate' if total_impact > 0 else 'skip'
+
+        # Безубыточная скидка: при какой скидке total_impact == 0
+        # daily_margin_promo = (daily_sales*(1+lift)) * (margin_per_unit - price*d/100)
+        # = daily_margin_current → решаем относительно d
+        # (1+lift)*(margin_per_unit - price*d/100) = margin_per_unit
+        # margin_per_unit - price*d/100 = margin_per_unit/(1+lift)
+        # price*d/100 = margin_per_unit - margin_per_unit/(1+lift)
+        # d = 100 * margin_per_unit * (1 - 1/(1+lift)) / price
+        lift = volume_lift_pct / 100
+        if price_per_unit > 0 and (1 + lift) > 0:
+            breakeven_discount = 100 * margin_per_unit * (1 - 1 / (1 + lift)) / price_per_unit
+        else:
+            breakeven_discount = 0
+        margin_pct = (margin_per_unit / price_per_unit * 100) if price_per_unit > 0 else 0
+
+        reasoning = _build_article_reasoning(
+            recommendation, article, discount_pct,
+            margin_per_unit, new_margin_per_unit,
+            volume_lift_pct, total_impact, promo_days,
+        )
+
+        return {
+            'article': article,
+            'nm_id': nm_id,
+            'recommendation': recommendation,
+            'current_price': round(price_per_unit),
+            'promo_price': round(promo_price),
+            'current_margin_per_unit': round(margin_per_unit),
+            'promo_margin_per_unit': round(new_margin_per_unit),
+            'margin_pct': round(margin_pct, 1),
+            'breakeven_discount': round(breakeven_discount, 1),
+            'current_daily_sales': round(daily_sales, 1),
+            'expected_daily_sales': round(expected_daily_sales, 1),
+            'daily_margin_change': round(daily_delta),
+            'total_impact': round(total_impact),
+            'volume_lift_pct': volume_lift_pct,
+            'reasoning': reasoning,
+        }
+
+
+def _build_article_reasoning(
+    recommendation: str,
+    article: str,
+    discount_pct: float,
+    margin_before: float,
+    margin_after: float,
+    volume_lift_pct: float,
+    total_impact: float,
+    days: int,
+) -> str:
+    """Построить обоснование для артикула."""
+    if margin_after <= 0:
+        return (
+            f"Скидка {discount_pct:.0f}% делает артикул убыточным "
+            f"(маржа {margin_before:.0f}₽ → {margin_after:.0f}₽/шт)"
+        )
+    if recommendation == 'participate':
+        return (
+            f"маржа {margin_before:.0f}→{margin_after:.0f}₽/шт, "
+            f"+{volume_lift_pct:.0f}% объём → +{total_impact:.0f}₽ за {days}д"
+        )
+    return (
+        f"маржа {margin_before:.0f}→{margin_after:.0f}₽/шт, "
+        f"+{volume_lift_pct:.0f}% объём недостаточно → {total_impact:.0f}₽ за {days}д"
+    )
+
+
+def format_promotion_report(analyses: list[dict], channel: str) -> str:
+    """Форматирование отчёта по акциям в Markdown."""
+    from agents.oleg.services.time_utils import get_now_msk
+
+    now = get_now_msk()
+    md = f"# Анализ акций {channel.upper()} — {now.strftime('%d.%m.%Y')}\n\n"
+
+    if not analyses:
+        md += "Акций не обнаружено.\n"
+        return md
+
+    # Общая сводка
+    total_promos = len(analyses)
+    all_participate = sum(a.get('summary', {}).get('participate_count', 0) for a in analyses)
+    all_skip = sum(a.get('summary', {}).get('skip_count', 0) for a in analyses)
+    all_net = sum(a.get('summary', {}).get('net_impact', 0) for a in analyses)
+    md += f"**Обнаружено акций**: {total_promos}\n"
+    md += f"**Артикулов с рекомендацией \"участвовать\"**: {all_participate}\n"
+    md += f"**Артикулов с рекомендацией \"пропустить\"**: {all_skip}\n\n"
+    md += (
+        "> Скидка оценочная (~15%) — WB Calendar API не возвращает точный % скидки. "
+        "При другом % скидки результат может отличаться.\n\n"
+    )
+
+    for a in analyses:
+        promo = a.get('promotion', {})
+        name = promo.get('name', '?')
+        dates = promo.get('dates', '?')
+        discount = promo.get('discount_pct', 0)
+        urgency = promo.get('urgency', '')
+        days_until = promo.get('days_until_start', 999)
+
+        urgency_badge = ''
+        if urgency == 'СРОЧНО':
+            urgency_badge = '🔴 СРОЧНО '
+        elif urgency == 'СКОРО':
+            urgency_badge = '🟡 СКОРО '
+
+        md += f"---\n\n## {urgency_badge}{name}\n\n"
+        md += f"**Даты**: {dates}"
+        if days_until < 999:
+            md += f" (через {days_until} дн.)"
+        md += "\n"
+        if discount > 0:
+            md += f"**Скидка**: {discount:.0f}%\n"
+
+        matched = a.get('matched_articles', 0)
+        total_nms = a.get('total_promo_nms', 0)
+        if total_nms > 0:
+            md += f"**Артикулов в акции**: {total_nms} (наших: {matched})\n"
+
+        summary = a.get('summary', {})
+        net = summary.get('net_impact', 0)
+        md += f"**Чистый эффект при частичном участии**: {'+' if net > 0 else ''}{net:,.0f}₽\n\n"
+
+        participate = a.get('participate', [])
+        skip_list = a.get('skip', [])
+
+        if participate:
+            total_pos = summary.get('total_positive_impact', 0)
+            md += f"### Участвовать ({len(participate)} арт., +{total_pos:,.0f}₽)\n\n"
+            md += "| Артикул | Цена → Акция | Маржа/шт | +Объём | Эффект/период |\n"
+            md += "|---------|-------------|---------|--------|---------------|\n"
+            for art in participate[:15]:  # top 15
+                md += (
+                    f"| {art['article']} "
+                    f"| {art['current_price']}→{art['promo_price']}₽ "
+                    f"| {art['current_margin_per_unit']}→{art['promo_margin_per_unit']}₽ "
+                    f"| +{art['volume_lift_pct']:.0f}% "
+                    f"| +{art['total_impact']:,.0f}₽ |\n"
+                )
+            if len(participate) > 15:
+                md += f"\n... и ещё {len(participate) - 15} артикулов\n"
+            md += "\n"
+
+        if skip_list:
+            total_neg = summary.get('total_negative_impact', 0)
+            md += f"### Пропустить ({len(skip_list)} арт., {total_neg:,.0f}₽)\n\n"
+            md += "| Артикул | Маржа% | Безубыт.скидка | Маржа/шт | Причина |\n"
+            md += "|---------|--------|----------------|---------|----------|\n"
+            for art in skip_list[:10]:
+                be = art.get('breakeven_discount', 0)
+                be_str = f"{be:.1f}%" if be > 0 else "—"
+                md += (
+                    f"| {art['article']} "
+                    f"| {art.get('margin_pct', 0):.0f}% "
+                    f"| {be_str} "
+                    f"| {art.get('current_margin_per_unit', 0)}→{art.get('promo_margin_per_unit', 0)}₽ "
+                    f"| {art['reasoning']} |\n"
+                )
+            if len(skip_list) > 10:
+                md += f"\n... и ещё {len(skip_list) - 10} артикулов\n"
+            md += "\n"
+
+    return md
 
 
 def _build_promo_reasoning(

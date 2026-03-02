@@ -31,14 +31,33 @@ from shared.data_layer import (
     get_wb_external_ad_breakdown,
     get_ozon_external_ad_breakdown,
     get_wb_organic_vs_paid_funnel,
+    get_wb_organic_by_status,
     get_wb_ad_daily_series,
     get_ozon_ad_daily_series,
     get_wb_model_ad_roi,
     get_ozon_model_ad_roi,
     get_ozon_ad_by_sku,
+    get_ozon_organic_estimated,
     get_wb_campaign_stats,
     get_wb_ad_budget_utilization,
+    get_wb_traffic_by_model,
+    get_wb_model_metrics_comparison,
 )
+
+
+# ── LK (юрлицо) resolution helper ─────────────────────────────────
+
+_LK_MAPPING = {
+    "wb": {"ООО": "WB ООО ВУКИ", "ИП": "WB ИП Медведева П.В."},
+    "ozon": {"ООО": "Ozon ООО ВУКИ", "ИП": "Ozon ИП Медведева П.В."},
+}
+
+
+def _resolve_lk(channel: str, lk_short: Optional[str]) -> Optional[str]:
+    """Convert short lk name (ООО/ИП) to full DB value for a channel."""
+    if lk_short is None:
+        return None
+    return _LK_MAPPING.get(channel, {}).get(lk_short)
 
 
 # =============================================================================
@@ -330,6 +349,58 @@ MARKETING_TOOL_DEFINITIONS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_model_anomalies",
+            "description": (
+                "Аномалии по моделям WB: сравнение метрик текущего и прошлого периода. "
+                "Находит модели с отклонением >30% по CTR, переходам, корзине, заказам, "
+                "конверсиям. Генерирует гипотезы причин и рекомендации."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "start_date": {"type": "string", "description": "Начало периода YYYY-MM-DD"},
+                    "end_date": {"type": "string", "description": "Конец периода YYYY-MM-DD (включительно)"},
+                    "threshold_pct": {
+                        "type": "number",
+                        "description": "Порог отклонения в % (по умолчанию 30)",
+                    },
+                    "lk": {
+                        "type": "string",
+                        "enum": ["ООО", "ИП"],
+                        "description": "Юрлицо (опционально)",
+                    },
+                },
+                "required": ["start_date", "end_date"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_ozon_organic_estimate",
+            "description": (
+                "Расчётная органика OZON по моделям: organic_orders = total_orders − ad_orders. "
+                "OZON не предоставляет органические показы/переходы напрямую, "
+                "но заказы можно оценить через вычитание рекламных из общих."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "start_date": {"type": "string", "description": "Начало периода YYYY-MM-DD"},
+                    "end_date": {"type": "string", "description": "Конец периода YYYY-MM-DD (включительно)"},
+                    "lk": {
+                        "type": "string",
+                        "enum": ["ООО", "ИП"],
+                        "description": "Юрлицо (опционально)",
+                    },
+                },
+                "required": ["start_date", "end_date"],
+            },
+        },
+    },
 ]
 
 
@@ -438,19 +509,30 @@ async def _handle_funnel_analysis(
 async def _handle_organic_vs_paid(
     start_date: str, end_date: str, lk: str = None,
 ) -> dict:
-    """Organic vs Paid funnel for WB."""
-    current_start, prev_start, current_end = _calc_comparison_dates(start_date, end_date)
+    """Organic vs Paid funnel for WB.
 
+    IMPORTANT: Органика (card_opens) и реклама (impressions) — разные метрики.
+    Сопоставимые пары:
+    - Переходы в карточку: organic_card_opens vs paid_clicks
+    - Корзина: organic_add_to_cart vs paid_to_cart
+    - Заказы: organic_orders vs paid_orders
+    Рекламные показы (impressions) — отдельная метрика, не складывается с органикой.
+    """
+    current_start, prev_start, current_end = _calc_comparison_dates(start_date, end_date)
+    resolved = _resolve_lk("wb", lk)
+
+    # Fetch organic, paid, and status-split in parallel
     organic_results, paid_results = await asyncio.to_thread(
-        get_wb_organic_vs_paid_funnel, current_start, prev_start, current_end, lk
+        get_wb_organic_vs_paid_funnel, current_start, prev_start, current_end, resolved
+    )
+    status_data = await asyncio.to_thread(
+        get_wb_organic_by_status, current_start, prev_start, current_end, resolved
     )
 
     current = {}
     previous = {}
 
     # Parse organic funnel (content_analysis):
-    # period, card_opens, add_to_cart, funnel_orders, buyouts,
-    # card_to_cart_pct, cart_to_order_pct, order_to_buyout_pct
     organic_by_period: dict = {}
     for row in organic_results:
         organic_by_period[row[0]] = {
@@ -464,7 +546,6 @@ async def _handle_organic_vs_paid(
         }
 
     # Parse paid funnel (wb_adv):
-    # period, ad_views, ad_clicks, ad_to_cart, ad_orders, ad_spend, ctr, cpc
     paid_by_period: dict = {}
     for row in paid_results:
         paid_by_period[row[0]] = {
@@ -477,51 +558,79 @@ async def _handle_organic_vs_paid(
             "cpc": to_float(row[7]),
         }
 
-    # Merge organic + paid into unified per-period dicts
+    # Merge organic + paid — COMPARABLE metrics only
     for period_key in ("current", "previous"):
         org = organic_by_period.get(period_key, {})
         paid = paid_by_period.get(period_key, {})
+
+        org_card_opens = org.get("card_opens", 0)
+        paid_clicks = paid.get("ad_clicks", 0)
+        org_add_to_cart = org.get("add_to_cart", 0)
+        paid_to_cart = paid.get("ad_to_cart", 0)
+        org_orders = org.get("funnel_orders", 0)
+        paid_orders = paid.get("ad_orders", 0)
+
+        # Comparable totals (same metric type)
+        total_card_transitions = org_card_opens + paid_clicks
+        total_add_to_cart = org_add_to_cart + paid_to_cart
+        total_orders = org_orders + paid_orders
+
         parsed = {
-            "organic_views": org.get("card_opens", 0),
-            "organic_add_to_cart": org.get("add_to_cart", 0),
-            "organic_orders": org.get("funnel_orders", 0),
+            # Comparable: transitions to card
+            "organic_card_opens": org_card_opens,
+            "paid_clicks": paid_clicks,
+            "total_card_transitions": total_card_transitions,
+            "organic_share_transitions_pct": round(
+                _safe_div(org_card_opens, total_card_transitions) * 100, 1
+            ),
+            "paid_share_transitions_pct": round(
+                _safe_div(paid_clicks, total_card_transitions) * 100, 1
+            ),
+            # Comparable: add to cart
+            "organic_add_to_cart": org_add_to_cart,
+            "paid_to_cart": paid_to_cart,
+            "total_add_to_cart": total_add_to_cart,
+            "organic_share_cart_pct": round(
+                _safe_div(org_add_to_cart, total_add_to_cart) * 100, 1
+            ),
+            # Comparable: orders
+            "organic_orders": org_orders,
+            "paid_orders": paid_orders,
+            "total_orders": total_orders,
+            "organic_share_orders_pct": round(
+                _safe_div(org_orders, total_orders) * 100, 1
+            ),
+            "paid_share_orders_pct": round(
+                _safe_div(paid_orders, total_orders) * 100, 1
+            ),
+            # Organic-only: buyouts
             "organic_buyouts": org.get("buyouts", 0),
+            # Organic funnel CRs
             "organic_card_to_cart_pct": org.get("card_to_cart_pct", 0),
             "organic_cart_to_order_pct": org.get("cart_to_order_pct", 0),
             "organic_order_to_buyout_pct": org.get("order_to_buyout_pct", 0),
-            "paid_views": paid.get("ad_views", 0),
-            "paid_clicks": paid.get("ad_clicks", 0),
-            "paid_to_cart": paid.get("ad_to_cart", 0),
-            "paid_orders": paid.get("ad_orders", 0),
-            "paid_spend": paid.get("ad_spend", 0),
+            "organic_cr_pct": round(
+                _safe_div(org_orders, org_card_opens) * 100, 2
+            ),
+            # Paid-only metrics (NOT comparable to organic)
+            "paid_impressions": paid.get("ad_views", 0),
             "paid_ctr_pct": paid.get("ctr", 0),
+            "paid_spend": paid.get("ad_spend", 0),
+            "paid_cpc_rub": paid.get("cpc", 0),
+            # Paid funnel CRs
+            "paid_click_to_cart_pct": round(
+                _safe_div(paid_to_cart, paid_clicks) * 100, 2
+            ),
+            "paid_cart_to_order_pct": round(
+                _safe_div(paid_orders, paid_to_cart) * 100, 2
+            ),
+            "paid_cr_pct": round(
+                _safe_div(paid_orders, paid_clicks) * 100, 2
+            ),
+            "paid_cpo_rub": round(
+                _safe_div(paid.get("ad_spend", 0), paid_orders), 1
+            ),
         }
-        total_views = parsed["organic_views"] + parsed["paid_views"]
-        total_orders = parsed["organic_orders"] + parsed["paid_orders"]
-
-        parsed["organic_share_views_pct"] = round(
-            _safe_div(parsed["organic_views"], total_views) * 100, 1
-        )
-        parsed["paid_share_views_pct"] = round(
-            _safe_div(parsed["paid_views"], total_views) * 100, 1
-        )
-        parsed["organic_share_orders_pct"] = round(
-            _safe_div(parsed["organic_orders"], total_orders) * 100, 1
-        )
-        parsed["paid_share_orders_pct"] = round(
-            _safe_div(parsed["paid_orders"], total_orders) * 100, 1
-        )
-        parsed["organic_cr_pct"] = round(
-            _safe_div(parsed["organic_orders"], parsed["organic_views"]) * 100, 2
-        )
-        parsed["paid_cr_pct"] = round(
-            _safe_div(parsed["paid_orders"], parsed["paid_clicks"]) * 100, 2
-        )
-        parsed["paid_cpo_rub"] = round(
-            _safe_div(parsed["paid_spend"], parsed["paid_orders"]), 1
-        )
-        parsed["total_views"] = total_views
-        parsed["total_orders"] = total_orders
 
         if period_key == "current":
             current = parsed
@@ -530,11 +639,15 @@ async def _handle_organic_vs_paid(
 
     changes = {}
     if current and previous:
-        changes["organic_views_change_pct"] = _pct_change(
-            current.get("organic_views", 0), previous.get("organic_views", 0)
+        # Volume changes
+        changes["organic_card_opens_change_pct"] = _pct_change(
+            current.get("organic_card_opens", 0), previous.get("organic_card_opens", 0)
         )
-        changes["paid_views_change_pct"] = _pct_change(
-            current.get("paid_views", 0), previous.get("paid_views", 0)
+        changes["paid_clicks_change_pct"] = _pct_change(
+            current.get("paid_clicks", 0), previous.get("paid_clicks", 0)
+        )
+        changes["paid_impressions_change_pct"] = _pct_change(
+            current.get("paid_impressions", 0), previous.get("paid_impressions", 0)
         )
         changes["organic_orders_change_pct"] = _pct_change(
             current.get("organic_orders", 0), previous.get("organic_orders", 0)
@@ -542,10 +655,47 @@ async def _handle_organic_vs_paid(
         changes["paid_orders_change_pct"] = _pct_change(
             current.get("paid_orders", 0), previous.get("paid_orders", 0)
         )
-        changes["organic_share_views_change_pp"] = round(
-            current.get("organic_share_views_pct", 0)
-            - previous.get("organic_share_views_pct", 0),
+        # Share changes
+        changes["organic_share_transitions_change_pp"] = round(
+            current.get("organic_share_transitions_pct", 0)
+            - previous.get("organic_share_transitions_pct", 0),
             1,
+        )
+        changes["organic_share_orders_change_pp"] = round(
+            current.get("organic_share_orders_pct", 0)
+            - previous.get("organic_share_orders_pct", 0),
+            1,
+        )
+        # CR changes (previous vs current)
+        changes["organic_card_to_cart_change_pp"] = round(
+            current.get("organic_card_to_cart_pct", 0)
+            - previous.get("organic_card_to_cart_pct", 0),
+            2,
+        )
+        changes["organic_cart_to_order_change_pp"] = round(
+            current.get("organic_cart_to_order_pct", 0)
+            - previous.get("organic_cart_to_order_pct", 0),
+            2,
+        )
+        changes["organic_order_to_buyout_change_pp"] = round(
+            current.get("organic_order_to_buyout_pct", 0)
+            - previous.get("organic_order_to_buyout_pct", 0),
+            2,
+        )
+        changes["organic_cr_change_pp"] = round(
+            current.get("organic_cr_pct", 0)
+            - previous.get("organic_cr_pct", 0),
+            2,
+        )
+        changes["paid_cr_change_pp"] = round(
+            current.get("paid_cr_pct", 0)
+            - previous.get("paid_cr_pct", 0),
+            2,
+        )
+        changes["paid_ctr_change_pp"] = round(
+            current.get("paid_ctr_pct", 0)
+            - previous.get("paid_ctr_pct", 0),
+            2,
         )
 
     return {
@@ -554,6 +704,11 @@ async def _handle_organic_vs_paid(
         "current": current,
         "previous": previous,
         "changes": changes,
+        "by_status": status_data,
+        "note": (
+            "Переходы в карточку: органические (card_opens) + платные (clicks) — сопоставимые метрики. "
+            "Рекламные показы (impressions) — отдельная метрика, не складывается с органикой."
+        ),
     }
 
 
@@ -564,13 +719,14 @@ async def _handle_external_ad_breakdown(
     current_start, prev_start, current_end = _calc_comparison_dates(start_date, end_date)
 
     async def _fetch_channel(ch: str) -> dict:
+        resolved = _resolve_lk(ch, lk)
         if ch == "wb":
             rows = await asyncio.to_thread(
-                get_wb_external_ad_breakdown, current_start, prev_start, current_end, lk
+                get_wb_external_ad_breakdown, current_start, prev_start, current_end, resolved
             )
         else:
             rows = await asyncio.to_thread(
-                get_ozon_external_ad_breakdown, current_start, prev_start, current_end, lk
+                get_ozon_external_ad_breakdown, current_start, prev_start, current_end, resolved
             )
 
         # SQL returns ONE row per period with spend columns per ad type.
@@ -700,13 +856,14 @@ async def _handle_model_ad_efficiency(
     current_start, prev_start, current_end = _calc_comparison_dates(start_date, end_date)
 
     async def _fetch_channel(ch: str) -> dict:
+        resolved = _resolve_lk(ch, lk)
         if ch == "wb":
             rows = await asyncio.to_thread(
-                get_wb_model_ad_roi, current_start, prev_start, current_end, lk
+                get_wb_model_ad_roi, current_start, prev_start, current_end, resolved
             )
         else:
             rows = await asyncio.to_thread(
-                get_ozon_model_ad_roi, current_start, prev_start, current_end, lk
+                get_ozon_model_ad_roi, current_start, prev_start, current_end, resolved
             )
 
         # SQL returns: period, model, ad_spend, ad_orders, revenue, margin,
@@ -927,17 +1084,33 @@ async def _handle_ad_budget_utilization(
 async def _handle_ad_spend_correlation(
     channel: str, start_date: str, end_date: str,
 ) -> dict:
-    """Pearson correlation between ad spend and orders/margin across models."""
+    """Pearson correlation between ad spend and orders/margin/cart across models."""
     current_start, prev_start, current_end = _calc_comparison_dates(start_date, end_date)
 
     if channel == "wb":
         rows = await asyncio.to_thread(
             get_wb_model_ad_roi, current_start, prev_start, current_end
         )
+        # Also fetch cart data (atbs) per model from wb_adv
+        traffic_rows = await asyncio.to_thread(
+            get_wb_traffic_by_model, current_start, prev_start, current_end
+        )
     else:
         rows = await asyncio.to_thread(
             get_ozon_model_ad_roi, current_start, prev_start, current_end
         )
+        traffic_rows = []
+
+    # Cart data per model (WB only, from get_wb_traffic_by_model)
+    # SQL: period, model, ad_views, ad_clicks, ad_spend, ad_to_cart, ad_orders, ctr, cpc
+    cart_by_model: dict = {}
+    for row in traffic_rows:
+        if row[0] != "current":
+            continue
+        model = _map_to_osnova(row[1])
+        if model == "Other":
+            continue
+        cart_by_model[model] = cart_by_model.get(model, 0) + to_float(row[5])  # ad_to_cart
 
     # Collect current period data per model
     model_data = {}
@@ -950,13 +1123,18 @@ async def _handle_ad_spend_correlation(
             continue
 
         if model not in model_data:
-            model_data[model] = {"ad_spend": 0, "ad_orders": 0, "revenue": 0, "margin": 0}
+            model_data[model] = {"ad_spend": 0, "ad_orders": 0, "revenue": 0, "margin": 0, "ad_to_cart": 0}
 
         # SQL: period, model, ad_spend, ad_orders, revenue, margin, drr_pct, romi
         model_data[model]["ad_spend"] += to_float(row[2])
         model_data[model]["ad_orders"] += to_float(row[3])
         model_data[model]["revenue"] += to_float(row[4])
         model_data[model]["margin"] += to_float(row[5])
+
+    # Merge cart data into model_data
+    for model, cart_count in cart_by_model.items():
+        if model in model_data:
+            model_data[model]["ad_to_cart"] = cart_count
 
     if len(model_data) < 3:
         return {
@@ -970,12 +1148,14 @@ async def _handle_ad_spend_correlation(
     spends = []
     orders_list = []
     margins = []
+    carts = []
     model_names = []
     for model_name, data in model_data.items():
         model_names.append(model_name)
         spends.append(data["ad_spend"])
         orders_list.append(data["ad_orders"])
         margins.append(data["margin"])
+        carts.append(data["ad_to_cart"])
 
     def _pearson(x: list, y: list) -> float:
         n = len(x)
@@ -993,6 +1173,7 @@ async def _handle_ad_spend_correlation(
 
     corr_spend_orders = _pearson(spends, orders_list)
     corr_spend_margin = _pearson(spends, margins)
+    corr_spend_cart = _pearson(spends, carts)
 
     def _interpret(r: float) -> str:
         abs_r = abs(r)
@@ -1007,25 +1188,34 @@ async def _handle_ad_spend_correlation(
         direction = "положительная" if r > 0 else "отрицательная"
         return f"{strength} {direction} связь"
 
+    correlations = {
+        "spend_vs_orders": {
+            "pearson_r": corr_spend_orders,
+            "interpretation": _interpret(corr_spend_orders),
+        },
+        "spend_vs_margin": {
+            "pearson_r": corr_spend_margin,
+            "interpretation": _interpret(corr_spend_margin),
+        },
+    }
+    # Cart correlation only for WB (OZON doesn't have atbs in ad data)
+    if channel == "wb":
+        correlations["spend_vs_cart"] = {
+            "pearson_r": corr_spend_cart,
+            "interpretation": _interpret(corr_spend_cart),
+        }
+
     return {
         "channel": channel.upper(),
         "period": f"{start_date} — {end_date}",
         "models_count": len(model_data),
-        "correlations": {
-            "spend_vs_orders": {
-                "pearson_r": corr_spend_orders,
-                "interpretation": _interpret(corr_spend_orders),
-            },
-            "spend_vs_margin": {
-                "pearson_r": corr_spend_margin,
-                "interpretation": _interpret(corr_spend_margin),
-            },
-        },
+        "correlations": correlations,
         "models_data": [
             {
                 "model": model_names[i],
                 "ad_spend": spends[i],
                 "ad_orders": orders_list[i],
+                "ad_to_cart": carts[i],
                 "margin": margins[i],
             }
             for i in range(len(model_names))
@@ -1056,6 +1246,309 @@ async def _handle_mkt_model_breakdown(
     return await _handle_model_breakdown(channel, start_date, end_date)
 
 
+async def _handle_model_anomalies(
+    start_date: str, end_date: str, threshold_pct: float = 30, lk: str = None,
+) -> dict:
+    """Model-level anomaly detection: find models with significant metric changes."""
+    current_start, prev_start, current_end = _calc_comparison_dates(start_date, end_date)
+    resolved = _resolve_lk("wb", lk)
+
+    rows = await asyncio.to_thread(
+        get_wb_model_metrics_comparison, current_start, prev_start, current_end, resolved
+    )
+
+    # Parse into model data by period
+    # SQL: period, model, organic_card_opens, organic_add_to_cart, organic_orders,
+    #      organic_buyouts, ad_views, ad_clicks, ad_to_cart, ad_orders, ad_spend
+    model_current = {}
+    model_previous = {}
+    for row in rows:
+        period = row[0]
+        model = _map_to_osnova(row[1])
+        if model == "Other":
+            continue
+
+        data = {
+            "organic_card_opens": to_float(row[2]),
+            "organic_add_to_cart": to_float(row[3]),
+            "organic_orders": to_float(row[4]),
+            "organic_buyouts": to_float(row[5]),
+            "ad_views": to_float(row[6]),
+            "ad_clicks": to_float(row[7]),
+            "ad_to_cart": to_float(row[8]),
+            "ad_orders": to_float(row[9]),
+            "ad_spend": to_float(row[10]),
+        }
+        # Compute derived CRs
+        data["organic_card_to_cart_pct"] = round(
+            _safe_div(data["organic_add_to_cart"], data["organic_card_opens"]) * 100, 2
+        )
+        data["organic_cart_to_order_pct"] = round(
+            _safe_div(data["organic_orders"], data["organic_add_to_cart"]) * 100, 2
+        )
+        data["ad_ctr_pct"] = round(
+            _safe_div(data["ad_clicks"], data["ad_views"]) * 100, 2
+        )
+        data["ad_click_to_cart_pct"] = round(
+            _safe_div(data["ad_to_cart"], data["ad_clicks"]) * 100, 2
+        )
+
+        target = model_current if period == "current" else model_previous
+        if model in target:
+            for k, v in data.items():
+                target[model][k] = target[model].get(k, 0) + v
+        else:
+            target[model] = data
+
+    # Recalculate CR after aggregation for models that were merged
+    for store in (model_current, model_previous):
+        for data in store.values():
+            data["organic_card_to_cart_pct"] = round(
+                _safe_div(data["organic_add_to_cart"], data["organic_card_opens"]) * 100, 2
+            )
+            data["organic_cart_to_order_pct"] = round(
+                _safe_div(data["organic_orders"], data["organic_add_to_cart"]) * 100, 2
+            )
+            data["ad_ctr_pct"] = round(
+                _safe_div(data["ad_clicks"], data["ad_views"]) * 100, 2
+            )
+            data["ad_click_to_cart_pct"] = round(
+                _safe_div(data["ad_to_cart"], data["ad_clicks"]) * 100, 2
+            )
+
+    # Find anomalies
+    anomalies = []
+    threshold = threshold_pct / 100.0
+
+    # Metrics to check: (key, label, is_rate)
+    metrics_to_check = [
+        ("organic_card_opens", "Органика: переходы в карточку", False),
+        ("organic_add_to_cart", "Органика: корзина", False),
+        ("organic_orders", "Органика: заказы", False),
+        ("organic_card_to_cart_pct", "Органика: CR карточка→корзина", True),
+        ("organic_cart_to_order_pct", "Органика: CR корзина→заказ", True),
+        ("ad_views", "Реклама: показы", False),
+        ("ad_clicks", "Реклама: клики", False),
+        ("ad_ctr_pct", "Реклама: CTR", True),
+        ("ad_to_cart", "Реклама: корзина", False),
+        ("ad_orders", "Реклама: заказы", False),
+        ("ad_spend", "Реклама: расход", False),
+        ("ad_click_to_cart_pct", "Реклама: CR клик→корзина", True),
+    ]
+
+    all_models = set(model_current.keys()) & set(model_previous.keys())
+    for model in sorted(all_models):
+        curr = model_current[model]
+        prev = model_previous[model]
+        model_anomalies = []
+
+        for key, label, is_rate in metrics_to_check:
+            c_val = curr.get(key, 0)
+            p_val = prev.get(key, 0)
+
+            if is_rate:
+                # For rates: absolute difference in pp
+                diff_pp = c_val - p_val
+                if abs(p_val) > 1:  # Only flag if previous had meaningful value
+                    rel_change = diff_pp / p_val
+                    if abs(rel_change) >= threshold:
+                        model_anomalies.append({
+                            "metric": label,
+                            "current": c_val,
+                            "previous": p_val,
+                            "change_pp": round(diff_pp, 2),
+                            "change_pct": round(rel_change * 100, 1),
+                        })
+            else:
+                # For volumes: percent change
+                if p_val > 0:
+                    change = (c_val - p_val) / p_val
+                    if abs(change) >= threshold:
+                        model_anomalies.append({
+                            "metric": label,
+                            "current": c_val,
+                            "previous": p_val,
+                            "change_pct": round(change * 100, 1),
+                        })
+
+        if model_anomalies:
+            # Generate hypotheses based on anomaly patterns
+            hypotheses = _generate_anomaly_hypotheses(curr, prev, model_anomalies)
+            anomalies.append({
+                "model": model,
+                "anomalies_count": len(model_anomalies),
+                "anomalies": model_anomalies,
+                "hypotheses": hypotheses,
+            })
+
+    # Sort by number of anomalies descending
+    anomalies.sort(key=lambda x: x["anomalies_count"], reverse=True)
+
+    return {
+        "channel": "WB",
+        "period": f"{start_date} — {end_date}",
+        "threshold_pct": threshold_pct,
+        "models_analyzed": len(all_models),
+        "models_with_anomalies": len(anomalies),
+        "anomalies": anomalies,
+    }
+
+
+def _generate_anomaly_hypotheses(curr: dict, prev: dict, anomalies: list) -> list:
+    """Rule-based hypothesis generation from anomaly patterns."""
+    hypotheses = []
+    anomaly_keys = {a["metric"] for a in anomalies}
+    changes = {}
+    for a in anomalies:
+        changes[a["metric"]] = a["change_pct"]
+
+    # Pattern: CTR down + orders down → competitors / season / outdated listing
+    ctr_down = changes.get("Реклама: CTR", 0) < -20
+    orders_down = changes.get("Реклама: заказы", 0) < -20 or changes.get("Органика: заказы", 0) < -20
+    if ctr_down and orders_down:
+        hypotheses.append(
+            "CTR↓ + заказы↓: возможные причины — усиление конкурентов, "
+            "сезонное снижение спроса, устаревшая карточка товара. "
+            "Рекомендация: обновить фото/описание, проверить позиции конкурентов."
+        )
+
+    # Pattern: CTR up + orders stable/down → irrelevant traffic
+    ctr_up = changes.get("Реклама: CTR", 0) > 20
+    orders_stable_or_down = changes.get("Реклама: заказы", 0) <= 5
+    if ctr_up and orders_stable_or_down:
+        hypotheses.append(
+            "CTR↑ + заказы стабильны/↓: вероятно, привлекается нерелевантный трафик. "
+            "Рекомендация: проверить ключевые слова, минус-слова, релевантность аудитории."
+        )
+
+    # Pattern: Organic down + paid up → losing search positions
+    organic_down = changes.get("Органика: переходы в карточку", 0) < -20
+    paid_up = changes.get("Реклама: клики", 0) > 20 or changes.get("Реклама: расход", 0) > 20
+    if organic_down and paid_up:
+        hypotheses.append(
+            "Органика↓ + платное↑: модель теряет позиции в органическом поиске, "
+            "компенсируется рекламой. Рекомендация: проверить SEO карточки, "
+            "рейтинг, отзывы, позиции в выдаче."
+        )
+
+    # Pattern: Cart CR down → price / competitor / sizing issue
+    cart_cr_down = changes.get("Органика: CR карточка→корзина", 0) < -20
+    if cart_cr_down:
+        hypotheses.append(
+            "CR карточка→корзина↓: возможные причины — неконкурентная цена, "
+            "изменение СПП, отсутствие популярных размеров, негативные отзывы. "
+            "Рекомендация: проверить цену vs конкуренты, наличие размеров, новые отзывы."
+        )
+
+    # Pattern: Organic orders up significantly
+    organic_orders_up = changes.get("Органика: заказы", 0) > 50
+    if organic_orders_up:
+        hypotheses.append(
+            "Органика заказы↑↑: рост органических заказов — возможно влияние внешней рекламы "
+            "(блогеры/VK), сезонный всплеск, или улучшение позиций в поиске."
+        )
+
+    # Pattern: Ad spend up but orders down → efficiency drop
+    spend_up = changes.get("Реклама: расход", 0) > 20
+    ad_orders_down = changes.get("Реклама: заказы", 0) < -10
+    if spend_up and ad_orders_down:
+        hypotheses.append(
+            "Расход↑ + заказы через рекламу↓: падение эффективности рекламы. "
+            "Рекомендация: пересмотреть ставки, отключить неэффективные кампании, "
+            "проверить релевантность ключевых слов."
+        )
+
+    if not hypotheses:
+        hypotheses.append(
+            "Значимые отклонения зафиксированы, но паттерн не соответствует типовым сценариям. "
+            "Рекомендация: проанализировать детально вручную."
+        )
+
+    return hypotheses
+
+
+async def _handle_ozon_organic_estimate(
+    start_date: str, end_date: str, lk: str = None,
+) -> dict:
+    """Estimated OZON organic: total orders - ad orders per model."""
+    current_start, prev_start, current_end = _calc_comparison_dates(start_date, end_date)
+    resolved = _resolve_lk("ozon", lk)
+
+    rows = await asyncio.to_thread(
+        get_ozon_organic_estimated, current_start, prev_start, current_end, resolved
+    )
+
+    # SQL: period, model, total_orders, ad_orders, organic_orders, total_revenue, ad_spend
+    current_models = []
+    previous_models = []
+    totals = {"current": {"total": 0, "ad": 0, "organic": 0, "revenue": 0, "ad_spend": 0},
+              "previous": {"total": 0, "ad": 0, "organic": 0, "revenue": 0, "ad_spend": 0}}
+    warnings = []
+
+    for row in rows:
+        period = row[0]
+        model = _map_to_osnova(row[1])
+        if model == "Other":
+            continue
+        total_orders = to_float(row[2])
+        ad_orders = to_float(row[3])
+        organic_orders = to_float(row[4])
+        total_revenue = to_float(row[5])
+        ad_spend = to_float(row[6])
+
+        if ad_orders > total_orders and total_orders > 0:
+            warnings.append(
+                f"{model}: рекламных заказов ({int(ad_orders)}) > общих ({int(total_orders)}), "
+                "органика capped на 0"
+            )
+
+        entry = {
+            "model": model,
+            "total_orders": total_orders,
+            "ad_orders": ad_orders,
+            "organic_orders": organic_orders,
+            "organic_share_pct": round(_safe_div(organic_orders, total_orders) * 100, 1),
+            "total_revenue": total_revenue,
+            "ad_spend": ad_spend,
+        }
+
+        target = current_models if period == "current" else previous_models
+        target.append(entry)
+
+        t = totals[period]
+        t["total"] += total_orders
+        t["ad"] += ad_orders
+        t["organic"] += organic_orders
+        t["revenue"] += total_revenue
+        t["ad_spend"] += ad_spend
+
+    # Compute total organic share
+    for period_key in ("current", "previous"):
+        t = totals[period_key]
+        t["organic_share_pct"] = round(_safe_div(t["organic"], t["total"]) * 100, 1)
+
+    result = {
+        "channel": "OZON",
+        "period": f"{start_date} — {end_date}",
+        "current": {
+            "totals": totals["current"],
+            "models": sorted(current_models, key=lambda x: x["total_orders"], reverse=True),
+        },
+        "previous": {
+            "totals": totals["previous"],
+            "models": sorted(previous_models, key=lambda x: x["total_orders"], reverse=True),
+        },
+        "note": (
+            "Расчётная органика: organic_orders = total_orders − ad_orders. "
+            "Только уровень заказов — показы/переходы недоступны (OZON search_stat = 0)."
+        ),
+    }
+    if warnings:
+        result["warnings"] = warnings
+
+    return result
+
+
 # =============================================================================
 # HANDLERS MAP
 # =============================================================================
@@ -1070,6 +1563,8 @@ MARKETING_TOOL_HANDLERS: Dict[str, Any] = {
     "get_ad_daily_trend": _handle_ad_daily_trend,
     "get_ad_budget_utilization": _handle_ad_budget_utilization,
     "get_ad_spend_correlation": _handle_ad_spend_correlation,
+    "get_model_anomalies": _handle_model_anomalies,
+    "get_ozon_organic_estimate": _handle_ozon_organic_estimate,
     "get_channel_finance": _handle_mkt_channel_finance,
     "get_margin_levers": _handle_mkt_margin_levers,
     "get_model_breakdown": _handle_mkt_model_breakdown,
