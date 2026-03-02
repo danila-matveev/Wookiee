@@ -10,15 +10,34 @@ logging.basicConfig(
 )
 
 
-async def run(start: date, end: date):
+def _detect_report_type(start: date, end: date) -> "ReportType":
+    """Auto-detect report type based on period length."""
+    from agents.oleg.pipeline.report_types import ReportType
+
+    days = (end - start).days + 1
+    if days == 1:
+        return ReportType.DAILY
+    elif 6 <= days <= 8:
+        return ReportType.WEEKLY
+    elif 27 <= days <= 31:
+        return ReportType.MONTHLY
+    return ReportType.CUSTOM
+
+
+async def run(start: date, end: date, report_type_override: str = None):
     from agents.oleg.app import OlegApp
     from agents.oleg.pipeline.report_types import ReportRequest, ReportType
 
     app = OlegApp()
     await app.setup()
 
+    if report_type_override:
+        rtype = ReportType(report_type_override)
+    else:
+        rtype = _detect_report_type(start, end)
+
     request = ReportRequest(
-        report_type=ReportType.CUSTOM,
+        report_type=rtype,
         start_date=str(start),
         end_date=str(end),
         channel="wb",
@@ -52,6 +71,7 @@ async def run(start: date, end: date):
                 end_date=str(end),
                 report_md=result.detailed_report or result.brief_summary or "",
                 source="CLI (manual)",
+                report_type=result.report_type.value,
                 chain_steps=result.chain_steps,
             )
             print(f"\nNotion: {page_url}")
@@ -66,10 +86,16 @@ def _parse_date(s: str) -> date:
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: python run_period_report.py YYYY-MM-DD YYYY-MM-DD")
+        print("Usage: python run_period_report.py YYYY-MM-DD YYYY-MM-DD [--type daily|weekly|monthly|custom]")
         sys.exit(1)
 
     start_date = _parse_date(sys.argv[1])
     end_date = _parse_date(sys.argv[2])
 
-    asyncio.run(run(start_date, end_date))
+    type_override = None
+    if "--type" in sys.argv:
+        idx = sys.argv.index("--type")
+        if idx + 1 < len(sys.argv):
+            type_override = sys.argv[idx + 1]
+
+    asyncio.run(run(start_date, end_date, report_type_override=type_override))
