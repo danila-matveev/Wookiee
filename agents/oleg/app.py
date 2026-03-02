@@ -210,10 +210,10 @@ class OlegApp:
         daily_h, daily_m = (int(x) for x in config.DAILY_REPORT_TIME.split(":"))
         weekly_h, weekly_m = (int(x) for x in config.WEEKLY_REPORT_TIME.split(":"))
 
-        # Daily report (Mon-Sat)
+        # Daily report (every day, including weekends)
         self.scheduler.add_job(
             self._run_daily_report,
-            CronTrigger(day_of_week="mon-sat", hour=daily_h, minute=daily_m, timezone=tz),
+            CronTrigger(hour=daily_h, minute=daily_m, timezone=tz),
             id="daily_report",
             name=f"Daily Report ({daily_h:02d}:{daily_m:02d} MSK)",
             replace_existing=True,
@@ -247,12 +247,13 @@ class OlegApp:
             replace_existing=True,
         )
 
-        # Data-ready check (hourly 06:00–13:00 MSK, Mon-Sat)
+        # Data-ready check (hourly, every day, window extends past retry period)
+        data_check_end_hour = min(daily_h + 3, 23)
         self.scheduler.add_job(
             self._check_data_ready,
-            CronTrigger(day_of_week="mon-sat", hour="6-13", minute=0, timezone=tz),
+            CronTrigger(hour=f"6-{data_check_end_hour}", minute=0, timezone=tz),
             id="data_ready_check",
-            name="Data Ready Check (hourly 06-13 MSK)",
+            name=f"Data Ready Check (hourly 06-{data_check_end_hour} MSK)",
             replace_existing=True,
         )
 
@@ -297,6 +298,16 @@ class OlegApp:
             CronTrigger(day_of_week="mon", hour=price_h, minute=price_m, timezone=tz),
             id="weekly_price_review",
             name=f"Weekly Price Review (Mon {price_h:02d}:{price_m:02d} MSK)",
+            replace_existing=True,
+        )
+
+        # Monthly price review (1st Monday of month, after weekly)
+        mprice_h, mprice_m = (int(x) for x in config.MONTHLY_PRICE_REVIEW_TIME.split(":"))
+        self.scheduler.add_job(
+            self._run_monthly_price_review,
+            CronTrigger(day="1-7", day_of_week="mon", hour=mprice_h, minute=mprice_m, timezone=tz),
+            id="monthly_price_review",
+            name=f"Monthly Price Review (1st Mon {mprice_h:02d}:{mprice_m:02d} MSK)",
             replace_existing=True,
         )
 
@@ -346,18 +357,21 @@ class OlegApp:
 
         MAX_RETRIES = 3
         RETRY_INTERVAL_MIN = 30
+        RETRIES_EXHAUSTED_KEY = "daily_retries_exhausted"
         yesterday = get_yesterday_msk()
 
         source = "cron" if _retry_attempt == 0 else f"retry_{_retry_attempt}"
         logger.info(f"_run_daily_report triggered: source={source}, date={yesterday}")
 
-        # Clean up stale retry jobs from previous runs (on fresh cron trigger)
+        # Clean up stale retry jobs and recovery flag from previous runs
         if _retry_attempt == 0 and self.scheduler:
             for i in range(1, MAX_RETRIES + 1):
                 job_id = f"daily_report_retry_{i}"
                 if self.scheduler.get_job(job_id):
                     self.scheduler.remove_job(job_id)
                     logger.info(f"Cancelled stale retry job: {job_id}")
+            if self.state_store:
+                self.state_store.set_state(RETRIES_EXHAUSTED_KEY, "")
 
         # Step 1: Pre-check gates for both marketplaces
         wb_result = self.pipeline.gate_checker.check_all("wb")
@@ -371,12 +385,25 @@ class OlegApp:
         status_msg = "\n\n".join(status_parts)
 
         if not both_ready:
-            attempt_info = f"\n\n(попытка {_retry_attempt + 1}/{MAX_RETRIES + 1})"
-            status_msg += attempt_info
-
             if _retry_attempt < MAX_RETRIES:
-                status_msg += f"\nПовторная проверка через {RETRY_INTERVAL_MIN} мин."
-                await self._send_admin_message(status_msg)
+                if _retry_attempt == 0:
+                    # First attempt: full gate status for both marketplaces
+                    status_msg += f"\n\n(попытка 1/{MAX_RETRIES + 1})"
+                    status_msg += f"\nПовторная проверка через {RETRY_INTERVAL_MIN} мин."
+                    await self._send_admin_message(status_msg)
+                else:
+                    # Subsequent retries: compact one-liner
+                    failing = []
+                    if not wb_result.can_generate:
+                        failing.append("WB")
+                    if not ozon_result.can_generate:
+                        failing.append("OZON")
+                    compact_msg = (
+                        f"Попытка {_retry_attempt + 1}/{MAX_RETRIES + 1}: "
+                        f"{', '.join(failing)} — данные не готовы. "
+                        f"Следующая через {RETRY_INTERVAL_MIN} мин."
+                    )
+                    await self._send_admin_message(compact_msg)
 
                 # Schedule retry
                 from apscheduler.triggers.date import DateTrigger
@@ -393,10 +420,19 @@ class OlegApp:
                 )
                 return
             else:
-                status_msg += "\nВсе попытки исчерпаны. Отчёт не сгенерирован."
+                # All retries exhausted: full status + recovery flag
+                status_msg += f"\n\n(попытка {MAX_RETRIES + 1}/{MAX_RETRIES + 1})"
+                status_msg += "\nВсе попытки исчерпаны. Жду появления данных."
                 await self._send_admin_message(status_msg)
+                # Set recovery flag so _check_data_ready can auto-trigger later
+                if self.state_store:
+                    self.state_store.set_state(RETRIES_EXHAUSTED_KEY, str(yesterday))
                 await self.watchdog.on_report_failure("daily", marketplace="wb")
                 return
+
+        # Clear recovery flag — gates passed, no recovery needed
+        if self.state_store:
+            self.state_store.set_state(RETRIES_EXHAUSTED_KEY, "")
 
         # Idempotency: don't start report if already started for this date
         state_key = "daily_report_started"
@@ -592,6 +628,63 @@ class OlegApp:
                 logger.error(f"Weekly price review for {channel} failed: {e}", exc_info=True)
                 await self._send_admin_message(f"Ошибка ценового обзора {channel.upper()}: {e}")
 
+    async def _run_monthly_price_review(self) -> None:
+        """Scheduled monthly price review: full analysis for the previous month."""
+        from agents.oleg.services.time_utils import get_last_month_bounds_msk
+        from agents.oleg.services.price_tools import _learning_store
+        from scripts.run_price_analysis import analyze_channel, format_comprehensive_report
+
+        first, last = get_last_month_bounds_msk()
+        start_date = str(first)
+        end_date = str(last)
+
+        await self._send_admin_message(
+            f"Генерирую ежемесячный ценовой обзор за {start_date} — {end_date}..."
+        )
+
+        for channel in ('wb', 'ozon'):
+            try:
+                report = analyze_channel(channel, start_date, end_date, _learning_store)
+                report_md = format_comprehensive_report(report)
+
+                total = report.get('models_total', 0)
+                with_elast = report.get('models_with_elasticity', 0)
+                policies = report.get('policies', {})
+                actions = {}
+                for p in policies.values():
+                    a = p.get('action', 'hold')
+                    actions[a] = actions.get(a, 0) + 1
+
+                brief_parts = [
+                    f"Месячный ценовой обзор {channel.upper()}: "
+                    f"{total} моделей, {with_elast} с эластичностью"
+                ]
+                if actions.get('increase'):
+                    brief_parts.append(f"повысить: {actions['increase']}")
+                if actions.get('decrease'):
+                    brief_parts.append(f"снизить: {actions['decrease']}")
+
+                await self._deliver_price_report(
+                    report_md=report_md,
+                    report_type="Ценовой анализ (месяц)",
+                    start_date=start_date,
+                    end_date=end_date,
+                    brief_summary=", ".join(brief_parts),
+                )
+
+                if _learning_store:
+                    for item in report.get('roi_dashboard', []):
+                        try:
+                            _learning_store.save_roi_snapshot(
+                                item.get('model', ''), channel, item,
+                            )
+                        except Exception:
+                            pass
+
+            except Exception as e:
+                logger.error(f"Monthly price review for {channel} failed: {e}", exc_info=True)
+                await self._send_admin_message(f"Ошибка месячного ценового обзора {channel.upper()}: {e}")
+
     async def _refresh_regression_models(self) -> None:
         """Monthly regression refresh: re-estimate all model elasticities."""
         from agents.oleg.services.time_utils import get_last_month_bounds_msk
@@ -707,10 +800,21 @@ class OlegApp:
         )
 
     async def _scan_promotions(self) -> None:
-        """Scan marketplaces for new promotions and analyze them."""
+        """Scan marketplaces for promotions and analyze at article level."""
+        from datetime import date, timedelta
         from agents.oleg import config
-        from agents.oleg.services.price_analysis.promotion_analyzer import PromotionAnalyzer
-        from agents.oleg.services.price_tools import _learning_store
+        from agents.oleg.services.price_analysis.promotion_analyzer import (
+            PromotionAnalyzer, format_promotion_report,
+        )
+        from shared.data_layer import (
+            get_wb_by_article, get_ozon_by_article,
+            get_nm_to_article_mapping,
+        )
+
+        # Метрики за последние 30 дней для расчёта маржи/продаж
+        end = date.today()
+        start = end - timedelta(days=30)
+        nm_to_article = get_nm_to_article_mapping()
 
         for channel in ('wb', 'ozon'):
             try:
@@ -719,54 +823,67 @@ class OlegApp:
                     if not clients:
                         continue
                     analyzer = PromotionAnalyzer(wb_clients=clients)
+                    raw_metrics = get_wb_by_article(str(start), str(end))
                 else:
                     clients = config.get_ozon_clients()
                     if not clients:
                         continue
                     analyzer = PromotionAnalyzer(ozon_clients=clients)
+                    raw_metrics = get_ozon_by_article(str(start), str(end))
+
+                # Конвертировать list → dict {article_lower: metrics}
+                article_metrics = {}
+                for m in raw_metrics:
+                    art = m.get('article', '').lower()
+                    if art:
+                        article_metrics[art] = m
+
+                logger.info(
+                    f"[{channel}] Loaded {len(article_metrics)} articles, "
+                    f"{len(nm_to_article)} nm→article mappings"
+                )
 
                 promotions = analyzer.scan_promotions(channel)
                 if not promotions:
                     logger.info(f"[{channel}] No promotions found")
                     continue
 
-                # Analyze each promotion
-                results = []
-                participate_count = 0
-                skip_count = 0
-
+                # Артикульный анализ каждой акции
+                analyses = []
                 for promo in promotions:
                     try:
-                        analysis = analyzer.analyze_promotion(
+                        analysis = analyzer.analyze_promotion_by_article(
+                            channel=channel,
                             promotion=promo,
-                            model_metrics={},
-                            elasticity=None,
+                            article_metrics=article_metrics,
+                            nm_to_article=nm_to_article,
                         )
-                        results.append(analysis)
-                        rec = analysis.get('recommendation', '')
-                        if 'участвовать' in rec.lower() or 'participate' in rec.lower():
-                            participate_count += 1
-                        else:
-                            skip_count += 1
+                        analyses.append(analysis)
                     except Exception as e:
                         logger.warning(f"[{channel}] Promo analysis failed: {e}")
 
-                # Build report
-                report_md = f"# Сканирование акций {channel.upper()}\n\n"
-                report_md += f"Обнаружено акций: {len(promotions)}\n\n"
-                if results:
-                    report_md += "## Результаты анализа\n\n"
-                    for r in results:
-                        name = r.get('promotion_name', r.get('name', 'Без названия'))
-                        rec = r.get('recommendation', 'Не определено')
-                        report_md += f"- **{name}**: {rec}\n"
+                if not analyses:
+                    logger.info(f"[{channel}] No promotions analyzed successfully")
+                    continue
 
-                from datetime import date
+                report_md = format_promotion_report(analyses, channel)
+
+                total_participate = sum(
+                    a.get('summary', {}).get('participate_count', 0) for a in analyses
+                )
+                total_skip = sum(
+                    a.get('summary', {}).get('skip_count', 0) for a in analyses
+                )
+                net_impact = sum(
+                    a.get('summary', {}).get('net_impact', 0) for a in analyses
+                )
+
                 today = str(date.today())
-
                 brief = (
-                    f"Обнаружено {len(promotions)} акций на {channel.upper()}. "
-                    f"Участвовать: {participate_count}, пропустить: {skip_count}."
+                    f"{channel.upper()}: {len(promotions)} акций. "
+                    f"Участвовать: {total_participate} арт., "
+                    f"пропустить: {total_skip} арт. "
+                    f"Чистый эффект: {'+' if net_impact > 0 else ''}{net_impact:,.0f}₽"
                 )
 
                 await self._deliver_price_report(
@@ -776,18 +893,6 @@ class OlegApp:
                     end_date=today,
                     brief_summary=brief,
                 )
-
-                # Save recommendations to LearningStore
-                if _learning_store and results:
-                    for r in results:
-                        try:
-                            _learning_store.save_recommendation(
-                                model=r.get('model', 'all'),
-                                channel=channel,
-                                recommendation=r,
-                            )
-                        except Exception:
-                            pass
 
             except Exception as e:
                 logger.error(f"[{channel}] Promotion scan failed: {e}", exc_info=True)
@@ -836,6 +941,8 @@ class OlegApp:
 
         Checks both WB and Ozon. Sends one notification per date when BOTH are ready,
         tracked via state_store key 'data_ready_notified'.
+
+        If retries were exhausted earlier, auto-triggers daily report generation.
         """
         if not self.pipeline:
             return
@@ -874,6 +981,23 @@ class OlegApp:
                 self.state_store.set_state(state_key, str(yesterday))
 
             logger.info(f"Data ready notification sent for {yesterday}")
+
+            # Auto-trigger report if retries were exhausted earlier
+            retries_exhausted_key = "daily_retries_exhausted"
+            if self.state_store:
+                exhausted_date = self.state_store.get_state(retries_exhausted_key)
+                if exhausted_date == str(yesterday):
+                    logger.info(
+                        f"Retries were exhausted for {yesterday}, but data is now ready. "
+                        f"Auto-triggering daily report."
+                    )
+                    # Clear flag before triggering to prevent loops
+                    self.state_store.set_state(retries_exhausted_key, "")
+                    await self._send_admin_message(
+                        f"Данные появились после исчерпания попыток. "
+                        f"Автоматически запускаю отчёт за {yesterday}..."
+                    )
+                    await self._run_daily_report()
 
     async def _deliver_price_report(
         self,

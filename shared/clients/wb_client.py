@@ -218,39 +218,24 @@ class WBClient:
 
     PROMOTIONS_BASE = "https://dp-calendar-api.wildberries.ru"
 
-    def get_promotions_list(self) -> list[dict]:
+    def get_promotions_list(self, days_ahead: int = 60) -> list[dict]:
         """GET /api/v1/calendar/promotions — список доступных акций.
 
-        Returns list of promotions with id, name, startDate, endDate, type.
+        Required params: allPromo, startDateTime, endDateTime.
+        Returns list of promotions with id, name, startDateTime, endDateTime, type.
         """
+        from datetime import datetime, timedelta
+
         url = f"{self.PROMOTIONS_BASE}/api/v1/calendar/promotions"
-        resp = self._request("GET", url)
+        now = datetime.utcnow()
+        params = {
+            "allPromo": "true",
+            "startDateTime": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "endDateTime": (now + timedelta(days=days_ahead)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }
+        resp = self._request("GET", url, params=params)
         if resp and isinstance(resp, dict):
             return resp.get("data", {}).get("promotions", [])
-        if isinstance(resp, list):
-            return resp
-        return []
-
-    def get_promotion_details(self, promotion_id: int) -> dict | None:
-        """GET /api/v1/calendar/promotions/details — детали конкретной акции.
-
-        Returns promotion details with conditions, required discounts.
-        """
-        url = f"{self.PROMOTIONS_BASE}/api/v1/calendar/promotions/details?id={promotion_id}"
-        resp = self._request("GET", url)
-        if resp and isinstance(resp, dict):
-            return resp.get("data", resp)
-        return None
-
-    def get_promotion_nomenclatures(self, promotion_id: int) -> list[dict]:
-        """POST /api/v1/calendar/promotions/nomenclatures — товары, участвующие в акции.
-
-        Returns list of nomenclatures in the promotion.
-        """
-        url = f"{self.PROMOTIONS_BASE}/api/v1/calendar/promotions/nomenclatures"
-        resp = self._request("POST", url, json={"id": promotion_id})
-        if resp and isinstance(resp, dict):
-            return resp.get("data", {}).get("nomenclatures", [])
         if isinstance(resp, list):
             return resp
         return []
