@@ -61,6 +61,7 @@ async def run(reference_date: date):
                 end_date=str(sunday),
                 report_md=result.detailed_report or result.brief_summary or "",
                 source="CLI (manual)",
+                report_type=result.report_type.value,
                 chain_steps=result.chain_steps,
             )
             print(f"\nNotion: {page_url}")
