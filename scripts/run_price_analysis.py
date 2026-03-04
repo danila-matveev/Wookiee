@@ -101,6 +101,9 @@ def analyze_channel(channel: str, start_date: str, end_date: str, learning_store
         get_wb_price_margin_by_submodel_period,
         get_wb_turnover_by_submodel,
         get_model_statuses_mapped,
+        get_artikuly_statuses,
+        get_wb_by_article,
+        get_ozon_by_article,
     )
 
     report = {
@@ -119,6 +122,58 @@ def analyze_channel(channel: str, start_date: str, end_date: str, learning_store
     phasing_out = [m for m in model_names if model_statuses.get(m) == 'Выводим']
     if phasing_out:
         logger.info(f"[{channel}] Models phasing out: {phasing_out}")
+
+    # 1b. Article-level status breakdown per model
+    article_statuses = get_artikuly_statuses()
+    try:
+        if channel == 'wb':
+            raw_articles = get_wb_by_article(start_date, end_date)
+        else:
+            raw_articles = get_ozon_by_article(start_date, end_date)
+    except Exception as e:
+        logger.warning(f"[{channel}] Article data load failed: {e}")
+        raw_articles = []
+
+    # Build breakdown: {model: {'selling': [...], 'clearance': [...]}}
+    article_breakdown = {}
+    SELLING_STATUSES = {'Продается', 'Новый', 'Запуск'}
+    for art_row in raw_articles:
+        article = art_row.get('article', '').lower()
+        model = art_row.get('model', '')
+        if not model or not article:
+            continue
+        status = article_statuses.get(article, 'Продается')
+        group = 'clearance' if status == 'Выводим' else 'selling'
+        if model not in article_breakdown:
+            article_breakdown[model] = {'selling': [], 'clearance': []}
+        article_breakdown[model][group].append(art_row)
+
+    # Compute aggregated metrics per group
+    article_group_metrics = {}
+    for model, groups in article_breakdown.items():
+        article_group_metrics[model] = {}
+        has_both = bool(groups['selling']) and bool(groups['clearance'])
+        for group_name, articles in groups.items():
+            if not articles:
+                continue
+            total_sales = sum(a.get('sales_count', 0) or 0 for a in articles)
+            total_revenue = sum(a.get('revenue', 0) or 0 for a in articles)
+            total_margin = sum(a.get('margin', 0) or 0 for a in articles)
+            margin_pct = (total_margin / total_revenue * 100) if total_revenue > 0 else 0
+            article_group_metrics[model][group_name] = {
+                'articles_count': len(articles),
+                'sales_count': total_sales,
+                'revenue': total_revenue,
+                'margin': total_margin,
+                'margin_pct': round(margin_pct, 1),
+                'top_articles': sorted(articles, key=lambda x: x.get('sales_count', 0) or 0, reverse=True)[:5],
+            }
+        article_group_metrics[model]['has_mixed_statuses'] = has_both
+
+    report['article_group_metrics'] = article_group_metrics
+    mixed_models = [m for m, g in article_group_metrics.items() if g.get('has_mixed_statuses')]
+    if mixed_models:
+        logger.info(f"[{channel}] Models with mixed statuses (selling+clearance): {mixed_models}")
 
     # 2. Per-model elasticity matrix
     elasticities = {}
@@ -356,8 +411,10 @@ def format_comprehensive_report(report: dict) -> str:
     md += _format_summary(report, model_statuses, channel_name)
 
     # -- Рекомендации по моделям (основной блок) --
+    article_group_metrics = report.get('article_group_metrics', {})
     md += _format_model_blocks(report, model_statuses, elasticities, policies,
-                                margin_factors, deep_drivers, roi_dashboard)
+                                margin_factors, deep_drivers, roi_dashboard,
+                                article_group_metrics)
 
     # -- Разбивка по подмоделям (трикотажная коллекция) --
     md += _format_submodel_breakdown(report)
@@ -449,13 +506,19 @@ def _format_model_blocks(
     margin_factors: dict,
     deep_drivers: dict,
     roi_dashboard: list,
+    article_group_metrics: dict = None,
 ) -> str:
     """Генерация текстовых блоков по каждой модели.
 
     Использует ВСЕ источники данных: ROI dashboard, margin factors,
     deep drivers, elasticities, policies. Модели без эластичности
     всё равно показываются с метриками ROI и факторами маржи.
+
+    Для моделей с артикулами разных статусов (selling + clearance)
+    показывает разбивку: «продающиеся» и «выводимые» артикулы отдельно.
     """
+    if article_group_metrics is None:
+        article_group_metrics = {}
     from agents.oleg.services.price_analysis.translations import (
         translate_policy,
         translate_roi_category,
@@ -668,6 +731,38 @@ def _format_model_blocks(
                     pval = vals.get('p_value', 1)
                     md += f"{i}. {factor_impact_text(name, beta, pval)}\n"
                 md += "\n"
+
+        # Артикульная разбивка по статусам (продающиеся / выводимые)
+        agm = article_group_metrics.get(model, {})
+        if agm.get('has_mixed_statuses'):
+            md += "**Разбивка по статусу артикулов:**\n\n"
+            for group_key, group_label in [('selling', 'Продающиеся'), ('clearance', 'Выводимые')]:
+                g = agm.get(group_key, {})
+                if not g:
+                    continue
+                g_margin_pct = g.get('margin_pct', 0)
+                g_sales = g.get('sales_count', 0)
+                g_revenue = g.get('revenue', 0)
+                g_count = g.get('articles_count', 0)
+                md += (
+                    f"*{group_label}* ({g_count} арт.): "
+                    f"продажи {g_sales:,.0f} шт, "
+                    f"выручка {g_revenue:,.0f}₽, "
+                    f"маржа {g_margin_pct:.1f}%\n"
+                )
+                top = g.get('top_articles', [])
+                if top:
+                    md += "| Артикул | Продажи | Выручка | Маржа |\n"
+                    md += "|---------|---------|---------|-------|\n"
+                    for a in top:
+                        a_sales = a.get('sales_count', 0) or 0
+                        a_rev = a.get('revenue', 0) or 0
+                        a_margin = a.get('margin', 0) or 0
+                        a_mpct = (a_margin / a_rev * 100) if a_rev > 0 else 0
+                        md += f"| {a.get('article', '?')} | {a_sales:,.0f} | {a_rev:,.0f}₽ | {a_mpct:.1f}% |\n"
+                    md += "\n"
+
+            md += "\n"
 
         md += "---\n\n"
 

@@ -763,7 +763,7 @@ def get_ozon_by_article(start_date, end_date):
     FROM abc_date
     WHERE date >= %s AND date < %s
       AND article IS NOT NULL AND article != ''
-    GROUP BY 1
+    GROUP BY 1, 2
     ORDER BY 5 DESC;
     """
     cur.execute(finance_query, (start_date, end_date))
@@ -879,6 +879,46 @@ def get_ozon_avg_stock(start_date, end_date):
     conn.close()
 
     return {r[0]: to_float(r[1]) for r in rows}
+
+
+def get_moysklad_stock_by_article():
+    """Текущие остатки из МойСклад (ms_stocks): основной склад + товары в пути.
+
+    Берёт ПОСЛЕДНИЙ снэпшот (MAX(dateupdate)).
+    Returns: {article_lower: {'stock_main': N, 'stock_transit': M, 'total': N+M}}
+    """
+    conn = _get_wb_connection()
+    cur = conn.cursor()
+
+    query = """
+    SELECT
+        LOWER(article) as art,
+        sklad,
+        SUM(stock) as total_stock
+    FROM ms_stocks
+    WHERE dateupdate = (SELECT MAX(dateupdate) FROM ms_stocks)
+      AND sklad IN ('Основной склад', 'Товары в пути')
+      AND article IS NOT NULL AND article != ''
+    GROUP BY LOWER(article), sklad;
+    """
+    cur.execute(query)
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    result = {}
+    for art, sklad, stock in rows:
+        if art not in result:
+            result[art] = {'stock_main': 0.0, 'stock_transit': 0.0, 'total': 0.0}
+        val = to_float(stock)
+        if sklad == 'Основной склад':
+            result[art]['stock_main'] = val
+        else:
+            result[art]['stock_transit'] = val
+        result[art]['total'] += val
+
+    return result
 
 
 def get_total_avg_stock(channel, start_date, end_date):
@@ -1345,15 +1385,16 @@ def get_wb_price_margin_daily(start_date, end_date, model=None):
 
     model_filter_abc = ""
     model_filter_orders = ""
-    model_val = model.lower() if model else None
+    # Normalize model: 'Set Wendy' or 'set_wendy' → 'set wendy' (matching mapping normalization)
+    model_val = model.lower().replace('_', ' ') if model else None
     # Params must match placeholder order: CTE dates, [CTE model], main dates, [main model]
     params = [start_date, end_date]
     if model:
-        model_filter_orders = "AND LOWER(SPLIT_PART(supplierarticle, '/', 1)) = %s"
+        model_filter_orders = "AND REPLACE(LOWER(SPLIT_PART(supplierarticle, '/', 1)), '_', ' ') = %s"
         params.append(model_val)
     params.extend([start_date, end_date])
     if model:
-        model_filter_abc = "AND LOWER(SPLIT_PART(a.article, '/', 1)) = %s"
+        model_filter_abc = "AND REPLACE(LOWER(SPLIT_PART(a.article, '/', 1)), '_', ' ') = %s"
         params.append(model_val)
 
     query = f"""
@@ -1455,15 +1496,16 @@ def get_ozon_price_margin_daily(start_date, end_date, model=None):
 
     model_filter_abc = ""
     model_filter_orders = ""
-    model_val = model.lower() if model else None
+    # Normalize model: 'Set Wendy' or 'set_wendy' → 'set wendy' (matching mapping normalization)
+    model_val = model.lower().replace('_', ' ') if model else None
     # Params must match placeholder order: CTE dates, [CTE model], main dates, [main model]
     params = [start_date, end_date]
     if model:
-        model_filter_orders = "AND LOWER(SPLIT_PART(offer_id, '/', 1)) = %s"
+        model_filter_orders = "AND REPLACE(LOWER(SPLIT_PART(offer_id, '/', 1)), '_', ' ') = %s"
         params.append(model_val)
     params.extend([start_date, end_date])
     if model:
-        model_filter_abc = "AND LOWER(SPLIT_PART(a.article, '/', 1)) = %s"
+        model_filter_abc = "AND REPLACE(LOWER(SPLIT_PART(a.article, '/', 1)), '_', ' ') = %s"
         params.append(model_val)
 
     query = f"""
@@ -1480,7 +1522,7 @@ def get_ozon_price_margin_daily(start_date, end_date, model=None):
     )
     SELECT
         a.date,
-        SPLIT_PART(LOWER(a.article), '/', 1) as model,
+        LOWER(SPLIT_PART(a.article, '/', 1)) as model,
         -- Цена за единицу (реализованная, из abc_date)
         CASE WHEN SUM(a.count_end) > 0
             THEN SUM(a.price_end) / SUM(a.count_end)
@@ -2177,11 +2219,13 @@ def get_ozon_price_margin_daily_by_article(start_date, end_date, article=None, m
 
 def get_wb_turnover_by_model(start_date, end_date):
     """
-    WB оборачиваемость по моделям = avg_stock / daily_sales.
+    WB оборачиваемость по моделям = total_stock / daily_sales.
 
-    Композиция: get_wb_avg_stock() + get_wb_by_article() → агрегация по модели.
+    Полные остатки: МойСклад (основной + в пути) + склады WB.
+    Продажи: из abc_date за период.
     """
-    stock_by_article = get_wb_avg_stock(start_date, end_date)
+    mp_stock = get_wb_avg_stock(start_date, end_date)
+    ms_stock = get_moysklad_stock_by_article()
     articles = get_wb_by_article(start_date, end_date)
 
     days = max(1, (datetime.strptime(end_date, '%Y-%m-%d') - datetime.strptime(start_date, '%Y-%m-%d')).days)
@@ -2191,24 +2235,37 @@ def get_wb_turnover_by_model(start_date, end_date):
     for art in articles:
         model_name = map_to_osnova(art['model'])
         if model_name not in model_data:
-            model_data[model_name] = {'sales_count': 0, 'stock_total': 0, 'revenue': 0, 'margin': 0}
+            model_data[model_name] = {
+                'sales_count': 0, 'stock_mp': 0, 'stock_ms': 0,
+                'revenue': 0, 'margin': 0,
+            }
         model_data[model_name]['sales_count'] += art['sales_count']
         model_data[model_name]['revenue'] += art['revenue']
         model_data[model_name]['margin'] += art['margin']
 
-    # Добавить остатки (stock по артикулам → агрегация по модели)
-    for art_key, stock_val in stock_by_article.items():
+    # Остатки WB (склады МП)
+    for art_key, stock_val in mp_stock.items():
         base_name = art_key.split('/')[0] if '/' in art_key else art_key
         model_name = map_to_osnova(base_name)
         if model_name in model_data:
-            model_data[model_name]['stock_total'] += stock_val
+            model_data[model_name]['stock_mp'] += stock_val
+
+    # Остатки МойСклад (основной склад + в пути)
+    for art_key, ms_info in ms_stock.items():
+        base_name = art_key.split('/')[0] if '/' in art_key else art_key
+        model_name = map_to_osnova(base_name)
+        if model_name in model_data:
+            model_data[model_name]['stock_ms'] += ms_info['total']
 
     result = {}
     for model_name, md in model_data.items():
+        total_stock = md['stock_mp'] + md['stock_ms']
         daily_sales = md['sales_count'] / days if md['sales_count'] > 0 else 0
-        turnover_days = md['stock_total'] / daily_sales if daily_sales > 0 else 0
+        turnover_days = total_stock / daily_sales if daily_sales > 0 else 0
         result[model_name] = {
-            'avg_stock': round(md['stock_total'], 0),
+            'avg_stock': round(total_stock, 0),
+            'stock_mp': round(md['stock_mp'], 0),
+            'stock_moysklad': round(md['stock_ms'], 0),
             'daily_sales': round(daily_sales, 1),
             'turnover_days': round(turnover_days, 1),
             'sales_count': md['sales_count'],
@@ -2221,11 +2278,13 @@ def get_wb_turnover_by_model(start_date, end_date):
 
 def get_ozon_turnover_by_model(start_date, end_date):
     """
-    OZON оборачиваемость по моделям = avg_stock / daily_sales.
+    OZON оборачиваемость по моделям = total_stock / daily_sales.
 
-    Композиция: get_ozon_avg_stock() + get_ozon_by_article() → агрегация по модели.
+    Полные остатки: МойСклад (основной + в пути) + склады OZON.
+    Продажи: из abc_date за период.
     """
-    stock_by_article = get_ozon_avg_stock(start_date, end_date)
+    mp_stock = get_ozon_avg_stock(start_date, end_date)
+    ms_stock = get_moysklad_stock_by_article()
     articles = get_ozon_by_article(start_date, end_date)
 
     days = max(1, (datetime.strptime(end_date, '%Y-%m-%d') - datetime.strptime(start_date, '%Y-%m-%d')).days)
@@ -2234,23 +2293,37 @@ def get_ozon_turnover_by_model(start_date, end_date):
     for art in articles:
         model_name = map_to_osnova(art['model'])
         if model_name not in model_data:
-            model_data[model_name] = {'sales_count': 0.0, 'stock_total': 0.0, 'revenue': 0.0, 'margin': 0.0}
+            model_data[model_name] = {
+                'sales_count': 0.0, 'stock_mp': 0.0, 'stock_ms': 0.0,
+                'revenue': 0.0, 'margin': 0.0,
+            }
         model_data[model_name]['sales_count'] += art['sales_count']
         model_data[model_name]['revenue'] += art['revenue']
         model_data[model_name]['margin'] += art['margin']
 
-    for art_key, stock_val in stock_by_article.items():
+    # Остатки OZON (склады МП)
+    for art_key, stock_val in mp_stock.items():
         base_name = art_key.split('/')[0] if '/' in art_key else art_key
         model_name = map_to_osnova(base_name)
         if model_name in model_data:
-            model_data[model_name]['stock_total'] += stock_val
+            model_data[model_name]['stock_mp'] += stock_val
+
+    # Остатки МойСклад (основной склад + в пути)
+    for art_key, ms_info in ms_stock.items():
+        base_name = art_key.split('/')[0] if '/' in art_key else art_key
+        model_name = map_to_osnova(base_name)
+        if model_name in model_data:
+            model_data[model_name]['stock_ms'] += ms_info['total']
 
     result = {}
     for model_name, md in model_data.items():
+        total_stock = md['stock_mp'] + md['stock_ms']
         daily_sales = md['sales_count'] / days if md['sales_count'] > 0 else 0
-        turnover_days = md['stock_total'] / daily_sales if daily_sales > 0 else 0
+        turnover_days = total_stock / daily_sales if daily_sales > 0 else 0
         result[model_name] = {
-            'avg_stock': round(md['stock_total'], 0),
+            'avg_stock': round(total_stock, 0),
+            'stock_mp': round(md['stock_mp'], 0),
+            'stock_moysklad': round(md['stock_ms'], 0),
             'daily_sales': round(daily_sales, 1),
             'turnover_days': round(turnover_days, 1),
             'sales_count': md['sales_count'],

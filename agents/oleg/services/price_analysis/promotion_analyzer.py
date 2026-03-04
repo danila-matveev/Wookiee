@@ -452,6 +452,7 @@ class PromotionAnalyzer:
         article_metrics: dict,
         nm_to_article: dict,
         volume_lift_pct: float = None,
+        article_statuses: dict = None,
     ) -> dict:
         """
         Анализ акции на уровне артикулов.
@@ -462,6 +463,7 @@ class PromotionAnalyzer:
             article_metrics: {article_lower: {sales_count, margin, revenue, ...}}
             nm_to_article: {nm_id: article_lower} из Supabase
             volume_lift_pct: ожидаемый подъём объёма (если None — дефолт)
+            article_statuses: {article_lower: status} из get_artikuly_statuses()
 
         Returns:
             dict с артикульным анализом и summary.
@@ -512,31 +514,44 @@ class PromotionAnalyzer:
         else:
             urgency = 'ПЛАНОВО'
 
+        # Построить обратный маппинг article→nm_id один раз
+        article_to_nm = {}
+        for nm, art in nm_to_article.items():
+            article_to_nm[art] = nm
+
+        if article_statuses is None:
+            article_statuses = {}
+
         # Анализируем все артикулы с продажами
         articles_analysis = []
         for article_lower, metrics in article_metrics.items():
             if metrics.get('sales_count', 0) <= 0:
                 continue
-            nm_id = None
-            # Попробовать найти nm_id по артикулу (обратный маппинг)
-            for nm, art in nm_to_article.items():
-                if art == article_lower:
-                    nm_id = nm
-                    break
+            nm_id = article_to_nm.get(article_lower)
             analysis = self._analyze_single_article(
                 article_lower, metrics, required_discount_pct,
                 volume_lift_pct, days, nm_id,
             )
+            analysis['status'] = article_statuses.get(article_lower, 'Продается')
             articles_analysis.append(analysis)
 
-        # Сортировка: сначала participate по total_impact desc, потом skip
+        # Классификация: participate / clearance (выводимые) / skip
         participate = [a for a in articles_analysis if a['recommendation'] == 'participate']
-        skip = [a for a in articles_analysis if a['recommendation'] == 'skip']
+        clearance = [
+            a for a in articles_analysis
+            if a['recommendation'] == 'skip' and a.get('status') == 'Выводим'
+        ]
+        skip = [
+            a for a in articles_analysis
+            if a['recommendation'] == 'skip' and a.get('status') != 'Выводим'
+        ]
         participate.sort(key=lambda x: x['total_impact'], reverse=True)
-        skip.sort(key=lambda x: x['total_impact'])
+        clearance.sort(key=lambda x: x.get('current_daily_sales', 0), reverse=True)
+        skip.sort(key=lambda x: x.get('breakeven_discount', 0), reverse=True)
 
         total_positive = sum(a['total_impact'] for a in participate)
         total_negative = sum(a['total_impact'] for a in skip)
+        clearance_impact = sum(a['total_impact'] for a in clearance)
 
         return {
             'promotion': {
@@ -549,15 +564,17 @@ class PromotionAnalyzer:
                 'days_until_start': days_until,
             },
             'channel': channel,
-            'total_promo_nms': 0,
             'matched_articles': len(articles_analysis),
             'participate': participate,
+            'clearance': clearance,
             'skip': skip,
             'summary': {
                 'participate_count': len(participate),
+                'clearance_count': len(clearance),
                 'skip_count': len(skip),
                 'total_positive_impact': round(total_positive),
                 'total_negative_impact': round(total_negative),
+                'clearance_impact': round(clearance_impact),
                 'net_impact': round(total_positive + total_negative),
             },
         }
@@ -668,7 +685,14 @@ def _build_article_reasoning(
 
 
 def format_promotion_report(analyses: list[dict], channel: str) -> str:
-    """Форматирование отчёта по акциям в Markdown."""
+    """Форматирование компактного отчёта по акциям в Markdown.
+
+    Структура:
+    1. Сводная таблица всех акций (одна строка = одна акция)
+    2. Выгодные для участия (если есть)
+    3. Выводимые товары — кандидаты на распродажу через акцию
+    4. Ближе всего к безубыточности — при меньшей скидке могут быть выгодны
+    """
     from agents.oleg.services.time_utils import get_now_msk
 
     now = get_now_msk()
@@ -678,88 +702,136 @@ def format_promotion_report(analyses: list[dict], channel: str) -> str:
         md += "Акций не обнаружено.\n"
         return md
 
-    # Общая сводка
-    total_promos = len(analyses)
-    all_participate = sum(a.get('summary', {}).get('participate_count', 0) for a in analyses)
-    all_skip = sum(a.get('summary', {}).get('skip_count', 0) for a in analyses)
-    all_net = sum(a.get('summary', {}).get('net_impact', 0) for a in analyses)
-    md += f"**Обнаружено акций**: {total_promos}\n"
-    md += f"**Артикулов с рекомендацией \"участвовать\"**: {all_participate}\n"
-    md += f"**Артикулов с рекомендацией \"пропустить\"**: {all_skip}\n\n"
+    # --- Секция 1: Сводная таблица ---
+    md += "## Сводка по акциям\n\n"
     md += (
-        "> Скидка оценочная (~15%) — WB Calendar API не возвращает точный % скидки. "
-        "При другом % скидки результат может отличаться.\n\n"
+        "> Скидка оценочная (~15%) — WB Calendar API не возвращает точный %. "
+        "Реальная скидка может отличаться.\n\n"
     )
-
+    md += "| Акция | Даты | Дней | Участв. | Выводимые | Пропуск | Эффект |\n"
+    md += "|-------|------|------|---------|-----------|---------|--------|\n"
     for a in analyses:
         promo = a.get('promotion', {})
-        name = promo.get('name', '?')
-        dates = promo.get('dates', '?')
-        discount = promo.get('discount_pct', 0)
+        s = a.get('summary', {})
         urgency = promo.get('urgency', '')
-        days_until = promo.get('days_until_start', 999)
+        badge = '🔴' if urgency == 'СРОЧНО' else '🟡' if urgency == 'СКОРО' else ''
+        name = promo.get('name', '?')[:40]
+        net = s.get('net_impact', 0)
+        md += (
+            f"| {badge}{name} "
+            f"| {promo.get('dates', '?')} "
+            f"| {promo.get('days', '?')} "
+            f"| {s.get('participate_count', 0)} "
+            f"| {s.get('clearance_count', 0)} "
+            f"| {s.get('skip_count', 0)} "
+            f"| {'+' if net > 0 else ''}{net:,.0f}₽ |\n"
+        )
+    md += "\n"
 
-        urgency_badge = ''
-        if urgency == 'СРОЧНО':
-            urgency_badge = '🔴 СРОЧНО '
-        elif urgency == 'СКОРО':
-            urgency_badge = '🟡 СКОРО '
+    # --- Собрать все артикулы со всех акций ---
+    all_participate = []
+    all_clearance = []
+    all_near_breakeven = []
+    for a in analyses:
+        promo = a.get('promotion', {})
+        promo_label = promo.get('name', '?')[:30]
+        for art in a.get('participate', []):
+            art['_promo'] = promo_label
+            all_participate.append(art)
+        for art in a.get('clearance', []):
+            art['_promo'] = promo_label
+            all_clearance.append(art)
+        # Ближе всего к безубыточности: skip-артикулы с breakeven > 5%
+        for art in a.get('skip', []):
+            be = art.get('breakeven_discount', 0)
+            if be >= 5.0:
+                art['_promo'] = promo_label
+                all_near_breakeven.append(art)
 
-        md += f"---\n\n## {urgency_badge}{name}\n\n"
-        md += f"**Даты**: {dates}"
-        if days_until < 999:
-            md += f" (через {days_until} дн.)"
+    # Дедупликация по артикулу (оставляем лучший эффект)
+    def _dedup_by_article(items, key='total_impact', reverse=True):
+        seen = {}
+        for item in items:
+            art = item['article']
+            if art not in seen or (
+                (reverse and item[key] > seen[art][key])
+                or (not reverse and item[key] < seen[art][key])
+            ):
+                seen[art] = item
+        result = list(seen.values())
+        result.sort(key=lambda x: x[key], reverse=reverse)
+        return result
+
+    all_participate = _dedup_by_article(all_participate)
+    all_clearance = _dedup_by_article(all_clearance, key='current_daily_sales')
+    all_near_breakeven = _dedup_by_article(all_near_breakeven, key='breakeven_discount')
+
+    # --- Секция 2: Выгодные для участия ---
+    if all_participate:
+        md += "---\n\n## Выгодно участвовать\n\n"
+        md += "| Артикул | Акция | Цена → Акция | Маржа/шт | Эффект |\n"
+        md += "|---------|-------|-------------|---------|--------|\n"
+        for art in all_participate[:15]:
+            md += (
+                f"| {art['article']} "
+                f"| {art['_promo']} "
+                f"| {art['current_price']}→{art['promo_price']}₽ "
+                f"| {art['current_margin_per_unit']}→{art['promo_margin_per_unit']}₽ "
+                f"| +{art['total_impact']:,.0f}₽ |\n"
+            )
         md += "\n"
-        if discount > 0:
-            md += f"**Скидка**: {discount:.0f}%\n"
 
-        matched = a.get('matched_articles', 0)
-        total_nms = a.get('total_promo_nms', 0)
-        if total_nms > 0:
-            md += f"**Артикулов в акции**: {total_nms} (наших: {matched})\n"
+    # --- Секция 3: Выводимые (clearance) ---
+    if all_clearance:
+        md += "---\n\n## Выводимые товары — кандидаты на распродажу\n\n"
+        md += (
+            "> Для выводимых товаров участие в акции стратегически полезно: "
+            "ускоряет распродажу остатков, даже если маржа снижается.\n\n"
+        )
+        md += "| Артикул | Прод/день | Маржа сейчас | Маржа акция | Потеря/период |\n"
+        md += "|---------|-----------|-------------|-------------|---------------|\n"
+        for art in all_clearance[:15]:
+            md += (
+                f"| {art['article']} "
+                f"| {art.get('current_daily_sales', 0):.1f} "
+                f"| {art.get('current_margin_per_unit', 0)}₽ "
+                f"| {art.get('promo_margin_per_unit', 0)}₽ "
+                f"| {art['total_impact']:,.0f}₽ |\n"
+            )
+        if len(all_clearance) > 15:
+            md += f"\n... и ещё {len(all_clearance) - 15} выводимых артикулов\n"
+        md += "\n"
 
-        summary = a.get('summary', {})
-        net = summary.get('net_impact', 0)
-        md += f"**Чистый эффект при частичном участии**: {'+' if net > 0 else ''}{net:,.0f}₽\n\n"
+    # --- Секция 4: Ближе всего к безубыточности ---
+    if all_near_breakeven:
+        md += "---\n\n## Ближе всего к безубыточности\n\n"
+        md += (
+            "> Эти артикулы могут быть выгодны при скидке меньше 15%. "
+            "Столбец «Безубыт.скидка» — максимальная скидка, при которой участие не убыточно.\n\n"
+        )
+        md += "| Артикул | Маржа% | Безубыт.скидка | Маржа/шт | Прод/день |\n"
+        md += "|---------|--------|----------------|---------|----------|\n"
+        for art in all_near_breakeven[:10]:
+            be = art.get('breakeven_discount', 0)
+            md += (
+                f"| {art['article']} "
+                f"| {art.get('margin_pct', 0):.0f}% "
+                f"| {be:.1f}% "
+                f"| {art.get('current_margin_per_unit', 0)}₽ "
+                f"| {art.get('current_daily_sales', 0):.1f} |\n"
+            )
+        md += "\n"
 
-        participate = a.get('participate', [])
-        skip_list = a.get('skip', [])
-
-        if participate:
-            total_pos = summary.get('total_positive_impact', 0)
-            md += f"### Участвовать ({len(participate)} арт., +{total_pos:,.0f}₽)\n\n"
-            md += "| Артикул | Цена → Акция | Маржа/шт | +Объём | Эффект/период |\n"
-            md += "|---------|-------------|---------|--------|---------------|\n"
-            for art in participate[:15]:  # top 15
-                md += (
-                    f"| {art['article']} "
-                    f"| {art['current_price']}→{art['promo_price']}₽ "
-                    f"| {art['current_margin_per_unit']}→{art['promo_margin_per_unit']}₽ "
-                    f"| +{art['volume_lift_pct']:.0f}% "
-                    f"| +{art['total_impact']:,.0f}₽ |\n"
-                )
-            if len(participate) > 15:
-                md += f"\n... и ещё {len(participate) - 15} артикулов\n"
-            md += "\n"
-
-        if skip_list:
-            total_neg = summary.get('total_negative_impact', 0)
-            md += f"### Пропустить ({len(skip_list)} арт., {total_neg:,.0f}₽)\n\n"
-            md += "| Артикул | Маржа% | Безубыт.скидка | Маржа/шт | Причина |\n"
-            md += "|---------|--------|----------------|---------|----------|\n"
-            for art in skip_list[:10]:
-                be = art.get('breakeven_discount', 0)
-                be_str = f"{be:.1f}%" if be > 0 else "—"
-                md += (
-                    f"| {art['article']} "
-                    f"| {art.get('margin_pct', 0):.0f}% "
-                    f"| {be_str} "
-                    f"| {art.get('current_margin_per_unit', 0)}→{art.get('promo_margin_per_unit', 0)}₽ "
-                    f"| {art['reasoning']} |\n"
-                )
-            if len(skip_list) > 10:
-                md += f"\n... и ещё {len(skip_list) - 10} артикулов\n"
-            md += "\n"
+    # --- Ничего не найдено ---
+    if not all_participate and not all_clearance and not all_near_breakeven:
+        md += (
+            "---\n\n"
+            "При оценочной скидке ~15% ни один артикул не выходит в плюс.\n"
+            "Средняя маржа ассортимента (12-31%) недостаточна для компенсации "
+            "потери цены даже при подъёме объёма +30%.\n\n"
+            "**Рекомендация:** участвовать только выводимыми товарами "
+            "для ускорения распродажи остатков.\n"
+        )
 
     return md
 
