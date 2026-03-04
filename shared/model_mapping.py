@@ -89,6 +89,22 @@ def map_to_osnova(model_name: str) -> str:
     norm = model_name.lower().strip().replace('_', ' ')
     return MODEL_OSNOVA_MAPPING.get(norm, model_name.capitalize())
 
+
+# Reverse mapping: osnova → primary raw key (first key that maps to each osnova).
+_OSNOVA_TO_RAW: dict[str, str] = {}
+for _k, _v in MODEL_OSNOVA_MAPPING.items():
+    if _v not in _OSNOVA_TO_RAW:
+        _OSNOVA_TO_RAW[_v] = _k
+
+
+def map_from_osnova(osnova_name: str) -> str:
+    """Reverse mapping: model_osnova → raw model name for DB queries.
+
+    Returns the primary raw key (e.g. "Set Wendy" → "set wendy").
+    If no mapping exists, returns lowercase of input.
+    """
+    return _OSNOVA_TO_RAW.get(osnova_name, osnova_name.lower())
+
 def get_osnova_sql(raw_column: str) -> str:
     """Returns a SQL CASE expression to map a raw DB column directly to model_osnova."""
     # We do LOWER(TRIM(REPLACE(col, '_', ' '))) to map set_vuki2 -> set vuki2

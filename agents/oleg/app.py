@@ -204,7 +204,14 @@ class OlegApp:
         import pytz
 
         tz = pytz.timezone(config.TIMEZONE)
-        self.scheduler = AsyncIOScheduler(timezone=tz)
+        self.scheduler = AsyncIOScheduler(
+            timezone=tz,
+            job_defaults={
+                "misfire_grace_time": 3600,  # allow up to 1h late execution
+                "coalesce": True,            # merge multiple misfired triggers
+                "max_instances": 1,
+            },
+        )
 
         # Parse time strings "HH:MM"
         daily_h, daily_m = (int(x) for x in config.DAILY_REPORT_TIME.split(":"))
@@ -712,14 +719,18 @@ class OlegApp:
                     models = get_ozon_price_margin_by_model_period(start_date, end_date)
 
                 if not models:
+                    logger.info(f"[{channel}] regression: no model data")
                     continue
 
                 model_names = list({m.get('model', '') for m in models if m.get('model')})
+                logger.info(f"[{channel}] regression: {len(model_names)} models to process")
 
                 for model_name in model_names:
                     try:
                         data = _get_data(channel, start_date, end_date, model_name)
-                        if not data or len(data) < 14:
+                        n_data = len(data) if data else 0
+                        if n_data < 14:
+                            logger.info(f"[{channel}] regression: {model_name} — {n_data} days (skip, <14)")
                             continue
 
                         # Get old cached value
@@ -730,6 +741,7 @@ class OlegApp:
                         # Estimate new elasticity
                         result = estimate_price_elasticity(data)
                         if 'error' in result:
+                            logger.info(f"[{channel}] regression: {model_name} — error: {result['error']}")
                             continue
 
                         # Cache new result
@@ -808,13 +820,14 @@ class OlegApp:
         )
         from shared.data_layer import (
             get_wb_by_article, get_ozon_by_article,
-            get_nm_to_article_mapping,
+            get_nm_to_article_mapping, get_artikuly_statuses,
         )
 
         # Метрики за последние 30 дней для расчёта маржи/продаж
         end = date.today()
         start = end - timedelta(days=30)
         nm_to_article = get_nm_to_article_mapping()
+        article_statuses = get_artikuly_statuses()
 
         for channel in ('wb', 'ozon'):
             try:
@@ -857,6 +870,7 @@ class OlegApp:
                             promotion=promo,
                             article_metrics=article_metrics,
                             nm_to_article=nm_to_article,
+                            article_statuses=article_statuses,
                         )
                         analyses.append(analysis)
                     except Exception as e:
@@ -871,6 +885,9 @@ class OlegApp:
                 total_participate = sum(
                     a.get('summary', {}).get('participate_count', 0) for a in analyses
                 )
+                total_clearance = sum(
+                    a.get('summary', {}).get('clearance_count', 0) for a in analyses
+                )
                 total_skip = sum(
                     a.get('summary', {}).get('skip_count', 0) for a in analyses
                 )
@@ -882,6 +899,7 @@ class OlegApp:
                 brief = (
                     f"{channel.upper()}: {len(promotions)} акций. "
                     f"Участвовать: {total_participate} арт., "
+                    f"выводимые: {total_clearance} арт., "
                     f"пропустить: {total_skip} арт. "
                     f"Чистый эффект: {'+' if net_impact > 0 else ''}{net_impact:,.0f}₽"
                 )
@@ -969,16 +987,23 @@ class OlegApp:
         both_ready = wb_result.can_generate and ozon_result.can_generate
 
         if both_ready:
+            # Mark as notified BEFORE sending to prevent duplicate messages
+            if self.state_store:
+                self.state_store.set_state(state_key, str(yesterday))
+
             status_parts = [
                 wb_result.format_status_message(str(yesterday), marketplace="wb"),
                 ozon_result.format_status_message(str(yesterday), marketplace="ozon"),
             ]
+
+            # Add report schedule info
+            daily_h, daily_m = (int(x) for x in config.DAILY_REPORT_TIME.split(":"))
+            status_parts.append(
+                f"📊 Ежедневный отчёт запланирован на {daily_h:02d}:{daily_m:02d} МСК"
+            )
+
             status_msg = "\n\n".join(status_parts)
             await self._send_admin_message(status_msg)
-
-            # Mark as notified
-            if self.state_store:
-                self.state_store.set_state(state_key, str(yesterday))
 
             logger.info(f"Data ready notification sent for {yesterday}")
 
@@ -1104,13 +1129,46 @@ class OlegApp:
 
         logger.info("Oleg v2 is running")
 
-        # Start bot polling (blocking)
+        # Start bot polling (check for conflicts first)
         if self.bot and self.bot.dp:
-            await self.bot.start_polling()
+            conflict = await self._check_telegram_conflict()
+            if conflict:
+                logger.error(
+                    "Another bot instance is running with the same token. "
+                    "Falling back to scheduler-only mode (no Telegram commands)."
+                )
+                await self._send_admin_message(
+                    "⚠️ Обнаружен конфликт: другой экземпляр бота запущен "
+                    "с тем же токеном. Работаю в режиме только планировщика "
+                    "(отчёты генерируются, но команды Telegram недоступны)."
+                )
+                while self._running:
+                    await asyncio.sleep(60)
+            else:
+                await self.bot.start_polling()
         else:
             # No bot — keep alive for scheduler
             while self._running:
                 await asyncio.sleep(1)
+
+    async def _check_telegram_conflict(self) -> bool:
+        """Test if another bot instance holds the polling session.
+
+        Makes a quick getUpdates call; returns True if conflict detected.
+        """
+        import httpx
+
+        token = config.TELEGRAM_BOT_TOKEN
+        url = f"https://api.telegram.org/bot{token}/getUpdates"
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.post(url, json={"offset": -1, "limit": 1, "timeout": 1})
+                data = resp.json()
+                if not data.get("ok") and "conflict" in data.get("description", "").lower():
+                    return True
+        except Exception as e:
+            logger.warning(f"Telegram conflict check failed: {e}")
+        return False
 
     async def shutdown(self) -> None:
         """Graceful shutdown."""
