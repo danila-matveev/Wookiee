@@ -1154,7 +1154,9 @@ class OlegApp:
     async def _check_telegram_conflict(self) -> bool:
         """Test if another bot instance holds the polling session.
 
-        Makes a quick getUpdates call; returns True if conflict detected.
+        Makes two getUpdates calls with a delay between them.
+        The first call always succeeds (it steals the session), so we wait
+        a few seconds for the other instance to reclaim it, then check again.
         """
         import httpx
 
@@ -1162,6 +1164,11 @@ class OlegApp:
         url = f"https://api.telegram.org/bot{token}/getUpdates"
         try:
             async with httpx.AsyncClient(timeout=10) as client:
+                # First call — steals the session from any other instance
+                await client.post(url, json={"offset": -1, "limit": 1, "timeout": 1})
+                # Wait for the other instance to retry and reclaim
+                await asyncio.sleep(5)
+                # Second call — if another instance reclaimed, we get 409
                 resp = await client.post(url, json={"offset": -1, "limit": 1, "timeout": 1})
                 data = resp.json()
                 if not data.get("ok") and "conflict" in data.get("description", "").lower():
