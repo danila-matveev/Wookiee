@@ -255,7 +255,8 @@ class OlegApp:
         )
 
         # Data-ready check (hourly, every day, window extends past retry period)
-        data_check_end_hour = min(daily_h + 3, 23)
+        # Ensure end_hour >= 6 to avoid invalid cron range like "6-4"
+        data_check_end_hour = max(daily_h + 3, 9)
         self.scheduler.add_job(
             self._check_data_ready,
             CronTrigger(hour=f"6-{data_check_end_hour}", minute=0, timezone=tz),
@@ -440,6 +441,8 @@ class OlegApp:
         # Clear recovery flag — gates passed, no recovery needed
         if self.state_store:
             self.state_store.set_state(RETRIES_EXHAUSTED_KEY, "")
+            # Mark data_ready_notified so _check_data_ready won't send duplicate
+            self.state_store.set_state("data_ready_notified", str(yesterday))
 
         # Idempotency: don't start report if already started for this date
         state_key = "daily_report_started"
@@ -975,6 +978,10 @@ class OlegApp:
             last_notified = self.state_store.get_state(state_key)
             if last_notified == str(yesterday):
                 return  # Already notified today
+            # Skip if daily report already started for this date
+            report_started = self.state_store.get_state("daily_report_started")
+            if report_started == str(yesterday):
+                return  # Report already generated, no need to notify
 
         # Run gate checks for both marketplaces
         try:
@@ -1154,18 +1161,24 @@ class OlegApp:
     async def _check_telegram_conflict(self) -> bool:
         """Test if another bot instance holds the polling session.
 
-        Holds a long-poll for 15 seconds. If another instance calls
-        getUpdates during that time, Telegram terminates our connection
-        with a 409 Conflict, which we detect.
+        Calls /close to terminate any existing session, waits briefly,
+        then holds a 15s long-poll to detect if another instance reclaims.
         """
         import httpx
 
         token = config.TELEGRAM_BOT_TOKEN
-        url = f"https://api.telegram.org/bot{token}/getUpdates"
+        base = f"https://api.telegram.org/bot{token}"
         try:
             async with httpx.AsyncClient(timeout=30) as client:
+                # Kill any existing bot session
+                await client.post(f"{base}/close")
+                logger.info("Telegram /close called, waiting 3s...")
+                await asyncio.sleep(3)
+
+                # Hold long-poll — if something reclaims, we get 409
                 resp = await client.post(
-                    url, json={"offset": -1, "limit": 1, "timeout": 15}
+                    f"{base}/getUpdates",
+                    json={"offset": -1, "limit": 1, "timeout": 15},
                 )
                 data = resp.json()
                 if not data.get("ok") and "conflict" in data.get("description", "").lower():
