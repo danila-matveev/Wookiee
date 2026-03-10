@@ -1098,13 +1098,14 @@ class OlegApp:
         else:
             logger.warning("Notion sync returned no page URL — link will not appear in TG")
 
-        # 2. Build Telegram message: Notion link at top, then summary
+        # 2. Build Telegram message: Notion link at top, then short summary
+        tg_body = result.telegram_summary or result.brief_summary[:500]
         parts = []
         if page_url:
             parts.append(f'<a href="{page_url}">📊 Подробный отчёт в Notion</a>\n')
         if result.caveats:
             parts.append(add_caveats_header("", result.caveats))
-        parts.append(result.brief_summary)
+        parts.append(tg_body)
         parts.append(format_cost_footer(
             result.cost_usd, result.chain_steps, result.duration_ms,
         ))

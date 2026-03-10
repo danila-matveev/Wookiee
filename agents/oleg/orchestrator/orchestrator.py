@@ -165,6 +165,7 @@ class OlegOrchestrator:
         return ChainResult(
             summary=synthesis.get("brief_summary", ""),
             detailed=synthesis.get("detailed_report"),
+            telegram_summary=synthesis.get("telegram_summary", ""),
             steps=chain_history,
             total_steps=len(chain_history),
             total_cost=total_cost,
@@ -272,17 +273,22 @@ class OlegOrchestrator:
 
     @staticmethod
     def _parse_report_sections(content: str) -> dict:
-        """Parse LLM output into brief_summary and detailed_report sections.
+        """Parse LLM output into telegram_summary, brief_summary and detailed_report.
 
-        Looks for markers like '# brief_summary' and '# detailed_report'.
-        If not found, uses the first ~4000 chars as brief and full text as detailed.
+        Looks for markers like '# telegram_summary', '# brief_summary',
+        '# detailed_report'. If not found, uses heuristic fallbacks.
         """
+        telegram = ""
         brief = ""
         detailed = ""
 
         # Try to split by section headers (case-insensitive, flexible whitespace).
         # Matches variations like: # brief_summary, ## BRIEF SUMMARY,
         # ## 📊 BRIEF SUMMARY (Telegram), etc.
+        telegram_pattern = re.compile(
+            r'^#+\s*\S?\s*.*?(?:telegram[_\s]?summary|тг[_\s]?сводка|телеграм[_\s]?сводка).*$',
+            re.IGNORECASE | re.MULTILINE,
+        )
         brief_pattern = re.compile(
             r'^#+\s*\S?\s*.*?(?:brief[_\s]?summary|краткая[_\s]?сводка).*$',
             re.IGNORECASE | re.MULTILINE,
@@ -292,31 +298,34 @@ class OlegOrchestrator:
             re.IGNORECASE | re.MULTILINE,
         )
 
-        brief_match = brief_pattern.search(content)
-        detailed_match = detailed_pattern.search(content)
+        # Find all section matches and sort by position
+        matches = []
+        for name, pattern in [
+            ("telegram_summary", telegram_pattern),
+            ("brief_summary", brief_pattern),
+            ("detailed_report", detailed_pattern),
+        ]:
+            m = pattern.search(content)
+            if m:
+                matches.append((name, m.start(), m.end()))
 
-        if brief_match and detailed_match:
-            # Both sections found — extract each
-            if brief_match.start() < detailed_match.start():
-                brief = content[brief_match.end():detailed_match.start()].strip()
-                detailed = content[detailed_match.end():].strip()
-            else:
-                detailed = content[detailed_match.end():brief_match.start()].strip()
-                brief = content[brief_match.end():].strip()
-        elif brief_match:
-            # Only brief found — everything after it is brief, no detailed
-            brief = content[brief_match.end():].strip()
-            detailed = content
-        elif detailed_match:
-            # Only detailed found — everything before it is brief
-            brief = content[:detailed_match.start()].strip()
-            detailed = content[detailed_match.end():].strip()
+        if matches:
+            matches.sort(key=lambda x: x[1])
+            sections = {}
+            for i, (name, _start, end) in enumerate(matches):
+                next_start = matches[i + 1][1] if i + 1 < len(matches) else len(content)
+                sections[name] = content[end:next_start].strip()
+
+            telegram = sections.get("telegram_summary", "")
+            brief = sections.get("brief_summary", "")
+            detailed = sections.get("detailed_report", "")
         else:
             # No markers — use first ~4000 chars as brief
             brief = content[:4000].strip()
             detailed = content
 
         return {
+            "telegram_summary": telegram,
             "brief_summary": brief or content[:4000],
             "detailed_report": detailed or content,
         }
@@ -360,6 +369,7 @@ class OlegOrchestrator:
                 f"[{s.agent}]: {s.result}" for s in chain_history
             )
             return {
+                "telegram_summary": "",
                 "brief_summary": combined[:4000],
                 "detailed_report": combined,
             }

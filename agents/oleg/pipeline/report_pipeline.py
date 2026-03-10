@@ -74,6 +74,7 @@ class ReportPipeline:
             brief_summary=chain_result.summary,
             detailed_report=chain_result.detailed or chain_result.summary,
             report_type=request.report_type,
+            telegram_summary=chain_result.telegram_summary,
             chain_steps=chain_result.total_steps,
             cost_usd=chain_result.total_cost,
             duration_ms=duration_ms,
@@ -136,7 +137,9 @@ class ReportPipeline:
                 f"Используй get_marketing_overview, get_funnel_analysis, "
                 f"get_external_ad_breakdown, get_model_ad_efficiency, "
                 f"get_organic_vs_paid (wb), get_ad_daily_trend. "
-                f"Анализируй воронку, каналы, модели, органику vs платный."
+                f"Анализируй воронку, каналы, модели, органику vs платный. "
+                f"Покажи динамику среднего чека (avg_check_order из marketing_overview) "
+                f"и его связь с ДРР и заказами с рекламы."
             )
 
         if request.report_type == ReportType.MARKETING_MONTHLY:

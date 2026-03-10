@@ -226,7 +226,7 @@ class OlegTelegramBot:
                     parts.append(f'<a href="{page_url}">📊 Подробный отчёт в Notion</a>\n')
                 if result.caveats:
                     parts.append(add_caveats_header("", result.caveats))
-                parts.append(result.brief_summary)
+                parts.append(result.telegram_summary or result.brief_summary[:500])
                 parts.append(format_cost_footer(
                     result.cost_usd, result.chain_steps, result.duration_ms,
                 ))
@@ -271,7 +271,7 @@ class OlegTelegramBot:
                     parts.append(f'<a href="{page_url}">📊 Подробный отчёт в Notion</a>\n')
                 if result.caveats:
                     parts.append(add_caveats_header("", result.caveats))
-                parts.append(result.brief_summary)
+                parts.append(result.telegram_summary or result.brief_summary[:500])
                 parts.append(format_cost_footer(
                     result.cost_usd, result.chain_steps, result.duration_ms,
                 ))
@@ -316,7 +316,7 @@ class OlegTelegramBot:
                     parts.append(f'<a href="{page_url}">📊 Подробный отчёт в Notion</a>\n')
                 if result.caveats:
                     parts.append(add_caveats_header("", result.caveats))
-                parts.append(result.brief_summary)
+                parts.append(result.telegram_summary or result.brief_summary[:500])
                 parts.append(format_cost_footer(
                     result.cost_usd, result.chain_steps, result.duration_ms,
                 ))
@@ -356,12 +356,13 @@ class OlegTelegramBot:
 
                 page_url = await self._save_to_notion(result, request)
 
+                tg_body = result.telegram_summary or result.brief_summary[:500]
                 parts = []
                 if page_url:
                     parts.append(f'<a href="{page_url}">📈 Подробный отчёт в Notion</a>\n')
                 if result.caveats:
                     parts.append(add_caveats_header("", result.caveats))
-                parts.append(result.brief_summary)
+                parts.append(tg_body)
                 parts.append(format_cost_footer(
                     result.cost_usd, result.chain_steps, result.duration_ms,
                 ))
@@ -401,12 +402,13 @@ class OlegTelegramBot:
 
                 page_url = await self._save_to_notion(result, request)
 
+                tg_body = result.telegram_summary or result.brief_summary[:500]
                 parts = []
                 if page_url:
                     parts.append(f'<a href="{page_url}">📈 Подробный отчёт в Notion</a>\n')
                 if result.caveats:
                     parts.append(add_caveats_header("", result.caveats))
-                parts.append(result.brief_summary)
+                parts.append(tg_body)
                 parts.append(format_cost_footer(
                     result.cost_usd, result.chain_steps, result.duration_ms,
                 ))
@@ -446,12 +448,13 @@ class OlegTelegramBot:
 
                 page_url = await self._save_to_notion(result, request)
 
+                tg_body = result.telegram_summary or result.brief_summary[:500]
                 parts = []
                 if page_url:
                     parts.append(f'<a href="{page_url}">📈 Подробный отчёт в Notion</a>\n')
                 if result.caveats:
                     parts.append(add_caveats_header("", result.caveats))
-                parts.append(result.brief_summary)
+                parts.append(tg_body)
                 parts.append(format_cost_footer(
                     result.cost_usd, result.chain_steps, result.duration_ms,
                 ))
