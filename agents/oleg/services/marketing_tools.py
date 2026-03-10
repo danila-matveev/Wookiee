@@ -45,6 +45,9 @@ from shared.data_layer import (
 )
 
 
+# ── Constants ─────────────────────────────────────────────────────
+MIN_AD_SPEND_RUB = 100  # Exclude stopped campaigns with negligible spend
+
 # ── LK (юрлицо) resolution helper ─────────────────────────────────
 
 _LK_MAPPING = {
@@ -422,6 +425,14 @@ async def _handle_marketing_overview(
         ads_current = ad_data.get("advertising", {}).get("current", {})
         ads_previous = ad_data.get("advertising", {}).get("previous", {})
 
+        prev_fin = finance_data.get("previous", {})
+        curr_orders_count = current.get("orders_count", 0)
+        curr_orders_rub = current.get("orders_rub", 0)
+        prev_orders_count = prev_fin.get("orders_count", 0)
+        prev_orders_rub = prev_fin.get("orders_rub", 0)
+        curr_avg_check = round(_safe_div(curr_orders_rub, curr_orders_count), 1)
+        prev_avg_check = round(_safe_div(prev_orders_rub, prev_orders_count), 1)
+
         return {
             "channel": ch.upper(),
             "current": {
@@ -430,8 +441,9 @@ async def _handle_marketing_overview(
                 "ad_spend_total": current.get("adv_total", 0),
                 "drr_pct": current.get("drr_pct", 0),
                 "revenue_before_spp": current.get("revenue_before_spp", 0),
-                "orders_count": current.get("orders_count", 0),
-                "orders_rub": current.get("orders_rub", 0),
+                "orders_count": curr_orders_count,
+                "orders_rub": curr_orders_rub,
+                "avg_check_order": curr_avg_check,
                 "margin": current.get("margin", 0),
                 "margin_pct": current.get("margin_pct", 0),
                 "cpo_rub": ads_current.get("cpo_rub", 0),
@@ -442,13 +454,14 @@ async def _handle_marketing_overview(
             },
             "previous": {
                 "ad_spend_total": (
-                    finance_data.get("previous", {}).get("adv_internal", 0)
-                    + finance_data.get("previous", {}).get("adv_external", 0)
+                    prev_fin.get("adv_internal", 0)
+                    + prev_fin.get("adv_external", 0)
                 ),
-                "drr_pct": finance_data.get("previous", {}).get("drr_pct", 0),
-                "orders_count": finance_data.get("previous", {}).get("orders_count", 0),
+                "drr_pct": prev_fin.get("drr_pct", 0),
+                "orders_count": prev_orders_count,
+                "avg_check_order": prev_avg_check,
                 "cpo_rub": ads_previous.get("cpo_rub", 0),
-                "margin": finance_data.get("previous", {}).get("margin", 0),
+                "margin": prev_fin.get("margin", 0),
             },
             "changes": finance_data.get("changes", {}),
         }
@@ -464,6 +477,7 @@ async def _handle_marketing_overview(
         combined_spend = wb_c["ad_spend_total"] + oz_c["ad_spend_total"]
         combined_rev = wb_c["revenue_before_spp"] + oz_c["revenue_before_spp"]
         combined_orders = wb_c["orders_count"] + oz_c["orders_count"]
+        combined_orders_rub = wb_c.get("orders_rub", 0) + oz_c.get("orders_rub", 0)
         combined_margin = wb_c["margin"] + oz_c["margin"]
 
         return {
@@ -472,6 +486,7 @@ async def _handle_marketing_overview(
                 "ad_spend_total": combined_spend,
                 "drr_pct": round(_safe_div(combined_spend, combined_rev) * 100, 1),
                 "orders_count": combined_orders,
+                "avg_check_order": round(_safe_div(combined_orders_rub, combined_orders), 1),
                 "revenue_before_spp": combined_rev,
                 "margin": combined_margin,
                 "margin_pct": round(_safe_div(combined_margin, combined_rev) * 100, 1),
@@ -823,9 +838,13 @@ async def _handle_campaign_performance(
             target[campaign] = data
 
         campaigns_list = []
+        filtered_count = 0
         for campaign, curr in sorted(
             current_campaigns.items(), key=lambda x: x[1]["spend"], reverse=True
         ):
+            if curr["spend"] < MIN_AD_SPEND_RUB:
+                filtered_count += 1
+                continue
             prev = previous_campaigns.get(campaign, {})
             entry = {**curr}
             entry["spend_change_pct"] = _pct_change(curr["spend"], prev.get("spend", 0))
@@ -840,6 +859,7 @@ async def _handle_campaign_performance(
             "period": f"{start_date} — {end_date}",
             "campaigns": campaigns_list,
             "total_campaigns": len(campaigns_list),
+            "filtered_low_spend": filtered_count,
         }
 
     else:
@@ -904,6 +924,7 @@ async def _handle_model_ad_efficiency(
 
         # Build list with changes
         models_list = []
+        filtered_count = 0
         all_models = set(current_models.keys()) | set(previous_models.keys())
         for model_name in sorted(all_models):
             if model_name == "Other":
@@ -917,6 +938,9 @@ async def _handle_model_ad_efficiency(
                     "cpo_rub": 0, "cpm_rub": 0,
                 },
             )
+            if curr["ad_spend"] < MIN_AD_SPEND_RUB:
+                filtered_count += 1
+                continue
             prev = previous_models.get(model_name, {})
             entry = {**curr}
             entry["spend_change_pct"] = _pct_change(curr["ad_spend"], prev.get("ad_spend", 0))
@@ -936,6 +960,7 @@ async def _handle_model_ad_efficiency(
             "channel": ch.upper(),
             "models": models_list,
             "total_models": len(models_list),
+            "filtered_low_spend": filtered_count,
         }
 
     if channel == "both":

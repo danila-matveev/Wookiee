@@ -33,6 +33,7 @@ class ChainResult:
     """Final result of an orchestrator chain."""
     summary: str                     # Brief summary (BBCode for Telegram)
     detailed: Optional[str] = None   # Detailed report (Markdown for Notion)
+    telegram_summary: str = ""       # Short TG summary (5-8 lines, KPI only)
     steps: List[AgentStep] = field(default_factory=list)
     total_steps: int = 0
     total_cost: float = 0.0

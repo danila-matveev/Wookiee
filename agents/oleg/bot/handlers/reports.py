@@ -76,12 +76,13 @@ async def callback_daily_report(callback: CallbackQuery, pipeline=None, bot_inst
 
             page_url = await _save_to_notion(result, request)
 
+            tg_body = result.telegram_summary or result.brief_summary[:500]
             parts = []
             if page_url:
                 parts.append(f'<a href="{page_url}">📊 Подробный отчёт в Notion</a>\n')
             if result.caveats:
                 parts.append(add_caveats_header("", result.caveats))
-            parts.append(result.brief_summary)
+            parts.append(tg_body)
             parts.append(format_cost_footer(
                 result.cost_usd, result.chain_steps, result.duration_ms,
             ))
@@ -131,12 +132,13 @@ async def callback_weekly_report(callback: CallbackQuery, pipeline=None, bot_ins
 
             page_url = await _save_to_notion(result, request)
 
+            tg_body = result.telegram_summary or result.brief_summary[:500]
             parts = []
             if page_url:
                 parts.append(f'<a href="{page_url}">📊 Подробный отчёт в Notion</a>\n')
             if result.caveats:
                 parts.append(add_caveats_header("", result.caveats))
-            parts.append(result.brief_summary)
+            parts.append(tg_body)
             parts.append(format_cost_footer(
                 result.cost_usd, result.chain_steps, result.duration_ms,
             ))

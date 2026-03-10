@@ -35,6 +35,7 @@ class ReportResult:
     brief_summary: str        # BBCode for Telegram
     detailed_report: str      # Markdown for Notion
     report_type: ReportType
+    telegram_summary: str = ""  # Short TG summary (5-8 lines, KPI only)
     chain_steps: int = 1      # number of orchestrator chain steps
     cost_usd: float = 0.0
     duration_ms: int = 0
