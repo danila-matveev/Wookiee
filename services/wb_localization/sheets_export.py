@@ -97,7 +97,7 @@ def _write_moves(spreadsheet, cabinet: str, moves_df: pd.DataFrame, meta):
     ws = get_or_create_worksheet(spreadsheet, f"Перемещения {cabinet}")
 
     headers = [
-        "Приоритет", "Артикул", "Размер", "Статус",
+        "Приоритет", "Артикул", "Размер", "Артикул WB", "Статус",
         "Откуда регион", "Откуда склад", "Куда регион", "Куда склад",
         "Кол-во", "Индекс SKU, %", "Заказов", "Балл",
     ]
@@ -109,6 +109,7 @@ def _write_moves(spreadsheet, cabinet: str, moves_df: pd.DataFrame, meta):
                 str(row.get("Приоритет", "")),
                 str(row.get("Артикул", row.get("Артикул продавца", ""))),
                 str(row.get("Размер", "")),
+                to_number(row.get("Артикул WB", "")),
                 str(row.get("Статус", "")),
                 str(row.get("Откуда регион", "")),
                 str(row.get("Откуда склад", "")),
@@ -128,7 +129,7 @@ def _write_supplies(spreadsheet, cabinet: str, supply_df: pd.DataFrame, meta):
     ws = get_or_create_worksheet(spreadsheet, f"Допоставки {cabinet}")
 
     headers = [
-        "Артикул", "Размер", "Статус",
+        "Артикул", "Размер", "Артикул WB", "Статус",
         "Регион", "Склад",
         "Кол-во", "К допоставке (факт)", "На своём складе",
     ]
@@ -139,6 +140,7 @@ def _write_supplies(spreadsheet, cabinet: str, supply_df: pd.DataFrame, meta):
             data.append([
                 str(row.get("Артикул", row.get("Артикул продавца", ""))),
                 str(row.get("Размер", "")),
+                to_number(row.get("Артикул WB", "")),
                 str(row.get("Статус", "")),
                 str(row.get("Регион", "")),
                 str(row.get("Склад", "")),
@@ -430,20 +432,21 @@ def _apply_formatting(spreadsheet, cabinet: str) -> None:
     if ws:
         sid = ws.id
         nr = len(ws.get_all_values())
-        nc = 12
+        nc = 13
         _clear_banding(spreadsheet, sid)
         reqs.extend(_meta_fmt(sid))
         reqs.append(_header_fmt(sid, 2, nc))
         reqs.append(_row_height(sid, 2, 3, 32))
         reqs.append(_freeze(sid, rows=3, cols=2))
         reqs.extend(_col_widths(sid, [
-            (0, 90), (1, 200), (2, 80), (3, 100), (4, 120), (5, 140),
-            (6, 120), (7, 140), (8, 80), (9, 110), (10, 80), (11, 70),
+            (0, 90), (1, 200), (2, 80), (3, 100), (4, 100), (5, 120),
+            (6, 140), (7, 120), (8, 140), (9, 80), (10, 110), (11, 80),
+            (12, 70),
         ]))
         if nr > 3:
             reqs.append(_borders(sid, 2, nr, 0, nc))
             reqs.append(_banding(sid, 3, nr, nc))
-            reqs.append(_num_fmt(sid, 3, nr, 9, 10, "0.0"))
+            reqs.append(_num_fmt(sid, 3, nr, 10, 11, "0.0"))
 
     # --- Допоставки ---
     title = f"Допоставки {cabinet}"
@@ -451,15 +454,15 @@ def _apply_formatting(spreadsheet, cabinet: str) -> None:
     if ws:
         sid = ws.id
         nr = len(ws.get_all_values())
-        nc = 8
+        nc = 9
         _clear_banding(spreadsheet, sid)
         reqs.extend(_meta_fmt(sid))
         reqs.append(_header_fmt(sid, 2, nc))
         reqs.append(_row_height(sid, 2, 3, 32))
         reqs.append(_freeze(sid, rows=3, cols=1))
         reqs.extend(_col_widths(sid, [
-            (0, 200), (1, 80), (2, 100), (3, 120), (4, 140),
-            (5, 80), (6, 150), (7, 140),
+            (0, 200), (1, 80), (2, 100), (3, 100), (4, 120),
+            (5, 140), (6, 80), (7, 150), (8, 140),
         ]))
         if nr > 3:
             reqs.append(_borders(sid, 2, nr, 0, nc))
