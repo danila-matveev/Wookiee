@@ -102,6 +102,121 @@ services:
           cpus: '0.25'
           memory: 256M
 
+  # ── Oleg MCP Server: exposes Oleg tools via MCP SSE transport ──
+  oleg-mcp:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: oleg_mcp
+    restart: unless-stopped
+    command: ["python", "-m", "agents.oleg.mcp_server"]
+
+    env_file:
+      - ../.env
+
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TZ=Europe/Moscow
+      - MCP_HOST=0.0.0.0
+      - MCP_PORT=8080
+
+    volumes:
+      - ../agents/oleg/data:/app/agents/oleg/data
+      - ../scripts:/app/scripts:ro
+
+    networks:
+      - n8n-docker-caddy_default
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # ── Eggent: AI workspace with Oleg agent ──
+  eggent:
+    build:
+      context: /opt/eggent
+      dockerfile: Dockerfile
+    container_name: eggent
+    restart: unless-stopped
+
+    environment:
+      - NODE_ENV=production
+      - HOSTNAME=0.0.0.0
+      - PORT=3000
+
+    ports:
+      - "127.0.0.1:3100:3000"
+
+    volumes:
+      - eggent-data:/app/data
+
+    networks:
+      - n8n-docker-caddy_default
+
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1024M
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+    depends_on:
+      - oleg-mcp
+
+  # ── Dashboard API: HTTP-эндпоинт для дашборда аналитики ──
+  dashboard-api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.dashboard_api
+    container_name: wookiee_dashboard_api
+    restart: unless-stopped
+
+    env_file:
+      - ../.env
+
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TZ=Europe/Moscow
+
+    ports:
+      - "127.0.0.1:8001:8001"
+
+    networks:
+      - n8n-docker-caddy_default
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+volumes:
+  eggent-data:
+
 networks:
   n8n-docker-caddy_default:
     external: true
