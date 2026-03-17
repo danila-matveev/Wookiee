@@ -143,6 +143,64 @@ services:
           cpus: '0.25'
           memory: 256M
 
+  # ── WB MCP Server (ИП): Wildberries Seller API via MCP ──
+  wb-mcp-ip:
+    build:
+      context: /opt/wildberries-mcp-server
+      dockerfile: Dockerfile
+    container_name: wb_mcp_ip
+    restart: unless-stopped
+
+    environment:
+      - WB_API_TOKEN=${WB_API_TOKEN_IP}
+      - MCP_TRANSPORT=http
+      - MCP_PORT=8080
+
+    networks:
+      - n8n-docker-caddy_default
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO/dev/null", "http://127.0.0.1:8080/health"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+  # ── WB MCP Server (ООО): Wildberries Seller API via MCP ──
+  wb-mcp-ooo:
+    build:
+      context: /opt/wildberries-mcp-server
+      dockerfile: Dockerfile
+    container_name: wb_mcp_ooo
+    restart: unless-stopped
+
+    environment:
+      - WB_API_TOKEN=${WB_API_TOKEN_OOO}
+      - MCP_TRANSPORT=http
+      - MCP_PORT=8080
+
+    networks:
+      - n8n-docker-caddy_default
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO/dev/null", "http://127.0.0.1:8080/health"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
   # ── Eggent: AI workspace with Oleg agent ──
   eggent:
     build:

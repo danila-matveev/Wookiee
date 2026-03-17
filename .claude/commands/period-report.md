@@ -6,7 +6,7 @@ Workflow Олега (AI финансовый аналитик Wookiee):
 
 1. Запусти скрипт:
    ```
-   python3 scripts/run_period_report.py $ARGUMENTS
+   python3 scripts/run_report.py period $ARGUMENTS
    ```
 
 2. Скрипт принимает две даты (start end), инициализирует OlegApp → pipeline → orchestrator → reporter agent.

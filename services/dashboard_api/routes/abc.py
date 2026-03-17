@@ -100,15 +100,9 @@ def _mark_new_articles(
 
 # ── Route ────────────────────────────────────────────────────────────────────
 
-@router.get("/by-article", response_model=AbcResponse)
-def abc_by_article(params: CommonParams = Depends()):
-    """Per-article ABC analysis with classification and metadata."""
-    mp = params.mp
-    start = params.start_date
-    end = params.end_date
-    prev_start = params.prev_start
-
-    # Fetch current-period data
+@cached
+def _fetch_abc(start: str, end: str, prev_start: str, mp: str) -> AbcResponse:
+    """Fetch, classify, and enrich ABC data. Cached 5 min."""
     all_articles: list[dict] = []
 
     if mp in ("wb", "all"):
@@ -123,7 +117,6 @@ def abc_by_article(params: CommonParams = Depends()):
             a["mp"] = "ozon"
         all_articles.extend(ozon_current)
 
-    # Fetch previous-period data (for "New" detection)
     prev_articles: list[dict] = []
 
     if mp in ("wb", "all"):
@@ -132,7 +125,6 @@ def abc_by_article(params: CommonParams = Depends()):
     if mp in ("ozon", "all"):
         prev_articles.extend(get_ozon_by_article(prev_start, start))
 
-    # Classify and enrich
     all_articles = _classify_abc(all_articles)
     all_articles = _mark_new_articles(all_articles, prev_articles)
 
@@ -146,3 +138,9 @@ def abc_by_article(params: CommonParams = Depends()):
         total_margin=round(total_margin, 2),
         article_count=len(all_articles),
     )
+
+
+@router.get("/by-article", response_model=AbcResponse)
+def abc_by_article(params: CommonParams = Depends()):
+    """Per-article ABC analysis with classification and metadata."""
+    return _fetch_abc(params.start_date, params.end_date, params.prev_start, params.mp)

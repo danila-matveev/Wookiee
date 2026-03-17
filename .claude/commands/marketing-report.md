@@ -9,7 +9,7 @@ Workflow Олега (AI маркетинговый аналитик Wookiee):
 
 1. Запусти скрипт:
    ```
-   python3 scripts/run_marketing_report.py $ARGUMENTS
+   python3 scripts/run_report.py marketing $ARGUMENTS
    ```
 
 2. Скрипт инициализирует OlegApp → pipeline → orchestrator → marketer agent.

@@ -15,6 +15,7 @@ class ReportType(Enum):
     MARKETING_WEEKLY = "marketing_weekly"
     MARKETING_MONTHLY = "marketing_monthly"
     MARKETING_CUSTOM = "marketing_custom"
+    FUNNEL_WEEKLY = "funnel_weekly"
 
 
 @dataclass

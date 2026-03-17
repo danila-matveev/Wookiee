@@ -184,6 +184,15 @@ class OlegOrchestrator:
     ) -> OrchestratorDecision:
         """Use LLM to decide the next step in the chain."""
 
+        # Funnel reports → funnel agent (Макар)
+        if step == 0 and task_type.startswith("funnel_"):
+            return OrchestratorDecision(
+                done=False,
+                next_agent="funnel",
+                instruction=task,
+                reasoning="Funnel report → Funnel agent (Макар)",
+            )
+
         # Shortcut for first step of marketing reports
         if step == 0 and task_type.startswith("marketing_"):
             return OrchestratorDecision(
@@ -336,7 +345,7 @@ class OlegOrchestrator:
         """Synthesize final answer from chain results."""
 
         # If only one step and it's reporter or marketer — use its output directly
-        if len(chain_history) == 1 and chain_history[0].agent in ("reporter", "marketer"):
+        if len(chain_history) == 1 and chain_history[0].agent in ("reporter", "marketer", "funnel"):
             return self._parse_report_sections(chain_history[0].result)
 
         chain_results_text = self._format_chain_history(chain_history)

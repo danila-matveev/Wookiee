@@ -5,6 +5,7 @@ Single Docker container, single process.
 """
 import asyncio
 import logging
+import os
 import signal
 from typing import Optional
 
@@ -106,6 +107,17 @@ class OlegApp:
             total_timeout_sec=config.TOTAL_TIMEOUT_SEC,
         )
 
+        from agents.oleg.agents.seo.agent import FunnelAgent
+        funnel = FunnelAgent(
+            llm_client=llm_client,
+            model=config.ANALYTICS_MODEL,
+            pricing=config.PRICING,
+            playbook_path=config.FUNNEL_PLAYBOOK_PATH,
+            max_iterations=config.MAX_ITERATIONS,
+            tool_timeout_sec=config.TOOL_TIMEOUT_SEC,
+            total_timeout_sec=config.TOTAL_TIMEOUT_SEC,
+        )
+
         # ── Orchestrator ────────────────────────────────────────────
 
         from agents.oleg.orchestrator.orchestrator import OlegOrchestrator
@@ -117,6 +129,7 @@ class OlegApp:
                 "researcher": researcher,
                 "quality": quality,
                 "marketer": marketer,
+                "funnel": funnel,
             },
             pricing=config.PRICING,
             review_model=config.REVIEW_MODEL if config.REVIEW_ENABLED else None,
@@ -199,6 +212,10 @@ class OlegApp:
 
     def _setup_scheduler(self) -> None:
         """Configure APScheduler for cron-based reports."""
+        if not os.getenv("OLEG_SCHEDULER_ENABLED", "true").lower() in ("true", "1", "yes"):
+            logger.info("Scheduler disabled via OLEG_SCHEDULER_ENABLED=false")
+            return
+
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
         from apscheduler.triggers.cron import CronTrigger
         import pytz
@@ -265,13 +282,13 @@ class OlegApp:
             replace_existing=True,
         )
 
-        # Marketing weekly report (Monday)
+        # Marketing + Funnel weekly reports (Monday, run in parallel)
         mkt_weekly_h, mkt_weekly_m = (int(x) for x in config.MARKETING_WEEKLY_REPORT_TIME.split(":"))
         self.scheduler.add_job(
-            self._run_marketing_weekly_report,
+            self._run_weekly_marketing_bundle,
             CronTrigger(day_of_week="mon", hour=mkt_weekly_h, minute=mkt_weekly_m, timezone=tz),
-            id="marketing_weekly_report",
-            name=f"Marketing Weekly Report (Mon {mkt_weekly_h:02d}:{mkt_weekly_m:02d} MSK)",
+            id="weekly_marketing_bundle",
+            name=f"Marketing + Funnel Weekly (Mon {mkt_weekly_h:02d}:{mkt_weekly_m:02d} MSK)",
             replace_existing=True,
         )
 
@@ -299,34 +316,26 @@ class OlegApp:
                 replace_existing=True,
             )
 
-        # Weekly price review (Monday, after weekly report)
-        price_h, price_m = (int(x) for x in config.WEEKLY_PRICE_REVIEW_TIME.split(":"))
+        # Monthly price analysis (adaptive period, hypothesis-driven)
+        pa_h, pa_m = (int(x) for x in config.MONTHLY_PRICE_ANALYSIS_TIME.split(":"))
         self.scheduler.add_job(
-            self._run_weekly_price_review,
-            CronTrigger(day_of_week="mon", hour=price_h, minute=price_m, timezone=tz),
-            id="weekly_price_review",
-            name=f"Weekly Price Review (Mon {price_h:02d}:{price_m:02d} MSK)",
+            self._run_monthly_price_analysis,
+            CronTrigger(day=config.MONTHLY_PRICE_ANALYSIS_DAY, hour=pa_h, minute=pa_m, timezone=tz),
+            id="monthly_price_analysis",
+            name=f"Monthly Price Analysis ({config.MONTHLY_PRICE_ANALYSIS_DAY}th, {pa_h:02d}:{pa_m:02d} MSK)",
             replace_existing=True,
         )
 
-        # Monthly price review (1st Monday of month, after weekly)
-        mprice_h, mprice_m = (int(x) for x in config.MONTHLY_PRICE_REVIEW_TIME.split(":"))
-        self.scheduler.add_job(
-            self._run_monthly_price_review,
-            CronTrigger(day="1-7", day_of_week="mon", hour=mprice_h, minute=mprice_m, timezone=tz),
-            id="monthly_price_review",
-            name=f"Monthly Price Review (1st Mon {mprice_h:02d}:{mprice_m:02d} MSK)",
-            replace_existing=True,
-        )
-
-        # Monthly regression refresh (1st of month, 03:00 MSK)
-        self.scheduler.add_job(
-            self._refresh_regression_models,
-            CronTrigger(day="1", hour=3, minute=0, timezone=tz),
-            id="regression_refresh",
-            name="Monthly Regression Refresh (1st, 03:00 MSK)",
-            replace_existing=True,
-        )
+        # Finolog weekly ДДС report (Friday)
+        if config.FINOLOG_API_KEY:
+            fin_h, fin_m = (int(x) for x in config.FINOLOG_WEEKLY_REPORT_TIME.split(":"))
+            self.scheduler.add_job(
+                self._run_finolog_weekly_report,
+                CronTrigger(day_of_week="fri", hour=fin_h, minute=fin_m, timezone=tz),
+                id="finolog_weekly_report",
+                name=f"Finolog Weekly (Fri {fin_h:02d}:{fin_m:02d} MSK)",
+                replace_existing=True,
+            )
 
         # Promotion scanning (every 12h, if enabled)
         if config.PROMOTION_SCAN_ENABLED:
@@ -527,16 +536,31 @@ class OlegApp:
             logger.error(f"Monthly report failed: {e}", exc_info=True)
             await self.watchdog.on_report_failure("monthly", marketplace="wb")
 
+    async def _run_weekly_marketing_bundle(self) -> None:
+        """Run marketing weekly + funnel weekly reports in parallel."""
+        import asyncio
+
+        await self._send_admin_message(
+            "Запускаю еженедельный маркетинговый + воронка (параллельно)..."
+        )
+
+        results = await asyncio.gather(
+            self._run_marketing_weekly_report(),
+            self._run_funnel_weekly_reports(),
+            return_exceptions=True,
+        )
+
+        errors = [r for r in results if isinstance(r, Exception)]
+        if errors:
+            for e in errors:
+                logger.error(f"Weekly marketing bundle error: {e}", exc_info=e)
+
     async def _run_marketing_weekly_report(self) -> None:
         """Scheduled marketing weekly report callback."""
         from agents.oleg.pipeline.report_types import ReportType, ReportRequest
         from agents.oleg.services.time_utils import get_last_week_bounds_msk
 
         monday, sunday = get_last_week_bounds_msk()
-
-        await self._send_admin_message(
-            f"Генерирую еженедельный маркетинговый отчёт за {monday} — {sunday}..."
-        )
 
         request = ReportRequest(
             report_type=ReportType.MARKETING_WEEKLY,
@@ -582,6 +606,49 @@ class OlegApp:
         except Exception as e:
             logger.error(f"Marketing monthly report failed: {e}", exc_info=True)
             await self.watchdog.on_report_failure("marketing_monthly", marketplace="wb")
+
+    async def _run_funnel_weekly_reports(self) -> None:
+        """Consolidated funnel weekly report for all active models."""
+        from agents.oleg.pipeline.report_types import ReportType, ReportRequest
+        from agents.oleg.services.time_utils import get_last_week_bounds_msk
+        from agents.oleg.services.funnel_tools import get_all_models_funnel_bundle
+
+        monday, sunday = get_last_week_bounds_msk()
+        start_date, end_date = str(monday), str(sunday)
+
+        try:
+            # 1. Pre-fetch data for all models
+            data_bundle = await get_all_models_funnel_bundle(start_date, end_date)
+
+            if not data_bundle or not data_bundle.get("models"):
+                await self._send_admin_message(
+                    f"Funnel weekly: нет активных моделей с A/B артикулами за {start_date} — {end_date}"
+                )
+                return
+
+            models_count = len(data_bundle["models"])
+            await self._send_admin_message(
+                f"Генерирую сводный funnel weekly: {models_count} моделей ({start_date} — {end_date})..."
+            )
+
+            # 2. Single pipeline call with pre-fetched data
+            request = ReportRequest(
+                report_type=ReportType.FUNNEL_WEEKLY,
+                start_date=start_date,
+                end_date=end_date,
+                context={"data_bundle": data_bundle},
+            )
+
+            result = await self.pipeline.generate_report(request)
+            if result:
+                await self._deliver_report(result, request)
+                await self.watchdog.on_report_success("funnel_weekly", result.cost_usd)
+            else:
+                await self.watchdog.on_report_failure("funnel_weekly", marketplace="wb")
+
+        except Exception as e:
+            logger.error(f"Funnel weekly report failed: {e}", exc_info=True)
+            await self.watchdog.on_report_failure("funnel_weekly", marketplace="wb")
 
     async def _run_weekly_price_review(self) -> None:
         """Scheduled weekly price review: run full analysis and format readable report."""
@@ -694,6 +761,81 @@ class OlegApp:
             except Exception as e:
                 logger.error(f"Monthly price review for {channel} failed: {e}", exc_info=True)
                 await self._send_admin_message(f"Ошибка месячного ценового обзора {channel.upper()}: {e}")
+
+    async def _run_monthly_price_analysis(self) -> None:
+        """Monthly price analysis: adaptive period, hypothesis-driven.
+
+        Replaces weekly/monthly price review with a single monthly run.
+        Includes regression refresh inline.
+        """
+        from agents.oleg.services.price_tools import _learning_store
+        from scripts.run_price_analysis import (
+            analyze_channel_adaptive,
+            format_comprehensive_report,
+        )
+        from agents.oleg.services.time_utils import get_last_month_bounds_msk
+        from shared.data_layer import get_moysklad_stock_by_article
+
+        _, last = get_last_month_bounds_msk()
+        end_date = str(last)
+
+        await self._send_admin_message(
+            f"Генерирую ежемесячный ценовой анализ (адаптивный период до {end_date})..."
+        )
+
+        # Проверка свежести данных МойСклад
+        ms_stock = get_moysklad_stock_by_article(max_staleness_days=3)
+        if ms_stock:
+            sample = next(iter(ms_stock.values()))
+            if sample.get('is_stale'):
+                await self._send_admin_message(
+                    f"⚠️ Данные МойСклад устарели (снэпшот от {sample.get('snapshot_date')}). "
+                    f"Ценовой анализ отменён — результаты будут некорректными."
+                )
+                return
+
+        for channel in ('wb', 'ozon'):
+            try:
+                report = analyze_channel_adaptive(channel, end_date, _learning_store)
+                report_md = format_comprehensive_report(report)
+
+                # Сводка для Telegram
+                hypotheses = report.get('pricing_hypotheses', [])
+                increase = sum(1 for h in hypotheses if h['hypothesis_type'] == 'price_increase')
+                decrease = sum(1 for h in hypotheses if h['hypothesis_type'] == 'price_decrease')
+                total = report.get('models_total', 0)
+                period_label = report.get('adaptive_period', '?')
+
+                brief_parts = [
+                    f"Ценовой анализ {channel.upper()} ({period_label}): "
+                    f"{total} моделей"
+                ]
+                if increase:
+                    brief_parts.append(f"📈 повысить: {increase}")
+                if decrease:
+                    brief_parts.append(f"📉 снизить: {decrease}")
+
+                await self._deliver_price_report(
+                    report_md=report_md,
+                    report_type="Ценовой анализ",
+                    start_date=report.get('period', '').split(' — ')[0] if ' — ' in report.get('period', '') else end_date,
+                    end_date=end_date,
+                    brief_summary=", ".join(brief_parts),
+                )
+
+                # Save ROI snapshots
+                if _learning_store:
+                    for item in report.get('roi_dashboard', []):
+                        try:
+                            _learning_store.save_roi_snapshot(
+                                item.get('model', ''), channel, item,
+                            )
+                        except Exception:
+                            pass
+
+            except Exception as e:
+                logger.error(f"Monthly price analysis for {channel} failed: {e}", exc_info=True)
+                await self._send_admin_message(f"Ошибка ценового анализа {channel.upper()}: {e}")
 
     async def _refresh_regression_models(self) -> None:
         """Monthly regression refresh: re-estimate all model elasticities."""
@@ -917,6 +1059,63 @@ class OlegApp:
 
             except Exception as e:
                 logger.error(f"[{channel}] Promotion scan failed: {e}", exc_info=True)
+
+    async def _run_finolog_weekly_report(self) -> None:
+        """Scheduled Friday job: Finolog cash flow summary → Notion + Telegram."""
+        from datetime import date as _date
+
+        logger.info("Finolog weekly report triggered")
+        try:
+            from agents.oleg.services.finolog_service import FinologService
+            svc = FinologService(
+                api_key=config.FINOLOG_API_KEY,
+                biz_id=config.FINOLOG_BIZ_ID,
+            )
+            report_md, brief_html = await svc.build_weekly_summary(
+                cash_gap_threshold=config.FINOLOG_CASH_GAP_THRESHOLD,
+            )
+
+            today = str(_date.today())
+
+            # Save to Notion
+            page_url = None
+            try:
+                from agents.oleg.services.notion_service import NotionService
+                notion = NotionService(
+                    token=config.NOTION_TOKEN,
+                    database_id=config.NOTION_DATABASE_ID,
+                )
+                page_url = await notion.sync_report(
+                    start_date=today,
+                    end_date=today,
+                    report_md=report_md,
+                    report_type="finolog_weekly",
+                    source="FinologService (auto)",
+                )
+            except Exception as e:
+                logger.warning(f"Notion save for Finolog report failed: {e}")
+
+            # Send brief summary to Telegram
+            parts = []
+            if page_url:
+                parts.append(f'<a href="{page_url}">📊 Подробный отчёт ДДС в Notion</a>')
+            parts.append(brief_html)
+            text = "\n\n".join(parts)
+
+            if self.bot:
+                for chat_id in self._get_notification_recipients():
+                    try:
+                        await self.bot.send_message(chat_id, text, parse_mode="HTML")
+                    except Exception as e:
+                        logger.error(f"Finolog TG delivery to {chat_id} failed: {e}")
+
+            logger.info("Finolog weekly report delivered successfully")
+
+        except Exception as e:
+            logger.error(f"Finolog weekly report failed: {e}", exc_info=True)
+            await self._send_admin_message(
+                f"❌ Ошибка генерации сводки ДДС: {e}"
+            )
 
     def _get_notification_recipients(self) -> list:
         """Get all chat IDs that should receive notifications.
@@ -1162,30 +1361,49 @@ class OlegApp:
     async def _check_telegram_conflict(self) -> bool:
         """Test if another bot instance holds the polling session.
 
-        Calls /close to terminate any existing session, waits briefly,
-        then holds a 15s long-poll to detect if another instance reclaims.
+        Strategy: call /close, wait, then do a long-poll probe.
+        If the probe gets 409 (status code or in JSON body), another instance
+        is alive. Repeats up to 2 times to reduce false negatives.
         """
         import httpx
 
         token = config.TELEGRAM_BOT_TOKEN
         base = f"https://api.telegram.org/bot{token}"
-        try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                # Kill any existing bot session
-                await client.post(f"{base}/close")
-                logger.info("Telegram /close called, waiting 3s...")
-                await asyncio.sleep(3)
 
-                # Hold long-poll — if something reclaims, we get 409
-                resp = await client.post(
-                    f"{base}/getUpdates",
-                    json={"offset": -1, "limit": 1, "timeout": 15},
-                )
-                data = resp.json()
-                if not data.get("ok") and "conflict" in data.get("description", "").lower():
+        for attempt in range(1, 3):
+            try:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    # Kill any existing bot session
+                    await client.post(f"{base}/close")
+                    logger.info("Telegram /close called (attempt %d/2), waiting 3s...", attempt)
+                    await asyncio.sleep(3)
+
+                    # Hold long-poll — if another instance reclaims, we get 409
+                    resp = await client.post(
+                        f"{base}/getUpdates",
+                        json={"offset": -1, "limit": 1, "timeout": 15},
+                    )
+
+                    # Check HTTP status code directly (httpx does NOT raise on 4xx)
+                    if resp.status_code == 409:
+                        logger.warning("Telegram conflict detected via HTTP 409 (attempt %d)", attempt)
+                        return True
+
+                    # Also check JSON body for conflict description
+                    data = resp.json()
+                    if not data.get("ok") and "conflict" in data.get("description", "").lower():
+                        logger.warning("Telegram conflict detected via JSON body (attempt %d)", attempt)
+                        return True
+
+            except httpx.HTTPStatusError as e:
+                if e.response is not None and e.response.status_code == 409:
+                    logger.warning("Telegram conflict detected via HTTPStatusError (attempt %d)", attempt)
                     return True
-        except Exception as e:
-            logger.warning(f"Telegram conflict check failed: {e}")
+                logger.warning("Telegram conflict check HTTP error (attempt %d): %s", attempt, e)
+            except Exception as e:
+                logger.warning("Telegram conflict check failed (attempt %d): %s", attempt, e)
+
+        logger.info("No Telegram conflict detected after 2 attempts")
         return False
 
     async def shutdown(self) -> None:

@@ -153,6 +153,45 @@ class ReportPipeline:
                 f"бюджет vs факт, понедельная динамика. Стратегические рекомендации с расчётом эффекта в ₽."
             )
 
+        # ── Funnel reports (Макар) ─────────────────────────────────
+        if request.report_type == ReportType.FUNNEL_WEEKLY:
+            import json as _json
+            data_bundle = (request.context or {}).get("data_bundle")
+            if not data_bundle:
+                return None
+
+            models_list = [m["model"] for m in data_bundle.get("models", [])]
+            bundle_json = _json.dumps(data_bundle, ensure_ascii=False, default=str)
+
+            date_range = f"{request.start_date} — {request.end_date}"
+
+            task = (
+                f"Сводный еженедельный отчёт маркетинговой воронки WB за {date_range}.\n\n"
+                f"ДАННЫЕ УЖЕ СОБРАНЫ (НЕ вызывай инструменты, анализируй предоставленные данные):\n"
+                f"{bundle_json}\n\n"
+                f"МОДЕЛИ В ОТЧЁТЕ: {', '.join(models_list)}\n\n"
+                f"СТРУКТУРА ОТЧЁТА (СТРОГО СОБЛЮДАЙ ФОРМАТ):\n"
+                f"1. Заголовок: # Воронка WB за {date_range}\n"
+                f"2. ОБЩИЙ ОБЗОР БРЕНДА — таблица KPI (переходы, заказы, выкупы, выручка, маржа, ДРР) WoW.\n"
+                f"3. По каждой модели — TOGGLE-СЕКЦИЯ. ОБЯЗАТЕЛЬНЫЙ формат заголовка:\n"
+                f"   ## ▶ Модель: Wendy — падение заказов -17.8%\n"
+                f"   (символ ▶ ОБЯЗАТЕЛЕН в каждом заголовке модели)\n"
+                f"   Внутри toggle:\n"
+                f"   - Таблица воронки (current vs previous + delta)\n"
+                f"   - Экономика: выручка, маржа, ДРР, ROMI, доля органики\n"
+                f"   - Таблица significant_articles с флагами\n"
+                f"   - Если модель без значимых изменений — одно предложение.\n"
+                f"4. ## Выводы и рекомендации — топ-3 действия с расчётом эффекта в ₽.\n\n"
+                f"ПРАВИЛА:\n"
+                f"- КАЖДЫЙ заголовок модели ОБЯЗАТЕЛЬНО начинай с ## ▶ (символ U+25B6).\n"
+                f"- Фокус на ЗНАЧИМЫХ изменениях (>20% трафик, >15% заказы, >2пп CRO).\n"
+                f"- CRO (переход→заказ) — ГЛАВНАЯ метрика.\n"
+                f"- Все метрики на русском. НЕ выдумывай данные.\n"
+                f"- Для каждого значимого изменения — ГИПОТЕЗА.\n"
+                f"- Рекомендации — ТОЛЬКО с расчётом эффекта в рублях."
+            )
+            return task
+
         # MARKETING_CUSTOM — depth adapts to period length
         from datetime import datetime
         try:

@@ -29,7 +29,7 @@ from shared.data_layer import (
     get_wb_avg_stock, get_ozon_avg_stock,
     get_artikuly_full_info,
 )
-from scripts.abc_analysis import (
+from scripts.abc_helpers import (
     calc_abc_classes, calc_high_turnover, classify_article,
 )
 

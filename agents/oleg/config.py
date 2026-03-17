@@ -128,6 +128,7 @@ NOTION_DATABASE_ID: str = os.getenv("NOTION_DATABASE_ID", "")
 # ============================================================================
 PLAYBOOK_PATH: str = str(Path(__file__).parent / "playbook.md")
 MARKETING_PLAYBOOK_PATH: str = str(Path(__file__).parent / "marketing_playbook.md")
+FUNNEL_PLAYBOOK_PATH: str = str(Path(__file__).parent / "funnel_playbook.md")
 
 # ============================================================================
 # Scheduler (MSK)
@@ -136,11 +137,18 @@ TIMEZONE: str = "Europe/Moscow"
 DAILY_REPORT_TIME: str = os.getenv("DAILY_REPORT_TIME", "09:00")
 WEEKLY_REPORT_TIME: str = os.getenv("WEEKLY_REPORT_TIME", "10:15")
 MONTHLY_REPORT_TIME: str = os.getenv("MONTHLY_REPORT_TIME", "10:30")
-WEEKLY_PRICE_REVIEW_TIME: str = os.getenv("WEEKLY_PRICE_REVIEW_TIME", "10:45")
-MONTHLY_PRICE_REVIEW_TIME: str = os.getenv("MONTHLY_PRICE_REVIEW_TIME", "11:00")
+MONTHLY_PRICE_ANALYSIS_TIME: str = os.getenv("MONTHLY_PRICE_ANALYSIS_TIME", "11:00")
+MONTHLY_PRICE_ANALYSIS_DAY: int = int(os.getenv("MONTHLY_PRICE_ANALYSIS_DAY", "1"))
 MARKETING_WEEKLY_REPORT_TIME: str = os.getenv("MARKETING_WEEKLY_REPORT_TIME", "11:15")
 MARKETING_MONTHLY_REPORT_TIME: str = os.getenv("MARKETING_MONTHLY_REPORT_TIME", "11:30")
+FUNNEL_WEEKLY_REPORT_TIME: str = os.getenv("FUNNEL_WEEKLY_REPORT_TIME", "12:00")
 PROMOTION_SCAN_ENABLED: bool = os.getenv("PROMOTION_SCAN_ENABLED", "false").lower() in ("true", "1", "yes")
+
+# Finolog (cash flow / ДДС)
+FINOLOG_API_KEY: str = os.getenv("FINOLOG_API_KEY", "")
+FINOLOG_BIZ_ID: int = int(os.getenv("FINOLOG_BIZ_ID", "48556"))
+FINOLOG_WEEKLY_REPORT_TIME: str = os.getenv("FINOLOG_WEEKLY_REPORT_TIME", "18:00")
+FINOLOG_CASH_GAP_THRESHOLD: float = float(os.getenv("FINOLOG_CASH_GAP_THRESHOLD", "1000000"))
 
 # ============================================================================
 # Executor
