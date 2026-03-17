@@ -26,235 +26,41 @@ from shared.data_layer import (
     get_wb_avg_stock, get_ozon_avg_stock,
     get_artikuly_full_info,
 )
+from scripts.abc_helpers import calc_abc_classes, calc_high_turnover, classify_article
+
+from calendar import monthrange
 
 
 # =============================================================================
-# ПЕРИОДЫ
+# ПЕРИОДЫ (dynamic — last full month vs month before)
 # =============================================================================
 
-LAST_MONTH_START = '2025-12-01'
-LAST_MONTH_END = '2026-01-01'
-PREV_MONTH_START = '2025-11-01'
-PREV_MONTH_END = '2025-12-01'
+def _default_periods():
+    """Calculate default periods: last full month and the month before."""
+    today = datetime.today()
+    # Last month: 1st of current month - 1 day → that month
+    last_month_end_dt = today.replace(day=1)  # 1st of current month = exclusive end
+    last_month_start_dt = (last_month_end_dt - timedelta(days=1)).replace(day=1)
+    # Previous month
+    prev_month_end_dt = last_month_start_dt
+    prev_month_start_dt = (prev_month_end_dt - timedelta(days=1)).replace(day=1)
 
-# Количество дней в каждом периоде (для расчёта оборачиваемости)
-LAST_MONTH_DAYS = 31  # декабрь
-PREV_MONTH_DAYS = 30  # ноябрь
+    last_days = monthrange(last_month_start_dt.year, last_month_start_dt.month)[1]
+    prev_days = monthrange(prev_month_start_dt.year, prev_month_start_dt.month)[1]
 
-# Обновлённые периоды (январь = последний, декабрь = предыдущий)
-LAST_MONTH_START = '2026-01-01'
-LAST_MONTH_END = '2026-02-01'
-PREV_MONTH_START = '2025-12-01'
-PREV_MONTH_END = '2026-01-01'
-LAST_MONTH_DAYS = 31  # январь
-PREV_MONTH_DAYS = 31  # декабрь
-
-
-# =============================================================================
-# ABC-КЛАССИФИКАЦИЯ
-# =============================================================================
-
-def calc_abc_classes(articles_data):
-    """
-    ABC-классификация по марже внутри каждой модели.
-
-    Вход: список dict-ов с ключами: article, model, margin, ...
-    Выход: dict {article_lower: 'A'|'B'|'C'}
-    """
-    # Группируем по модели
-    models = {}
-    for a in articles_data:
-        model = a['model']
-        if model not in models:
-            models[model] = []
-        models[model].append(a)
-
-    abc = {}
-    for model, items in models.items():
-        # Сортируем по марже по убыванию
-        sorted_items = sorted(items, key=lambda x: x['margin'], reverse=True)
-        total_margin = sum(x['margin'] for x in sorted_items)
-
-        if total_margin <= 0:
-            # Все артикулы с нулевой/отрицательной маржой → все C
-            for item in sorted_items:
-                abc[item['article'].lower()] = 'C'
-            continue
-
-        cumulative = 0
-        for item in sorted_items:
-            share = item['margin'] / total_margin if total_margin > 0 else 0
-            cumulative += share
-
-            if cumulative <= 0.80:
-                abc[item['article'].lower()] = 'A'
-            elif cumulative <= 0.95:
-                abc[item['article'].lower()] = 'B'
-            else:
-                abc[item['article'].lower()] = 'C'
-
-    return abc
+    return (
+        last_month_start_dt.strftime('%Y-%m-%d'),
+        last_month_end_dt.strftime('%Y-%m-%d'),
+        prev_month_start_dt.strftime('%Y-%m-%d'),
+        prev_month_end_dt.strftime('%Y-%m-%d'),
+        last_days,
+        prev_days,
+    )
 
 
-def calc_high_turnover(articles_data, turnover_map):
-    """
-    Определяет артикулы с высоким оборотом внутри каждой модели.
-
-    Правило: оборот > 1.5 × медиана модели.
-    Вход: articles_data — список dict, turnover_map — {article_lower: days}
-    Выход: dict {article_lower: True|False}
-    """
-    models = {}
-    for a in articles_data:
-        model = a['model']
-        key = a['article'].lower()
-        turn = turnover_map.get(key, 0)
-        if model not in models:
-            models[model] = []
-        models[model].append((key, turn))
-
-    result = {}
-    for model, items in models.items():
-        turnovers = [t for _, t in items if t > 0]
-        if not turnovers:
-            for key, _ in items:
-                result[key] = False
-            continue
-
-        med = median(turnovers)
-        threshold = med * 1.5
-
-        for key, turn in items:
-            result[key] = turn > threshold if turn > 0 else False
-
-    return result
-
-
-def classify_article(abc_last, abc_prev, high_turn_last, high_turn_prev,
-                     status, margin, model_article_count):
-    """
-    Финальная классификация артикула.
-
-    Возвращает: (категория, рекомендация, причины_list, динамика)
-    """
-    # Приоритет 1: «Новый»
-    if status in ('Новый', 'Запуск'):
-        rec = status
-        reasons = ['Статус: ' + status, 'Рано судить по метрикам']
-        dynamics = 'Наблюдение'
-        return 'Новый', rec, reasons, dynamics
-
-    # Определяем динамику ABC
-    if abc_last == abc_prev:
-        abc_stable = True
-        abc_dynamic = 'устойчивый'
-    elif abc_prev is None:
-        abc_stable = False
-        abc_dynamic = 'нет данных за пред. месяц'
-    else:
-        abc_stable = False
-        if abc_last == 'C' and abc_prev != 'C':
-            abc_dynamic = 'ухудшение (появился)'
-        elif abc_last != 'C' and abc_prev == 'C':
-            abc_dynamic = 'улучшение (появился)'
-        else:
-            abc_dynamic = 'изменился'
-
-    # Оборот динамика
-    ht_last = high_turn_last or False
-    ht_prev = high_turn_prev or False
-    if ht_last and ht_prev:
-        turn_signal = 'высокий оборот устойчиво'
-    elif ht_last and not ht_prev:
-        turn_signal = 'высокий оборот появился'
-    else:
-        turn_signal = ''
-
-    # Категория
-    reasons = []
-    small_model = model_article_count <= 2
-
-    if abc_last == 'C':
-        # Кандидат на «Неликвид»
-        category = 'Неликвид'
-        reasons.append(f'ABC = C (хвост маржи модели)')
-        if ht_last:
-            reasons.append('Оборот выше 1.5× медианы')
-        if margin <= 0:
-            reasons.append('Маржа отрицательная')
-
-        if abc_stable and ht_last and ht_prev:
-            dynamics = f'Устойчивый: C в обоих мес., оборот высокий'
-        elif abc_stable:
-            dynamics = f'Устойчивый: C в обоих мес.'
-        elif abc_prev == 'C':
-            dynamics = f'Устойчивый: C в обоих мес.'
-        else:
-            dynamics = f'Появился: {abc_dynamic}'
-
-        # Рекомендация
-        if status == 'Выводим':
-            rec = 'Выводим'
-            reasons.insert(0, 'Статус подтверждён')
-        elif status == 'Продается':
-            rec = 'Выводим'
-            reasons.insert(0, 'Рекомендация: перевести в вывод')
-        else:
-            rec = 'Выводим'
-
-    elif abc_last == 'A':
-        category = 'Лучшие'
-        reasons.append(f'ABC = A (ТОП-80% маржи модели)')
-        if ht_last:
-            reasons.append('Внимание: высокий оборот')
-            # A с высоким оборотом — пограничный
-            if ht_prev:
-                category = 'Хорошие'
-                reasons[0] = 'ABC = A, но высокий оборот устойчиво'
-
-        if abc_stable:
-            dynamics = 'Устойчивый: A в обоих мес.'
-        elif abc_prev is None:
-            dynamics = 'Нет данных за пред. месяц'
-        else:
-            dynamics = f'Появился: был {abc_prev}'
-
-        if status in ('Продается', 'Выводим', None):
-            rec = 'Продаются'
-            if status == 'Продается':
-                reasons.insert(0, 'Статус подтверждён')
-        else:
-            rec = 'Продаются'
-
-    else:  # B
-        category = 'Хорошие'
-        reasons.append(f'ABC = B (80-95% маржи модели)')
-        if ht_last:
-            reasons.append('Внимание: высокий оборот')
-
-        if abc_stable:
-            dynamics = 'Устойчивый: B в обоих мес.'
-        elif abc_prev is None:
-            dynamics = 'Нет данных за пред. месяц'
-        else:
-            dynamics = f'Появился: был {abc_prev}'
-
-        if status == 'Продается':
-            rec = 'Продаются'
-            reasons.insert(0, 'Статус подтверждён')
-        elif status == 'Выводим':
-            rec = 'Продаются'
-            reasons.insert(0, 'Внимание: статус «Выводим», но метрики хорошие')
-        else:
-            rec = 'Продаются'
-
-    if small_model:
-        reasons.append('Мало артикулов в модели, вывод условный')
-
-    if turn_signal and turn_signal not in dynamics:
-        dynamics += f'; {turn_signal}'
-
-    return category, rec, reasons, dynamics
+(LAST_MONTH_START, LAST_MONTH_END,
+ PREV_MONTH_START, PREV_MONTH_END,
+ LAST_MONTH_DAYS, PREV_MONTH_DAYS) = _default_periods()
 
 
 # =============================================================================

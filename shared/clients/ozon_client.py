@@ -124,6 +124,60 @@ class OzonClient:
             logger.error("[%s] Check report error: %s", self.cabinet_name, e)
             return None
 
+    # ---- Reviews ----
+
+    def get_all_reviews(self) -> list[dict]:
+        """Fetch all reviews with cursor-based pagination.
+
+        POST /v1/review/list — returns reviews with product info, rating, text.
+        """
+        all_reviews = []
+        cursor = ""
+
+        while True:
+            payload: dict = {"limit": 100, "sort_direction": "DESC"}
+            if cursor:
+                payload["cursor"] = cursor
+
+            url = f"{self.BASE_URL}/v1/review/list"
+            try:
+                resp = self.client.post(url, json=payload)
+
+                if resp.status_code == 200:
+                    data = resp.json()
+                    reviews = data.get("reviews", [])
+                    all_reviews.extend(reviews)
+
+                    cursor = data.get("cursor", "")
+                    has_next = data.get("has_next", False)
+
+                    logger.info(
+                        "[%s] Ozon reviews batch: %d (total: %d)",
+                        self.cabinet_name, len(reviews), len(all_reviews),
+                    )
+
+                    if not has_next or not reviews:
+                        break
+
+                    time.sleep(0.2)
+                elif resp.status_code == 429:
+                    logger.warning("[%s] 429 Rate limited, waiting 60s...", self.cabinet_name)
+                    time.sleep(60)
+                    continue
+                else:
+                    logger.error(
+                        "[%s] Ozon reviews HTTP %d: %s",
+                        self.cabinet_name, resp.status_code, resp.text[:200],
+                    )
+                    break
+
+            except httpx.RequestError as e:
+                logger.error("[%s] Ozon reviews error: %s", self.cabinet_name, e)
+                break
+
+        logger.info("[%s] Total Ozon reviews: %d", self.cabinet_name, len(all_reviews))
+        return all_reviews
+
     # ---- Promotions ----
 
     def get_promotions(self) -> list[dict]:

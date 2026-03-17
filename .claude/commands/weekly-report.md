@@ -4,7 +4,7 @@ Workflow Олега (AI финансовый аналитик Wookiee):
 
 1. Запусти скрипт:
    ```
-   python3 scripts/run_weekly_report.py $ARGUMENTS
+   python3 scripts/run_report.py weekly $ARGUMENTS
    ```
 
 2. Скрипт определяет понедельник и воскресенье для указанной недели, инициализирует OlegApp → pipeline → orchestrator → reporter agent.

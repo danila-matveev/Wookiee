@@ -167,6 +167,67 @@ class WBClient:
 
         return result
 
+    # ---- Questions ----
+
+    def get_all_questions(self) -> list[dict]:
+        """Fetch all questions (answered + unanswered) with pagination.
+
+        Returns list of question dicts.
+        """
+        questions = []
+        questions.extend(self._fetch_questions_paged(is_answered=True))
+        questions.extend(self._fetch_questions_paged(is_answered=False))
+        logger.info("[%s] Total questions: %d", self.cabinet_name, len(questions))
+        return questions
+
+    def _fetch_questions_paged(self, is_answered: bool) -> list[dict]:
+        """Fetch questions with skip-based pagination (take=5000)."""
+        result = []
+        skip = 0
+        take = 5000
+
+        while True:
+            url = (
+                f"{self.FEEDBACKS_BASE}/api/v1/questions"
+                f"?isAnswered={'true' if is_answered else 'false'}"
+                f"&take={take}&skip={skip}"
+            )
+            resp = self._request("GET", url)
+
+            if not resp or not resp.get("data", {}).get("questions"):
+                break
+
+            batch = resp["data"]["questions"]
+            result.extend(batch)
+
+            if len(batch) < take:
+                break
+
+            skip += take
+            time.sleep(0.1)
+
+        return result
+
+    # ---- Answer feedbacks / questions ----
+
+    def answer_feedback(self, feedback_id: str, text: str) -> bool:
+        """Respond to a feedback (review). PATCH /api/v1/feedbacks."""
+        url = f"{self.FEEDBACKS_BASE}/api/v1/feedbacks"
+        resp = self._request("PATCH", url, json={"id": feedback_id, "text": text})
+        if resp is not None:
+            logger.info("[%s] Answered feedback %s", self.cabinet_name, feedback_id)
+            return True
+        return False
+
+    def answer_question(self, question_id: str, text: str) -> bool:
+        """Respond to a question. PATCH /api/v1/questions."""
+        url = f"{self.FEEDBACKS_BASE}/api/v1/questions"
+        resp = self._request("PATCH", url, json={"id": question_id, "text": text})
+        if resp is not None:
+            logger.info("[%s] Answered question %s", self.cabinet_name, question_id)
+            return True
+        return False
+
     # ---- Supplier Orders (Statistics API) ----
 
     def get_supplier_orders(self, date_from: str, flag: int = 0) -> list[dict]:

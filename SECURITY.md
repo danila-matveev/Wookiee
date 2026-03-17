@@ -15,13 +15,11 @@
 
 ### Чтение конфигурации
 
-Код читает секреты ТОЛЬКО через `scripts/config.py`, который загружает `.env` при помощи `python-dotenv`.
+Код читает секреты ТОЛЬКО через `shared/config.py`, который загружает `.env` при помощи `python-dotenv`.
 
 ```python
 # Правильно
-from scripts.config import get_config
-config = get_config()
-token = config.telegram_token
+from shared.config import TELEGRAM_BOT_TOKEN
 
 # Неправильно
 token = "HARDCODED_TOKEN"  # НИКОГДА!
