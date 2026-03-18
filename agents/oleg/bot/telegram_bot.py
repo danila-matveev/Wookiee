@@ -226,7 +226,7 @@ class OlegTelegramBot:
                     parts.append(f'<a href="{page_url}">📊 Подробный отчёт в Notion</a>\n')
                 if result.caveats:
                     parts.append(add_caveats_header("", result.caveats))
-                parts.append(result.telegram_summary or result.brief_summary[:500])
+                parts.append(self._short_tg_body(result))
                 parts.append(format_cost_footer(
                     result.cost_usd, result.chain_steps, result.duration_ms,
                 ))
@@ -271,7 +271,7 @@ class OlegTelegramBot:
                     parts.append(f'<a href="{page_url}">📊 Подробный отчёт в Notion</a>\n')
                 if result.caveats:
                     parts.append(add_caveats_header("", result.caveats))
-                parts.append(result.telegram_summary or result.brief_summary[:500])
+                parts.append(self._short_tg_body(result))
                 parts.append(format_cost_footer(
                     result.cost_usd, result.chain_steps, result.duration_ms,
                 ))
@@ -316,7 +316,7 @@ class OlegTelegramBot:
                     parts.append(f'<a href="{page_url}">📊 Подробный отчёт в Notion</a>\n')
                 if result.caveats:
                     parts.append(add_caveats_header("", result.caveats))
-                parts.append(result.telegram_summary or result.brief_summary[:500])
+                parts.append(self._short_tg_body(result))
                 parts.append(format_cost_footer(
                     result.cost_usd, result.chain_steps, result.duration_ms,
                 ))
@@ -356,7 +356,7 @@ class OlegTelegramBot:
 
                 page_url = await self._save_to_notion(result, request)
 
-                tg_body = result.telegram_summary or result.brief_summary[:500]
+                tg_body = self._short_tg_body(result)
                 parts = []
                 if page_url:
                     parts.append(f'<a href="{page_url}">📈 Подробный отчёт в Notion</a>\n')
@@ -402,7 +402,7 @@ class OlegTelegramBot:
 
                 page_url = await self._save_to_notion(result, request)
 
-                tg_body = result.telegram_summary or result.brief_summary[:500]
+                tg_body = self._short_tg_body(result)
                 parts = []
                 if page_url:
                     parts.append(f'<a href="{page_url}">📈 Подробный отчёт в Notion</a>\n')
@@ -448,7 +448,7 @@ class OlegTelegramBot:
 
                 page_url = await self._save_to_notion(result, request)
 
-                tg_body = result.telegram_summary or result.brief_summary[:500]
+                tg_body = self._short_tg_body(result)
                 parts = []
                 if page_url:
                     parts.append(f'<a href="{page_url}">📈 Подробный отчёт в Notion</a>\n')
@@ -466,6 +466,14 @@ class OlegTelegramBot:
         except Exception as e:
             logger.error(f"Marketing monthly report error: {e}", exc_info=True)
             await message.answer(f"Ошибка генерации отчёта: {e}")
+
+    @staticmethod
+    def _short_tg_body(result) -> str:
+        """Extract short TG body from report result (max 1500 chars)."""
+        tg = result.telegram_summary
+        if tg and len(tg) <= 1500:
+            return tg
+        return result.brief_summary[:500]
 
     async def send_message(self, chat_id: int, text: str, **kwargs) -> None:
         """Send a message directly (for scheduled reports)."""

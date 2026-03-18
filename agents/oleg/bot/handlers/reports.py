@@ -76,7 +76,9 @@ async def callback_daily_report(callback: CallbackQuery, pipeline=None, bot_inst
 
             page_url = await _save_to_notion(result, request)
 
-            tg_body = result.telegram_summary or result.brief_summary[:500]
+            tg_body = result.telegram_summary
+            if not tg_body or len(tg_body) > 1500:
+                tg_body = result.brief_summary[:500]
             parts = []
             if page_url:
                 parts.append(f'<a href="{page_url}">📊 Подробный отчёт в Notion</a>\n')
@@ -132,7 +134,9 @@ async def callback_weekly_report(callback: CallbackQuery, pipeline=None, bot_ins
 
             page_url = await _save_to_notion(result, request)
 
-            tg_body = result.telegram_summary or result.brief_summary[:500]
+            tg_body = result.telegram_summary
+            if not tg_body or len(tg_body) > 1500:
+                tg_body = result.brief_summary[:500]
             parts = []
             if page_url:
                 parts.append(f'<a href="{page_url}">📊 Подробный отчёт в Notion</a>\n')

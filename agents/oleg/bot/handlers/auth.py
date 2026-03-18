@@ -37,7 +37,9 @@ class AuthService:
         if path.exists():
             try:
                 data = json.loads(path.read_text())
-                self._authenticated = set(data.get("users", []))
+                # Support both legacy "user_ids" key and current "users" key
+                users = data.get("users") or data.get("user_ids", [])
+                self._authenticated = set(users)
             except Exception:
                 pass
 
