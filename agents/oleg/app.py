@@ -1267,10 +1267,18 @@ class OlegApp:
         return page_url
 
     async def _deliver_report(self, result, request=None) -> None:
-        """Deliver a report via Notion (first) + Telegram (with Notion link)."""
+        """Deliver a report via Notion (first) + Telegram (short summary + link)."""
         from agents.oleg.bot.formatter import (
             add_caveats_header, format_cost_footer,
         )
+
+        # Dedup: don't deliver same report twice (survives restarts via state_store)
+        if request and self.state_store:
+            dedup_key = f"report_delivered:{result.report_type.value}:{request.start_date}:{request.end_date}"
+            if self.state_store.get_state(dedup_key) == "done":
+                logger.warning(f"Report already delivered, skipping TG send: {dedup_key}")
+                return
+            self.state_store.set_state(dedup_key, "done")
 
         # 1. Save to Notion first to get the page URL
         page_url = None
@@ -1297,8 +1305,13 @@ class OlegApp:
         else:
             logger.warning("Notion sync returned no page URL — link will not appear in TG")
 
-        # 2. Build Telegram message: Notion link at top, then short summary
-        tg_body = result.telegram_summary or result.brief_summary[:500]
+        # 2. Build Telegram message: Notion link + SHORT summary only
+        #    telegram_summary from LLM can be arbitrarily long if sections
+        #    weren't parsed correctly — enforce max 1500 chars.
+        MAX_TG_SUMMARY = 1500
+        tg_body = result.telegram_summary
+        if not tg_body or len(tg_body) > MAX_TG_SUMMARY:
+            tg_body = result.brief_summary[:500]
         parts = []
         if page_url:
             parts.append(f'<a href="{page_url}">📊 Подробный отчёт в Notion</a>\n')
