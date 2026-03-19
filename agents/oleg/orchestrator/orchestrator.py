@@ -175,6 +175,14 @@ class OlegOrchestrator:
             review_notes=review_notes,
         )
 
+    # KB consultation instruction injected into every report task
+    _KB_INSTRUCTION_PREFIX = (
+        "ОБЯЗАТЕЛЬНО: Перед формированием рекомендаций и гипотез вызови "
+        "search_knowledge_base с 2-3 релевантными запросами по ключевым темам "
+        "анализа. Используй найденные знания как основу для секции "
+        "«Гипотезы → Действия». Без KB-консультации отчёт НЕ считается полным.\n\n"
+    )
+
     async def _decide_next_step(
         self,
         task: str,
@@ -189,8 +197,8 @@ class OlegOrchestrator:
             return OrchestratorDecision(
                 done=False,
                 next_agent="funnel",
-                instruction=task,
-                reasoning="Funnel report → Funnel agent (Макар)",
+                instruction=self._KB_INSTRUCTION_PREFIX + task,
+                reasoning="Funnel report → Funnel agent (Макар), KB consultation required",
             )
 
         # Shortcut for first step of marketing reports
@@ -198,8 +206,8 @@ class OlegOrchestrator:
             return OrchestratorDecision(
                 done=False,
                 next_agent="marketer",
-                instruction=task,
-                reasoning="Marketing report always starts with Marketer",
+                instruction=self._KB_INSTRUCTION_PREFIX + task,
+                reasoning="Marketing report always starts with Marketer, KB consultation required",
             )
 
         # Shortcut for first step of financial reports (scheduled or custom)
@@ -207,8 +215,8 @@ class OlegOrchestrator:
             return OrchestratorDecision(
                 done=False,
                 next_agent="reporter",
-                instruction=task,
-                reasoning="Report always starts with Reporter",
+                instruction=self._KB_INSTRUCTION_PREFIX + task,
+                reasoning="Report always starts with Reporter, KB consultation required",
             )
 
         # Shortcut for feedback

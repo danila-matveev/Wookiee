@@ -838,18 +838,36 @@ def get_wb_orders_by_article(start_date, end_date):
 
 
 def get_wb_avg_stock(start_date, end_date):
-    """Средние остатки WB на складах МП за период, по артикулам. LOWER() на артикуле."""
+    """Остатки WB FBO на последнюю дату периода, по артикулам. LOWER() на артикуле.
+
+    Берём последний доступный снапшот за период, дедуплицируем по
+    (barcode, warehousename) и суммируем до артикула.
+    Фильтруем tip='FBO' (исключаем FBS).
+    """
     conn = _get_wb_connection()
     cur = conn.cursor()
 
     query = """
-    SELECT
-        LOWER(supplierarticle) as article,
-        AVG(quantityfull) as avg_stock
-    FROM stocks
-    WHERE lastchangedate >= %s AND lastchangedate < %s
-      AND supplierarticle IS NOT NULL AND supplierarticle != ''
-    GROUP BY LOWER(supplierarticle);
+    WITH latest_date AS (
+        SELECT MAX(lastchangedate::date) as d
+        FROM stocks
+        WHERE lastchangedate >= %s AND lastchangedate < %s
+    ),
+    deduped AS (
+        SELECT
+            LOWER(supplierarticle) as article,
+            barcode,
+            warehousename,
+            MAX(quantityfull) as qty
+        FROM stocks, latest_date
+        WHERE lastchangedate::date = latest_date.d
+          AND supplierarticle IS NOT NULL AND supplierarticle != ''
+          AND tip = 'FBO'
+        GROUP BY LOWER(supplierarticle), barcode, warehousename
+    )
+    SELECT article, SUM(qty) as stock
+    FROM deduped
+    GROUP BY article;
     """
     cur.execute(query, (start_date, end_date))
     rows = cur.fetchall()
@@ -861,19 +879,35 @@ def get_wb_avg_stock(start_date, end_date):
 
 
 def get_ozon_avg_stock(start_date, end_date):
-    """Средние остатки OZON на складах МП за период, по артикулам. LOWER() на артикуле."""
+    """Остатки OZON FBO на последнюю дату периода, по артикулам. LOWER() на артикуле.
+
+    Берём последний доступный снапшот за период, дедуплицируем по
+    (offer_id, warehouse_id) и суммируем до артикула.
+    """
     conn = _get_ozon_connection()
     cur = conn.cursor()
 
     # OZON offer_id содержит размер — агрегируем до артикула
     query = """
-    SELECT
-        LOWER(REGEXP_REPLACE(offer_id, '_[^_]+$', '')) as artikul,
-        AVG(stockspresent) as avg_stock
-    FROM stocks
-    WHERE dateupdate >= %s AND dateupdate < %s
-      AND offer_id IS NOT NULL AND offer_id != ''
-    GROUP BY LOWER(REGEXP_REPLACE(offer_id, '_[^_]+$', ''));
+    WITH latest_date AS (
+        SELECT MAX(dateupdate::date) as d
+        FROM stocks
+        WHERE dateupdate >= %s AND dateupdate < %s
+    ),
+    deduped AS (
+        SELECT
+            LOWER(REGEXP_REPLACE(offer_id, '_[^_]+$', '')) as artikul,
+            offer_id,
+            warehouse_id,
+            MAX(stockspresent) as qty
+        FROM stocks, latest_date
+        WHERE dateupdate::date = latest_date.d
+          AND offer_id IS NOT NULL AND offer_id != ''
+        GROUP BY 1, offer_id, warehouse_id
+    )
+    SELECT artikul, SUM(qty) as stock
+    FROM deduped
+    GROUP BY artikul;
     """
     cur.execute(query, (start_date, end_date))
     rows = cur.fetchall()
@@ -2227,7 +2261,8 @@ def get_ozon_price_margin_daily_by_article(start_date, end_date, article=None, m
     WHERE a.date >= %s AND a.date < %s
         AND a.article IS NOT NULL AND a.article != ''
         {filter_abc_sql}
-    GROUP BY a.date, LOWER(REGEXP_REPLACE(a.article, '_[^_]+$', ''))
+    GROUP BY a.date, LOWER(REGEXP_REPLACE(a.article, '_[^_]+$', '')),
+             LOWER(SPLIT_PART(a.article, '/', 1))
     HAVING SUM(a.count_end) > 0
     ORDER BY a.date, article;
     """

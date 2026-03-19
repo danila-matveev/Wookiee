@@ -1,24 +1,24 @@
 """
-Funnel Agent (Макар) — оцифровка маркетинговой воронки WB.
+Christina Agent — knowledge base management and enrichment.
 
-Полная воронка: Показы → Переходы → Корзина → Заказы → Выкупы → Маржинальная прибыль.
-Уровни: Бренд → Модель → Артикул/SKU.
+Manages the Wookiee knowledge base: adding, updating, deleting,
+verifying content. The "knowledge librarian" of the Oleg system.
 """
 import logging
 from typing import List, Dict, Any, Optional
 
 from agents.oleg.agents.base_agent import BaseAgent
-from agents.oleg.agents.seo.tools import (
-    FUNNEL_COMBINED_TOOL_DEFINITIONS,
-    execute_funnel_combined_tool,
+from agents.oleg.agents.christina.tools import (
+    CHRISTINA_TOOL_DEFINITIONS,
+    execute_christina_tool,
 )
-from agents.oleg.agents.seo.prompts import get_funnel_system_prompt
+from agents.oleg.agents.christina.prompts import get_christina_system_prompt
 
 logger = logging.getLogger(__name__)
 
 
-class FunnelAgent(BaseAgent):
-    """Funnel sub-agent (Макар): маркетинговая воронка и экономика артикулов."""
+class ChristinaAgent(BaseAgent):
+    """Christina sub-agent: knowledge base management."""
 
     def __init__(
         self,
@@ -42,13 +42,13 @@ class FunnelAgent(BaseAgent):
 
     @property
     def agent_name(self) -> str:
-        return "funnel"
+        return "christina"
 
     def get_system_prompt(self) -> str:
-        return get_funnel_system_prompt(self._playbook_path)
+        return get_christina_system_prompt(self._playbook_path)
 
     def get_tool_definitions(self) -> List[Dict[str, Any]]:
-        return FUNNEL_COMBINED_TOOL_DEFINITIONS
+        return CHRISTINA_TOOL_DEFINITIONS
 
     async def execute_tool(self, tool_name: str, tool_args: dict) -> str:
-        return await execute_funnel_combined_tool(tool_name, tool_args)
+        return await execute_christina_tool(tool_name, tool_args)
