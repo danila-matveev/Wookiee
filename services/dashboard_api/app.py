@@ -17,6 +17,7 @@ from services.dashboard_api.routes.promo import router as promo_router
 from services.dashboard_api.routes.series import router as series_router
 from services.dashboard_api.routes.stocks import router as stocks_router
 from services.dashboard_api.routes.traffic import router as traffic_router
+from services.dashboard_api.routes.comms import router as comms_router
 
 load_dotenv()
 
@@ -44,6 +45,7 @@ app.include_router(promo_router)
 app.include_router(series_router)
 app.include_router(stocks_router)
 app.include_router(traffic_router)
+app.include_router(comms_router)
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────

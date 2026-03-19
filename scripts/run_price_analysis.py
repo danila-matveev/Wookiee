@@ -137,155 +137,467 @@ def _pick_adaptive_period(
 # Pricing hypotheses generator
 # ============================================================================
 
+def _calc_scenario(
+    avg_price: float,
+    margin_pct: float,
+    daily_sales: float,
+    stock_total: float,
+    change_pct: float,
+    elasticity: float,
+) -> dict:
+    """Рассчитать один сценарий изменения цены.
+
+    Returns dict с конкретными числами: новая цена, объём, маржа, прибыль, оборачиваемость.
+    stock_total — общие остатки (МП + МойСклад).
+    """
+    price_delta = avg_price * change_pct / 100
+    new_price = avg_price + price_delta
+
+    # Маржа за единицу до и после
+    margin_per_unit = avg_price * margin_pct / 100
+    # При изменении цены маржа на единицу меняется примерно на price_delta
+    # (комиссия МП ~15-20% съедает часть, берём ~80% от дельты идёт в маржу)
+    COMMISSION_PASSTHROUGH = 0.80
+    new_margin_per_unit = margin_per_unit + price_delta * COMMISSION_PASSTHROUGH
+    new_margin_pct = (new_margin_per_unit / new_price * 100) if new_price > 0 else 0
+
+    # Изменение объёма через эластичность
+    volume_change_pct = elasticity * change_pct  # elasticity отрицательная
+    new_daily_sales = daily_sales * (1 + volume_change_pct / 100)
+    new_daily_sales = max(new_daily_sales, 0)
+
+    # Прибыль в день
+    daily_profit_before = daily_sales * margin_per_unit
+    daily_profit_after = new_daily_sales * new_margin_per_unit
+    profit_delta = daily_profit_after - daily_profit_before
+    profit_delta_pct = (profit_delta / daily_profit_before * 100) if daily_profit_before > 0 else 0
+
+    # Месячная прибыль
+    monthly_profit_before = daily_profit_before * 30
+    monthly_profit_after = daily_profit_after * 30
+    monthly_delta = monthly_profit_after - monthly_profit_before
+
+    # Оборачиваемость (по общим остаткам)
+    turnover_before = (stock_total / daily_sales) if daily_sales > 0 else 999
+    turnover_after = (stock_total / new_daily_sales) if new_daily_sales > 0 else 999
+    turnover_before = min(turnover_before, 365)
+    turnover_after = min(turnover_after, 365)
+
+    return {
+        'change_pct': change_pct,
+        'new_price': round(new_price, 0),
+        'new_margin_pct': round(new_margin_pct, 1),
+        'volume_change_pct': round(volume_change_pct, 1),
+        'new_daily_sales': round(new_daily_sales, 2),
+        'daily_profit_before': round(daily_profit_before, 0),
+        'daily_profit_after': round(daily_profit_after, 0),
+        'profit_delta': round(profit_delta, 0),
+        'profit_delta_pct': round(profit_delta_pct, 1),
+        'monthly_delta': round(monthly_delta, 0),
+        'turnover_before': round(turnover_before, 0),
+        'turnover_after': round(turnover_after, 0),
+    }
+
+
+def _pick_assumed_elasticity(
+    status: str,
+    roi_category: str,
+    turnover_days: float,
+    spp_delta_pp: float = 0,
+    has_external_ads: bool = False,
+) -> float:
+    """Допущение по эластичности для fashion/underwear категории.
+
+    Базовые значения:
+    - Выводим: -1.8 | Deadstock: -2.0 | Underperformer: -1.5
+    - Быстрый оборот (<30 дн.): -0.7 | Средний (<60): -1.0 | Baseline: -1.2
+
+    Модификаторы:
+    - СПП растёт (>+2 п.п.): -0.2 (спрос более чувствителен при росте комиссии)
+    - Внешняя реклама: +0.3 (снижает ценовую чувствительность)
+    """
+    if status == 'Выводим':
+        base = -1.8
+    elif roi_category == 'deadstock_risk':
+        base = -2.0
+    elif roi_category == 'underperformer':
+        base = -1.5
+    elif turnover_days > 0 and turnover_days < 30:
+        base = -0.7
+    elif turnover_days > 0 and turnover_days < 60:
+        base = -1.0
+    else:
+        base = -1.2
+
+    # Модификаторы
+    if spp_delta_pp > 2:
+        base -= 0.2  # Более эластичный при росте комиссии
+    if has_external_ads:
+        base += 0.3  # Менее эластичный при внешнем трафике
+
+    return round(base, 1)
+
+
+def _pick_recommended_scenario(
+    scenarios: list[dict],
+    status: str,
+    roi_category: str,
+    turnover_days: float,
+    margin_pct: float,
+    elasticity_source: str = 'assumed',
+    has_external_ads: bool = False,
+    drr_pct: float = 0,
+    spp_delta_pp: float = 0,
+) -> dict | None:
+    """Выбрать лучший сценарий для рекомендации.
+
+    Правила:
+    - При допущенной эластичности: максимум ±5% (осторожность)
+    - Выводим → снижение для ускорения распродажи (даже при низкой марже)
+    - Deadstock → снижение для ускорения оборачиваемости
+    - Лидеры с быстрым оборотом → повышение (до +5% если есть внешняя реклама)
+    - СПП растёт → приоритет повышения цены для компенсации
+    - Underperformer с низкой маржой → повышение
+    """
+    MIN_MARGIN_PCT = 15.0
+    MAX_CHANGE = 5.0 if elasticity_source == 'assumed' else 10.0
+
+    safe_scenarios = [s for s in scenarios if abs(s['change_pct']) <= MAX_CHANGE]
+
+    if status == 'Выводим':
+        decreases = [s for s in safe_scenarios if s['change_pct'] < 0 and s['new_margin_pct'] >= 5.0]
+        if not decreases:
+            decreases = [s for s in safe_scenarios if s['change_pct'] < 0 and s['new_margin_pct'] > 0]
+        if decreases:
+            return min(decreases, key=lambda s: s['turnover_after'])
+        return None
+
+    if roi_category == 'deadstock_risk':
+        decreases = [s for s in safe_scenarios if s['change_pct'] < 0 and s['new_margin_pct'] >= 5.0]
+        if decreases:
+            return min(decreases, key=lambda s: s['turnover_after'])
+        return None
+
+    # СПП растёт → приоритет повышения для компенсации
+    if spp_delta_pp > 2 and roi_category != 'underperformer':
+        increases = [s for s in safe_scenarios if s['change_pct'] > 0 and s['profit_delta'] > 0]
+        if increases:
+            return min(increases, key=lambda s: s['change_pct'])
+
+    if roi_category == 'underperformer':
+        if margin_pct < 20:
+            increases = [s for s in safe_scenarios if s['change_pct'] > 0 and s['profit_delta'] > 0]
+            if increases:
+                return min(increases, key=lambda s: s['change_pct'])
+        decreases = [s for s in safe_scenarios if s['change_pct'] < 0 and s['new_margin_pct'] >= MIN_MARGIN_PCT and s['monthly_delta'] > 0]
+        if decreases:
+            return min(decreases, key=lambda s: abs(s['change_pct']))
+        return None
+
+    if roi_category == 'roi_leader' and turnover_days > 0 and turnover_days < 45:
+        # Лидер с внешней рекламой → можно +5%
+        max_step = 5 if has_external_ads else 3
+        increases = [s for s in safe_scenarios if 0 < s['change_pct'] <= max_step and s['profit_delta'] > 0]
+        if increases:
+            # С внешней рекламой выбираем максимальный прибыльный шаг
+            if has_external_ads:
+                return max(increases, key=lambda s: s['change_pct'])
+            return min(increases, key=lambda s: s['change_pct'])
+        return None
+
+    # Healthy или прочие → минимальное повышение с ростом прибыли
+    profitable = [s for s in safe_scenarios if s['change_pct'] > 0 and s['profit_delta'] > 0 and s['new_margin_pct'] >= MIN_MARGIN_PCT]
+    if profitable:
+        return min(profitable, key=lambda s: s['change_pct'])
+    return None
+
+
+def _build_marketing_note(change_pct: float, has_external_ads: bool, drr_pct: float) -> str:
+    """Рекомендация по маркетингу в зависимости от изменения цены."""
+    if change_pct < 0:
+        cut = abs(change_pct) * 0.6
+        return f"Сократить рекламу на ~{cut:.0f}% — цена работает как стимул"
+    if change_pct > 0 and has_external_ads:
+        boost = change_pct * 0.5
+        return f"Увеличить внешний трафик на ~{boost:.0f}% для компенсации оттока"
+    if change_pct > 0:
+        return "Сохранить текущий маркетинг"
+    return ""
+
+
 def generate_pricing_hypotheses(
     report: dict,
     turnover_map: dict,
 ) -> list[dict]:
-    """Генерация гипотез по ценообразованию на основе результатов анализа.
+    """Генерация сценарных гипотез по ценообразованию.
 
-    Для каждой модели формирует одну из гипотез:
-    - price_increase: неэластичный спрос, здоровый сток → повысить цену
-    - price_decrease: эластичный спрос, затоваривание → снизить цену
-    - hold: недостаточно данных или нейтральные индикаторы
+    Для каждой модели рассчитывает конкретные сценарии «что если» (+3%, +5%, -5%, -10%)
+    с числами в рублях: как изменится маржа, объём, дневная прибыль, оборачиваемость.
 
-    Returns: list of hypothesis dicts.
+    Учитывает:
+    - Эластичность из регрессии или допущение (с модификаторами СПП / внешнего трафика)
+    - Тренд СПП (комиссия МП), рекламные расходы, логистику
+    - Раздельные гипотезы для продающихся и выводимых артикулов внутри одной модели
+    - Маркетинговые рекомендации
+
+    Returns: list of hypothesis dicts с полем 'scenarios'.
     """
+    SKIP_MODELS = {'Other', 'Неопознанный товар'}
+
     elasticities = report.get('elasticities', {})
-    policies = report.get('policies', {})
     roi_dashboard = report.get('roi_dashboard', [])
     model_statuses = report.get('model_statuses', {})
+    models_data = report.get('models_data', [])
+    spp_trends = report.get('spp_trends', {})
+    enriched_ctx = report.get('enriched_context', {})
+    article_group_metrics = report.get('article_group_metrics', {})
 
-    # ROI map для быстрого доступа
     roi_map = {item.get('model', ''): item for item in roi_dashboard if item.get('model')}
 
-    hypotheses = []
+    md_map = {}
+    if isinstance(models_data, list):
+        for md in models_data:
+            if md.get('model'):
+                md_map[md['model']] = md
 
-    all_models = set(elasticities.keys()) | set(roi_map.keys()) | set(turnover_map.keys())
+    hypotheses = []
+    SCENARIO_STEPS = [-10, -5, -3, 3, 5, 10]
+
+    all_models = set(roi_map.keys()) | set(turnover_map.keys()) | set(md_map.keys())
 
     for model in sorted(all_models):
-        elast = elasticities.get(model, {})
-        policy = policies.get(model, {})
-        roi = roi_map.get(model, {})
-        turnover = turnover_map.get(model, {})
-        status = model_statuses.get(model, 'Неизвестен')
-
-        # Пропускаем модели на выводе
-        if status == 'Выводим':
+        if model in SKIP_MODELS:
             continue
 
-        e_val = elast.get('elasticity')
-        t_days = turnover.get('turnover_days', 0)
-        daily_sales = turnover.get('daily_sales', 0)
-        margin_pct = roi.get('margin_pct', elast.get('avg_margin_pct', 0))
-        avg_price = elast.get('avg_price', roi.get('avg_price', 0))
-        low_sales = turnover.get('low_sales', False)
-        action = policy.get('action', 'hold')
+        elast = elasticities.get(model, {})
+        roi = roi_map.get(model, {})
+        turnover = turnover_map.get(model, {})
+        md = md_map.get(model, {})
+        status = model_statuses.get(model, 'Неизвестен')
+        spp = spp_trends.get(model, {})
+        ctx = enriched_ctx.get(model, {})
+        agm = article_group_metrics.get(model, {})
 
-        # Недостаточно данных
-        if e_val is None and not roi and low_sales:
+        # Enriched context
+        spp_delta = spp.get('delta_pp', 0)
+        spp_current = spp.get('current_pct', 0)
+        spp_trend = spp.get('trend', 'flat')
+        has_external_ads = ctx.get('has_external_ads', False)
+        drr_pct = ctx.get('drr_pct', 0)
+        logistics_pct = ctx.get('logistics_pct', 0)
+
+        # Общие метрики модели
+        avg_price = float(elast.get('avg_price', 0) or md.get('avg_price_per_unit', 0) or 0)
+        margin_pct = float(roi.get('margin_pct', 0) or md.get('margin_pct', 0) or 0)
+        t_days = float(turnover.get('turnover_days', 0) or 0)
+        daily_sales = float(turnover.get('daily_sales', 0) or roi.get('daily_sales', 0) or 0)
+        stock_total = float(turnover.get('total_stock', 0) or turnover.get('avg_stock', 0) or 0)
+        roi_category = roi.get('category', '')
+
+        has_mixed = agm.get('has_mixed_statuses', False)
+
+        # Пропускаем если совсем нет данных
+        if avg_price <= 0 or daily_sales <= 0:
             hypotheses.append({
                 'model': model,
                 'channel': report.get('channel', ''),
                 'hypothesis_type': 'hold',
-                'current_avg_price': round(avg_price, 0) if avg_price else None,
+                'article_group': 'all',
+                'current_avg_price': round(avg_price, 0) if avg_price > 0 else None,
+                'margin_pct': round(margin_pct, 1),
+                'daily_sales': round(daily_sales, 2),
+                'turnover_days': round(t_days, 0),
+                'status': status,
+                'roi_category': roi_category,
                 'suggested_change_pct': 0,
-                'expected_impact': 'Недостаточно данных для гипотезы',
+                'scenarios': [],
+                'recommended': None,
                 'confidence': 'low',
-                'data_period_used': report.get('adaptive_period', ''),
-                'reasoning': 'Мало продаж или отсутствует эластичность',
-                'risks': 'Нет данных для оценки рисков',
+                'marketing_note': '',
+                'reasoning': 'Недостаточно данных (нет цены или продаж)',
             })
             continue
 
-        hypothesis_type = 'hold'
-        suggested_pct = 0.0
-        expected_impact = ''
-        confidence = 'low'
-        reasoning_parts = []
-        risks = ''
+        # Если модель имеет смешанные статусы — генерируем 2 гипотезы
+        if has_mixed:
+            for group_name in ('selling', 'clearance'):
+                gm = agm.get(group_name, {})
+                if not gm:
+                    continue
+                g_margin_pct = gm.get('margin_pct', margin_pct)
+                g_sales = gm.get('sales_count', 0)
+                # Пропорция продаж группы от общих
+                total_model_sales = float(turnover.get('sales_count', 1) or 1)
+                sales_ratio = g_sales / total_model_sales if total_model_sales > 0 else 0.5
+                g_daily_sales = daily_sales * sales_ratio
+                g_stock = stock_total * sales_ratio
+                g_articles_count = gm.get('articles_count', 0)
 
-        if e_val is not None:
-            # Неэластичный спрос: |e| < 1.0 → повышение цены
-            if abs(e_val) < 1.0 and t_days > 0 and t_days < 60 and margin_pct > 0:
-                hypothesis_type = 'price_increase'
-                suggested_pct = min(10.0, round(5.0 * (1.0 - abs(e_val)), 1))
-                if suggested_pct < 2.0:
-                    suggested_pct = 3.0
+                if group_name == 'clearance':
+                    g_status = 'Выводим'
+                    g_e_val = -1.8
+                    g_elasticity_source = 'assumed'
+                    g_confidence = 'medium'
+                else:
+                    g_status = status if status != 'Выводим' else 'Продается'
+                    e_val = elast.get('elasticity')
+                    if e_val is not None and e_val < 0:
+                        g_e_val = e_val
+                        g_elasticity_source = 'regression'
+                        g_confidence = 'high' if elast.get('r_squared', 0) > 0.3 else 'medium'
+                    else:
+                        g_e_val = _pick_assumed_elasticity(
+                            g_status, roi_category, t_days,
+                            spp_delta_pp=spp_delta, has_external_ads=has_external_ads,
+                        )
+                        g_elasticity_source = 'assumed'
+                        g_confidence = 'medium' if roi_category in ('roi_leader', 'deadstock_risk') else 'low'
 
-                # Оценка влияния на маржу
-                volume_loss_pct = abs(e_val) * suggested_pct
-                revenue_change = (1 + suggested_pct / 100) * (1 - volume_loss_pct / 100) - 1
-                expected_impact = (
-                    f'При повышении на {suggested_pct}%: '
-                    f'объём может снизиться на ~{volume_loss_pct:.0f}%, '
-                    f'выручка изменится на ~{revenue_change:+.1f}%'
+                scenarios = []
+                for step in SCENARIO_STEPS:
+                    sc = _calc_scenario(avg_price, g_margin_pct, g_daily_sales, g_stock, step, g_e_val)
+                    scenarios.append(sc)
+
+                recommended = _pick_recommended_scenario(
+                    scenarios, g_status, roi_category, t_days, g_margin_pct,
+                    elasticity_source=g_elasticity_source,
+                    has_external_ads=has_external_ads, drr_pct=drr_pct, spp_delta_pp=spp_delta,
                 )
-                confidence = 'high' if elast.get('r_squared', 0) > 0.3 else 'medium'
-                reasoning_parts.append(f'Эластичность {e_val:.2f} (неэластичный спрос)')
-                reasoning_parts.append(f'Оборачиваемость {t_days:.0f} дней (здоровый сток)')
-                if margin_pct:
-                    reasoning_parts.append(f'Маржа {margin_pct:.1f}%')
-                risks = f'Объём может снизиться на ~{volume_loss_pct:.0f}%'
 
-            # Эластичный спрос + затоваривание → снижение цены
-            elif abs(e_val) > 1.5 and t_days > 90:
-                hypothesis_type = 'price_decrease'
-                suggested_pct = min(15.0, round(5.0 * min(abs(e_val) - 1.0, 2.0), 1))
-                if suggested_pct < 3.0:
-                    suggested_pct = 5.0
+                if recommended:
+                    hypothesis_type = 'price_increase' if recommended['change_pct'] > 0 else 'price_decrease'
+                    suggested_pct = abs(recommended['change_pct'])
+                    marketing_note = _build_marketing_note(recommended['change_pct'], has_external_ads, drr_pct)
+                else:
+                    hypothesis_type = 'hold'
+                    suggested_pct = 0
+                    marketing_note = ''
 
-                volume_gain_pct = abs(e_val) * suggested_pct
-                expected_impact = (
-                    f'При снижении на {suggested_pct}%: '
-                    f'объём может вырасти на ~{volume_gain_pct:.0f}%, '
-                    f'оборачиваемость ускорится'
+                reasoning_parts = _build_reasoning(
+                    g_e_val, g_elasticity_source, g_margin_pct, t_days, g_daily_sales,
+                    g_status, spp_trend, spp_delta, spp_current, has_external_ads, drr_pct, logistics_pct,
                 )
-                confidence = 'high' if elast.get('r_squared', 0) > 0.3 else 'medium'
-                reasoning_parts.append(f'Эластичность {e_val:.2f} (эластичный спрос)')
-                reasoning_parts.append(f'Оборачиваемость {t_days:.0f} дней (затоваривание)')
-                risks = f'Маржа снизится при снижении цены на {suggested_pct}%'
 
-            # Прочее → hold
-            else:
-                hypothesis_type = 'hold'
-                expected_impact = 'Текущая цена оптимальна или данных недостаточно для уверенного изменения'
-                confidence = 'medium'
-                if e_val is not None:
-                    reasoning_parts.append(f'Эластичность {e_val:.2f}')
-                if t_days:
-                    reasoning_parts.append(f'Оборачиваемость {t_days:.0f} дней')
-                risks = 'Нет значимых рисков при текущей стратегии'
+                hypotheses.append({
+                    'model': model,
+                    'channel': report.get('channel', ''),
+                    'hypothesis_type': hypothesis_type,
+                    'article_group': group_name,
+                    'articles_count': g_articles_count,
+                    'current_avg_price': round(avg_price, 0),
+                    'margin_pct': round(g_margin_pct, 1),
+                    'daily_sales': round(g_daily_sales, 2),
+                    'turnover_days': round(t_days, 0),
+                    'total_stock': round(g_stock, 0),
+                    'status': g_status,
+                    'roi_category': roi_category,
+                    'suggested_change_pct': suggested_pct,
+                    'scenarios': scenarios,
+                    'recommended': recommended,
+                    'elasticity': g_e_val,
+                    'elasticity_source': g_elasticity_source,
+                    'confidence': g_confidence,
+                    'marketing_note': marketing_note,
+                    'reasoning': '; '.join(reasoning_parts),
+                })
+            continue
+
+        # Единая гипотеза для модели (нет mixed statuses)
+        e_val = elast.get('elasticity')
+        elasticity_source = 'regression'
+        if e_val is not None and e_val < 0:
+            confidence = 'high' if elast.get('r_squared', 0) > 0.3 else 'medium'
         else:
-            # Нет эластичности, но есть ROI/turnover данные
-            if action == 'increase':
-                hypothesis_type = 'price_increase'
-                suggested_pct = 5.0
-                expected_impact = 'Рекомендация на основе политики (без эластичности)'
-                confidence = 'low'
-            elif action == 'decrease':
-                hypothesis_type = 'price_decrease'
-                suggested_pct = 5.0
-                expected_impact = 'Рекомендация на основе политики (без эластичности)'
-                confidence = 'low'
-            reasoning_parts.append('Эластичность не рассчитана')
-            if t_days:
-                reasoning_parts.append(f'Оборачиваемость {t_days:.0f} дней')
-            risks = 'Низкая уверенность — нет данных эластичности'
+            e_val = _pick_assumed_elasticity(
+                status, roi_category, t_days,
+                spp_delta_pp=spp_delta, has_external_ads=has_external_ads,
+            )
+            elasticity_source = 'assumed'
+            confidence = 'medium' if roi_category in ('roi_leader', 'deadstock_risk') else 'low'
+
+        scenarios = []
+        for step in SCENARIO_STEPS:
+            sc = _calc_scenario(avg_price, margin_pct, daily_sales, stock_total, step, e_val)
+            scenarios.append(sc)
+
+        recommended = _pick_recommended_scenario(
+            scenarios, status, roi_category, t_days, margin_pct,
+            elasticity_source=elasticity_source,
+            has_external_ads=has_external_ads, drr_pct=drr_pct, spp_delta_pp=spp_delta,
+        )
+
+        if recommended:
+            hypothesis_type = 'price_increase' if recommended['change_pct'] > 0 else 'price_decrease'
+            suggested_pct = abs(recommended['change_pct'])
+            marketing_note = _build_marketing_note(recommended['change_pct'], has_external_ads, drr_pct)
+        else:
+            hypothesis_type = 'hold'
+            suggested_pct = 0
+            marketing_note = ''
+
+        reasoning_parts = _build_reasoning(
+            e_val, elasticity_source, margin_pct, t_days, daily_sales,
+            status, spp_trend, spp_delta, spp_current, has_external_ads, drr_pct, logistics_pct,
+        )
 
         hypotheses.append({
             'model': model,
             'channel': report.get('channel', ''),
             'hypothesis_type': hypothesis_type,
-            'current_avg_price': round(avg_price, 0) if avg_price else None,
+            'article_group': 'all',
+            'current_avg_price': round(avg_price, 0),
+            'margin_pct': round(margin_pct, 1),
+            'daily_sales': round(daily_sales, 2),
+            'turnover_days': round(t_days, 0),
+            'stock_total': round(stock_total, 0),
+            'status': status,
+            'roi_category': roi_category,
             'suggested_change_pct': suggested_pct,
-            'expected_impact': expected_impact,
+            'scenarios': scenarios,
+            'recommended': recommended,
+            'elasticity': e_val,
+            'elasticity_source': elasticity_source,
             'confidence': confidence,
-            'data_period_used': report.get('adaptive_period', ''),
+            'marketing_note': marketing_note,
             'reasoning': '; '.join(reasoning_parts),
-            'risks': risks,
         })
 
     return hypotheses
+
+
+def _build_reasoning(
+    e_val, elasticity_source, margin_pct, t_days, daily_sales,
+    status, spp_trend, spp_delta, spp_current,
+    has_external_ads, drr_pct, logistics_pct,
+) -> list[str]:
+    """Собрать reasoning для гипотезы."""
+    parts = []
+    if elasticity_source == 'regression':
+        parts.append(f'Эластичность {e_val:.2f} (регрессия)')
+    else:
+        parts.append(f'Эластичность {e_val:.1f} (допущение)')
+    parts.append(f'Маржа {margin_pct:.1f}%')
+    if t_days > 0:
+        parts.append(f'Оборачиваемость {t_days:.0f} дн.')
+    parts.append(f'Продажи {daily_sales:.1f} шт/день')
+    if status == 'Выводим':
+        parts.append('Модель выводится')
+    # SPP trend
+    if spp_trend == 'up':
+        parts.append(f'СПП ↑ {spp_current:.1f}% (+{spp_delta:.1f} п.п.)')
+    elif spp_trend == 'down':
+        parts.append(f'СПП ↓ {spp_current:.1f}% ({spp_delta:.1f} п.п.)')
+    # Ads
+    if has_external_ads:
+        parts.append(f'Внешняя реклама (DRR {drr_pct:.1f}%)')
+    elif drr_pct > 0:
+        parts.append(f'DRR {drr_pct:.1f}%')
+    # Logistics
+    if logistics_pct > 10:
+        parts.append(f'Логистика {logistics_pct:.1f}% от выручки (высокая)')
+    elif logistics_pct > 0:
+        parts.append(f'Логистика {logistics_pct:.1f}%')
+    return parts
 
 
 # ============================================================================
@@ -437,16 +749,18 @@ def analyze_channel(channel: str, start_date: str, end_date: str, learning_store
 
     # 4. ROI dashboard
     roi_dashboard = []
+    models_agg_data = []
     try:
         if channel == 'wb':
-            models_data = get_wb_price_margin_by_model_period(start_date, end_date)
+            models_agg_data = get_wb_price_margin_by_model_period(start_date, end_date)
         else:
-            models_data = get_ozon_price_margin_by_model_period(start_date, end_date)
-        if models_data and turnover_map:
-            roi_dashboard = compute_model_roi_dashboard(models_data, turnover_map)
+            models_agg_data = get_ozon_price_margin_by_model_period(start_date, end_date)
+        if models_agg_data and turnover_map:
+            roi_dashboard = compute_model_roi_dashboard(models_agg_data, turnover_map)
     except Exception as e:
         logger.warning(f"[{channel}] ROI dashboard failed: {e}")
     report['roi_dashboard'] = roi_dashboard
+    report['models_data'] = models_agg_data or []
 
     # 4b. Submodel breakdown (knitwear collection: Vuki-N, Vuki-W, Moon-W, etc.)
     submodel_data = []
@@ -595,6 +909,72 @@ def analyze_channel(channel: str, start_date: str, end_date: str, learning_store
             logger.warning(f"[{channel}] Deep margin drivers failed for {model}: {e}")
     report['deep_margin_drivers'] = deep_margin_drivers
 
+    # 12b. SPP trends per model (WB only)
+    spp_trends = {}
+    if channel == 'wb':
+        try:
+            from shared.data_layer import get_wb_spp_history_by_model
+            spp_history = get_wb_spp_history_by_model(start_date, end_date)
+            if spp_history:
+                # Group by model
+                from collections import defaultdict
+                model_spp = defaultdict(list)
+                for row in spp_history:
+                    model_spp[row['model']].append(row)
+                for raw_model, rows in model_spp.items():
+                    from shared.model_mapping import map_to_osnova
+                    model = map_to_osnova(raw_model)
+                    sorted_rows = sorted(rows, key=lambda r: r['date'])
+                    all_spp = [r['spp_pct'] for r in sorted_rows if r['spp_pct']]
+                    last_7 = [r['spp_pct'] for r in sorted_rows[-7:] if r['spp_pct']]
+                    if all_spp and last_7:
+                        avg_all = sum(all_spp) / len(all_spp)
+                        avg_7 = sum(last_7) / len(last_7)
+                        delta = avg_7 - avg_all
+                        trend = 'up' if delta > 1 else ('down' if delta < -1 else 'flat')
+                        spp_trends[model] = {
+                            'current_pct': round(avg_7, 1),
+                            'period_avg_pct': round(avg_all, 1),
+                            'delta_pp': round(delta, 1),
+                            'trend': trend,
+                        }
+        except Exception as e:
+            logger.warning(f"[{channel}] SPP trends failed: {e}")
+    report['spp_trends'] = spp_trends
+
+    # 12c. Build enriched context from models_data (logistics, ads)
+    enriched_context = {}
+    for md in models_agg_data:
+        model = md.get('model', '')
+        if not model:
+            continue
+        revenue = float(md.get('revenue', 0) or 0)
+        logistics = float(md.get('logistics', 0) or 0)
+        if channel == 'wb':
+            adv_internal = float(md.get('adv_internal', 0) or 0)
+            adv_bloggers = float(md.get('adv_bloggers', 0) or 0)
+            adv_vk = float(md.get('adv_vk', 0) or 0)
+            adv_creators = float(md.get('adv_creators', 0) or 0)
+            adv_external = adv_bloggers + adv_vk + adv_creators
+            adv_total = adv_internal + adv_external
+        else:
+            adv_internal = float(md.get('adv_internal', 0) or 0)
+            adv_external = float(md.get('adv_external', 0) or 0)
+            adv_total = adv_internal + adv_external
+        drr_pct = (adv_total / revenue * 100) if revenue > 0 else 0
+        logistics_pct = (logistics / revenue * 100) if revenue > 0 else 0
+        has_external_ads = adv_external > 0
+        enriched_context[model] = {
+            'adv_internal': round(adv_internal, 0),
+            'adv_external': round(adv_external, 0),
+            'adv_total': round(adv_total, 0),
+            'drr_pct': round(drr_pct, 1),
+            'logistics': round(logistics, 0),
+            'logistics_pct': round(logistics_pct, 1),
+            'has_external_ads': has_external_ads,
+        }
+    report['enriched_context'] = enriched_context
+
     # 13. Pricing hypotheses (гипотезы по ценообразованию)
     try:
         pricing_hypotheses = generate_pricing_hypotheses(report, turnover_map)
@@ -655,52 +1035,18 @@ def format_comprehensive_report(report: dict) -> str:
     - Статус модели учитывается в интерпретации
     - Один отчёт объединяет ценовой + регрессионный анализ
     """
-    from agents.oleg.services.price_analysis.translations import (
-        POLICY_EMOJI,
-        POLICY_DESCRIPTIONS_RU,
-    )
-
     channel = report.get('channel', '?').upper()
     period = report.get('period', '?')
     model_statuses = report.get('model_statuses', {})
-    elasticities = report.get('elasticities', {})
-    policies = report.get('policies', {})
-    margin_factors = report.get('margin_factors', {})
-    deep_drivers = report.get('deep_margin_drivers', {})
-    roi_dashboard = report.get('roi_dashboard', [])
-    price_patterns = report.get('price_patterns', {})
 
     channel_name = 'Wildberries' if channel == 'WB' else 'Ozon' if channel == 'OZON' else channel
 
-    md = f"# Ценовой анализ {channel_name}: {period}\n\n"
+    md = f"# {channel_name}: {period}\n\n"
 
-    # -- Краткие итоги --
+    # -- Краткие итоги (toggle) --
     md += _format_summary(report, model_statuses, channel_name)
 
-    # -- Рекомендации по моделям (основной блок) --
-    article_group_metrics = report.get('article_group_metrics', {})
-    md += _format_model_blocks(report, model_statuses, elasticities, policies,
-                                margin_factors, deep_drivers, roi_dashboard,
-                                article_group_metrics)
-
-    # -- Разбивка по подмоделям (трикотажная коллекция) --
-    md += _format_submodel_breakdown(report)
-
-    # -- Ценовые паттерны --
-    if price_patterns:
-        md += "---\n\n## Ценовые паттерны\n\n"
-        for model, pat in sorted(price_patterns.items()):
-            insights = pat.get('insights', [])
-            if insights:
-                md += f"### {model}\n\n"
-                for insight in insights:
-                    md += f"- {insight}\n"
-                md += "\n"
-
-    # -- Тестирование гипотез --
-    md += _format_hypotheses(report)
-
-    # -- Ценовые гипотезы (новый блок) --
+    # -- Ценовые гипотезы (основной блок с рекомендациями) --
     md += _format_pricing_hypotheses(report)
 
     return md
@@ -738,7 +1084,7 @@ def _format_summary(report: dict, model_statuses: dict, channel_name: str) -> st
         if cat:
             roi_categories[cat] = roi_categories.get(cat, 0) + 1
 
-    md = "## Краткие итоги\n\n"
+    md = "## ▶ Краткие итоги\n\n"
     md += f"Проанализировано **{total} моделей** на {channel_name} "
     md += f"за период {report.get('period', '?')}.\n\n"
 
@@ -1147,7 +1493,11 @@ def _format_hypotheses(report: dict) -> str:
 
 
 def _format_pricing_hypotheses(report: dict) -> str:
-    """Форматирование блока ценовых гипотез."""
+    """Форматирование блока ценовых гипотез со сценариями «что если».
+
+    Использует ▶ (U+25B6) для toggle-заголовков в Notion.
+    Модели с mixed statuses получают вложенные toggles для selling/clearance.
+    """
     hypotheses = report.get('pricing_hypotheses', [])
     if not hypotheses:
         return ""
@@ -1158,21 +1508,42 @@ def _format_pricing_hypotheses(report: dict) -> str:
         'hold': '➡️',
     }
     TYPE_NAME = {
-        'price_increase': 'Повышение цены',
-        'price_decrease': 'Снижение цены',
-        'hold': 'Удержание',
+        'price_increase': 'Повысить цену',
+        'price_decrease': 'Снизить цену',
+        'hold': 'Удержать',
     }
     CONFIDENCE_NAME = {
         'high': '🟢 Высокая',
         'medium': '🟡 Средняя',
         'low': '🔴 Низкая',
     }
+    CATEGORY_NAME = {
+        'roi_leader': 'Лидер',
+        'healthy': 'Здоровый',
+        'underperformer': 'Отстающий',
+        'deadstock_risk': 'Deadstock',
+    }
+    GROUP_NAME = {
+        'selling': 'Продающиеся артикулы',
+        'clearance': 'Выводимые артикулы',
+        'all': '',
+    }
 
-    # Сортировка: сначала increase/decrease, потом hold
-    order = {'price_increase': 0, 'price_decrease': 1, 'hold': 2}
-    sorted_hyp = sorted(hypotheses, key=lambda h: (order.get(h['hypothesis_type'], 3), h['model']))
+    # Группируем гипотезы по модели (для mixed — несколько записей на модель)
+    from collections import defaultdict
+    model_hyps = defaultdict(list)
+    for h in hypotheses:
+        model_hyps[h['model']].append(h)
 
-    md = "---\n\n## Ценовые гипотезы\n\n"
+    # Сортировка: сначала actionable, потом hold
+    def model_sort_key(model_name):
+        hyps = model_hyps[model_name]
+        has_action = any(h['hypothesis_type'] != 'hold' for h in hyps)
+        return (0 if has_action else 1, model_name)
+
+    sorted_models = sorted(model_hyps.keys(), key=model_sort_key)
+
+    md_text = "---\n\n## Ценовые гипотезы: управление маржой и оборачиваемостью\n\n"
 
     # Сводка
     increase = [h for h in hypotheses if h['hypothesis_type'] == 'price_increase']
@@ -1181,36 +1552,155 @@ def _format_pricing_hypotheses(report: dict) -> str:
 
     adaptive = report.get('adaptive_period', '')
     if adaptive:
-        md += f"Период анализа: **{adaptive}**\n\n"
+        md_text += f"Период анализа: **{adaptive}**\n\n"
 
-    md += f"- 📈 Повышение цены: **{len(increase)}** моделей\n"
-    md += f"- 📉 Снижение цены: **{len(decrease)}** моделей\n"
-    md += f"- ➡️ Удержание: **{len(hold)}** моделей\n\n"
+    # Считаем уникальные модели
+    increase_models = len(set(h['model'] for h in increase))
+    decrease_models = len(set(h['model'] for h in decrease))
+    hold_models = len(set(h['model'] for h in hold if h['model'] not in
+                         set(h2['model'] for h2 in increase + decrease)))
 
-    # Детали по actionable гипотезам (increase/decrease)
-    actionable = [h for h in sorted_hyp if h['hypothesis_type'] != 'hold']
-    if actionable:
-        for h in actionable:
+    md_text += f"- 📈 Повысить цену: **{increase_models}** моделей\n"
+    md_text += f"- 📉 Снизить цену: **{decrease_models}** моделей\n"
+    md_text += f"- ➡️ Удержать: **{hold_models}** моделей\n\n"
+
+    # Суммарный эффект рекомендаций
+    total_monthly_delta = sum(
+        h['recommended']['monthly_delta']
+        for h in hypotheses
+        if h.get('recommended')
+    )
+    if total_monthly_delta != 0:
+        md_text += f"Суммарный потенциал рекомендаций: **{total_monthly_delta:+,.0f} ₽/мес**\n\n"
+
+    md_text += "---\n\n"
+
+    # Детали по моделям
+    for model in sorted_models:
+        hyps = model_hyps[model]
+        is_mixed = len(hyps) > 1  # selling + clearance
+
+        if is_mixed:
+            # Сводный заголовок для mixed модели
+            types = set(h['hypothesis_type'] for h in hyps)
+            emojis = ' / '.join(TYPE_EMOJI.get(t, '') for t in sorted(types))
+            md_text += f"### ▶ {model} {emojis} (mixed: продающиеся + выводимые)\n\n"
+
+            for h in hyps:
+                group = h.get('article_group', 'all')
+                group_label = GROUP_NAME.get(group, group)
+                arts_count = h.get('articles_count', 0)
+                emoji = TYPE_EMOJI.get(h['hypothesis_type'], '')
+                type_name = TYPE_NAME.get(h['hypothesis_type'], '')
+
+                # Используем bold-разделитель вместо вложенного toggle
+                # (Notion не поддерживает таблицы в heading_3 > heading_3)
+                if h['hypothesis_type'] != 'hold':
+                    sign = '+' if h['hypothesis_type'] == 'price_increase' else '-'
+                    md_text += f"**{group_label} ({arts_count} арт.) — {type_name} {sign}{h['suggested_change_pct']:.0f}% {emoji}**\n\n"
+                else:
+                    md_text += f"**{group_label} ({arts_count} арт.) — Удержать ➡️**\n\n"
+
+                md_text += _format_single_hypothesis(h, CONFIDENCE_NAME, CATEGORY_NAME)
+        else:
+            # Единая гипотеза
+            h = hyps[0]
+            if h['hypothesis_type'] == 'hold':
+                continue  # hold модели — в конце общим блоком
+
             emoji = TYPE_EMOJI.get(h['hypothesis_type'], '')
             type_name = TYPE_NAME.get(h['hypothesis_type'], '')
-            confidence = CONFIDENCE_NAME.get(h['confidence'], h['confidence'])
+            sign = '+' if h['hypothesis_type'] == 'price_increase' else '-'
+            md_text += f"### ▶ {h['model']} {emoji} {type_name} ({sign}{h['suggested_change_pct']:.0f}%)\n\n"
+            md_text += _format_single_hypothesis(h, CONFIDENCE_NAME, CATEGORY_NAME)
 
-            md += f"### {h['model']} {emoji} {type_name}"
-            if h.get('suggested_change_pct'):
-                sign = '+' if h['hypothesis_type'] == 'price_increase' else '-'
-                md += f" ({sign}{h['suggested_change_pct']}%)"
-            md += "\n\n"
+    # Hold — в toggle
+    hold_only = [model for model in sorted_models
+                 if all(h['hypothesis_type'] == 'hold' for h in model_hyps[model])]
+    if hold_only:
+        md_text += "---\n\n### ▶ Модели без рекомендации (удержать текущую цену)\n\n"
+        md_text += "| Модель | Цена | Маржа | Продажи/день | Оборач. | Причина |\n"
+        md_text += "|:------:|:----:|:-----:|:------------:|:-------:|:-------:|\n"
+        for model in hold_only:
+            h = model_hyps[model][0]
+            price_str = f"{h['current_avg_price']:.0f} ₽" if h.get('current_avg_price') else '—'
+            reason = h.get('reasoning', '')
+            short_reason = reason[:60] + '…' if len(reason) > 60 else reason
+            md_text += (
+                f"| {h['model']} "
+                f"| {price_str} "
+                f"| {h.get('margin_pct', 0):.1f}% "
+                f"| {h.get('daily_sales', 0):.1f} "
+                f"| {h.get('turnover_days', 0):.0f} дн. "
+                f"| {short_reason} |\n"
+            )
+        md_text += "\n"
 
-            if h.get('current_avg_price'):
-                md += f"- Текущая средняя цена: **{h['current_avg_price']:.0f} ₽**\n"
-            md += f"- Уверенность: {confidence}\n"
-            if h.get('expected_impact'):
-                md += f"- Ожидаемый эффект: {h['expected_impact']}\n"
-            if h.get('reasoning'):
-                md += f"- Обоснование: {h['reasoning']}\n"
-            if h.get('risks'):
-                md += f"- Риски: {h['risks']}\n"
-            md += "\n"
+    return md_text
+
+
+def _format_single_hypothesis(h: dict, CONFIDENCE_NAME: dict, CATEGORY_NAME: dict) -> str:
+    """Форматировать одну гипотезу (тело toggle-секции)."""
+    md = ""
+    confidence = CONFIDENCE_NAME.get(h.get('confidence', ''), h.get('confidence', ''))
+    category = CATEGORY_NAME.get(h.get('roi_category', ''), '')
+    rec = h.get('recommended', {})
+
+    # Текущее состояние
+    md += f"**Сейчас:** цена {h['current_avg_price']:.0f} ₽ · маржа {h.get('margin_pct', 0):.1f}% · "
+    md += f"продажи {h.get('daily_sales', 0):.1f} шт/день · "
+    md += f"оборачиваемость {h.get('turnover_days', 0):.0f} дн."
+    if category:
+        md += f" · {category}"
+    if h.get('status') == 'Выводим':
+        md += " · ⚠️ Выводим"
+    md += "\n\n"
+
+    # Рекомендация
+    if rec:
+        md += f"**Рекомендация:** изменить цену на **{rec['change_pct']:+.0f}%** → "
+        md += f"**{rec['new_price']:.0f} ₽**\n"
+        md += f"- Маржинальность: {h.get('margin_pct', 0):.1f}% → **{rec['new_margin_pct']:.1f}%**\n"
+        md += f"- Объём продаж: {rec['volume_change_pct']:+.1f}%\n"
+        md += f"- Дневная прибыль: {rec['daily_profit_before']:.0f} → **{rec['daily_profit_after']:.0f} ₽** ({rec['profit_delta']:+,.0f} ₽)\n"
+        md += f"- Месячный эффект: **{rec['monthly_delta']:+,.0f} ₽**\n"
+        if rec.get('turnover_before', 0) > 0:
+            md += f"- Оборачиваемость: {rec['turnover_before']:.0f} → **{rec['turnover_after']:.0f} дн.**\n"
+        md += "\n"
+
+    # Маркетинговая рекомендация
+    marketing_note = h.get('marketing_note', '')
+    if marketing_note:
+        md += f"**Маркетинг:** {marketing_note}\n\n"
+
+    # Таблица сценариев
+    scenarios = h.get('scenarios', [])
+    if scenarios:
+        md += "**Сценарии «что если»:**\n\n"
+        md += "| Изменение | Новая цена | Маржа | Объём | Прибыль/день | Δ прибыль/мес | Оборач. |\n"
+        md += "|:---------:|:----------:|:-----:|:-----:|:------------:|:-------------:|:-------:|\n"
+        for sc in scenarios:
+            delta_str = f"{sc['monthly_delta']:+,.0f} ₽"
+            md += (
+                f"| {sc['change_pct']:+.0f}% "
+                f"| {sc['new_price']:.0f} ₽ "
+                f"| {sc['new_margin_pct']:.1f}% "
+                f"| {sc['volume_change_pct']:+.1f}% "
+                f"| {sc['daily_profit_after']:.0f} ₽ "
+                f"| {delta_str} "
+                f"| {sc['turnover_after']:.0f} дн. |\n"
+            )
+        md += "\n"
+
+    # Обоснование
+    md += f"**Обоснование:** {h.get('reasoning', '')}\n\n"
+    e_source = h.get('elasticity_source', '')
+    e_val = h.get('elasticity', 0)
+    if e_source == 'regression':
+        md += f"Эластичность: **{e_val:.2f}** (рассчитана регрессией) · "
+    else:
+        md += f"Эластичность: **{e_val:.1f}** (допущение) · "
+    md += f"Уверенность: {confidence}\n\n"
 
     return md
 
@@ -1287,6 +1777,9 @@ async def main():
     data_dir = Path(__file__).parent.parent / "agents" / "oleg" / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
 
+    today = datetime.now().strftime('%Y-%m-%d')
+    all_reports_md = []  # Собираем MD всех каналов для одной Notion-страницы
+
     for channel in channels:
         print(f"\n{'='*60}")
         print(f"Analyzing {channel.upper()}: {args.start} — {args.end}")
@@ -1296,7 +1789,6 @@ async def main():
         report = analyze_channel(channel, args.start, args.end, learning_store)
 
         # Save JSON
-        today = datetime.now().strftime('%Y-%m-%d')
         json_path = data_dir / f"price_report_{channel}_{today}.json"
         with open(json_path, 'w', encoding='utf-8') as f:
             json.dump(report, f, ensure_ascii=False, indent=2, default=str)
@@ -1311,24 +1803,8 @@ async def main():
             f.write(report_md)
         print(f"Markdown saved: {md_path}")
 
-        # Deliver to Notion (single report)
-        page_url = None
-        if not args.no_notion:
-            page_url = await deliver_to_notion(report_md, channel, args.start, args.end)
-            if page_url:
-                print(f"Notion: {page_url}")
-
-        # Telegram notification (opt-in for CLI runs)
-        if args.telegram:
-            total = report.get('models_total', 0)
-            with_elast = report.get('models_with_elasticity', 0)
-            msg_parts = [
-                f"Ценовой анализ {channel.upper()} за {args.start} — {args.end} завершён.",
-                f"{total} моделей, {with_elast} с эластичностью.",
-            ]
-            if page_url:
-                msg_parts.insert(0, f'<a href="{page_url}">Отчёт в Notion</a>')
-            await notify_telegram("\n".join(msg_parts))
+        # Добавляем в общий отчёт (заголовок канала уже в report_md)
+        all_reports_md.append(report_md)
 
         # Print summary
         print(f"\nSummary for {channel.upper()}:")
@@ -1336,6 +1812,24 @@ async def main():
         print(f"  With elasticity: {report.get('models_with_elasticity', 0)}")
         print(f"  Margin factors: {len(report.get('margin_factors', {}))}")
         print(f"  Price patterns: {len(report.get('price_patterns', {}))}")
+
+    # Deliver combined report to Notion (one page for all channels)
+    page_url = None
+    if not args.no_notion and all_reports_md:
+        combined_md = "\n\n---\n\n".join(all_reports_md)
+        page_url = await deliver_to_notion(combined_md, channels[0], args.start, args.end)
+        if page_url:
+            print(f"\nNotion: {page_url}")
+
+    # Telegram notification (opt-in for CLI runs)
+    if args.telegram:
+        msg_parts = [
+            f"Ценовой анализ за {args.start} — {args.end} завершён.",
+            f"Каналы: {', '.join(c.upper() for c in channels)}",
+        ]
+        if page_url:
+            msg_parts.insert(0, f'<a href="{page_url}">Отчёт в Notion</a>')
+        await notify_telegram("\n".join(msg_parts))
 
 
 if __name__ == "__main__":

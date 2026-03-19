@@ -24,6 +24,7 @@ from shared.data_layer import (
     get_ozon_weekly_breakdown, get_ozon_avg_stock,
     get_artikuly_statuses, validate_wb_data_quality,
     get_total_avg_stock,
+    get_plan_by_period, get_moysklad_stock_by_model,
     to_float, calc_change,
 )
 
@@ -270,6 +271,27 @@ TOOL_DEFINITIONS = [
                     },
                 },
                 "required": ["formula", "values"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_plan_vs_fact",
+            "description": (
+                "Сравнение план-факт за месяц. Читает плановые показатели из plan_article, "
+                "сопоставляет с фактическими данными (WB + Ozon). Возвращает: бренд итого, "
+                "по каналам, топ-моделей по отклонению от плана. "
+                "Включает % выполнения, прогноз на конец месяца, статус (ahead/on_track/behind). "
+                "Вызывай для секции 'План-факт' в отчётах."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "start_date": {"type": "string", "description": "Начало периода YYYY-MM-DD"},
+                    "end_date": {"type": "string", "description": "Конец периода YYYY-MM-DD (включительно)"},
+                },
+                "required": ["start_date", "end_date"],
             },
         },
     },
@@ -639,20 +661,22 @@ async def _handle_model_breakdown(channel: str, start_date: str, end_date: str) 
     current_start, prev_start, current_end = _calc_comparison_dates(start_date, end_date)
 
     if channel == "wb":
-        (results, orders_results), stock_results = await asyncio.gather(
+        (results, orders_results), stock_results, ms_stock = await asyncio.gather(
             asyncio.gather(
                 asyncio.to_thread(get_wb_by_model, current_start, prev_start, current_end),
                 asyncio.to_thread(get_wb_orders_by_model, current_start, prev_start, current_end)
             ),
-            asyncio.to_thread(get_wb_avg_stock, current_start, current_end)
+            asyncio.to_thread(get_wb_avg_stock, current_start, current_end),
+            asyncio.to_thread(get_moysklad_stock_by_model),
         )
     else:
-        (results, orders_results), stock_results = await asyncio.gather(
+        (results, orders_results), stock_results, ms_stock = await asyncio.gather(
             asyncio.gather(
                 asyncio.to_thread(get_ozon_by_model, current_start, prev_start, current_end),
                 asyncio.to_thread(get_ozon_orders_by_model, current_start, prev_start, current_end)
             ),
-            asyncio.to_thread(get_ozon_avg_stock, current_start, current_end)
+            asyncio.to_thread(get_ozon_avg_stock, current_start, current_end),
+            asyncio.to_thread(get_moysklad_stock_by_model),
         )
 
     # Calculate num_days
@@ -718,19 +742,39 @@ async def _handle_model_breakdown(channel: str, start_date: str, end_date: str) 
             data["drr_pct"] = round(_safe_div(data["adv_total"], rev) * 100, 1)
             data["drr_orders_pct"] = round(_safe_div(data["adv_total"], orders_sum) * 100, 1)
             
-            # Stock metrics only for current period (based on stock_results)
+            # Stock metrics only for current period (based on stock_results + МойСклад)
             if is_current:
-                avg_stock = stock_map.get(model, 0)
-                turnover = round(_safe_div(avg_stock * num_days, sales), 1)
-                data["avg_stock"] = round(avg_stock, 0)
-                data["turnover_days"] = turnover
-                
+                avg_stock_fbo = stock_map.get(model, 0)
+                ms_data = ms_stock.get(model, {})
+                stock_own = ms_data.get('stock_main', 0)
+                stock_transit = ms_data.get('stock_transit', 0)
+                stock_all = avg_stock_fbo + stock_own + stock_transit
+
+                # turnover_days based on FBO only (marketplace stock drives sales)
+                turnover_fbo = round(_safe_div(avg_stock_fbo * num_days, sales), 1)
+                # turnover_days_full includes own warehouse (total capital tied up)
+                turnover_full = round(_safe_div(stock_all * num_days, sales), 1)
+
+                data["avg_stock_fbo"] = round(avg_stock_fbo, 0)
+                data["stock_own_warehouse"] = round(stock_own, 0)
+                data["stock_transit"] = round(stock_transit, 0)
+                data["stock_total"] = round(stock_all, 0)
+                data["avg_stock"] = round(avg_stock_fbo, 0)  # backward compat
+                data["turnover_days"] = turnover_fbo
+                data["turnover_days_full"] = turnover_full
+
                 margin_roi = _safe_div(margin, cogs)
-                turnover_factor = _safe_div(365, turnover)
+                # ROI considers ALL stock (full capital tied up)
+                turnover_factor = _safe_div(365, turnover_full) if turnover_full else 0
                 data["roi_annual"] = round(margin_roi * turnover_factor * 100, 0)
             else:
+                data["avg_stock_fbo"] = 0
+                data["stock_own_warehouse"] = 0
+                data["stock_transit"] = 0
+                data["stock_total"] = 0
                 data["avg_stock"] = 0
                 data["turnover_days"] = 0
+                data["turnover_days_full"] = 0
                 data["roi_annual"] = 0
 
     # Build list with changes
@@ -741,12 +785,14 @@ async def _handle_model_breakdown(channel: str, start_date: str, end_date: str) 
         if model == "Other":
             continue
         curr = current_models.get(model, {
-            "model": model, "sales_count": 0, "revenue_before_spp": 0, 
+            "model": model, "sales_count": 0, "revenue_before_spp": 0,
             "adv_internal": 0, "adv_external": 0, "adv_total": 0,
             "margin": 0, "orders_count": 0, "orders_rub": 0,
-            "cost_of_goods": 0, # Added cost_of_goods
+            "cost_of_goods": 0,
             "margin_pct": 0, "drr_pct": 0, "drr_orders_pct": 0,
-            "avg_stock": 0, "turnover_days": 0, "roi_annual": 0 # Added stock/turnover/ROI
+            "avg_stock": 0, "avg_stock_fbo": 0, "stock_own_warehouse": 0,
+            "stock_transit": 0, "stock_total": 0,
+            "turnover_days": 0, "turnover_days_full": 0, "roi_annual": 0
         })
         prev = previous_models.get(model, {})
         
@@ -1165,6 +1211,305 @@ async def _handle_product_statuses() -> dict:
         return {"error": f"Supabase unavailable: {e}"}
 
 
+async def _handle_plan_vs_fact(start_date: str, end_date: str) -> dict:
+    """Compare plan vs fact for the month containing start_date.
+
+    Fetches TWO fact datasets:
+    - period fact: start_date..end_date (for the report's own period)
+    - MTD fact: month_start..end_date (for plan-fact comparison)
+    """
+    from calendar import monthrange
+
+    start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+    end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+
+    # Determine month boundaries
+    month_start = start_dt.replace(day=1)
+    days_in_month = monthrange(month_start.year, month_start.month)[1]
+    month_end = month_start.replace(day=days_in_month)
+
+    month_start_str = month_start.strftime('%Y-%m-%d')
+    month_end_str = month_end.strftime('%Y-%m-%d')
+
+    # Period days (report period) vs days elapsed (MTD)
+    period_days = (end_dt - start_dt).days + 1
+    days_elapsed = (end_dt - month_start).days + 1
+
+    # MTD query params: month_start..end_date, all rows = "current"
+    mtd_end = (end_dt + timedelta(days=1)).strftime('%Y-%m-%d')
+
+    # ── Parallel: plan + period fact + MTD fact ──────────────────
+    current_start, prev_start, current_end = _calc_comparison_dates(start_date, end_date)
+
+    (plan_rows,
+     wb_fin_tuple, ozon_fin_tuple,
+     wb_mtd_fin_tuple, ozon_mtd_fin_tuple,
+     wb_models, ozon_models) = await asyncio.gather(
+        asyncio.to_thread(get_plan_by_period, month_start_str, month_end_str),
+        # Period fact (for report)
+        asyncio.to_thread(get_wb_finance, current_start, prev_start, current_end),
+        asyncio.to_thread(get_ozon_finance, current_start, prev_start, current_end),
+        # MTD fact (month_start..end_date, all "current")
+        asyncio.to_thread(get_wb_finance, month_start_str, month_start_str, mtd_end),
+        asyncio.to_thread(get_ozon_finance, month_start_str, month_start_str, mtd_end),
+        # Models (for top deviation)
+        asyncio.to_thread(get_wb_by_model, month_start_str, month_start_str, mtd_end),
+        asyncio.to_thread(get_ozon_by_model, month_start_str, month_start_str, mtd_end),
+    )
+
+    # get_wb_finance / get_ozon_finance return (finance_rows, orders_rows)
+    wb_finance_rows, wb_orders_rows = wb_fin_tuple
+    ozon_finance_rows, ozon_orders_rows = ozon_fin_tuple
+    wb_mtd_finance_rows, wb_mtd_orders_rows = wb_mtd_fin_tuple
+    ozon_mtd_finance_rows, ozon_mtd_orders_rows = ozon_mtd_fin_tuple
+
+    # ── Parse plan ──────────────────────────────────────────────
+    # plan_rows: (МП, ЛК, Артикул, Показатель, Значение)
+    # Aggregate by channel and by model (osnova)
+    plan_channel = {}  # {channel: {metric: value}}
+    plan_model = {}    # {channel: {model: {metric: value}}}
+
+    METRIC_MAP = {
+        "Кол-во заказов, шт": "orders_count",
+        "Сумма заказов, руб": "orders_rub",
+        "Кол-во продаж, шт": "sales_count",
+        "Сумма продаж, руб": "revenue",
+        "Маржинальная прибыль, руб": "margin",
+        "Маржинальность, %": "margin_pct",
+        "Реклама внут., ₽": "adv_internal",
+        "Реклама внеш., ₽": "adv_external",
+    }
+
+    for row in plan_rows:
+        mp_raw, lk, article, metric_name, raw_value = row
+        mp = mp_raw.strip().lower() if mp_raw else ""
+        channel_key = "WB" if "wb" in mp or "wildberries" in mp else "Ozon"
+
+        metric_key = METRIC_MAP.get(metric_name)
+        if not metric_key:
+            continue
+
+        # Clean value: remove \xa0 (non-breaking space), convert to float
+        clean_val = str(raw_value).replace('\xa0', '').replace(' ', '').replace(',', '.').strip()
+        try:
+            val = float(clean_val)
+        except (ValueError, TypeError):
+            continue
+
+        # Aggregate by channel
+        if channel_key not in plan_channel:
+            plan_channel[channel_key] = {}
+        plan_channel[channel_key][metric_key] = plan_channel[channel_key].get(metric_key, 0) + val
+
+        # Aggregate by model (osnova)
+        model = _map_to_osnova(article.strip()) if article else "Unknown"
+        if channel_key not in plan_model:
+            plan_model[channel_key] = {}
+        if model not in plan_model[channel_key]:
+            plan_model[channel_key][model] = {}
+        plan_model[channel_key][model][metric_key] = (
+            plan_model[channel_key][model].get(metric_key, 0) + val
+        )
+
+    if not plan_channel:
+        return {"error": "Плановые данные на этот месяц не найдены в plan_article."}
+
+    # ── Parse fact from finance results ─────────────────────────
+    def _extract_fact(finance_rows, orders_rows, is_wb=True):
+        """Extract current-period metrics from finance + orders query results."""
+        result = {
+            "orders_count": 0, "orders_rub": 0, "sales_count": 0,
+            "revenue": 0, "margin": 0, "adv_internal": 0, "adv_external": 0,
+        }
+        for row in finance_rows:
+            if row[0] != "current":
+                continue
+            parsed = _parse_wb_finance_row(row) if is_wb else _parse_ozon_finance_row(row)
+            result["sales_count"] += parsed.get("sales_count", 0)
+            result["revenue"] += parsed.get("revenue_before_spp", 0)
+            result["margin"] += parsed.get("margin", 0)
+            result["adv_internal"] += parsed.get("adv_internal", 0)
+            result["adv_external"] += parsed.get("adv_external", 0)
+            if is_wb:
+                result["orders_count"] += parsed.get("orders_count", 0)
+        for row in orders_rows:
+            if row[0] != "current":
+                continue
+            result["orders_count"] += to_float(row[1]) if not is_wb else 0
+            result["orders_rub"] += to_float(row[2])
+        return result
+
+    # Period fact (report's own dates)
+    fact_wb = _extract_fact(wb_finance_rows, wb_orders_rows, is_wb=True)
+    fact_ozon = _extract_fact(ozon_finance_rows, ozon_orders_rows, is_wb=False)
+    # MTD fact (month_start..end_date) for plan comparison
+    mtd_wb = _extract_fact(wb_mtd_finance_rows, wb_mtd_orders_rows, is_wb=True)
+    mtd_ozon = _extract_fact(ozon_mtd_finance_rows, ozon_mtd_orders_rows, is_wb=False)
+
+    # ── Build channel comparison ────────────────────────────────
+    PLAN_METRICS = ("orders_count", "orders_rub", "sales_count", "revenue", "margin",
+                    "adv_internal", "adv_external")
+
+    def _channel_block(channel_key, period_fact, mtd_fact):
+        plan = plan_channel.get(channel_key, {})
+        if not plan:
+            return None
+
+        metrics = {}
+        for m in PLAN_METRICS:
+            p = plan.get(m, 0)
+            f_period = period_fact.get(m, 0)
+            f_mtd = mtd_fact.get(m, 0)
+
+            plan_period = round(p * period_days / days_in_month, 0) if days_in_month else 0
+            plan_mtd = round(p * days_elapsed / days_in_month, 0) if days_in_month else 0
+            forecast = round(f_mtd * days_in_month / days_elapsed, 0) if days_elapsed else 0
+            completion_mtd = round(f_mtd / plan_mtd * 100, 1) if plan_mtd else None
+            forecast_vs_plan = round((forecast - p) / p * 100, 1) if p else None
+
+            metrics[m] = {
+                "plan_month": round(p, 0),
+                "plan_period": plan_period,
+                "fact_period": round(f_period, 0),
+                "fact_mtd": round(f_mtd, 0),
+                "plan_mtd": plan_mtd,
+                "completion_mtd_pct": completion_mtd,
+                "forecast": forecast,
+                "forecast_vs_plan_pct": forecast_vs_plan,
+            }
+
+        # Status based on margin forecast
+        margin_fvp = (metrics.get("margin", {}).get("forecast_vs_plan_pct") or 0)
+        if margin_fvp > 5:
+            status = "ahead"
+        elif margin_fvp >= -5:
+            status = "on_track"
+        else:
+            status = "behind"
+
+        return {"metrics": metrics, "status": status}
+
+    channels = {}
+    for ch_key, p_fact, m_fact in [("WB", fact_wb, mtd_wb), ("Ozon", fact_ozon, mtd_ozon)]:
+        block = _channel_block(ch_key, p_fact, m_fact)
+        if block:
+            channels[ch_key] = block
+
+    # ── Brand total ─────────────────────────────────────────────
+    brand_plan = {}
+    for ch_plan in plan_channel.values():
+        for m, v in ch_plan.items():
+            brand_plan[m] = brand_plan.get(m, 0) + v
+
+    brand_mtd = {}
+    brand_period = {}
+    for m in PLAN_METRICS:
+        brand_mtd[m] = mtd_wb.get(m, 0) + mtd_ozon.get(m, 0)
+        brand_period[m] = fact_wb.get(m, 0) + fact_ozon.get(m, 0)
+
+    brand_metrics = {}
+    for m in PLAN_METRICS:
+        p = brand_plan.get(m, 0)
+        f_mtd = brand_mtd.get(m, 0)
+        f_period = brand_period.get(m, 0)
+
+        plan_period = round(p * period_days / days_in_month, 0) if days_in_month else 0
+        plan_mtd = round(p * days_elapsed / days_in_month, 0) if days_in_month else 0
+        forecast = round(f_mtd * days_in_month / days_elapsed, 0) if days_elapsed else 0
+        completion_mtd = round(f_mtd / plan_mtd * 100, 1) if plan_mtd else None
+        forecast_vs_plan = round((forecast - p) / p * 100, 1) if p else None
+        brand_metrics[m] = {
+            "plan_month": round(p, 0),
+            "plan_period": plan_period,
+            "fact_period": round(f_period, 0),
+            "fact_mtd": round(f_mtd, 0),
+            "plan_mtd": plan_mtd,
+            "completion_mtd_pct": completion_mtd,
+            "forecast": forecast,
+            "forecast_vs_plan_pct": forecast_vs_plan,
+        }
+
+    margin_fvp = (brand_metrics.get("margin", {}).get("forecast_vs_plan_pct") or 0)
+    if margin_fvp > 5:
+        brand_status = "ahead"
+    elif margin_fvp >= -5:
+        brand_status = "on_track"
+    else:
+        brand_status = "behind"
+
+    # ── Top models by deviation ─────────────────────────────────
+    # Merge plan models across channels, compare with fact models
+    all_plan_models = {}
+    for ch_models in plan_model.values():
+        for model, mets in ch_models.items():
+            if model not in all_plan_models:
+                all_plan_models[model] = {}
+            for m, v in mets.items():
+                all_plan_models[model][m] = all_plan_models[model].get(m, 0) + v
+
+    # Fact by model from wb_models + ozon_models
+    fact_by_model = {}
+    for rows in (wb_models, ozon_models):
+        for row in rows:
+            if row[0] != "current":
+                continue
+            model = _map_to_osnova(row[1])
+            if model not in fact_by_model:
+                fact_by_model[model] = {"margin": 0, "revenue": 0, "orders_rub": 0}
+            fact_by_model[model]["margin"] += to_float(row[6])
+            fact_by_model[model]["revenue"] += to_float(row[3])
+
+    top_models = []
+    for model, plan_m in all_plan_models.items():
+        if model in ("Unknown", "Other"):
+            continue
+        plan_margin = plan_m.get("margin", 0)
+        fact_margin = fact_by_model.get(model, {}).get("margin", 0)
+        if plan_margin == 0:
+            continue
+        forecast_margin = round(fact_margin * days_in_month / days_elapsed, 0) if days_elapsed else 0
+        gap = round(forecast_margin - plan_margin, 0)
+        gap_pct = round(gap / plan_margin * 100, 1) if plan_margin else 0
+        top_models.append({
+            "model": model,
+            "plan_margin": round(plan_margin, 0),
+            "fact_margin": round(fact_margin, 0),
+            "forecast_margin": forecast_margin,
+            "gap_to_plan": gap,
+            "gap_pct": gap_pct,
+        })
+
+    top_models.sort(key=lambda x: abs(x["gap_to_plan"]), reverse=True)
+
+    # Month name in Russian
+    MONTHS_RU = {
+        1: "Январь", 2: "Февраль", 3: "Март", 4: "Апрель",
+        5: "Май", 6: "Июнь", 7: "Июль", 8: "Август",
+        9: "Сентябрь", 10: "Октябрь", 11: "Ноябрь", 12: "Декабрь",
+    }
+    month_name = MONTHS_RU.get(month_start.month, str(month_start.month))
+
+    return {
+        "period": f"{start_date} — {end_date}",
+        "plan_month": f"{month_name} {month_start.year} ({month_start.strftime('%d.%m')} — {month_end.strftime('%d.%m')})",
+        "days_elapsed": days_elapsed,
+        "days_in_month": days_in_month,
+        "period_days": period_days,
+        "brand_total": {
+            "metrics": brand_metrics,
+            "status": brand_status,
+        },
+        "by_channel": channels,
+        "top_models": top_models[:7],
+        "hint": (
+            "fact_mtd = факт с начала месяца по end_date. "
+            "completion_mtd_pct = fact_mtd / plan_mtd × 100 (сколько % MTD плана выполнено). "
+            "forecast = прогноз на конец месяца (линейная экстраполяция MTD). "
+            "forecast_vs_plan_pct = на сколько % прогноз отклоняется от плана на месяц."
+        ),
+    }
+
+
 # Безопасные операторы для AST-калькулятора (вместо eval)
 _SAFE_OPS = {
     ast.Add: operator.add,
@@ -1233,6 +1578,7 @@ TOOL_HANDLERS = {
     "validate_data_quality": _handle_validate_data_quality,
     "get_product_statuses": _handle_product_statuses,
     "calculate_metric": _handle_calculate_metric,
+    "get_plan_vs_fact": _handle_plan_vs_fact,
 }
 
 # ─── Price Analysis Tools ────────────────────────────────────

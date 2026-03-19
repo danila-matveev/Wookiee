@@ -215,6 +215,66 @@ FUNNEL_TOOL_DEFINITIONS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_article_unit_economics",
+            "description": (
+                "Водопад затрат на единицу товара per article: "
+                "выручка/ед → себестоимость/ед → логистика/ед → комиссия/ед → "
+                "хранение/ед → НДС/ед → реклама/ед = contribution margin/ед. "
+                "Показывает ROAS по contribution margin."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "start_date": {
+                        "type": "string",
+                        "description": "Начало периода YYYY-MM-DD",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Конец периода YYYY-MM-DD (включительно)",
+                    },
+                    "artikul_filter": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Список артикулов для фильтрации (опционально)",
+                    },
+                },
+                "required": ["start_date", "end_date"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_keyword_roi",
+            "description": (
+                "ROI ключевых слов: какие запросы приносят прибыльные заказы, "
+                "а какие — только трафик (пустышки). Комбинирует данные поисковых "
+                "запросов и экономику артикулов."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "start_date": {
+                        "type": "string",
+                        "description": "Начало периода YYYY-MM-DD",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Конец периода YYYY-MM-DD (включительно)",
+                    },
+                    "model": {
+                        "type": "string",
+                        "description": "Фильтр по модели (LOWER), например 'wendy'",
+                    },
+                },
+                "required": ["start_date", "end_date"],
+            },
+        },
+    },
 ]
 
 
@@ -661,6 +721,139 @@ async def _handle_keyword_positions(
     }
 
 
+async def _handle_article_unit_economics(
+    start_date: str, end_date: str, artikul_filter: list = None,
+) -> dict:
+    """Водопад затрат на единицу товара per article."""
+    from shared.data_layer import get_wb_article_contribution_margin
+
+    e = datetime.strptime(end_date, '%Y-%m-%d')
+    end_exclusive = (e + timedelta(days=1)).strftime('%Y-%m-%d')
+
+    rows = await asyncio.to_thread(
+        get_wb_article_contribution_margin, start_date, end_exclusive, artikul_filter
+    )
+
+    if not rows:
+        return {"error": "Нет данных по артикулам за период"}
+
+    articles = []
+    for r in rows[:30]:  # Top 30
+        articles.append({
+            "артикул": r[0],
+            "продажи_шт": _safe_int(r[1]),
+            "заказы_шт": _safe_int(r[2]),
+            "выручка": _safe_float(r[3], 0),
+            "выручка_на_ед": _safe_float(r[4]),
+            "себестоимость_на_ед": _safe_float(r[5]),
+            "логистика_на_ед": _safe_float(r[6]),
+            "комиссия_на_ед": _safe_float(r[7]),
+            "хранение_на_ед": _safe_float(r[8]),
+            "НДС_на_ед": _safe_float(r[9]),
+            "реклама_на_ед": _safe_float(r[10]),
+            "CM_до_рекламы": _safe_float(r[11], 0),
+            "CM_после_рекламы": _safe_float(r[12], 0),
+            "CM_до_рекламы_на_ед": _safe_float(r[13]),
+            "CM_после_рекламы_на_ед": _safe_float(r[14]),
+            "маржинальность_%": _safe_float(r[15]),
+            "ROAS_contribution": _safe_float(r[16]),
+        })
+
+    return {
+        "период": f"{start_date} — {end_date}",
+        "всего_артикулов": len(rows),
+        "показано": len(articles),
+        "articles": articles,
+    }
+
+
+async def _handle_keyword_roi(
+    start_date: str, end_date: str, model: str = None,
+) -> dict:
+    """ROI ключевых слов: прибыльные vs пустышки."""
+    from shared.data_layer import (
+        get_wb_search_keywords_api,
+        get_wb_article_economics,
+    )
+
+    e = datetime.strptime(end_date, '%Y-%m-%d')
+    end_exclusive = (e + timedelta(days=1)).strftime('%Y-%m-%d')
+
+    # Get keywords
+    artikul_filter = None
+    if model:
+        # We'll filter by model prefix in the keywords
+        artikul_filter = None  # Keywords API filters by vendorcode internally
+
+    kw_rows = await asyncio.to_thread(
+        get_wb_search_keywords_api, start_date, end_exclusive, artikul_filter
+    )
+
+    if not kw_rows:
+        return {"error": "Нет данных по ключевым словам за период"}
+
+    # Get article economics for margin context
+    econ_rows = await asyncio.to_thread(
+        get_wb_article_economics, start_date, end_exclusive, artikul_filter
+    )
+
+    # Total margin and orders across all articles
+    total_margin = sum(float(r[2] or 0) for r in econ_rows) if econ_rows else 0
+    total_orders = sum(int(r[3] or 0) for r in econ_rows) if econ_rows else 1
+
+    # Parse keywords — each row: (artikul, keyword, frequency, opens, add_to_cart, orders)
+    keywords = []
+    for r in kw_rows:
+        artikul = r[0] if r[0] else ""
+        keyword = r[1] if r[1] else ""
+        frequency = int(r[2] or 0)
+        opens = int(r[3] or 0)
+        add_to_cart = int(r[4] or 0)
+        orders = int(r[5] or 0)
+
+        # Filter by model if specified
+        if model and model.lower() not in artikul.lower():
+            continue
+
+        conversion = round(orders / opens * 100, 2) if opens > 0 else 0
+        # Estimated margin contribution
+        est_margin = round((orders / total_orders) * total_margin, 0) if total_orders > 0 else 0
+
+        verdict = "profitable" if orders > 0 and conversion > 0.5 else "wasted"
+
+        keywords.append({
+            "артикул": artikul,
+            "запрос": keyword,
+            "частотность": frequency,
+            "переходы": opens,
+            "корзина": add_to_cart,
+            "заказы": orders,
+            "конверсия_%": conversion,
+            "ест_маржа_₽": est_margin,
+            "вердикт": verdict,
+        })
+
+    # Sort: generators (by orders desc), then wasted (by opens desc)
+    generators = sorted(
+        [k for k in keywords if k["вердикт"] == "profitable"],
+        key=lambda x: x["заказы"], reverse=True
+    )[:10]
+
+    wasted = sorted(
+        [k for k in keywords if k["вердикт"] == "wasted" and k["переходы"] > 5],
+        key=lambda x: x["переходы"], reverse=True
+    )[:10]
+
+    return {
+        "период": f"{start_date} — {end_date}",
+        "модель": model or "все",
+        "всего_ключевиков": len(keywords),
+        "генераторы_прибыли": generators,
+        "трафик_пустышки": wasted,
+        "общая_маржа_периода": total_margin,
+    }
+
+
 # =============================================================================
 # HANDLER REGISTRY
 # =============================================================================
@@ -672,6 +865,8 @@ FUNNEL_TOOL_HANDLERS: Dict[str, Any] = {
     "get_article_ad_attribution": _handle_article_ad_attribution,
     "get_search_keywords": _handle_search_keywords,
     "get_keyword_positions": _handle_keyword_positions,
+    "get_article_unit_economics": _handle_article_unit_economics,
+    "get_keyword_roi": _handle_keyword_roi,
 }
 
 

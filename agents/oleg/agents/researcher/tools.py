@@ -1,5 +1,5 @@
 """
-Researcher Agent tools — API access + statistical analysis.
+Researcher Agent tools — API access + statistical analysis + knowledge base.
 
 New tools for deep analysis: WB/OZON API, correlations, elasticity.
 """
@@ -11,12 +11,21 @@ from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
+# Knowledge Base tool (optional)
+_kb_available = False
+try:
+    from services.knowledge_base.tools import KB_TOOL_DEFINITIONS, execute_kb_tool
+    _kb_available = True
+except ImportError:
+    KB_TOOL_DEFINITIONS = []
+    logger.info("Knowledge Base tools not available for Researcher")
+
 
 # =============================================================================
 # TOOL DEFINITIONS (OpenAI function calling format)
 # =============================================================================
 
-RESEARCHER_TOOL_DEFINITIONS = [
+RESEARCHER_TOOL_DEFINITIONS = list(KB_TOOL_DEFINITIONS) + [
     {
         "type": "function",
         "function": {
@@ -406,6 +415,10 @@ RESEARCHER_TOOL_HANDLERS = {
 
 async def execute_researcher_tool(tool_name: str, tool_args: dict) -> str:
     """Execute a researcher tool."""
+    # Knowledge Base tool
+    if _kb_available and tool_name == "search_knowledge_base":
+        return await execute_kb_tool(tool_name, tool_args)
+
     handler = RESEARCHER_TOOL_HANDLERS.get(tool_name)
     if not handler:
         return json.dumps({"error": f"Unknown tool: {tool_name}"}, ensure_ascii=False)
