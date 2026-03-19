@@ -4,6 +4,7 @@ Price Tools — инструменты ценовой аналитики для 
 Обёртки над price_analysis/ модулями в формате OpenAI function calling.
 Все SQL-запросы в shared/data_layer.py — здесь только оркестрация.
 """
+import json
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, Any
@@ -1182,3 +1183,15 @@ PRICE_TOOL_HANDLERS = {
     "get_price_pattern_analysis": _handle_price_pattern_analysis,
     "get_turnover_optimized_recommendation": _handle_turnover_optimized_recommendation,
 }
+
+
+async def execute_price_tool(tool_name: str, arguments: dict) -> str:
+    """Public dispatcher for price tools. Same pattern as agent_tools.execute_tool."""
+    handler = PRICE_TOOL_HANDLERS.get(tool_name)
+    if not handler:
+        return json.dumps({"error": f"Unknown price tool: {tool_name}"})
+    try:
+        result = await handler(**arguments)
+        return json.dumps(result, ensure_ascii=False, default=str)
+    except Exception as e:
+        return json.dumps({"error": str(e), "tool": tool_name})
