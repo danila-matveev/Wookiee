@@ -1789,7 +1789,12 @@ def get_wb_price_margin_by_model_period(start_date, end_date):
         CASE WHEN (SUM(revenue_spp) - COALESCE(SUM(revenue_return_spp), 0)) > 0
             THEN SUM(reclama + reclama_vn) /
                  (SUM(revenue_spp) - COALESCE(SUM(revenue_return_spp), 0)) * 100
-            ELSE NULL END as drr_pct
+            ELSE NULL END as drr_pct,
+        SUM(logist) as logistics,
+        SUM(reclama) as adv_internal,
+        SUM(reclama_vn) as adv_bloggers,
+        COALESCE(SUM(reclama_vn_vk), 0) as adv_vk,
+        COALESCE(SUM(reclama_vn_creators), 0) as adv_creators
     FROM abc_date
     WHERE date >= %s AND date < %s
     GROUP BY {model_expr}
@@ -1926,7 +1931,10 @@ def get_ozon_price_margin_by_model_period(start_date, end_date):
             ELSE NULL END as spp_pct,
         CASE WHEN SUM(price_end) > 0
             THEN SUM(reclama_end + adv_vn) / SUM(price_end) * 100
-            ELSE NULL END as drr_pct
+            ELSE NULL END as drr_pct,
+        SUM(logist_end) as logistics,
+        SUM(reclama_end) as adv_internal,
+        SUM(adv_vn) as adv_external
     FROM abc_date
     WHERE date >= %s AND date < %s
     GROUP BY {model_expr}
@@ -2246,12 +2254,54 @@ MAX_TURNOVER_DAYS = 365  # Cap: свыше 1 года = мёртвый сток
 MIN_DAILY_SALES = 0.05  # < 1 продажи за 20 дней = недостаточно данных
 
 
+def _get_days_in_stock_by_model(channel: str, start_date: str, end_date: str) -> dict:
+    """Количество дней наличия товара на складе МП, по моделям.
+
+    Считает количество DISTINCT дат, когда у модели был ненулевой остаток.
+    Используется для расчёта daily_sales = sales / days_in_stock (а не calendar_days).
+    """
+    if channel == 'wb':
+        conn = _get_wb_connection()
+        query = """
+        SELECT LOWER(SPLIT_PART(supplierarticle, '/', 1)) as model,
+               COUNT(DISTINCT lastchangedate::date) as days_in_stock
+        FROM stocks
+        WHERE lastchangedate >= %s AND lastchangedate < %s
+          AND supplierarticle IS NOT NULL AND supplierarticle != ''
+          AND quantityfull > 0
+        GROUP BY 1;
+        """
+    else:
+        conn = _get_ozon_connection()
+        query = """
+        SELECT LOWER(SPLIT_PART(REGEXP_REPLACE(offer_id, '_[^_]+$', ''), '/', 1)) as model,
+               COUNT(DISTINCT dateupdate::date) as days_in_stock
+        FROM stocks
+        WHERE dateupdate >= %s AND dateupdate < %s
+          AND offer_id IS NOT NULL AND offer_id != ''
+          AND stockspresent > 0
+        GROUP BY 1;
+        """
+
+    cur = conn.cursor()
+    cur.execute(query, (start_date, end_date))
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    result = {}
+    for raw_model, days_count in rows:
+        model_name = map_to_osnova(raw_model)
+        result[model_name] = result.get(model_name, 0) + int(days_count)
+    return result
+
+
 def get_wb_turnover_by_model(start_date, end_date):
     """
     WB оборачиваемость по моделям = available_stock / daily_sales.
 
-    Остатки: МойСклад (только Основной склад, без транзита) + склады WB.
-    Продажи: из abc_date за период.
+    Остатки: МойСклад (Основной склад) + склады WB.
+    Продажи: sales_count / days_in_stock (дни наличия, не календарные).
     """
     mp_stock = get_wb_avg_stock(start_date, end_date)
     ms_stock = get_moysklad_stock_by_article()
@@ -2287,13 +2337,20 @@ def get_wb_turnover_by_model(start_date, end_date):
             model_data[model_name]['stock_ms'] += ms_info['stock_main']
             model_data[model_name]['stock_transit'] += ms_info['stock_transit']
 
+    # Дни наличия товара на складе МП (для расчёта daily_sales)
+    days_in_stock_map = _get_days_in_stock_by_model('wb', start_date, end_date)
+
     result = {}
     for model_name, md in model_data.items():
-        # Оборачиваемость только по остаткам маркетплейса (stock_mp).
-        # МойСклад остатки показываются отдельно — они не участвуют в расчёте
-        # turnover, т.к. ETL данные могут быть неточными (завышены).
+        # Оборачиваемость: только по стоку МП (FBO).
+        # МойСклад (stock_ms) — контекст, НЕ участвует в turnover
+        # (данные stock_ms ненадёжны — проблемы качества данных).
         available_stock = md['stock_mp']
-        daily_sales = md['sales_count'] / days if md['sales_count'] > 0 else 0
+        total_stock = md['stock_mp'] + md.get('stock_ms', 0)
+        # daily_sales по дням наличия (fallback — календарные дни)
+        model_days = days_in_stock_map.get(model_name, days)
+        model_days = max(1, model_days)
+        daily_sales = md['sales_count'] / model_days if md['sales_count'] > 0 else 0
         low_sales = daily_sales < MIN_DAILY_SALES
         if daily_sales > 0:
             turnover_days = min(available_stock / daily_sales, MAX_TURNOVER_DAYS)
@@ -2301,12 +2358,14 @@ def get_wb_turnover_by_model(start_date, end_date):
             turnover_days = 0
         result[model_name] = {
             'avg_stock': round(available_stock, 0),
+            'total_stock': round(total_stock, 0),
             'stock_mp': round(md['stock_mp'], 0),
             'stock_moysklad': round(md['stock_ms'], 0),
             'stock_transit': round(md['stock_transit'], 0),
             'daily_sales': round(daily_sales, 1),
             'turnover_days': round(turnover_days, 1),
             'sales_count': md['sales_count'],
+            'days_in_stock': model_days,
             'revenue': round(md['revenue'], 0),
             'margin': round(md['margin'], 0),
             'low_sales': low_sales,
@@ -2317,9 +2376,9 @@ def get_wb_turnover_by_model(start_date, end_date):
 
 def get_ozon_turnover_by_model(start_date, end_date):
     """
-    OZON оборачиваемость по моделям = stock_mp / daily_sales.
+    OZON оборачиваемость по моделям = total_stock / daily_sales.
 
-    Остатки: только склады OZON (МойСклад показывается отдельно).
+    Остатки: общие (OZON + МойСклад), без транзита.
     Продажи: из abc_date за период.
     """
     mp_stock = get_ozon_avg_stock(start_date, end_date)
@@ -2355,11 +2414,17 @@ def get_ozon_turnover_by_model(start_date, end_date):
             model_data[model_name]['stock_ms'] += ms_info['stock_main']
             model_data[model_name]['stock_transit'] += ms_info['stock_transit']
 
+    # Дни наличия товара на складе МП
+    days_in_stock_map = _get_days_in_stock_by_model('ozon', start_date, end_date)
+
     result = {}
     for model_name, md in model_data.items():
-        # Оборачиваемость только по остаткам маркетплейса (stock_mp).
+        # Оборачиваемость: только по стоку МП (FBO).
         available_stock = md['stock_mp']
-        daily_sales = md['sales_count'] / days if md['sales_count'] > 0 else 0
+        total_stock = md['stock_mp'] + md.get('stock_ms', 0)
+        model_days = days_in_stock_map.get(model_name, days)
+        model_days = max(1, model_days)
+        daily_sales = md['sales_count'] / model_days if md['sales_count'] > 0 else 0
         low_sales = daily_sales < MIN_DAILY_SALES
         if daily_sales > 0:
             turnover_days = min(available_stock / daily_sales, MAX_TURNOVER_DAYS)
@@ -2367,12 +2432,14 @@ def get_ozon_turnover_by_model(start_date, end_date):
             turnover_days = 0
         result[model_name] = {
             'avg_stock': round(available_stock, 0),
+            'total_stock': round(total_stock, 0),
             'stock_mp': round(md['stock_mp'], 0),
             'stock_moysklad': round(md['stock_ms'], 0),
             'stock_transit': round(md['stock_transit'], 0),
             'daily_sales': round(daily_sales, 1),
             'turnover_days': round(turnover_days, 1),
             'sales_count': md['sales_count'],
+            'days_in_stock': model_days,
             'revenue': round(md['revenue'], 0),
             'margin': round(md['margin'], 0),
             'low_sales': low_sales,
@@ -3826,6 +3893,96 @@ def get_wb_article_economics(start_date, end_date, artikul_filter=None):
         return cur.fetchall()
 
 
+def get_wb_article_contribution_margin(start_date, end_date, artikul_filter=None):
+    """Водопад затрат на единицу товара per article (Contribution Margin).
+
+    Показывает структуру: выручка/ед → себестоимость/ед → логистика/ед →
+    комиссия/ед → хранение/ед → НДС/ед → реклама/ед = contribution margin/ед.
+
+    Args:
+        start_date: начало периода (включительно).
+        end_date: конец периода (не включительно).
+        artikul_filter: список артикулов для фильтрации.
+
+    Returns:
+        list of tuples (artikul, sales_count, orders_count,
+                        revenue_spp, revenue_per_unit,
+                        sebes_per_unit, logist_per_unit, commission_per_unit,
+                        storage_per_unit, nds_per_unit, ad_per_unit,
+                        contribution_before_ad, contribution_after_ad,
+                        cm_before_ad_per_unit, cm_after_ad_per_unit,
+                        margin_pct, roas_contribution).
+    """
+    fin_clause = ""
+    params = [start_date, end_date]
+
+    if artikul_filter is not None and len(artikul_filter) > 0:
+        placeholders = ", ".join(["%s"] * len(artikul_filter))
+        lowered = [a.lower() for a in artikul_filter]
+        fin_clause = f"AND LOWER(a.article) IN ({placeholders})"
+        params.extend(lowered)
+
+    query = f"""
+    SELECT
+        LOWER(a.article) as artikul,
+        SUM(a.full_counts) as sales_count,
+        SUM(a.count_orders) as orders_count,
+        SUM(a.revenue_spp) as revenue_spp,
+        -- Per-unit waterfall
+        ROUND(SUM(a.revenue_spp) / NULLIF(SUM(a.full_counts), 0), 2) as revenue_per_unit,
+        ROUND(SUM(a.sebes) / NULLIF(SUM(a.full_counts), 0), 2) as sebes_per_unit,
+        ROUND(SUM(a.logist) / NULLIF(SUM(a.full_counts), 0), 2) as logist_per_unit,
+        ROUND(SUM(a.comis_spp) / NULLIF(SUM(a.full_counts), 0), 2) as commission_per_unit,
+        ROUND(SUM(a.storage) / NULLIF(SUM(a.full_counts), 0), 2) as storage_per_unit,
+        ROUND(SUM(a.nds) / NULLIF(SUM(a.full_counts), 0), 2) as nds_per_unit,
+        ROUND((SUM(a.reclama) + SUM(a.reclama_vn)
+            + COALESCE(SUM(a.reclama_vn_vk), 0)
+            + COALESCE(SUM(a.reclama_vn_creators), 0))
+            / NULLIF(SUM(a.full_counts), 0), 2) as ad_per_unit,
+        -- Totals: contribution margin before/after ad
+        SUM(a.revenue_spp) - SUM(a.sebes) - SUM(a.logist)
+            - SUM(a.comis_spp) - SUM(a.storage) - SUM(a.nds) as contribution_before_ad,
+        SUM(a.revenue_spp) - SUM(a.sebes) - SUM(a.logist)
+            - SUM(a.comis_spp) - SUM(a.storage) - SUM(a.nds)
+            - SUM(a.reclama) - SUM(a.reclama_vn)
+            - COALESCE(SUM(a.reclama_vn_vk), 0)
+            - COALESCE(SUM(a.reclama_vn_creators), 0) as contribution_after_ad,
+        -- Per-unit contribution margin
+        ROUND((SUM(a.revenue_spp) - SUM(a.sebes) - SUM(a.logist)
+            - SUM(a.comis_spp) - SUM(a.storage) - SUM(a.nds))
+            / NULLIF(SUM(a.full_counts), 0), 2) as cm_before_ad_per_unit,
+        ROUND((SUM(a.revenue_spp) - SUM(a.sebes) - SUM(a.logist)
+            - SUM(a.comis_spp) - SUM(a.storage) - SUM(a.nds)
+            - SUM(a.reclama) - SUM(a.reclama_vn)
+            - COALESCE(SUM(a.reclama_vn_vk), 0)
+            - COALESCE(SUM(a.reclama_vn_creators), 0))
+            / NULLIF(SUM(a.full_counts), 0), 2) as cm_after_ad_per_unit,
+        -- Margin %
+        ROUND((SUM(a.revenue_spp) - SUM(a.sebes) - SUM(a.logist)
+            - SUM(a.comis_spp) - SUM(a.storage) - SUM(a.nds)
+            - SUM(a.reclama) - SUM(a.reclama_vn)
+            - COALESCE(SUM(a.reclama_vn_vk), 0)
+            - COALESCE(SUM(a.reclama_vn_creators), 0))
+            * 100.0 / NULLIF(SUM(a.revenue_spp), 0), 1) as margin_pct,
+        -- ROAS by contribution = contribution_before_ad / ad_spend * 100
+        ROUND((SUM(a.revenue_spp) - SUM(a.sebes) - SUM(a.logist)
+            - SUM(a.comis_spp) - SUM(a.storage) - SUM(a.nds))
+            * 100.0 / NULLIF(
+                SUM(a.reclama) + SUM(a.reclama_vn)
+                + COALESCE(SUM(a.reclama_vn_vk), 0)
+                + COALESCE(SUM(a.reclama_vn_creators), 0), 0), 1) as roas_contribution
+    FROM abc_date a
+    WHERE a.date >= %s AND a.date < %s
+        {fin_clause}
+    GROUP BY LOWER(a.article)
+    HAVING SUM(a.full_counts) > 0
+    ORDER BY contribution_after_ad DESC;
+    """
+    with _db_cursor(_get_wb_connection) as (conn, cur):
+        cur.execute(query, params)
+        return cur.fetchall()
+
+
 def get_wb_seo_keyword_positions(current_start, prev_start, current_end, artikul_filter=None):
     """Позиции ключевых слов WoW из kz_off.
 
@@ -4048,4 +4205,77 @@ def get_active_models_with_abc(start_date, end_date):
 
     # Sort models by total margin descending
     result.sort(key=lambda x: x['total_margin'], reverse=True)
+    return result
+
+
+# =============================================================================
+# ПЛАН-ФАКТ: чтение плановых показателей из plan_article
+# =============================================================================
+
+def get_plan_by_period(month_start: str, month_end: str):
+    """Плановые показатели из plan_article за месячный период.
+
+    Таблица plan_article (WB-база): все колонки TEXT, даты DD.MM.YYYY,
+    значения с неразрывными пробелами (\\xa0).
+    Содержит планы WB + Ozon в одной таблице.
+
+    Args:
+        month_start: '2026-03-01' (YYYY-MM-DD) — первый день месяца
+        month_end: '2026-03-31' (YYYY-MM-DD) — последний день месяца
+    Returns:
+        list of tuples (МП, ЛК, Артикул, Показатель, Значение)
+    """
+    conn = _get_wb_connection()
+    cur = conn.cursor()
+
+    # Конвертация YYYY-MM-DD → DD.MM.YYYY для WHERE
+    start_dt = datetime.strptime(month_start, '%Y-%m-%d')
+    end_dt = datetime.strptime(month_end, '%Y-%m-%d')
+    start_ddmm = start_dt.strftime('%d.%m.%Y')
+    end_ddmm = end_dt.strftime('%d.%m.%Y')
+
+    query = """
+    SELECT "МП", "ЛК", "Артикул", "Показатель", "Значение"
+    FROM plan_article
+    WHERE "Дата начала" = %s AND "Дата окончания" = %s;
+    """
+    cur.execute(query, (start_ddmm, end_ddmm))
+    results = cur.fetchall()
+
+    cur.close()
+    conn.close()
+    return results
+
+
+def get_moysklad_stock_by_model():
+    """Остатки МойСклад агрегированные по model_osnova.
+
+    Использует get_moysklad_stock_by_article() + map_to_osnova().
+    Returns:
+        {model: {'stock_main': N, 'stock_transit': M, 'total': N+M,
+                 'snapshot_date': str, 'is_stale': bool}}
+    """
+    from shared.model_mapping import map_to_osnova
+
+    raw = get_moysklad_stock_by_article()
+    result = {}
+    snapshot_date = None
+    is_stale = False
+
+    for art, data in raw.items():
+        base = art.split('/')[0] if '/' in art else art
+        model = map_to_osnova(base)
+        snapshot_date = data.get('snapshot_date')
+        is_stale = data.get('is_stale', False)
+
+        if model not in result:
+            result[model] = {
+                'stock_main': 0.0, 'stock_transit': 0.0, 'total': 0.0,
+                'snapshot_date': snapshot_date,
+                'is_stale': is_stale,
+            }
+        result[model]['stock_main'] += data['stock_main']
+        result[model]['stock_transit'] += data['stock_transit']
+        result[model]['total'] += data['total']
+
     return result

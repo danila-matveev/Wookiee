@@ -404,6 +404,34 @@ MARKETING_TOOL_DEFINITIONS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_ad_profitability_alerts",
+            "description": (
+                "Алерты убыточной рекламы: модели где ROMI < порога или "
+                "CAC > прибыли на продажу. Для секции «Чёрные дыры рекламы»."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "start_date": {
+                        "type": "string",
+                        "description": "Начало периода YYYY-MM-DD",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Конец периода YYYY-MM-DD (включительно)",
+                    },
+                    "romi_threshold": {
+                        "type": "number",
+                        "description": "Порог ROMI (по умолчанию 100). Модели ниже — убыточные",
+                    },
+                },
+                "required": ["start_date", "end_date"],
+            },
+        },
+    },
 ]
 
 
@@ -1574,6 +1602,86 @@ async def _handle_ozon_organic_estimate(
     return result
 
 
+async def _handle_ad_profitability_alerts(
+    start_date: str, end_date: str, romi_threshold: float = 100,
+) -> dict:
+    """Find models/articles with unprofitable advertising."""
+    from shared.data_layer import get_wb_model_ad_roi, get_wb_article_economics
+    from datetime import datetime, timedelta
+
+    e = datetime.strptime(end_date, '%Y-%m-%d')
+    end_exclusive = (e + timedelta(days=1)).strftime('%Y-%m-%d')
+
+    # Get model-level ad ROI
+    model_rows = await asyncio.to_thread(
+        get_wb_model_ad_roi, start_date, end_exclusive
+    )
+
+    # Get article-level economics
+    article_rows = await asyncio.to_thread(
+        get_wb_article_economics, start_date, end_exclusive
+    )
+
+    alerts = []
+
+    # Check models
+    if model_rows:
+        for r in model_rows:
+            model = r[0] if r[0] else "unknown"
+            ad_spend = float(r[1] or 0)
+            ad_orders = int(r[2] or 0)
+            revenue = float(r[3] or 0)
+            margin = float(r[4] or 0)
+            drr = float(r[5] or 0)
+            romi = float(r[6] or 0)
+
+            if ad_spend > 0 and romi < romi_threshold:
+                recommendation = "СТОП" if romi < 50 else "Сокращение"
+                alerts.append({
+                    "уровень": "модель",
+                    "объект": model,
+                    "расход_₽": round(ad_spend, 0),
+                    "маржа_₽": round(margin, 0),
+                    "ROMI": round(romi, 1),
+                    "ДРР_%": round(drr, 1),
+                    "заказы_с_рекламы": ad_orders,
+                    "рекомендация": recommendation,
+                })
+
+    # Check articles for CAC > profit_per_sale
+    if article_rows:
+        for r in article_rows:
+            artikul = r[0] if r[0] else "unknown"
+            margin = float(r[2] or 0)
+            orders = int(r[3] or 0)
+            ad_spend = float(r[7] or 0)
+            cac = float(r[12] or 0) if r[12] else 0
+            profit_per_sale = float(r[10] or 0) if r[10] else 0
+            romi = float(r[13] or 0) if r[13] else 0
+
+            if ad_spend > 0 and cac > 0 and profit_per_sale > 0 and cac > profit_per_sale:
+                alerts.append({
+                    "уровень": "артикул",
+                    "объект": artikul,
+                    "расход_₽": round(ad_spend, 0),
+                    "маржа_₽": round(margin, 0),
+                    "CAC": round(cac, 1),
+                    "прибыль_на_продажу": round(profit_per_sale, 1),
+                    "ROMI": round(romi, 1),
+                    "рекомендация": "CAC > прибыль: снизить ставки",
+                })
+
+    # Sort by absolute ad spend desc
+    alerts.sort(key=lambda x: x.get("расход_₽", 0), reverse=True)
+
+    return {
+        "период": f"{start_date} — {end_date}",
+        "порог_ROMI": romi_threshold,
+        "всего_алертов": len(alerts),
+        "алерты": alerts[:20],
+    }
+
+
 # =============================================================================
 # HANDLERS MAP
 # =============================================================================
@@ -1593,6 +1701,7 @@ MARKETING_TOOL_HANDLERS: Dict[str, Any] = {
     "get_channel_finance": _handle_mkt_channel_finance,
     "get_margin_levers": _handle_mkt_margin_levers,
     "get_model_breakdown": _handle_mkt_model_breakdown,
+    "get_ad_profitability_alerts": _handle_ad_profitability_alerts,
 }
 
 

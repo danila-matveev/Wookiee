@@ -220,6 +220,15 @@ class OlegOrchestrator:
                 reasoning="Feedback always starts with Quality Agent",
             )
 
+        # KB management → Christina
+        if step == 0 and task_type.startswith("kb_"):
+            return OrchestratorDecision(
+                done=False,
+                next_agent="christina",
+                instruction=task,
+                reasoning="KB management task → Christina",
+            )
+
         # Shortcut: if only reporter exists and we already have 1 step, synthesize
         if len(self.agents) == 1 and step >= 1:
             return OrchestratorDecision(

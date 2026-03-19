@@ -129,6 +129,7 @@ NOTION_DATABASE_ID: str = os.getenv("NOTION_DATABASE_ID", "")
 PLAYBOOK_PATH: str = str(Path(__file__).parent / "playbook.md")
 MARKETING_PLAYBOOK_PATH: str = str(Path(__file__).parent / "marketing_playbook.md")
 FUNNEL_PLAYBOOK_PATH: str = str(Path(__file__).parent / "funnel_playbook.md")
+CHRISTINA_PLAYBOOK_PATH: str = str(Path(__file__).parent / "christina_playbook.md")
 
 # ============================================================================
 # Scheduler (MSK)
@@ -153,10 +154,10 @@ FINOLOG_CASH_GAP_THRESHOLD: float = float(os.getenv("FINOLOG_CASH_GAP_THRESHOLD"
 # ============================================================================
 # Executor
 # ============================================================================
-MAX_ITERATIONS: int = 10
+MAX_ITERATIONS: int = 15
 MAX_TOOL_RESULT_LENGTH: int = 8500
 TOOL_TIMEOUT_SEC: float = 30.0
-TOTAL_TIMEOUT_SEC: float = 120.0
+TOTAL_TIMEOUT_SEC: float = 300.0
 CONTEXT_COMPRESSION_AFTER: int = 5
 
 # ============================================================================

@@ -21,9 +21,10 @@ class ReportPipeline:
     - Hard failed → skip + log for watchdog
     """
 
-    def __init__(self, orchestrator, gate_checker: Optional[GateChecker] = None):
+    def __init__(self, orchestrator, gate_checker: Optional[GateChecker] = None, skip_gates: bool = False):
         self.orchestrator = orchestrator
         self.gate_checker = gate_checker or GateChecker()
+        self.skip_gates = skip_gates
 
     async def generate_report(self, request: ReportRequest) -> Optional[ReportResult]:
         """
@@ -35,7 +36,7 @@ class ReportPipeline:
 
         # Step 1: Gate check (skip for user queries — they bypass gates)
         caveats = []
-        if request.report_type in (
+        if not self.skip_gates and request.report_type in (
             ReportType.DAILY, ReportType.WEEKLY, ReportType.MONTHLY,
             ReportType.MARKETING_DAILY, ReportType.MARKETING_WEEKLY,
             ReportType.MARKETING_MONTHLY,
@@ -91,28 +92,103 @@ class ReportPipeline:
 
         period = f"за период {request.start_date} — {request.end_date}"
 
+        # Inject team feedback from Notion comments (if available in context)
+        feedback_note = ""
+        notion_feedback = (request.context or {}).get("notion_feedback")
+        if notion_feedback:
+            feedback_note = (
+                f"\n\nОБРАТНАЯ СВЯЗЬ КОМАНДЫ (из комментариев Notion к предыдущим отчётам):\n"
+                f"{notion_feedback}\n"
+                f"Учти эту обратную связь при формировании отчёта.\n"
+            )
+
+        task = None
+
         if request.report_type == ReportType.DAILY:
-            return (
-                f"Сформируй дневной финансовый отчёт {period}. "
-                f"Используй get_brand_finance, get_channel_finance (wb + ozon), "
-                f"get_margin_levers, get_model_breakdown. "
-                f"Обязательно проверь данные через validate_data_quality."
+            task = (
+                f"Сформируй дневной финансовый отчёт {period}.\n"
+                f"ОБЯЗАТЕЛЬНЫЕ СЕКЦИИ (ВСЕ 10, НЕ ПРОПУСКАЙ НИ ОДНУ):\n"
+                f"0) Паспорт отчёта (период, сравнение, тип, полнота данных, лаг выкупов, невязка)\n"
+                f"1) Топ-выводы и действия (3-5 с ₽ эффектом)\n"
+                f"2) План-факт (get_plan_vs_fact — MTD, прогноз, статусы ✅⚠️❌)\n"
+                f"3) Ключевые изменения (Бренд) — ПОЛНАЯ таблица 19 строк: "
+                f"маржа, маржинальность%, продажи шт/руб, заказы шт/руб, "
+                f"реклама внутр/внешн, ДРР от заказов/продаж, ср.чек заказов/продаж, "
+                f"оборачиваемость (дни), годовой ROI%, СПП% средневзвеш., "
+                f"переходы в карточку, добавления в корзину, CR переход→корзина%, CR корзина→заказ%\n"
+                f"4) Ценовая стратегия и динамика СПП — таблица 4а (СПП тек/прош/Δ по каналам) "
+                f"+ таблица 4б (цена заказов vs цена продаж + прогноз)\n"
+                f"5) Сведение ΔМаржи — waterfall (выручка, себестоимость, комиссия, логистика, "
+                f"хранение, внутр.реклама, внешн.реклама, прочие, НДС, невязка)\n"
+                f"6) Разрез по маркетплейсам:\n"
+                f"  WB: объём/прибыльность + модельная декомпозиция (ВСЕ модели, с остатками МойСклад) "
+                f"+ воронка (таблицы объём + эффективность) + структура затрат (доли % от выручки) + реклама\n"
+                f"  OZON: аналогично WB\n"
+                f"  Юнит-экономика артикулов (Top/Bottom) — для недельных/месячных\n"
+                f"7) Драйверы/антидрайверы WB И OZON — расширенные таблицы "
+                f"(доля продаж, ΔМаржа, маржинальность, ΔПродажи₽, ΔЗаказы₽, ДРР, реклама)\n"
+                f"8) Гипотезы → Действия (10-колоночная таблица, отсортированы по ₽ эффекту)\n"
+                f"9) Итог (10-20 строк)\n\n"
+                f"Toggle headings (## ▶). Даты — русский формат (17 марта 2026).\n"
+                f"ЗАПРЕЩЕНО анализировать выкупы как причину изменений (лаг 3-21 день).\n"
+                f"НЕ СОКРАЩАЙ отчёт. Каждая таблица выше ОБЯЗАТЕЛЬНА.\n"
+                f"Tools: get_brand_finance, get_channel_finance (wb+ozon), get_plan_vs_fact, "
+                f"get_margin_levers, get_model_breakdown, get_advertising_stats, validate_data_quality."
             )
 
-        if request.report_type == ReportType.WEEKLY:
-            return (
-                f"Сформируй еженедельный финансовый отчёт {period}. "
-                f"Используй все доступные tools: brand_finance, channel_finance, "
-                f"model_breakdown, margin_levers, advertising_stats, daily_trend. "
-                f"Анализируй тренды и аномалии."
+        elif request.report_type == ReportType.WEEKLY:
+            task = (
+                f"Сформируй еженедельный финансовый отчёт {period}.\n"
+                f"ОБЯЗАТЕЛЬНЫЕ СЕКЦИИ (ВСЕ 10, НЕ ПРОПУСКАЙ НИ ОДНУ):\n"
+                f"0) Паспорт отчёта (период, сравнение неделя к неделе, полнота данных, лаг выкупов)\n"
+                f"1) Топ-выводы и действия (3-5 с ₽ эффектом)\n"
+                f"2) План-факт (get_plan_vs_fact — MTD, прогноз, статусы ✅⚠️❌)\n"
+                f"3) Ключевые изменения (Бренд) — ПОЛНАЯ таблица 19 строк: "
+                f"маржа, маржинальность%, продажи шт/руб, заказы шт/руб, "
+                f"реклама внутр/внешн, ДРР от заказов/продаж, ср.чек заказов/продаж, "
+                f"оборачиваемость (дни), годовой ROI%, СПП% средневзвеш., "
+                f"переходы в карточку, добавления в корзину, CR переход→корзина%, CR корзина→заказ%\n"
+                f"4) Ценовая стратегия и динамика СПП — таблица 4а (СПП тек/прош/Δ по каналам) "
+                f"+ таблица 4б (цена заказов vs цена продаж + прогноз)\n"
+                f"5) Сведение ΔМаржи — waterfall\n"
+                f"6) Разрез по маркетплейсам:\n"
+                f"  WB: объём/прибыльность + модельная декомпозиция (ВСЕ модели, с остатками МойСклад) "
+                f"+ воронка + структура затрат + реклама (итоги + детали)\n"
+                f"  OZON: аналогично WB\n"
+                f"  Юнит-экономика артикулов (Top/Bottom) — ТОП-3 и BOTTOM-3 по маржинальности\n"
+                f"7) Драйверы/антидрайверы WB И OZON — расширенные таблицы\n"
+                f"8) Гипотезы → Действия (10-колоночная таблица, отсортированы по ₽ эффекту)\n"
+                f"9) Итог (10-20 строк)\n\n"
+                f"Toggle headings (## ▶). Даты русский формат.\n"
+                f"Выкупы: анализировать с оговоркой о лаге 3-21 день.\n"
+                f"НЕ СОКРАЩАЙ отчёт. Каждая таблица выше ОБЯЗАТЕЛЬНА.\n"
+                f"Tools: все доступные включая get_plan_vs_fact, advertising_stats, "
+                f"daily_trend, get_article_economics."
             )
 
-        if request.report_type == ReportType.MONTHLY:
-            return (
-                f"Сформируй месячный финансовый отчёт {period}. "
-                f"Используй все tools включая weekly_breakdown. "
-                f"Определи лучшую и худшую недели."
+        elif request.report_type == ReportType.MONTHLY:
+            task = (
+                f"Сформируй месячный финансовый отчёт {period}.\n"
+                f"ОБЯЗАТЕЛЬНЫЕ СЕКЦИИ (ВСЕ 10, НЕ ПРОПУСКАЙ НИ ОДНУ):\n"
+                f"0) Паспорт отчёта\n"
+                f"1) Топ-выводы и действия (3-5 с ₽ эффектом)\n"
+                f"2) План-факт (итоговое выполнение — MTD = весь месяц, прогноз, статусы)\n"
+                f"3) Ключевые изменения (Бренд) — ПОЛНАЯ таблица 15 строк\n"
+                f"4) Ценовая стратегия и динамика СПП\n"
+                f"5) Сведение ΔМаржи — waterfall\n"
+                f"6) WB (объём + ВСЕ модели с МойСклад + воронка + структура затрат + реклама) "
+                f"+ OZON (аналогично) + Юнит-экономика артикулов (Top/Bottom)\n"
+                f"7) Драйверы/антидрайверы WB И OZON\n"
+                f"8) Гипотезы → Действия (10-колоночная таблица)\n"
+                f"9) Итог\n\n"
+                f"Toggle headings (## ▶). Полная оценка выполнения плана. "
+                f"Определи лучшую и худшую недели.\n"
+                f"НЕ СОКРАЩАЙ отчёт. Каждая таблица ОБЯЗАТЕЛЬНА.\n"
+                f"Tools: все включая get_plan_vs_fact, weekly_breakdown, get_article_economics."
             )
+
+        if task is not None:
+            return task + feedback_note
 
         # CUSTOM (financial)
         if request.report_type == ReportType.CUSTOM:
@@ -126,29 +202,43 @@ class ReportPipeline:
         if request.report_type == ReportType.MARKETING_DAILY:
             return (
                 f"Оперативная сводка рекламных метрик {period}. "
+                f"Toggle headings (## ▶). Даты русский формат. "
                 f"Используй get_marketing_overview, get_funnel_analysis, "
-                f"get_external_ad_breakdown (wb + ozon). "
-                f"Покажи DRR (внутр/внешн), основные аномалии vs предыдущий день."
+                f"get_external_ad_breakdown (wb + ozon), get_plan_vs_fact. "
+                f"Покажи DRR (внутр/внешн), основные аномалии vs предыдущий день. "
+                f"Сводка эффективности рекламы + рекомендации обязательны."
             )
 
         if request.report_type == ReportType.MARKETING_WEEKLY:
             return (
-                f"Еженедельный маркетинговый анализ {period}. "
-                f"Используй get_marketing_overview, get_funnel_analysis, "
-                f"get_external_ad_breakdown, get_model_ad_efficiency, "
-                f"get_organic_vs_paid (wb), get_ad_daily_trend. "
-                f"Анализируй воронку, каналы, модели, органику vs платный. "
-                f"Покажи динамику среднего чека (avg_check_order из marketing_overview) "
-                f"и его связь с ДРР и заказами с рекламы."
+                f"Еженедельный маркетинговый анализ {period}.\n"
+                f"ОБЯЗАТЕЛЬНЫЕ СЕКЦИИ (ВСЕ 10, НЕ ПРОПУСКАЙ НИ ОДНУ):\n"
+                f"1) Исполнительная сводка — таблица KPI (выручка, маржа, маржинальность, заказы, ср.чек, общий ДРР)\n"
+                f"2) Анализ по каналам — WB + OZON таблицы (выручка, маржа, заказы, ср.чек, ДРР общ/внутр/внешн, CPO)\n"
+                f"3) Анализ воронки — ASCII-визуализация (органическая WB + рекламная WB + рекламная OZON)\n"
+                f"4) Органика vs Платное — 3 таблицы: доли трафика, динамика, конверсии\n"
+                f"5) Внешняя реклама — разбивка по каналам (блогеры/VK), ДРР продаж И ДРР заказов\n"
+                f"6) Эффективность по моделям — матрица (Growth/Harvest/Optimize/Cut) + детали по топ-моделям WB и OZON\n"
+                f"7) Дневная динамика рекламы — таблица по дням (показы, клики, CTR, расход, заказы, CPO) WB и OZON\n"
+                f"8) Средний чек и связь с ДРР — таблица по каналам\n"
+                f"9) Рекомендации — срочные (до 3 дней) + оптимизация бюджета (неделя) + стратегические (месяц)\n"
+                f"10) Прогноз на следующую неделю (тренды, риски, возможности)\n\n"
+                f"Toggle headings (## ▶). Даты русский формат.\n"
+                f"НЕ СОКРАЩАЙ отчёт. Каждая секция выше ОБЯЗАТЕЛЬНА.\n"
+                f"Tools: get_marketing_overview, get_funnel_analysis, get_external_ad_breakdown, "
+                f"get_model_ad_efficiency, get_organic_vs_paid (wb), get_ad_daily_trend, "
+                f"get_plan_vs_fact, get_search_keywords."
+                + feedback_note
             )
 
         if request.report_type == ReportType.MARKETING_MONTHLY:
             return (
                 f"Глубокий маркетинговый анализ {period}. "
+                f"Toggle headings (## ▶). Даты русский формат. "
                 f"Используй ВСЕ tools: marketing_overview, funnel_analysis, "
                 f"external_ad_breakdown, model_ad_efficiency, organic_vs_paid, "
                 f"campaign_performance, ad_daily_trend, ad_budget_utilization, "
-                f"ad_spend_correlation, channel_finance, margin_levers. "
+                f"ad_spend_correlation, channel_finance, margin_levers, get_plan_vs_fact. "
                 f"Корреляции расход↔маржа по моделям, ROMI по типам рекламы, "
                 f"бюджет vs факт, понедельная динамика. Стратегические рекомендации с расчётом эффекта в ₽."
             )

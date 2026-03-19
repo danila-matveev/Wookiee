@@ -37,6 +37,7 @@ _REPORT_TYPE_MAP: dict[str, tuple[str, str]] = {
     "Анализ акций":          ("Анализ акций",          "Анализ акций"),
     "finolog_weekly":        ("Еженедельная сводка ДДС", "Сводка ДДС"),
     "funnel_weekly":         ("funnel_weekly", "Воронка WB (сводный)"),
+    "finolog_categorization": ("Категоризация операций", "Категоризация операций"),
 }
 
 
@@ -174,6 +175,39 @@ class NotionService:
             logger.error(f"Notion sync failed: {e}")
             return None
 
+    async def get_comments(self, page_id: str) -> list[dict]:
+        """Fetch all comments on a Notion page (paginated).
+
+        Returns list of {"id": ..., "text": "...", "created_time": "..."}.
+        """
+        if not self.token:
+            return []
+
+        comments: list[dict] = []
+        start_cursor = None
+        try:
+            while True:
+                endpoint = f"comments?block_id={page_id}&page_size=100"
+                if start_cursor:
+                    endpoint += f"&start_cursor={start_cursor}"
+                result = await self._request("GET", endpoint)
+                for c in result.get("results", []):
+                    # Extract plain text from rich_text array
+                    text_parts = []
+                    for rt in c.get("rich_text", []):
+                        text_parts.append(rt.get("plain_text", ""))
+                    comments.append({
+                        "id": c.get("id", ""),
+                        "text": "".join(text_parts),
+                        "created_time": c.get("created_time", ""),
+                    })
+                if not result.get("has_more"):
+                    break
+                start_cursor = result.get("next_cursor")
+        except Exception as e:
+            logger.warning(f"Failed to fetch comments for page {page_id}: {e}")
+        return comments
+
     async def add_comment(self, page_id: str, comment: str) -> None:
         """Add a comment to a Notion page."""
         if not self.token:
@@ -190,6 +224,58 @@ class NotionService:
         except Exception as e:
             logger.warning(f"Notion comment failed: {e}")
 
+    async def get_recent_feedback(self, days: int = 7) -> list[dict]:
+        """Fetch comments from report pages created in the last N days.
+
+        Returns list of {page_title, page_url, report_type, comments: [{text, created_time}]}.
+        Only returns pages that actually have comments.
+        """
+        if not self.enabled:
+            return []
+
+        from datetime import datetime, timedelta
+
+        since = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+
+        try:
+            result = await self._request("POST", f"databases/{self.database_id}/query", {
+                "filter": {
+                    "property": "Период начала",
+                    "date": {"on_or_after": since},
+                },
+                "sorts": [{"property": "Период начала", "direction": "descending"}],
+                "page_size": 20,
+            })
+        except Exception as e:
+            logger.warning(f"Failed to query recent pages: {e}")
+            return []
+
+        feedback = []
+        for page in result.get("results", []):
+            page_id = page["id"]
+            page_url = page.get("url", "")
+
+            # Extract title
+            title_prop = page.get("properties", {}).get("Name", {})
+            title_parts = title_prop.get("title", [])
+            title = "".join(t.get("plain_text", "") for t in title_parts)
+
+            # Extract report type
+            type_prop = page.get("properties", {}).get("Тип анализа", {})
+            type_select = type_prop.get("select", {})
+            report_type = type_select.get("name", "") if type_select else ""
+
+            comments = await self.get_comments(page_id)
+            if comments:
+                feedback.append({
+                    "page_title": title,
+                    "page_url": page_url,
+                    "report_type": report_type,
+                    "comments": comments,
+                })
+
+        return feedback
+
     async def _find_existing_page(self, start_date: str, end_date: str, report_type: str = None) -> Optional[dict]:
         """Find page by period dates and optionally by report type."""
         conditions = [
@@ -201,9 +287,16 @@ class NotionService:
         payload = {
             "filter": {"and": conditions}
         }
-        result = await self._request("POST", f"databases/{self.database_id}/query", payload)
-        pages = result.get("results", [])
-        return pages[0] if pages else None
+        try:
+            result = await self._request("POST", f"databases/{self.database_id}/query", payload)
+            pages = result.get("results", [])
+            return pages[0] if pages else None
+        except Exception:
+            # Select option may not exist yet — retry without report_type filter
+            if report_type:
+                logger.info(f"Notion: retrying search without report_type filter (option may not exist yet)")
+                return await self._find_existing_page(start_date, end_date, report_type=None)
+            raise
 
     async def _delete_page_content(self, page_id: str) -> None:
         """Delete all blocks from a page recursively (pagination)."""

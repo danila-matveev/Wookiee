@@ -118,6 +118,17 @@ class OlegApp:
             total_timeout_sec=config.TOTAL_TIMEOUT_SEC,
         )
 
+        from agents.oleg.agents.christina.agent import ChristinaAgent
+        christina = ChristinaAgent(
+            llm_client=llm_client,
+            model=config.ANALYTICS_MODEL,
+            pricing=config.PRICING,
+            playbook_path=config.CHRISTINA_PLAYBOOK_PATH,
+            max_iterations=config.MAX_ITERATIONS,
+            tool_timeout_sec=config.TOOL_TIMEOUT_SEC,
+            total_timeout_sec=config.TOTAL_TIMEOUT_SEC,
+        )
+
         # ── Orchestrator ────────────────────────────────────────────
 
         from agents.oleg.orchestrator.orchestrator import OlegOrchestrator
@@ -130,6 +141,7 @@ class OlegApp:
                 "quality": quality,
                 "marketer": marketer,
                 "funnel": funnel,
+                "christina": christina,
             },
             pricing=config.PRICING,
             review_model=config.REVIEW_MODEL if config.REVIEW_ENABLED else None,
@@ -347,6 +359,16 @@ class OlegApp:
                 replace_existing=True,
             )
 
+        # Notion feedback collection (daily, 1 hour before daily report)
+        feedback_h = max(daily_h - 1, 5)
+        self.scheduler.add_job(
+            self._collect_notion_feedback,
+            CronTrigger(hour=feedback_h, minute=0, timezone=tz),
+            id="notion_feedback",
+            name=f"Notion Feedback ({feedback_h:02d}:00 MSK)",
+            replace_existing=True,
+        )
+
         logger.info(
             f"Scheduler configured: daily={daily_h:02d}:{daily_m:02d}, "
             f"weekly=Mon {weekly_h:02d}:{weekly_m:02d}, "
@@ -467,10 +489,18 @@ class OlegApp:
 
         await self._send_admin_message(f"Запускаю расчёт за {yesterday}...")
 
+        # Inject team feedback from Notion comments (if collected)
+        ctx = {}
+        if self.state_store:
+            notion_fb = self.state_store.get_state("notion_feedback")
+            if notion_fb:
+                ctx["notion_feedback"] = notion_fb
+
         request = ReportRequest(
             report_type=ReportType.DAILY,
             start_date=str(yesterday),
             end_date=str(yesterday),
+            context=ctx or None,
         )
 
         try:
@@ -483,6 +513,46 @@ class OlegApp:
         except Exception as e:
             logger.error(f"Daily report failed: {e}", exc_info=True)
             await self.watchdog.on_report_failure("daily", marketplace="wb")
+
+    async def _collect_notion_feedback(self) -> None:
+        """Read comments from recent Notion report pages, store as feedback context.
+
+        Runs daily before the daily report. Comments from the team are used to
+        improve subsequent reports (appended to orchestrator context).
+        """
+        if not self.notion or not self.notion.enabled:
+            return
+
+        try:
+            feedback = await self.notion.get_recent_feedback(days=7)
+            if not feedback:
+                logger.info("Notion feedback: no comments found on recent reports")
+                return
+
+            # Flatten into a summary for the orchestrator context
+            lines = []
+            for entry in feedback:
+                for comment in entry["comments"]:
+                    text = comment["text"].strip()
+                    if not text:
+                        continue
+                    lines.append(
+                        f"[{entry['report_type']}] {entry['page_title']}: {text}"
+                    )
+
+            if not lines:
+                logger.info("Notion feedback: comments found but all empty")
+                return
+
+            # Store in state_store for the next report to pick up
+            feedback_text = "\n".join(lines[-30:])  # last 30 comments max
+            if self.state_store:
+                self.state_store.set_state("notion_feedback", feedback_text)
+
+            logger.info(f"Notion feedback: collected {len(lines)} comments from {len(feedback)} pages")
+
+        except Exception as e:
+            logger.error(f"Notion feedback collection failed: {e}", exc_info=True)
 
     async def _run_weekly_report(self) -> None:
         """Scheduled weekly report callback."""
