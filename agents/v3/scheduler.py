@@ -506,13 +506,25 @@ async def _job_price_analysis() -> None:
 # ---------------------------------------------------------------------------
 
 async def _job_anomaly_monitor() -> None:
-    """Stub: anomaly monitor — implementation in Task 9."""
-    logger.debug("anomaly_monitor: tick (stub)")
+    """Cron callback: anomaly monitor — runs every ANOMALY_MONITOR_INTERVAL_HOURS hours."""
+    from agents.v3.monitor import get_anomaly_monitor
+    monitor = get_anomaly_monitor()
+    try:
+        await monitor.check_and_alert()
+    except Exception as exc:
+        logger.exception("anomaly_monitor job failed: %s", exc)
+        await _send_admin(f"[Wookiee v3] Ошибка anomaly monitor:\n{exc}")
 
 
 async def _job_watchdog() -> None:
-    """Stub: watchdog heartbeat — implementation in Task 9."""
-    logger.debug("watchdog_heartbeat: tick (stub)")
+    """Cron callback: watchdog heartbeat — runs every WATCHDOG_HEARTBEAT_INTERVAL_HOURS hours."""
+    from agents.v3.monitor import get_watchdog
+    watchdog = get_watchdog()
+    try:
+        await watchdog.heartbeat()
+    except Exception as exc:
+        logger.exception("watchdog_heartbeat job failed: %s", exc)
+        await _send_admin(f"[Wookiee v3] Ошибка watchdog:\n{exc}")
 
 
 async def _job_promotion_scan() -> None:
