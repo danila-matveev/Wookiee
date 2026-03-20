@@ -1,0 +1,199 @@
+{
+  "version": "1.0",
+  "last_updated": "2026-03-20",
+  "notes": "Authoritative map of all MCP servers, tools, fields and update schedules. Used by data-navigator agent and Christina orchestrator.",
+  "servers": {
+    "wookiee-data": {
+      "description": "Финансовые данные WB/OZON из PostgreSQL (shared/data_layer.py)",
+      "update_schedule": "ETL daily 05:00 MSK",
+      "source_module": "agents/oleg/services/agent_tools.py",
+      "tool_count": 13,
+      "tools": {
+        "get_brand_finance": {
+          "description": "Финансовая сводка по бренду: маржа, выручка, заказы, реклама, DRR, SPP",
+          "fields": ["margin_rub", "revenue", "orders", "ad_spend", "drr", "spp_pct"],
+          "notes": "WB margin = SUM(marga) - SUM(nds) - SUM(reclama_vn); OZON margin = SUM(marga) - SUM(nds)"
+        },
+        "get_channel_finance": {
+          "description": "Финансы по каналу (WB/OZON) с разбивкой по основным метрикам",
+          "fields": ["channel", "margin_rub", "revenue", "orders"],
+          "notes": "Returns separate rows for WB and OZON"
+        },
+        "get_margin_levers": {
+          "description": "5-рычаговая декомпозиция маржи для waterfall-анализа",
+          "fields": ["price_before_spp", "spp_pct", "drr_internal", "drr_external", "logistics_per_unit", "cogs"],
+          "notes": "Per-unit values; multiply by volume to get total impact in rubles"
+        },
+        "get_daily_trend": {
+          "description": "Дневная динамика метрик за произвольный период",
+          "fields": ["date", "metric", "value"],
+          "notes": "Granularity: calendar day"
+        },
+        "get_model_breakdown": {
+          "description": "Разбивка финансовых метрик по моделям товаров",
+          "fields": ["model", "revenue", "orders", "margin"],
+          "notes": "GROUP BY LOWER(model) — обязательно!"
+        },
+        "get_weekly_breakdown": {
+          "description": "Недельная разбивка по ключевым метрикам",
+          "fields": ["week", "metric", "value"],
+          "notes": "ISO week numbers"
+        },
+        "get_plan_vs_fact": {
+          "description": "План-факт MTD по основным метрикам",
+          "fields": ["metric", "plan", "fact", "delta_pct"],
+          "notes": "MTD = month-to-date; plan loaded from plan tables"
+        },
+        "get_orders_by_model": {
+          "description": "Заказы и выручка по моделям товаров",
+          "fields": ["model", "orders", "revenue"],
+          "notes": "GROUP BY LOWER(model) — обязательно!"
+        },
+        "get_advertising_stats": {
+          "description": "Рекламная статистика с воронкой: показы → клики → корзина → заказы",
+          "fields": ["ad_spend", "orders_from_ads", "drr", "card_opens", "add_to_cart", "ctr_pct", "conv_order_pct"],
+          "notes": "OZON has no add_to_cart step in funnel"
+        },
+        "get_model_advertising": {
+          "description": "Рекламные затраты и эффективность по моделям",
+          "fields": ["model", "ad_spend", "drr", "cpo"],
+          "notes": "GROUP BY LOWER(model) — обязательно! CPO = cost per order"
+        },
+        "get_product_statuses": {
+          "description": "Статусы товаров на складах (наличие, стопы, остатки)",
+          "fields": ["sku", "status", "stock"],
+          "notes": "Refreshed daily from marketplace APIs"
+        },
+        "validate_data_quality": {
+          "description": "Проверка качества данных: полнота, аномалии, пропуски",
+          "fields": ["checks", "issues"],
+          "notes": "Run before any critical analysis"
+        },
+        "calculate_metric": {
+          "description": "Расчёт произвольной агрегированной метрики по заданным параметрам",
+          "fields": ["metric", "value"],
+          "notes": "Use weighted averages for all percentage metrics (DRR, SPP, margins)"
+        }
+      }
+    },
+    "wookiee-price": {
+      "description": "Ценовая аналитика и оптимизация (services/price_analysis/)",
+      "update_schedule": "On demand (uses wookiee-data underneath)",
+      "source_module": "agents/oleg/services/price_tools.py",
+      "tool_count": 22,
+      "tools": {
+        "get_price_elasticity": {
+          "description": "Ценовая эластичность спроса по модели",
+          "fields": ["model", "elasticity_coefficient", "price_range", "confidence"],
+          "notes": "Requires sufficient sales history (>30 days)"
+        },
+        "get_price_recommendation": {
+          "description": "Оптимальная рекомендация по цене с обоснованием",
+          "fields": ["model", "current_price", "recommended_price", "expected_revenue_delta", "expected_margin_delta"],
+          "notes": "Accounts for SPP, commissions and logistics in calculation"
+        },
+        "simulate_price_change": {
+          "description": "Симуляция влияния изменения цены на выручку и маржу",
+          "fields": ["model", "new_price", "simulated_orders", "simulated_revenue", "simulated_margin"],
+          "notes": "Monte Carlo simulation; outputs 10th/50th/90th percentile scenarios"
+        },
+        "optimize_price_for_roi": {
+          "description": "Нахождение цены, максимизирующей ROI при заданных ограничениях",
+          "fields": ["model", "optimal_price", "expected_roi", "constraints_satisfied"],
+          "notes": "Constraints: min_margin_pct, max_drr_pct"
+        },
+        "get_deep_elasticity_analysis": {
+          "description": "Расширенный анализ эластичности с сегментацией и историческими данными",
+          "fields": ["model", "segments", "elasticity_by_price_band", "seasonal_adjustments"],
+          "notes": "Heavy query; cache results if calling repeatedly"
+        }
+      }
+    },
+    "wookiee-marketing": {
+      "description": "Маркетинг + воронка (marketing_tools + funnel_tools)",
+      "update_schedule": "ETL daily 05:00 MSK",
+      "source_module": "agents/oleg/services/marketing_tools.py + funnel_tools.py",
+      "tool_count": 23,
+      "tools": {
+        "get_marketing_overview": {
+          "description": "Маркетинговый обзор: расходы, ROI, CPO по каналам",
+          "fields": ["channel", "ad_spend", "roi", "cpo", "orders_from_ads"],
+          "notes": "Aggregates both internal and external advertising"
+        },
+        "get_funnel_analysis": {
+          "description": "Полная воронка: показы → клики → корзина → заказы → выкупы",
+          "fields": ["impressions", "clicks", "add_to_cart", "orders", "buyouts", "ctr_pct", "conv_to_order_pct", "buyout_rate_pct"],
+          "notes": "WB: 5 steps; OZON: 4 steps (no add_to_cart). Buyout lag 3-21 days"
+        },
+        "get_organic_vs_paid": {
+          "description": "Соотношение органического и платного трафика по каналам",
+          "fields": ["channel", "organic_orders", "paid_orders", "organic_pct", "paid_pct"],
+          "notes": "Organic = orders with no ad attribution"
+        },
+        "get_campaign_performance": {
+          "description": "Эффективность отдельных рекламных кампаний",
+          "fields": ["campaign_id", "campaign_name", "ad_spend", "orders", "drr", "cpo", "roas"],
+          "notes": "Available for internal (auto/search) campaigns only"
+        },
+        "get_ad_daily_trend": {
+          "description": "Дневная динамика рекламных расходов и эффективности",
+          "fields": ["date", "channel", "ad_spend", "orders", "drr"],
+          "notes": "Useful for spotting budget spikes or campaign pauses"
+        },
+        "get_ad_budget_utilization": {
+          "description": "Процент освоения рекламного бюджета за период",
+          "fields": ["channel", "budget_allocated", "budget_spent", "utilization_pct"],
+          "notes": "Under-utilisation <80% or over-spend >105% triggers alert"
+        }
+      }
+    },
+    "wookiee-kb": {
+      "description": "База знаний (Supabase pgvector, Gemini Embedding 2)",
+      "update_schedule": "Manual + auto-ingest from agents",
+      "source_module": "services/knowledge_base/tools.py",
+      "tool_count": 8,
+      "tools": {
+        "search_knowledge_base": {
+          "description": "Семантический поиск по KB с ранжированием по косинусному сходству",
+          "fields": ["id", "module", "file", "title", "content", "relevance_score", "created_at"],
+          "notes": "Threshold 0.3 for any results; threshold 0.5 for high-confidence results"
+        },
+        "add_knowledge": {
+          "description": "Добавить новую запись в KB с автоматической векторизацией",
+          "fields": ["id", "module", "file", "title", "content", "created_at"],
+          "notes": "Embedding generated automatically via Gemini Embedding 2"
+        },
+        "update_knowledge": {
+          "description": "Обновить содержимое существующей записи KB (re-embed)",
+          "fields": ["id", "updated_at"],
+          "notes": "Triggers re-embedding; original creation date preserved"
+        },
+        "delete_knowledge": {
+          "description": "Удалить запись KB по ID (необратимо)",
+          "fields": ["id", "deleted"],
+          "notes": "Irreversible — confirm ID before calling"
+        },
+        "list_knowledge_modules": {
+          "description": "Список всех модулей KB с количеством записей",
+          "fields": ["module", "entry_count", "verified_count", "last_updated"],
+          "notes": "Use for audit and navigation"
+        },
+        "list_knowledge_files": {
+          "description": "Список файлов в указанном модуле KB",
+          "fields": ["file", "entry_count", "last_updated"],
+          "notes": "Filter by module parameter"
+        },
+        "get_kb_stats": {
+          "description": "Общая статистика KB: количество записей, свежесть, покрытие",
+          "fields": ["total_entries", "verified_entries", "stale_entries", "modules_count"],
+          "notes": "Stale = not updated in >90 days"
+        },
+        "verify_knowledge": {
+          "description": "Пометить запись как проверенную (verified=true)",
+          "fields": ["id", "verified", "verified_at"],
+          "notes": "Only mark entries verified when content comes from a trusted primary source"
+        }
+      }
+    }
+  }
+}
