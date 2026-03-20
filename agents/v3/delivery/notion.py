@@ -223,11 +223,30 @@ class NotionDelivery:
                 feedback.append({
                     "page_title": title,
                     "page_url": page_url,
+                    "page_id": page_id,
                     "report_type": rtype,
                     "comments": comments,
                 })
 
         return feedback
+
+    async def add_comment(self, page_id: str, text: str) -> None:
+        """Post a comment on a Notion page.
+
+        Args:
+            page_id: The Notion page ID to comment on.
+            text: Comment text (truncated to 2000 chars).
+        """
+        if not self.enabled:
+            return
+        payload = {
+            "parent": {"page_id": page_id},
+            "rich_text": [{"type": "text", "text": {"content": text[:2000]}}],
+        }
+        try:
+            await self._request("POST", "comments", payload)
+        except Exception as e:
+            logger.warning("Failed to add comment to %s: %s", page_id, e)
 
     # ------------------------------------------------------------------
     # Internal helpers

@@ -2289,6 +2289,121 @@ MAX_TURNOVER_DAYS = 365  # Cap: свыше 1 года = мёртвый сток
 MIN_DAILY_SALES = 0.05  # < 1 продажи за 20 дней = недостаточно данных
 
 
+def get_wb_sales_trend_by_model(start_date: str, end_date: str) -> dict:
+    """Тренд продаж WB по моделям: сравнение первой и второй половины периода.
+
+    Returns: {model: {'first_half_daily': float, 'second_half_daily': float,
+                      'growth_pct': float, 'trend': 'growth'|'decline'|'stable'}}
+    """
+    conn = _get_wb_connection()
+    cur = conn.cursor()
+    query = """
+    WITH period AS (
+        SELECT %s::date as s, %s::date as e,
+               %s::date + ((%s::date - %s::date) / 2) as mid
+    ),
+    weekly AS (
+        SELECT
+            LOWER(SPLIT_PART(article, '/', 1)) as model,
+            CASE WHEN date < (SELECT mid FROM period) THEN 'first' ELSE 'second' END as half,
+            SUM(full_counts) as sales,
+            COUNT(DISTINCT date) as days
+        FROM abc_date, period
+        WHERE date >= period.s AND date < period.e
+          AND article IS NOT NULL AND article != ''
+        GROUP BY 1, 2
+    )
+    SELECT model, half, sales, days
+    FROM weekly
+    WHERE days > 0
+    ORDER BY model, half;
+    """
+    cur.execute(query, (start_date, end_date, start_date, end_date, start_date))
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    from collections import defaultdict
+    from shared.model_mapping import map_to_osnova
+    raw = defaultdict(dict)
+    for model, half, sales, days in rows:
+        mapped = map_to_osnova(model)
+        raw[mapped][half] = {'sales': to_float(sales) + raw[mapped].get(half, {}).get('sales', 0),
+                             'days': max(int(days), raw[mapped].get(half, {}).get('days', 0))}
+
+    result = {}
+    for model, halves in raw.items():
+        first = halves.get('first', {})
+        second = halves.get('second', {})
+        d1 = first.get('sales', 0) / max(first.get('days', 1), 1)
+        d2 = second.get('sales', 0) / max(second.get('days', 1), 1)
+        growth = ((d2 - d1) / d1 * 100) if d1 > 0 else (100.0 if d2 > 0 else 0)
+        trend = 'growth' if growth > 15 else ('decline' if growth < -15 else 'stable')
+        result[model] = {
+            'first_half_daily': round(d1, 2),
+            'second_half_daily': round(d2, 2),
+            'growth_pct': round(growth, 1),
+            'trend': trend,
+        }
+    return result
+
+
+def get_ozon_sales_trend_by_model(start_date: str, end_date: str) -> dict:
+    """Тренд продаж OZON по моделям: сравнение первой и второй половины периода."""
+    conn = _get_ozon_connection()
+    cur = conn.cursor()
+    # OZON abc_date использует count_end (не full_counts как WB)
+    query = """
+    WITH period AS (
+        SELECT %s::date as s, %s::date as e,
+               %s::date + ((%s::date - %s::date) / 2) as mid
+    ),
+    weekly AS (
+        SELECT
+            LOWER(SPLIT_PART(article, '/', 1)) as model,
+            CASE WHEN date < (SELECT mid FROM period) THEN 'first' ELSE 'second' END as half,
+            SUM(count_end) as sales,
+            COUNT(DISTINCT date) as days
+        FROM abc_date, period
+        WHERE date >= period.s AND date < period.e
+          AND article IS NOT NULL AND article != ''
+        GROUP BY 1, 2
+    )
+    SELECT model, half, sales, days
+    FROM weekly
+    WHERE days > 0
+    ORDER BY model, half;
+    """
+    cur.execute(query, (start_date, end_date, start_date, end_date, start_date))
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    from collections import defaultdict
+    from shared.model_mapping import map_to_osnova
+    raw = defaultdict(dict)
+    for model, half, sales, days in rows:
+        mapped = map_to_osnova(model)
+        raw[mapped][half] = {'sales': to_float(sales) + raw[mapped].get(half, {}).get('sales', 0),
+                             'days': max(int(days), raw[mapped].get(half, {}).get('days', 0))}
+
+    result = {}
+    for model, halves in raw.items():
+        first = halves.get('first', {})
+        second = halves.get('second', {})
+        d1 = first.get('sales', 0) / max(first.get('days', 1), 1)
+        d2 = second.get('sales', 0) / max(second.get('days', 1), 1)
+        growth = ((d2 - d1) / d1 * 100) if d1 > 0 else (100.0 if d2 > 0 else 0)
+        trend = 'growth' if growth > 15 else ('decline' if growth < -15 else 'stable')
+        result[model] = {
+            'first_half_daily': round(d1, 2),
+            'second_half_daily': round(d2, 2),
+            'growth_pct': round(growth, 1),
+            'trend': trend,
+        }
+    return result
+
+
 def _get_days_in_stock_by_model(channel: str, start_date: str, end_date: str) -> dict:
     """Количество дней наличия товара на складе МП, по моделям.
 

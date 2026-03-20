@@ -37,7 +37,7 @@ DB_NAME_WB = DB_WB    # alias for backward compatibility
 DB_NAME_OZON = DB_OZON  # alias for backward compatibility
 
 # ============================================================================
-# Marketplace ETL Database (managed, Ибрагим)
+# Marketplace ETL Database (managed, services/marketplace_etl)
 # ============================================================================
 MARKETPLACE_DB_HOST: str = os.getenv('MARKETPLACE_DB_HOST', '')
 MARKETPLACE_DB_PORT: int = int(os.getenv('MARKETPLACE_DB_PORT', '5432'))

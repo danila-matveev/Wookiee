@@ -16,7 +16,7 @@
 | Компонент | Статус | Документация |
 |---|---|---|
 | Олег (финансовый AI-агент) | Активен | [agents/telegram-bot.md](agents/telegram-bot.md) |
-| Ибрагим (ETL/DB) | Активен | [agents/ibrahim.md](agents/ibrahim.md) |
+| ETL Pipeline (services/etl) | Активен | [agents/ibrahim.md](agents/ibrahim.md) |
 | WB localization service | Активен | [agents/mp-localization.md](agents/mp-localization.md) |
 | Analytics Engine | Активен | [agents/analytics-engine.md](agents/analytics-engine.md) |
 
@@ -39,6 +39,18 @@
 | [database/DATABASE_REFERENCE.md](database/DATABASE_REFERENCE.md) | Legacy reference |
 | [database/DATABASE_WORKPLAN.md](database/DATABASE_WORKPLAN.md) | План работ по БД |
 | [database/DATA_QUALITY_NOTES.md](database/DATA_QUALITY_NOTES.md) | Ноты по качеству данных |
+
+## Interactive Workflows
+
+Интерактивные визуальные диаграммы архитектуры. Открывай в браузере — zoom, pan, dark mode, click-to-detail.
+
+| Диаграмма | Тип | Файл |
+|---|---|---|
+| Oleg Report Pipeline | Agent Pipeline | [workflows/oleg-report-pipeline.html](workflows/oleg-report-pipeline.html) |
+| ETL Data Flow | ETL Flow | [workflows/ibrahim-etl-flow.html](workflows/ibrahim-etl-flow.html) |
+| System Architecture | System Overview | [workflows/system-architecture.html](workflows/system-architecture.html) |
+
+Генерация: `/workflow-diagram <описание>` или автоматически при проектировании задач с логической цепочкой.
 
 ## Plans
 
