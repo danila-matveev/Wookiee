@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Как работает Wookiee v3 — Wookiee Workflow</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #fafbfc;
+            --bg-toolbar: #ffffff;
+            --text: #1a1a2e;
+            --text-muted: #6b7280;
+            --border: #e5e7eb;
+            --accent: #3b82f6;
+            --sidebar-bg: #ffffff;
+            --shadow: 0 1px 3px rgba(0,0,0,0.08);
+            --shadow-lg: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        [data-theme="dark"] {
+            --bg: #0f172a;
+            --bg-toolbar: #1e293b;
+            --text: #e2e8f0;
+            --text-muted: #94a3b8;
+            --border: #334155;
+            --accent: #60a5fa;
+            --sidebar-bg: #1e293b;
+            --shadow: 0 1px 3px rgba(0,0,0,0.3);
+            --shadow-lg: 0 4px 12px rgba(0,0,0,0.4);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .toolbar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 20px;
+            background: var(--bg-toolbar);
+            border-bottom: 1px solid var(--border);
+            box-shadow: var(--shadow);
+            z-index: 100;
+            flex-shrink: 0;
+        }
+        .toolbar h1 { font-size: 16px; font-weight: 600; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .toolbar .badge { font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 9999px; background: var(--accent); color: white; white-space: nowrap; }
+        .btn-group { display: flex; gap: 4px; background: var(--bg); border-radius: 8px; padding: 3px; }
+        .btn { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border: none; border-radius: 6px; background: transparent; color: var(--text); cursor: pointer; font-size: 16px; transition: background 0.15s; }
+        .btn:hover { background: var(--border); }
+        .btn-text { width: auto; padding: 0 10px; font-size: 12px; font-weight: 500; font-family: inherit; }
+        .main { flex: 1; display: flex; overflow: hidden; position: relative; }
+        .diagram-viewport { flex: 1; overflow: hidden; cursor: grab; position: relative; }
+        .diagram-viewport:active { cursor: grabbing; }
+        .diagram-canvas { transform-origin: 0 0; transition: transform 0.08s ease-out; padding: 40px; display: inline-block; min-width: 100%; min-height: 100%; }
+        .sidebar { width: 320px; background: var(--sidebar-bg); border-left: 1px solid var(--border); box-shadow: var(--shadow-lg); padding: 20px; overflow-y: auto; transform: translateX(100%); transition: transform 0.25s ease; position: absolute; right: 0; top: 0; bottom: 0; z-index: 50; }
+        .sidebar.open { transform: translateX(0); }
+        .sidebar h2 { font-size: 14px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; }
+        .sidebar .close-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 18px; padding: 4px; }
+        .sidebar .detail-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-top: 16px; margin-bottom: 4px; }
+        .sidebar .detail-value { font-size: 13px; line-height: 1.5; color: var(--text); }
+        .zoom-indicator { position: absolute; bottom: 16px; left: 16px; font-size: 12px; color: var(--text-muted); background: var(--bg-toolbar); padding: 4px 10px; border-radius: 6px; box-shadow: var(--shadow); z-index: 10; }
+        .mermaid { font-family: 'Inter', sans-serif !important; }
+        .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(80px); background: var(--text); color: var(--bg); padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; transition: transform 0.3s ease; z-index: 200; }
+        .toast.show { transform: translateX(-50%) translateY(0); }
+        @media (max-width: 768px) { .toolbar h1 { font-size: 14px; } .sidebar { width: 100%; } }
+    </style>
+</head>
+<body>
+    <div class="toolbar">
+        <h1>Как работает Wookiee v3</h1>
+        <span class="badge">Общая архитектура</span>
+        <div class="btn-group">
+            <button class="btn" onclick="zoomIn()" title="Zoom in">+</button>
+            <button class="btn" onclick="zoomOut()" title="Zoom out">-</button>
+            <button class="btn" onclick="zoomReset()" title="Fit to screen">&#x229E;</button>
+        </div>
+        <button class="btn btn-text" onclick="toggleTheme()" id="themeBtn">&#x1F319;</button>
+        <button class="btn btn-text" onclick="copySVG()">&#x1F4CB; SVG</button>
+    </div>
+
+    <div class="main">
+        <div class="diagram-viewport" id="viewport">
+            <div class="diagram-canvas" id="canvas">
+                <pre class="mermaid">
+flowchart TD
+    classDef agent fill:#dbeafe,stroke:#3b82f6,stroke-width:2px,color:#1e3a5f
+    classDef database fill:#dcfce7,stroke:#22c55e,stroke-width:2px,color:#14532d
+    classDef api fill:#ffedd5,stroke:#f97316,stroke-width:2px,color:#7c2d12
+    classDef gate fill:#fef3c7,stroke:#f59e0b,stroke-width:2px,color:#78350f
+    classDef output fill:#f3e8ff,stroke:#a855f7,stroke-width:2px,color:#581c87
+    classDef process fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0c4a6e
+    classDef error fill:#fee2e2,stroke:#ef4444,stroke-width:2px,color:#991b1b
+
+    subgraph SCHED["&#x23F0; Расписание"]
+        S1["Ежедневный отчёт<br/>каждый день 09:00"]:::process
+        S2["Недельный + маркетинг + воронка<br/>понедельник 10:15-12:00"]:::process
+        S3["Месячные отчёты<br/>1-й понедельник месяца"]:::process
+        S4["Финолог ДДС<br/>пятница 18:00"]:::process
+        S5["Дежурный контроль<br/>каждые 4-6 часов"]:::process
+    end
+
+    subgraph GATES["&#x1F6A6; Проверка данных"]
+        G1{"Данные свежие?<br/>ETL обновился сегодня"}:::gate
+        G2{"Объём в норме?<br/>Заказы, выручка, логистика"}:::gate
+    end
+
+    subgraph AGENTS["&#x1F916; Команда аналитиков (22 специалиста)"]
+        direction LR
+        subgraph FIN["&#x1F4CA; Финансы"]
+            A1["Анализ маржи"]:::agent
+            A2["Разбор выручки"]:::agent
+            A3["Эффективность рекламы"]:::agent
+        end
+        subgraph MKT["&#x1F4E3; Маркетинг"]
+            A4["Оптимизатор кампаний"]:::agent
+            A5["Органика vs реклама"]:::agent
+        end
+        subgraph FNL["&#x1F50D; Воронка"]
+            A6["Оцифровка воронки"]:::agent
+            A7["Анализ ключевых слов"]:::agent
+        end
+        subgraph PRC["&#x1F4B0; Цены"]
+            A8["Ценовой стратег"]:::agent
+            A9["Проверка гипотез"]:::agent
+        end
+        A10["Финолог-аналитик"]:::agent
+        A11["Детектор аномалий"]:::agent
+    end
+
+    COMPILER["Сборщик отчёта<br/>объединяет результаты всех аналитиков"]:::process
+
+    subgraph TOOLS["&#x1F527; Инструменты (89 штук)"]
+        T1[("Данные WB и OZON<br/>35 запросов к базе")]:::database
+        T2[("Ценовой анализ<br/>22 инструмента")]:::database
+        T3[("Маркетинг и воронка<br/>23 инструмента")]:::database
+        T4[("База знаний<br/>9 инструментов")]:::database
+    end
+
+    subgraph DELIVERY["&#x1F4EC; Доставка результатов"]
+        D1["&#x1F4F1; Telegram<br/>краткая сводка"]:::output
+        D2["&#x1F4D3; Notion<br/>подробный отчёт"]:::output
+    end
+
+    RETRY["&#x1F504; Повторная попытка<br/>через 30 мин, до 3 раз"]:::error
+    MONITOR["&#x1F6E1; Мониторинг<br/>watchdog + circuit breaker"]:::process
+
+    S1 --> G1
+    S2 --> G1
+    S3 --> G1
+    S4 --> A10
+    S5 --> A11
+    S5 --> MONITOR
+
+    G1 -->|"&#x2705; свежие"| G2
+    G1 -->|"&#x274C; устарели"| RETRY
+    G2 -->|"&#x2705; всё в норме"| AGENTS
+    G2 -->|"&#x26A0;&#xFE0F; есть замечания"| AGENTS
+
+    RETRY -->|"повтор"| G1
+
+    A1 --> COMPILER
+    A2 --> COMPILER
+    A3 --> COMPILER
+    A4 --> COMPILER
+    A5 --> COMPILER
+    A6 --> COMPILER
+    A7 --> COMPILER
+    A8 --> COMPILER
+    A9 --> COMPILER
+    A10 --> COMPILER
+    A11 -->|"&#x1F6A8; аномалия"| D1
+
+    FIN -.->|"запрашивают данные"| T1
+    MKT -.->|"запрашивают данные"| T3
+    FNL -.->|"запрашивают данные"| T3
+    PRC -.->|"запрашивают данные"| T2
+    A10 -.->|"запрашивает данные"| T1
+    AGENTS -.->|"консультируется"| T4
+
+    COMPILER -->|"готовый отчёт"| D1
+    COMPILER -->|"готовый отчёт"| D2
+
+    MONITOR -.->|"проблема"| D1
+                </pre>
+            </div>
+        </div>
+        <div class="sidebar" id="sidebar">
+            <h2>
+                <span id="sidebarTitle">Node Details</span>
+                <button class="close-btn" onclick="closeSidebar()">&#x2715;</button>
+            </h2>
+            <div id="sidebarContent"></div>
+        </div>
+        <div class="zoom-indicator" id="zoomLevel">100%</div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+    <script>
+        window.nodeDetails = {
+  "S1": {
+    "name": "Ежедневный отчёт",
+    "type": "Автоматический запуск",
+    "description": "Каждое утро в 09:00 по Москве система автоматически запускает расчёт за вчерашний день. Сравнивает с позавчерашним днём, чтобы увидеть динамику.",
+    "notes": "Если данные не готовы — система подождёт и попробует ещё 3 раза с интервалом 30 минут. Также есть почасовая проверка с 6 до 12 утра, которая запустит отчёт сразу, как появятся данные."
+  },
+  "S2": {
+    "name": "Недельные отчёты (понедельник)",
+    "type": "Пакет отчётов",
+    "description": "Каждый понедельник запускаются параллельно: финансовый недельный (10:15), маркетинговый (11:15) и отчёт по воронке продаж (12:00). Каждый сравнивается с предыдущей неделей.",
+    "notes": "Маркетинг и воронка запускаются одновременно, чтобы не тратить лишнее время."
+  },
+  "S3": {
+    "name": "Месячные отчёты",
+    "type": "Автоматический запуск",
+    "description": "В первый понедельник каждого месяца: финансовый месячный (10:30), маркетинговый месячный (11:30) и ценовой анализ (11:00 1-го числа). Сравнение с аналогичным месяцем прошлого года.",
+    "notes": "Ценовой анализ использует двух специалистов — ценового стратега и проверщика гипотез."
+  },
+  "S4": {
+    "name": "Финолог ДДС",
+    "type": "Еженедельный запуск",
+    "description": "Каждую пятницу в 18:00 — отчёт по движению денежных средств через Финолог. Показывает приход, расход и кассовый разрыв за неделю.",
+    "notes": "Запускается только если настроен ключ Финолога. Не требует проверки данных маркетплейсов."
+  },
+  "S5": {
+    "name": "Дежурный контроль",
+    "type": "Фоновый мониторинг",
+    "description": "Каждые 4 часа — детектор аномалий проверяет, нет ли резких изменений в выручке, марже или рекламных расходах. Каждые 6 часов — watchdog проверяет, что все системы живы.",
+    "notes": "Если детектор находит аномалию — мгновенное уведомление в Telegram. Watchdog проверяет доступность базы данных и нейросетей."
+  },
+  "G1": {
+    "name": "Свежесть данных",
+    "type": "Жёсткая проверка",
+    "description": "Первая линия защиты: система проверяет, обновились ли данные в базе за сегодня. Если ETL-процесс не отработал, отчёт строить бессмысленно — цифры будут неполными.",
+    "notes": "Проверяется отдельно для Wildberries и OZON. Если хотя бы один маркетплейс не обновился — отчёт ждёт."
+  },
+  "G2": {
+    "name": "Объём данных",
+    "type": "Мягкая проверка",
+    "description": "Вторая линия: проверяет, что количество заказов, выручка и логистика на адекватном уровне (не менее 70% от среднего за неделю). Если маржинальность заполнена менее чем на 50% — тоже предупреждение.",
+    "notes": "Мягкие проверки НЕ блокируют отчёт, но добавляют предупреждение: 'Данные могут быть неполными'. Это видно и в Telegram, и в Notion."
+  },
+  "A1": {
+    "name": "Анализ маржи",
+    "type": "Аналитик",
+    "description": "Разбирает маржинальность по товарам: где маржа выросла, где упала, какие SKU тянут вниз. Ищет причины изменений — цена, логистика, комиссия.",
+    "notes": "Использует 35 инструментов для работы с базами WB и OZON. Перед выводами обязательно консультируется с базой знаний."
+  },
+  "A2": {
+    "name": "Разбор выручки",
+    "type": "Аналитик",
+    "description": "Декомпозирует выручку: что изменилось — количество заказов, средний чек, или и то и другое. Находит топ-3 драйвера роста и топ-3 причины падения.",
+    "notes": "Работает параллельно с анализом маржи и рекламы — каждый считает своё, потом сборщик объединяет."
+  },
+  "A3": {
+    "name": "Эффективность рекламы",
+    "type": "Аналитик",
+    "description": "Считает ДРР (долю рекламных расходов), ROAS, CPO по каждой кампании. Показывает, какие кампании приносят прибыль, а какие сливают бюджет.",
+    "notes": "Используется и в финансовом, и в маркетинговом отчёте."
+  },
+  "A4": {
+    "name": "Оптимизатор кампаний",
+    "type": "Маркетолог",
+    "description": "Анализирует все рекламные кампании: бюджеты, ставки, позиции. Находит кампании с потенциалом для масштабирования и те, которые стоит остановить.",
+    "notes": "Работает с инструментами маркетинга — 23 запроса к данным по кампаниям, ключевым словам, ставкам."
+  },
+  "A5": {
+    "name": "Органика vs реклама",
+    "type": "Маркетолог",
+    "description": "Сравнивает долю заказов из органической выдачи с рекламной. Показывает, не переплачиваем ли мы за трафик, который и так пришёл бы бесплатно.",
+    "notes": "Ключевой показатель — если органика растёт, можно снижать рекламные расходы."
+  },
+  "A6": {
+    "name": "Оцифровка воронки",
+    "type": "Аналитик воронки",
+    "description": "Строит полную воронку: показы → клики → корзина → заказ → выкуп. Находит этапы с наибольшим отвалом и сравнивает конверсии с прошлой неделей.",
+    "notes": "Воронка строится отдельно по каждому маркетплейсу — у WB и OZON разные этапы."
+  },
+  "A7": {
+    "name": "Анализ ключевых слов",
+    "type": "Аналитик воронки",
+    "description": "Проверяет позиции по ключевым запросам, находит новые высокочастотные запросы, по которым мы не продвигаемся. Показывает потенциал роста трафика.",
+    "notes": "Работает в паре с оцифровкой воронки — данные объединяются в сборщике."
+  },
+  "A8": {
+    "name": "Ценовой стратег",
+    "type": "Аналитик цен",
+    "description": "Анализирует ценовую позицию относительно конкурентов. Моделирует, как изменение цены повлияет на продажи. Строит price-demand кривые.",
+    "notes": "Использует 22 инструмента ценового анализа: регрессии, тесты гипотез, ROI-калькулятор."
+  },
+  "A9": {
+    "name": "Проверка гипотез",
+    "type": "Аналитик цен",
+    "description": "Берёт гипотезы ценового стратега и проверяет их на исторических данных. Например: 'снижение цены на 5% даст +12% заказов' — правда ли это было раньше?",
+    "notes": "Без подтверждения гипотез данными — рекомендации в отчёт не попадут."
+  },
+  "A10": {
+    "name": "Финолог-аналитик",
+    "type": "Финансовый аналитик",
+    "description": "Строит отчёт по движению денежных средств: приход, расход, сальдо. Предупреждает о кассовых разрывах, если они ожидаются в ближайшие дни.",
+    "notes": "Получает данные напрямую из Финолога. Порог кассового разрыва — 1 000 000 руб."
+  },
+  "A11": {
+    "name": "Детектор аномалий",
+    "type": "Дежурный",
+    "description": "Сравнивает текущие показатели с нормой: выручка ±20%, маржа ±10%, ДРР >30%, заказы -25%. Если что-то выходит за рамки — немедленно сигнализирует.",
+    "notes": "На выходных пороги мягче (множитель 1.5x), потому что выходные данные всегда отличаются от будней."
+  },
+  "COMPILER": {
+    "name": "Сборщик отчёта",
+    "type": "Компилятор",
+    "description": "Получает результаты от всех аналитиков и собирает единый отчёт: краткую сводку для Telegram (самое важное на 1 экран) и подробный отчёт для Notion (с таблицами, графиками, рекомендациями).",
+    "notes": "Если какой-то аналитик не смог отработать — сборщик всё равно создаст отчёт из того, что есть (graceful degradation)."
+  },
+  "T1": {
+    "name": "База WB и OZON",
+    "type": "Источник данных",
+    "description": "Внешняя база данных с продажами, заказами, логистикой, возвратами и рекламными расходами по Wildberries и OZON. Обновляется ежедневно подрядчиком.",
+    "notes": "Только чтение. 35 разных запросов: от общей выручки до детализации по SKU и дням."
+  },
+  "T2": {
+    "name": "Ценовые инструменты",
+    "type": "Аналитический модуль",
+    "description": "22 инструмента для глубокого ценового анализа: сравнение с конкурентами, расчёт эластичности спроса, моделирование ROI от изменения цены.",
+    "notes": "Включает регрессионный анализ, A/B-тестирование цен и генерацию ценовых планов."
+  },
+  "T3": {
+    "name": "Маркетинг и воронка",
+    "type": "Аналитический модуль",
+    "description": "23 инструмента для анализа рекламных кампаний, ключевых слов, позиций в поиске, конверсий воронки. Работают с данными WB и OZON.",
+    "notes": "15 инструментов для кампаний + 8 для воронки продаж."
+  },
+  "T4": {
+    "name": "База знаний",
+    "type": "Справочник",
+    "description": "Векторная база знаний с курсами, шаблонами, примерами из опыта. Аналитики обращаются сюда перед формированием рекомендаций — чтобы советы были обоснованными.",
+    "notes": "9 инструментов: поиск по знаниям, обновление, аудит актуальности. Работает на Gemini Embedding + pgvector."
+  },
+  "D1": {
+    "name": "Telegram",
+    "type": "Канал доставки",
+    "description": "Краткая сводка на 1 экран телефона: ключевые цифры, что изменилось, на что обратить внимание. Со ссылкой на подробный отчёт в Notion.",
+    "notes": "Если сообщение длиннее 4000 символов — автоматически разбивается на части. Формат — HTML с жирным, курсивом, ссылками."
+  },
+  "D2": {
+    "name": "Notion",
+    "type": "Канал доставки",
+    "description": "Подробный отчёт в Notion: таблицы, секции по каждому направлению, рекомендации с обоснованием из базы знаний. Сохраняется как страница в аналитической базе.",
+    "notes": "Если за эту дату и тип отчёт уже есть — перезаписывается (upsert). Статус: 'Актуальный', источник: 'Oleg v3 (auto)'."
+  },
+  "RETRY": {
+    "name": "Повторная попытка",
+    "type": "Механизм надёжности",
+    "description": "Если данные не готовы — система не сдаётся сразу. Она подождёт 30 минут и попробует ещё раз. Всего 3 попытки. На каждой попытке — уведомление в Telegram.",
+    "notes": "Если все 3 попытки провалились — ставится флаг 'ждём данных'. Почасовая проверка (6-12 MSK) подхватит и запустит отчёт, как только данные появятся."
+  },
+  "MONITOR": {
+    "name": "Мониторинг системы",
+    "type": "Страховка",
+    "description": "Watchdog проверяет здоровье: доступна ли нейросеть, работает ли база данных, когда был последний успешный отчёт. Circuit breaker отключает сломанные компоненты, чтобы не ломать всё остальное.",
+    "notes": "Circuit breaker: 3 подряд ошибки → компонент выключается на 5 минут. Watchdog: если база или нейросеть недоступны — алерт в Telegram."
+  }
+};
+
+        const lightTheme = {
+            theme: 'base',
+            themeVariables: {
+                primaryColor: '#dbeafe', primaryBorderColor: '#3b82f6', primaryTextColor: '#1e3a5f',
+                secondaryColor: '#dcfce7', secondaryBorderColor: '#22c55e', secondaryTextColor: '#14532d',
+                tertiaryColor: '#fef3c7', tertiaryBorderColor: '#f59e0b', tertiaryTextColor: '#78350f',
+                lineColor: '#64748b', textColor: '#1a1a2e', mainBkg: '#dbeafe', nodeBorder: '#3b82f6',
+                clusterBkg: '#f0f9ff', clusterBorder: '#bae6fd', titleColor: '#1e3a5f',
+                edgeLabelBackground: '#ffffff', fontFamily: 'Inter, sans-serif', fontSize: '14px'
+            }
+        };
+        const darkTheme = {
+            theme: 'base',
+            themeVariables: {
+                primaryColor: '#1e3a5f', primaryBorderColor: '#60a5fa', primaryTextColor: '#e2e8f0',
+                secondaryColor: '#14532d', secondaryBorderColor: '#4ade80', secondaryTextColor: '#dcfce7',
+                tertiaryColor: '#78350f', tertiaryBorderColor: '#fbbf24', tertiaryTextColor: '#fef3c7',
+                lineColor: '#94a3b8', textColor: '#e2e8f0', mainBkg: '#1e3a5f', nodeBorder: '#60a5fa',
+                clusterBkg: '#0f172a', clusterBorder: '#334155', titleColor: '#e2e8f0',
+                edgeLabelBackground: '#1e293b', fontFamily: 'Inter, sans-serif', fontSize: '14px'
+            }
+        };
+
+        function getTheme() { return document.documentElement.dataset.theme === 'dark' ? darkTheme : lightTheme; }
+
+        async function renderDiagram() {
+            const el = document.querySelector('.mermaid');
+            const code = el.textContent.trim();
+            el.removeAttribute('data-processed');
+            el.innerHTML = code;
+            mermaid.initialize({ startOnLoad: false, ...getTheme(), securityLevel: 'loose', flowchart: { curve: 'linear', nodeSpacing: 60, rankSpacing: 80, padding: 20 } });
+            const { svg } = await mermaid.render('mermaid-diagram', code);
+            el.innerHTML = svg;
+            el.querySelectorAll('.node').forEach(node => {
+                node.style.cursor = 'pointer';
+                node.addEventListener('click', () => {
+                    const id = node.id?.replace(/^(flowchart-|statediagram-)/, '').replace(/-\d+$/, '') || node.getAttribute('data-id');
+                    if (id) showNodeDetail(id);
+                });
+            });
+        }
+
+        window.showNodeDetail = function(nodeId) {
+            const details = window.nodeDetails[nodeId];
+            if (!details) return;
+            const sidebar = document.getElementById('sidebar');
+            document.getElementById('sidebarTitle').textContent = details.name || nodeId;
+            let html = '';
+            if (details.type) html += '<div class="detail-label">Роль</div><div class="detail-value">' + details.type + '</div>';
+            if (details.description) html += '<div class="detail-label">Что делает</div><div class="detail-value">' + details.description + '</div>';
+            if (details.notes) html += '<div class="detail-label">Подробнее</div><div class="detail-value">' + details.notes + '</div>';
+            document.getElementById('sidebarContent').innerHTML = html;
+            sidebar.classList.add('open');
+        };
+        window.closeSidebar = function() { document.getElementById('sidebar').classList.remove('open'); };
+
+        let scale = 1, panX = 0, panY = 0, isPanning = false, startX, startY;
+        const canvas = document.getElementById('canvas');
+        const viewport = document.getElementById('viewport');
+        function updateTransform() { canvas.style.transform = 'translate(' + panX + 'px, ' + panY + 'px) scale(' + scale + ')'; document.getElementById('zoomLevel').textContent = Math.round(scale * 100) + '%'; }
+        window.zoomIn = () => { scale = Math.min(scale * 1.2, 5); updateTransform(); };
+        window.zoomOut = () => { scale = Math.max(scale / 1.2, 0.1); updateTransform(); };
+        window.zoomReset = () => { scale = 1; panX = 0; panY = 0; updateTransform(); };
+        viewport.addEventListener('wheel', e => { e.preventDefault(); const delta = e.deltaY > 0 ? 0.9 : 1.1; const rect = viewport.getBoundingClientRect(); const mx = e.clientX - rect.left; const my = e.clientY - rect.top; const newScale = Math.min(Math.max(scale * delta, 0.1), 5); panX = mx - (mx - panX) * (newScale / scale); panY = my - (my - panY) * (newScale / scale); scale = newScale; updateTransform(); }, { passive: false });
+        viewport.addEventListener('mousedown', e => { if (e.target.closest('.node')) return; isPanning = true; startX = e.clientX - panX; startY = e.clientY - panY; });
+        window.addEventListener('mousemove', e => { if (!isPanning) return; panX = e.clientX - startX; panY = e.clientY - startY; updateTransform(); });
+        window.addEventListener('mouseup', () => { isPanning = false; });
+        window.toggleTheme = function() { const html = document.documentElement; const isDark = html.dataset.theme === 'dark'; html.dataset.theme = isDark ? 'light' : 'dark'; document.getElementById('themeBtn').textContent = isDark ? '\u{1F319}' : '\u{2600}\u{FE0F}'; renderDiagram(); };
+        window.copySVG = async function() { const svg = document.querySelector('.mermaid svg'); if (!svg) return; try { await navigator.clipboard.writeText(svg.outerHTML); showToast('SVG скопирован'); } catch { showToast('Не удалось скопировать'); } };
+        function showToast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2000); }
+        renderDiagram();
+    </script>
+</body>
+</html>
