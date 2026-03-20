@@ -257,8 +257,41 @@ async def _job_data_ready_check(scheduler: AsyncIOScheduler) -> None:
 # ---------------------------------------------------------------------------
 
 async def _job_notion_feedback() -> None:
-    """Collect Notion feedback 1h before daily report (stub — Task 10)."""
-    logger.info("notion_feedback: collecting feedback (stub)")
+    """Collect Notion feedback and process into persistent agent instructions.
+
+    Runs 1h before daily report. Uses PromptTuner to:
+    1. Fetch recent comments from Notion report pages
+    2. Classify each comment by target micro-agent
+    3. Extract actionable instructions
+    4. Store in StateStore as persistent instructions
+    5. Post confirmation comment on Notion
+    """
+    if not config.PROMPT_TUNER_ENABLED:
+        logger.debug("notion_feedback: PromptTuner disabled")
+        return
+
+    from agents.v3.delivery.notion import NotionDelivery
+    from agents.v3.prompt_tuner import PromptTuner
+
+    notion = NotionDelivery(config.NOTION_TOKEN, config.NOTION_DATABASE_ID)
+    if not notion.enabled:
+        logger.info("notion_feedback: Notion not configured")
+        return
+
+    state = _get_state()
+    tuner = PromptTuner(notion=notion, state=state)
+
+    try:
+        result = await tuner.run()
+        logger.info(
+            "notion_feedback: processed=%d, new_instructions=%d, skipped=%d",
+            result.get("processed", 0),
+            result.get("new_instructions", 0),
+            result.get("skipped", 0),
+        )
+    except Exception as exc:
+        logger.exception("notion_feedback (PromptTuner) failed: %s", exc)
+        await _send_admin(f"[Wookiee v3] Ошибка PromptTuner:\n{exc}")
 
 
 # ---------------------------------------------------------------------------

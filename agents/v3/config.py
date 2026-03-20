@@ -105,3 +105,9 @@ LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 PROMOTION_SCAN_ENABLED: bool = os.getenv("PROMOTION_SCAN_ENABLED", "false").lower() in (
     "true", "1", "yes",
 )
+
+# ── PromptTuner ──────────────────────────────────────────────────────────────
+PROMPT_TUNER_ENABLED: bool = os.getenv("PROMPT_TUNER_ENABLED", "true").lower() in (
+    "true", "1", "yes",
+)
+PROMPT_TUNER_MAX_INSTRUCTIONS: int = int(os.getenv("PROMPT_TUNER_MAX_INSTRUCTIONS", "10"))

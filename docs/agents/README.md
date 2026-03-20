@@ -9,7 +9,7 @@
 | Компонент | Статус | Назначение | Путь |
 |---|---|---|---|
 | [Олег](telegram-bot.md) | Активен | Финансовый AI-агент (аналитика, отчёты, рекомендации) | `agents/oleg/` |
-| [Ибрагим](ibrahim.md) | Активен | ETL и управление данными маркетплейсов | `agents/ibrahim/` |
+| ETL Pipeline | Активен | ETL и управление данными маркетплейсов | `services/etl/` |
 | [WB Localization](mp-localization.md) | Активен | Сервис локализации WB (расчёт + экспорт) | `services/wb_localization/` |
 | [Analytics Engine](analytics-engine.md) | Активен | Аналитический контур и метрики | `agents/oleg/services/` |
 
