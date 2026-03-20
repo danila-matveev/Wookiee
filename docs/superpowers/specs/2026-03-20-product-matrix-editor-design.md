@@ -59,17 +59,13 @@ Product Matrix API (FastAPI) — services/product_matrix_api/
 
 ### Аутентификация
 
-Используем **Supabase Auth** (email + password, без OAuth на первом этапе):
-- Фронт: `@supabase/supabase-js` для login/logout → получает JWT
-- FastAPI: валидирует JWT через Supabase JWKS endpoint
-- Роль пользователя хранится в `hub.users.role` (viewer/editor/admin)
-- `dependencies.py`: `get_current_user()` декодирует JWT, находит пользователя в `hub.users`
-- Phase 1: базовая аутентификация (login + role check)
-- Phase 6: гранулярные permissions (per-entity, per-field ограничения)
+**Сейчас:** Без аутентификации (тестовый доступ). API открыт, все действия логируются с user = "anonymous".
+
+**В будущем:** Единая авторизация через Telegram для всего Wookiee Hub (не только товарная матрица). Доступ по доверенным Telegram-логинам. Роли (viewer/editor/admin) привязываются к Telegram user ID. Это будет реализовано как общий механизм Wookiee Hub, не специфичный для товарной матрицы.
 
 ### Принципы
 
-- Фронт **никогда** не обращается к Supabase напрямую для данных — только через FastAPI (Supabase Auth — исключение для login/logout)
+- Фронт **никогда** не обращается к Supabase напрямую — только через FastAPI
 - Вся бизнес-логика (валидация, каскады, архивирование) — на бэкенде
 - Все мутации логируются в аудит лог
 - Существующие triggers на `istoriya_izmeneniy` продолжают работать
@@ -269,7 +265,7 @@ CREATE TABLE hub.ui_preferences (
 services/product_matrix_api/
 ├── app.py                         — FastAPI app, CORS, error handlers
 ├── config.py                      — подключение к Supabase (public + hub schemas)
-├── dependencies.py                — auth middleware, role checks
+├── dependencies.py                — (заглушка, auth добавится позже через Telegram)
 │
 ├── routes/
 │   ├── models.py                  — /api/matrix/models/*
@@ -653,10 +649,10 @@ Vite proxy:
 ## Implementation Phases
 
 ### Phase 1: Backend Foundation
-- FastAPI сервис с подключением к обеим БД
+- FastAPI сервис с подключением к Supabase (public + hub schemas)
 - CRUD эндпоинты для modeli_osnova и modeli
 - Аудит лог
-- Базовая аутентификация
+- Без аутентификации (тестовый доступ)
 
 ### Phase 2: Frontend Core
 - MatrixShell, MatrixSidebar
@@ -682,5 +678,5 @@ Vite proxy:
 ### Phase 6: Integration & Polish
 - Подтягивание данных из WB/Ozon (склад, финансы, рейтинг)
 - Полная страница записи с табами
-- Уровни доступа (viewer/editor/admin)
+- Аутентификация через Telegram (часть общего Wookiee Hub auth)
 - Export (CSV, Excel)
