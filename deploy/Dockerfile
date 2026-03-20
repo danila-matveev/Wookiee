@@ -12,9 +12,11 @@ RUN apt-get update && apt-get install -y \
 
 # Copy requirements and install (single image used by multiple services)
 COPY agents/oleg/requirements.txt /app/agents/oleg/requirements.txt
+COPY agents/v3/requirements.txt /app/agents/v3/requirements.txt
 COPY services/sheets_sync/requirements.txt /app/services/sheets_sync/requirements.txt
 RUN pip install --no-cache-dir \
     -r agents/oleg/requirements.txt \
+    -r agents/v3/requirements.txt \
     -r services/sheets_sync/requirements.txt
 
 # Copy application code (shared libs + all agents + all services + scripts)
@@ -26,11 +28,11 @@ COPY deploy/healthcheck.py /app/deploy/healthcheck.py
 COPY deploy/healthcheck_agent.py /app/deploy/healthcheck_agent.py
 
 # Create data, logs, and reports directories
-RUN mkdir -p /app/agents/oleg/data /app/agents/oleg/logs /app/reports
+RUN mkdir -p /app/agents/oleg/data /app/agents/oleg/logs /app/agents/v3/data /app/reports
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
 
 # Default command (overridden per-service in docker-compose.yml)
-CMD ["python", "-m", "agents.oleg"]
+CMD ["python", "-m", "agents.v3"]

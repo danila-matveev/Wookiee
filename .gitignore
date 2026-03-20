@@ -176,6 +176,7 @@ wildberries-mcp-server/
 # ============================================================================
 data/
 agents/oleg/data/
+agents/v3/data/
 reports/
 test-results/
 

@@ -1,12 +1,12 @@
 services:
-  # ── Oleg: единый контейнер (bot + agent + scheduler + watchdog) ──
+  # ── Oleg v3: micro-agent system (bot + scheduler + watchdog) ──
   wookiee-oleg:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
     container_name: wookiee_oleg
     restart: unless-stopped
-    command: ["python", "-m", "agents.oleg"]
+    command: ["python", "-m", "agents.v3"]
 
     env_file:
       - ../.env
@@ -16,8 +16,8 @@ services:
       - TZ=Europe/Moscow
 
     volumes:
+      - ../agents/v3/data:/app/agents/v3/data
       - ../agents/oleg/data:/app/agents/oleg/data
-      - ../agents/oleg/logs:/app/agents/oleg/logs
       - ../reports:/app/reports
       - ../scripts:/app/scripts:ro
 
