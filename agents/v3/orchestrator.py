@@ -15,9 +15,38 @@ from typing import Any, Optional, TypedDict
 
 from agents.v3 import config
 from agents.v3.runner import run_agent
+from agents.v3.state import StateStore
 from services.observability.logger import log_orchestrator_run, new_run_id
 
 logger = logging.getLogger(__name__)
+
+
+def load_persistent_instructions(state: StateStore, agent_names: list[str]) -> str:
+    """Load active persistent instructions for given agents from StateStore.
+
+    Returns a formatted string to append to task_context, or empty string.
+    """
+    lines: list[str] = []
+    for agent_name in agent_names:
+        raw = state.get(f"pi:{agent_name}")
+        if not raw:
+            continue
+        try:
+            instructions = json.loads(raw)
+            for instr in instructions:
+                if instr.get("active", True):
+                    lines.append(f"- [{agent_name}] {instr['instruction']}")
+        except (json.JSONDecodeError, KeyError, TypeError):
+            continue
+
+    if not lines:
+        return ""
+
+    return (
+        "\n\n\u041f\u041e\u0421\u0422\u041e\u042f\u041d\u041d\u042b\u0415 \u0418\u041d\u0421\u0422\u0420\u0423\u041a\u0426\u0418\u0418 (\u0438\u0437 \u043e\u0431\u0440\u0430\u0442\u043d\u043e\u0439 \u0441\u0432\u044f\u0437\u0438 \u043a\u043e\u043c\u0430\u043d\u0434\u044b, \u0434\u0435\u0439\u0441\u0442\u0432\u0443\u044e\u0442 \u0434\u043e \u043e\u0442\u043c\u0435\u043d\u044b):\n"
+        + "\n".join(lines)
+        + "\n\u0421\u0442\u0440\u043e\u0433\u043e \u0441\u043e\u0431\u043b\u044e\u0434\u0430\u0439 \u044d\u0442\u0438 \u0438\u043d\u0441\u0442\u0440\u0443\u043a\u0446\u0438\u0438.\n"
+    )
 
 
 # ── State ────────────────────────────────────────────────────────────────────
@@ -59,6 +88,8 @@ async def _run_report_pipeline(
     channel: str,
     trigger: str,
     compiler_prompt_prefix: str = "Собери аналитический отчёт",
+    prior_artifacts: dict = None,  # NEW: artifacts from previous phase
+    skip_compiler: bool = False,   # NEW: skip report-compiler phase
 ) -> dict:
     """Shared pipeline for all report types.
 
@@ -82,12 +113,29 @@ async def _run_report_pipeline(
     started_at = datetime.now(timezone.utc)
     start_time = time.monotonic()
 
+    # ── Load persistent instructions from PromptTuner ────────────────────
+    try:
+        pi_state = StateStore(config.STATE_DB_PATH)
+        pi_note = load_persistent_instructions(pi_state, analysis_agents + ["report-compiler"])
+        if pi_note:
+            task_context += pi_note
+    except Exception as e:
+        logger.warning("Failed to load persistent instructions: %s", e)
+
     # ── Phase 1: Run analytical agents in parallel ──────────────────────────
+
+    # Build artifact context for cross-phase communication
+    artifact_context = ""
+    if prior_artifacts:
+        artifact_context = (
+            "\n\nРезультаты предыдущей фазы анализа:\n"
+            + json.dumps(prior_artifacts, ensure_ascii=False, default=str)
+        )
 
     tasks = [
         run_agent(
             agent_name=agent_name,
-            task=f"Проанализируй данные. {task_context}",
+            task=f"Проанализируй данные. {task_context}{artifact_context}",
             parent_run_id=run_id,
             trigger=trigger,
             task_type=task_type,
@@ -121,43 +169,45 @@ async def _run_report_pipeline(
             else:
                 agents_failed += 1
 
-    # ── Phase 2: Compile report from artifacts ──────────────────────────────
+    # ── Phase 2: Compile report from artifacts (unless skipped) ──────────────
 
-    compiler_input: dict[str, Any] = {
-        "period": {"date_from": date_from, "date_to": date_to},
-        "comparison_period": {"date_from": comparison_from, "date_to": comparison_to},
-        "channel": channel,
-        "artifacts": {},
-    }
+    compiler_result = None
+    if not skip_compiler:
+        compiler_input: dict[str, Any] = {
+            "period": {"date_from": date_from, "date_to": date_to},
+            "comparison_period": {"date_from": comparison_from, "date_to": comparison_to},
+            "channel": channel,
+            "artifacts": {},
+        }
 
-    for name, result in artifacts.items():
-        if result["status"] == "success" and result.get("artifact"):
-            compiler_input["artifacts"][name] = result["artifact"]
+        for name, result in artifacts.items():
+            if result["status"] == "success" and result.get("artifact"):
+                compiler_input["artifacts"][name] = result["artifact"]
+            else:
+                compiler_input["artifacts"][name] = {
+                    "status": "failed",
+                    "error": result.get("raw_output", "Unknown error")[:500],
+                }
+
+        compiler_task = (
+            f"{compiler_prompt_prefix}:\n\n"
+            f"{json.dumps(compiler_input, ensure_ascii=False, default=str)}"
+        )
+
+        agents_called += 1
+        compiler_result = await run_agent(
+            agent_name="report-compiler",
+            task=compiler_task,
+            parent_run_id=run_id,
+            trigger=trigger,
+            task_type=task_type,
+        )
+
+        artifacts["report-compiler"] = compiler_result
+        if compiler_result["status"] == "success":
+            agents_succeeded += 1
         else:
-            compiler_input["artifacts"][name] = {
-                "status": "failed",
-                "error": result.get("raw_output", "Unknown error")[:500],
-            }
-
-    compiler_task = (
-        f"{compiler_prompt_prefix}:\n\n"
-        f"{json.dumps(compiler_input, ensure_ascii=False, default=str)}"
-    )
-
-    agents_called += 1
-    compiler_result = await run_agent(
-        agent_name="report-compiler",
-        task=compiler_task,
-        parent_run_id=run_id,
-        trigger=trigger,
-        task_type=task_type,
-    )
-
-    artifacts["report-compiler"] = compiler_result
-    if compiler_result["status"] == "success":
-        agents_succeeded += 1
-    else:
-        agents_failed += 1
+            agents_failed += 1
 
     # ── Determine overall status ────────────────────────────────────────────
 
@@ -192,7 +242,7 @@ async def _run_report_pipeline(
     return {
         "run_id": run_id,
         "status": status,
-        "report": compiler_result.get("artifact"),
+        "report": compiler_result.get("artifact") if compiler_result else None,
         "artifacts": artifacts,
         "agents_called": agents_called,
         "agents_succeeded": agents_succeeded,
