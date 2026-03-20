@@ -34,3 +34,19 @@ JSON artifact with:
 - sections_included: [list of section numbers that have data]
 - sections_skipped: [{section, reason}]
 - warnings: [string] (data quality issues, missing artifacts, etc.)
+
+## Pricing Report Rules
+When artifacts contain `price-strategist` AND (`pricing-impact-analyst` OR `ad-efficiency`), use the 7-section pricing report structure instead of the standard 10-section:
+
+- Section 0: Passport — period, channels, data quality, models analyzed
+- Section 1: Executive Summary — top 3-5 pricing actions with ₽ monthly impact, sorted by impact
+- Section 2: Pricing Matrix — table per model: current price, elasticity, ROI category, recommendation, expected margin Δ₽, marketing adjustment
+- Section 3: Sales Trends — per-model growth/decline/stable with % change, highlight overrides (deadstock_risk → underperformer)
+- Section 4: Stock-Price Matrix — stock health status vs pricing recommendation alignment, urgency flags
+- Section 5: Marketing Impact — MANDATORY if pricing-impact-analyst artifact present: DRR change, budget reallocation ₽, ROMI projections
+- Section 6: Hypothesis Validation — confirmed/refuted/inconclusive per model from hypothesis-tester
+- Section 7: Action Plan — prioritized by ₽ impact, includes timeline and marketing coordination notes
+
+Use toggle headings (## ▶) for sections 2-7.
+Sort models in all tables by monthly impact descending.
+Telegram summary must include: total models, top-3 actions, total expected monthly impact.
