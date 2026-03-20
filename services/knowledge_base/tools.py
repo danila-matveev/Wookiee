@@ -25,11 +25,14 @@ KB_SEARCH_TOOL_DEFINITIONS = [
         "function": {
             "name": "search_knowledge_base",
             "description": (
-                "Поиск по базе знаний Wildberries (курс Let's Rock). "
-                "Содержит экспертные знания по продвижению карточек, "
-                "юнит-экономике, воронке продаж, SEO, акциям, складам, "
-                "анализу ЦА, CTR-тестированию и управлению процессами на WB. "
-                "8 модулей + управление процессами."
+                "Поиск по базе знаний Wookiee (7000+ чанков). "
+                "Источники: course (курс Let's Rock, 8 модулей WB), "
+                "playbook (правила агентов, пороги, формулы), "
+                "reference (метрики KPI, схема БД, качество данных), "
+                "agent_spec (архитектура, роли агентов), "
+                "guide (принципы разработки). "
+                "Содержит: продвижение, юнит-экономику, воронку, SEO, рекламу, "
+                "5 рычагов маржи, ABC-анализ, бизнес-правила Wookiee."
             ),
             "parameters": {
                 "type": "object",
@@ -46,10 +49,22 @@ KB_SEARCH_TOOL_DEFINITIONS = [
                     "module": {
                         "type": "string",
                         "description": (
-                            "Фильтр по модулю: 1-8 или processes. "
+                            "Фильтр по модулю: 1-8, processes, special. "
                             "1=продвижение, 2=юнит-экономика, 3=воронка продаж, "
                             "4=контент, 5=реклама, 6=аналитика, 7=масштабирование, "
-                            "8=автоматизация"
+                            "8=автоматизация, special=агенты/KB"
+                        ),
+                    },
+                    "source_tag": {
+                        "type": "string",
+                        "enum": ["course", "playbook", "reference", "agent_spec", "guide"],
+                        "description": (
+                            "Фильтр по источнику: "
+                            "course=курс Let's Rock, "
+                            "playbook=правила агентов, "
+                            "reference=метрики/БД/качество данных, "
+                            "agent_spec=архитектура/спеки, "
+                            "guide=гайды разработки"
                         ),
                     },
                 },
@@ -215,6 +230,29 @@ KB_MANAGE_TOOL_DEFINITIONS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "sync_project_knowledge",
+            "description": (
+                "Синхронизировать все знания проекта с KB. "
+                "Читает плейбуки, справочники, спеки агентов и гайды из файлов проекта "
+                "и загружает новые/обновлённые в Supabase pgvector. "
+                "Уже загруженные файлы пропускаются (используй force=true для перезагрузки). "
+                "14 файлов: 4 плейбука, 4 справочника, 4 спеки агентов, 2 гайда."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "force": {
+                        "type": "boolean",
+                        "description": "true = перезагрузить все файлы (удалить старые чанки + загрузить заново)",
+                        "default": False,
+                    },
+                },
+            },
+        },
+    },
 ]
 
 # Backward-compatible alias
@@ -248,13 +286,15 @@ async def _api_call(method: str, path: str, json_body: dict = None, params: dict
         return None  # Caller handles fallback
 
 
-async def _search_via_api(query: str, limit: int = 5, module: str = None) -> str:
+async def _search_via_api(query: str, limit: int = 5, module: str = None, source_tag: str = None) -> str:
     """Call KB API search endpoint."""
     import httpx
 
     payload = {"query": query, "limit": limit, "min_score": 0.4}
     if module:
         payload["module"] = module
+    if source_tag:
+        payload["source_tag"] = source_tag
 
     try:
         async with httpx.AsyncClient(timeout=30) as client:
@@ -263,16 +303,17 @@ async def _search_via_api(query: str, limit: int = 5, module: str = None) -> str
             return resp.text
     except Exception as e:
         logger.error("KB API search failed: %s", e)
-        return await _search_direct(query, limit, module)
+        return await _search_direct(query, limit, module, source_tag=source_tag)
 
 
-async def _search_direct(query: str, limit: int = 5, module: str = None) -> str:
+async def _search_direct(query: str, limit: int = 5, module: str = None, source_tag: str = None) -> str:
     """Direct search without API (fallback for same-container deployment)."""
     try:
         from services.knowledge_base.search import search_knowledge
-        results = await search_knowledge(
-            query=query, limit=limit, module=module, min_score=0.4,
-        )
+        kwargs = dict(query=query, limit=limit, module=module, min_score=0.4)
+        if source_tag:
+            kwargs["source_tag"] = source_tag
+        results = await search_knowledge(**kwargs)
         return json.dumps({
             "results": results,
             "count": len(results),
@@ -336,7 +377,8 @@ async def execute_kb_tool(tool_name: str, arguments: dict) -> str:
         query = arguments.get("query", "")
         limit = arguments.get("limit", 5)
         module = arguments.get("module")
-        return await _search_via_api(query, limit, module)
+        source_tag = arguments.get("source_tag")
+        return await _search_via_api(query, limit, module, source_tag=source_tag)
 
     # Add knowledge
     if tool_name == "add_knowledge":
@@ -422,4 +464,25 @@ async def execute_kb_tool(tool_name: str, arguments: dict) -> str:
             return result
         return await _direct_store_call("mark_verified", file_name=file_name, verified=verified)
 
+    # Sync project knowledge files
+    if tool_name == "sync_project_knowledge":
+        force = arguments.get("force", False)
+        return await _sync_project_knowledge(force)
+
     return json.dumps({"error": f"Unknown KB tool: {tool_name}"}, ensure_ascii=False)
+
+
+async def _sync_project_knowledge(force: bool = False) -> str:
+    """Run project knowledge ingestion (same logic as ingest_knowledge.py)."""
+    try:
+        from services.knowledge_base.scripts.ingest_knowledge import ingest_knowledge
+        total = await ingest_knowledge(force=force)
+        return json.dumps({
+            "status": "ok",
+            "chunks_ingested": total,
+            "force": force,
+            "message": f"Синхронизация завершена: {total} новых чанков загружено",
+        }, ensure_ascii=False)
+    except Exception as e:
+        logger.error("sync_project_knowledge failed: %s", e, exc_info=True)
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
