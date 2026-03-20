@@ -561,10 +561,17 @@ class OlegApp:
 
         monday, sunday = get_last_week_bounds_msk()
 
+        ctx = {}
+        if self.state_store:
+            notion_fb = self.state_store.get_state("notion_feedback")
+            if notion_fb:
+                ctx["notion_feedback"] = notion_fb
+
         request = ReportRequest(
             report_type=ReportType.WEEKLY,
             start_date=str(monday),
             end_date=str(sunday),
+            context=ctx or None,
         )
 
         try:
@@ -589,10 +596,17 @@ class OlegApp:
             f"Генерирую месячный отчёт за {first} — {last}..."
         )
 
+        ctx = {}
+        if self.state_store:
+            notion_fb = self.state_store.get_state("notion_feedback")
+            if notion_fb:
+                ctx["notion_feedback"] = notion_fb
+
         request = ReportRequest(
             report_type=ReportType.MONTHLY,
             start_date=str(first),
             end_date=str(last),
+            context=ctx or None,
         )
 
         try:
@@ -632,10 +646,17 @@ class OlegApp:
 
         monday, sunday = get_last_week_bounds_msk()
 
+        ctx = {}
+        if self.state_store:
+            notion_fb = self.state_store.get_state("notion_feedback")
+            if notion_fb:
+                ctx["notion_feedback"] = notion_fb
+
         request = ReportRequest(
             report_type=ReportType.MARKETING_WEEKLY,
             start_date=str(monday),
             end_date=str(sunday),
+            context=ctx or None,
         )
 
         try:
@@ -660,10 +681,17 @@ class OlegApp:
             f"Генерирую месячный маркетинговый отчёт за {first} — {last}..."
         )
 
+        ctx = {}
+        if self.state_store:
+            notion_fb = self.state_store.get_state("notion_feedback")
+            if notion_fb:
+                ctx["notion_feedback"] = notion_fb
+
         request = ReportRequest(
             report_type=ReportType.MARKETING_MONTHLY,
             start_date=str(first),
             end_date=str(last),
+            context=ctx or None,
         )
 
         try:
@@ -833,79 +861,90 @@ class OlegApp:
                 await self._send_admin_message(f"Ошибка месячного ценового обзора {channel.upper()}: {e}")
 
     async def _run_monthly_price_analysis(self) -> None:
-        """Monthly price analysis: adaptive period, hypothesis-driven.
+        """Monthly price analysis via v3 multi-agent pipeline.
 
-        Replaces weekly/monthly price review with a single monthly run.
-        Includes regression refresh inline.
+        3-phase pipeline:
+        1. price-strategist + margin-analyst + ad-efficiency (parallel)
+        2. pricing-impact-analyst + hypothesis-tester (with Phase 1 artifacts)
+        3. report-compiler (all artifacts)
         """
-        from agents.oleg.services.price_tools import _learning_store
-        from scripts.run_price_analysis import (
-            analyze_channel_adaptive,
-            format_comprehensive_report,
+        from datetime import timedelta
+        from agents.v3.orchestrator import run_price_analysis
+        from agents.oleg.services.time_utils import (
+            get_last_month_bounds_msk,
+            get_now_msk,
         )
-        from agents.oleg.services.time_utils import get_last_month_bounds_msk
-        from shared.data_layer import get_moysklad_stock_by_article
 
-        _, last = get_last_month_bounds_msk()
-        end_date = str(last)
+        first, last = get_last_month_bounds_msk()
+        now = get_now_msk()
+
+        # Comparison: previous month
+        comp_last = first - timedelta(days=1)
+        comp_first = comp_last.replace(day=1)
 
         await self._send_admin_message(
-            f"Генерирую ежемесячный ценовой анализ (адаптивный период до {end_date})..."
+            f"Генерирую ценовой анализ (v3 pipeline) за {first} — {last}..."
         )
 
-        # Проверка свежести данных МойСклад
-        ms_stock = get_moysklad_stock_by_article(max_staleness_days=3)
-        if ms_stock:
-            sample = next(iter(ms_stock.values()))
-            if sample.get('is_stale'):
+        try:
+            result = await run_price_analysis(
+                date_from=str(first),
+                date_to=str(last),
+                comparison_from=str(comp_first),
+                comparison_to=str(comp_last),
+                channel="both",
+                trigger="cron",
+            )
+
+            if result["status"] == "failed":
                 await self._send_admin_message(
-                    f"⚠️ Данные МойСклад устарели (снэпшот от {sample.get('snapshot_date')}). "
-                    f"Ценовой анализ отменён — результаты будут некорректными."
+                    f"❌ Ценовой анализ провалился: все агенты вернули ошибки"
                 )
                 return
 
-        for channel in ('wb', 'ozon'):
-            try:
-                report = analyze_channel_adaptive(channel, end_date, _learning_store)
-                report_md = format_comprehensive_report(report)
-
-                # Сводка для Telegram
-                hypotheses = report.get('pricing_hypotheses', [])
-                increase = sum(1 for h in hypotheses if h['hypothesis_type'] == 'price_increase')
-                decrease = sum(1 for h in hypotheses if h['hypothesis_type'] == 'price_decrease')
-                total = report.get('models_total', 0)
-                period_label = report.get('adaptive_period', '?')
-
-                brief_parts = [
-                    f"Ценовой анализ {channel.upper()} ({period_label}): "
-                    f"{total} моделей"
-                ]
-                if increase:
-                    brief_parts.append(f"📈 повысить: {increase}")
-                if decrease:
-                    brief_parts.append(f"📉 снизить: {decrease}")
-
-                await self._deliver_price_report(
-                    report_md=report_md,
-                    report_type="Ценовой анализ",
-                    start_date=report.get('period', '').split(' — ')[0] if ' — ' in report.get('period', '') else end_date,
-                    end_date=end_date,
-                    brief_summary=", ".join(brief_parts),
+            report = result.get("report")
+            if not report:
+                await self._send_admin_message(
+                    f"⚠️ Ценовой анализ: report-compiler не вернул отчёт"
                 )
+                return
 
-                # Save ROI snapshots
-                if _learning_store:
-                    for item in report.get('roi_dashboard', []):
-                        try:
-                            _learning_store.save_roi_snapshot(
-                                item.get('model', ''), channel, item,
-                            )
-                        except Exception:
-                            pass
+            # Brief summary for Telegram
+            agents_ok = result["agents_succeeded"]
+            agents_total = result["agents_called"]
+            duration_s = result["duration_ms"] / 1000
 
-            except Exception as e:
-                logger.error(f"Monthly price analysis for {channel} failed: {e}", exc_info=True)
-                await self._send_admin_message(f"Ошибка ценового анализа {channel.upper()}: {e}")
+            brief = (
+                f"Ценовой анализ: {agents_ok}/{agents_total} агентов, "
+                f"{duration_s:.0f}с"
+            )
+
+            await self._deliver_price_report(
+                report_md=report.get("detailed_report", ""),
+                report_type="Ценовой анализ",
+                start_date=str(first),
+                end_date=str(last),
+                brief_summary=brief,
+            )
+
+            # Save ROI snapshots from price-strategist artifact
+            price_artifact = result.get("artifacts", {}).get(
+                "price-strategist", {}
+            ).get("artifact")
+            if price_artifact and self.learning_store:
+                for item in price_artifact.get("scenarios", []):
+                    try:
+                        self.learning_store.save_roi_snapshot(
+                            item.get("model", ""),
+                            "both",
+                            item,
+                        )
+                    except Exception:
+                        pass
+
+        except Exception as e:
+            logger.error(f"Monthly price analysis failed: {e}", exc_info=True)
+            await self._send_admin_message(f"Ошибка ценового анализа: {e}")
 
     async def _refresh_regression_models(self) -> None:
         """Monthly regression refresh: re-estimate all model elasticities."""
