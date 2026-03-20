@@ -25,6 +25,8 @@ from shared.data_layer import (
     get_ozon_turnover_by_model,
     get_wb_stock_daily_by_model,
     get_ozon_stock_daily_by_model,
+    get_wb_sales_trend_by_model,
+    get_ozon_sales_trend_by_model,
 )
 from agents.oleg.services.price_analysis.regression_engine import (
     estimate_price_elasticity,
@@ -788,19 +790,22 @@ async def _handle_model_roi_dashboard(channel: str) -> dict:
     if channel == 'wb':
         models = get_wb_price_margin_by_model_period(start_date, end_date)
         turnover = get_wb_turnover_by_model(start_date, end_date)
+        sales_trends = get_wb_sales_trend_by_model(start_date, end_date)
     else:
         models = get_ozon_price_margin_by_model_period(start_date, end_date)
         turnover = get_ozon_turnover_by_model(start_date, end_date)
+        sales_trends = get_ozon_sales_trend_by_model(start_date, end_date)
 
     if not models:
         return {'error': f'No model data for {channel}'}
 
-    dashboard = compute_model_roi_dashboard(models, turnover)
+    dashboard = compute_model_roi_dashboard(models, turnover, sales_trends=sales_trends)
     return {
         'channel': channel,
         'period': f"{start_date} — {end_date}",
         'dashboard': dashboard,
         'total_models': len(dashboard),
+        'sales_trends': sales_trends,
     }
 
 
