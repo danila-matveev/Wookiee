@@ -3,6 +3,8 @@
 Internal agents call Python tool handlers directly (not via MCP protocol).
 MCP servers are for external clients like Claude Code.
 """
+from __future__ import annotations
+
 import asyncio
 import json
 import logging

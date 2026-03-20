@@ -4,6 +4,8 @@ LangGraph StateGraph that coordinates micro-agents for daily/weekly/monthly
 reports, marketing, funnel, finolog, and price analysis.
 Replaces the monolithic OlegOrchestrator from v2.
 """
+from __future__ import annotations
+
 import asyncio
 import json
 import logging

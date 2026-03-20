@@ -4,6 +4,7 @@ Gate checker for Wookiee v3 — validates data quality before report generation.
 Hard gates block report generation if failed.
 Soft gates allow generation but add caveats.
 """
+from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
