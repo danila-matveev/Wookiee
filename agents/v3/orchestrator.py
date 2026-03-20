@@ -434,15 +434,27 @@ async def run_price_analysis(
     channel: str = "both",
     trigger: str = "manual",
 ) -> dict:
-    """Run price analysis report."""
-    task_context = (
+    """Multi-agent price analysis: 3-phase pipeline.
+
+    Phase 1: Data collection (parallel) — price-strategist, margin-analyst, ad-efficiency
+    Phase 2: Cross-analysis (parallel, with Phase 1 artifacts) — pricing-impact-analyst, hypothesis-tester
+    Phase 3: Report compilation — report-compiler with all artifacts
+    """
+    run_id = new_run_id()
+    start_time = time.monotonic()
+
+    base_context = (
         f"Ценовой анализ. Период: {date_from} — {date_to}. "
         f"Сравнение с: {comparison_from} — {comparison_to}. "
         f"Каналы: {channel}."
     )
-    return await _run_report_pipeline(
-        analysis_agents=["price-strategist", "hypothesis-tester"],
-        task_context=task_context,
+
+    # ── Phase 1: Data collection (parallel) ──────────────────────────
+    logger.info("[price_analysis] Phase 1: data collection starting")
+
+    phase1 = await _run_report_pipeline(
+        analysis_agents=["price-strategist", "margin-analyst", "ad-efficiency"],
+        task_context=base_context,
         task_type="price_analysis",
         date_from=date_from,
         date_to=date_to,
@@ -450,5 +462,125 @@ async def run_price_analysis(
         comparison_to=comparison_to,
         channel=channel,
         trigger=trigger,
-        compiler_prompt_prefix="Собери отчёт по ценовому анализу",
+        skip_compiler=True,
     )
+
+    # Extract successful artifacts for Phase 2
+    phase1_artifacts = {}
+    for name, result in phase1["artifacts"].items():
+        if result.get("status") == "success" and result.get("artifact"):
+            phase1_artifacts[name] = result["artifact"]
+
+    logger.info(
+        "[price_analysis] Phase 1 done: %d/%d succeeded, artifacts: %s",
+        phase1["agents_succeeded"], phase1["agents_called"],
+        list(phase1_artifacts.keys()),
+    )
+
+    # ── Phase 2: Cross-analysis (parallel, with Phase 1 artifacts) ───
+    logger.info("[price_analysis] Phase 2: cross-analysis starting")
+
+    phase2 = await _run_report_pipeline(
+        analysis_agents=["pricing-impact-analyst", "hypothesis-tester"],
+        task_context=base_context,
+        task_type="price_analysis",
+        date_from=date_from,
+        date_to=date_to,
+        comparison_from=comparison_from,
+        comparison_to=comparison_to,
+        channel=channel,
+        trigger=trigger,
+        prior_artifacts=phase1_artifacts,
+        skip_compiler=True,
+    )
+
+    logger.info(
+        "[price_analysis] Phase 2 done: %d/%d succeeded",
+        phase2["agents_succeeded"], phase2["agents_called"],
+    )
+
+    # ── Phase 3: Compilation (all artifacts → report-compiler) ───────
+    logger.info("[price_analysis] Phase 3: compilation starting")
+
+    all_artifacts = {**phase1["artifacts"], **phase2["artifacts"]}
+
+    compiler_input: dict[str, Any] = {
+        "period": {"date_from": date_from, "date_to": date_to},
+        "comparison_period": {"date_from": comparison_from, "date_to": comparison_to},
+        "channel": channel,
+        "report_type": "price_analysis",
+        "artifacts": {},
+    }
+
+    for name, result in all_artifacts.items():
+        if result.get("status") == "success" and result.get("artifact"):
+            compiler_input["artifacts"][name] = result["artifact"]
+        else:
+            compiler_input["artifacts"][name] = {
+                "status": "failed",
+                "error": result.get("raw_output", "Unknown error")[:500],
+            }
+
+    compiler_task = (
+        "Собери отчёт по ценовому анализу. "
+        "Используй 7-секционную структуру ценового отчёта:\n"
+        "0) Паспорт  1) Executive summary  2) Ценовая матрица  "
+        "3) Тренды продаж  4) Сток-ценовая матрица  "
+        "5) Маркетинговый импакт  6) Валидация гипотез  7) План действий\n\n"
+        f"{json.dumps(compiler_input, ensure_ascii=False, default=str)}"
+    )
+
+    compiler_result = await run_agent(
+        agent_name="report-compiler",
+        task=compiler_task,
+        parent_run_id=run_id,
+        trigger=trigger,
+        task_type="price_analysis",
+    )
+
+    all_artifacts["report-compiler"] = compiler_result
+
+    # ── Aggregate stats ──────────────────────────────────────────────
+    duration_ms = int((time.monotonic() - start_time) * 1000)
+    total_called = phase1["agents_called"] + phase2["agents_called"] + 1
+    total_succeeded = phase1["agents_succeeded"] + phase2["agents_succeeded"]
+    total_failed = phase1["agents_failed"] + phase2["agents_failed"]
+    if compiler_result["status"] == "success":
+        total_succeeded += 1
+    else:
+        total_failed += 1
+
+    status = "success" if total_failed == 0 else ("partial" if total_succeeded > 0 else "failed")
+
+    asyncio.create_task(log_orchestrator_run(
+        run_id=run_id,
+        orchestrator="oleg",
+        orchestrator_version="3.0",
+        task_type="price_analysis",
+        trigger=trigger,
+        status=status,
+        started_at=datetime.now(timezone.utc),
+        finished_at=datetime.now(timezone.utc),
+        duration_ms=duration_ms,
+        agents_called=total_called,
+        agents_succeeded=total_succeeded,
+        agents_failed=total_failed,
+        total_tokens=0,
+        total_cost_usd=0.0,
+    ))
+
+    logger.info(
+        "[price_analysis] Complete: status=%s, %d agents, %dms",
+        status, total_called, duration_ms,
+    )
+
+    return {
+        "run_id": run_id,
+        "status": status,
+        "report": compiler_result.get("artifact"),
+        "artifacts": all_artifacts,
+        "agents_called": total_called,
+        "agents_succeeded": total_succeeded,
+        "agents_failed": total_failed,
+        "duration_ms": duration_ms,
+    }
