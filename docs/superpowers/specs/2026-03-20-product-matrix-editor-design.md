@@ -50,14 +50,26 @@ Product Matrix API (FastAPI) — services/product_matrix_api/
         ▼
 ┌───────────────────────────┐
 │ Supabase PostgreSQL       │
-│ ├── postgres (товары)     │ ← существующая БД, расширяем
-│ └── wookiee_hub (hub UI)  │ ← новая БД
-└───────────────────────────┘
+│ ├── public schema (товары) │ ← существующие таблицы
+│ └── hub schema (UI данные) │ ← новая schema в той же БД
+└────────────────────────────┘
 ```
+
+**Hub данные хранятся как отдельная schema `hub` внутри той же Supabase БД** (не отдельная база). Это позволяет делать cross-schema JOIN'ы (audit_log → entity names) и использовать одно подключение. Разделение на schema даёт логическую изоляцию без накладных расходов на второй connection pool.
+
+### Аутентификация
+
+Используем **Supabase Auth** (email + password, без OAuth на первом этапе):
+- Фронт: `@supabase/supabase-js` для login/logout → получает JWT
+- FastAPI: валидирует JWT через Supabase JWKS endpoint
+- Роль пользователя хранится в `hub.users.role` (viewer/editor/admin)
+- `dependencies.py`: `get_current_user()` декодирует JWT, находит пользователя в `hub.users`
+- Phase 1: базовая аутентификация (login + role check)
+- Phase 6: гранулярные permissions (per-entity, per-field ограничения)
 
 ### Принципы
 
-- Фронт **никогда** не обращается к Supabase напрямую — только через FastAPI
+- Фронт **никогда** не обращается к Supabase напрямую для данных — только через FastAPI (Supabase Auth — исключение для login/logout)
 - Вся бизнес-логика (валидация, каскады, архивирование) — на бэкенде
 - Все мутации логируются в аудит лог
 - Существующие triggers на `istoriya_izmeneniy` продолжают работать
@@ -82,10 +94,21 @@ Product Matrix API (FastAPI) — services/product_matrix_api/
 - `kategorii`, `kollekcii`, `statusy`, `razmery` — справочники (Select-поля)
 - `istoriya_izmeneniy` — аудит изменений (triggers)
 
+### Динамические поля (field_definitions)
+
+Кастомные поля реализуются **через JSONB колонку `custom_fields`** на каждой таблице, а НЕ через ALTER TABLE. Это исключает необходимость DDL-привилегий у FastAPI и сохраняет стабильную schema.
+
+Паттерн:
+- Каждая таблица получает колонку `custom_fields JSONB DEFAULT '{}'`
+- `field_definitions` хранит метаданные (название, тип, опции) — это реестр, не DDL
+- CRUD читает/пишет значения кастомных полей через `custom_fields->>field_name`
+- SQLAlchemy модели остаются статичными, кастомные поля обрабатываются generic-кодом
+- Ограничения: макс. 50 кастомных полей на сущность, имена — латиница + цифры + `_`
+
 Новые таблицы:
 
 ```sql
--- Метаданные кастомных полей
+-- Метаданные кастомных полей (реестр, не DDL)
 CREATE TABLE field_definitions (
     id SERIAL PRIMARY KEY,
     entity_type VARCHAR(50) NOT NULL,      -- 'modeli_osnova', 'artikuly', etc.
@@ -159,7 +182,7 @@ CREATE POLICY auth_read ON field_definitions FOR SELECT TO authenticated USING (
 -- (аналогично для остальных таблиц)
 ```
 
-### БД 2: wookiee_hub (новая — данные интерфейса)
+### Schema `hub` (новая — данные интерфейса, в той же Supabase БД)
 
 ```sql
 CREATE SCHEMA hub;
@@ -232,18 +255,8 @@ CREATE TABLE hub.ui_preferences (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
--- Уведомления (будущее)
-CREATE TABLE hub.notifications (
-    id SERIAL PRIMARY KEY,
-    user_id INT REFERENCES hub.users(id),
-    type VARCHAR(50),
-    title VARCHAR(200),
-    body TEXT,
-    entity_type VARCHAR(50),
-    entity_id INT,
-    is_read BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT NOW()
-);
+-- Уведомления — НЕ создаём сейчас, добавим когда понадобится
+-- CREATE TABLE hub.notifications (...);
 ```
 
 ---
@@ -358,7 +371,7 @@ Response: {
 GET    /api/matrix/schema/{entity}           — все поля сущности
 POST   /api/matrix/schema/{entity}/fields    — создать поле
   Body: {field_name, display_name, field_type, config, section}
-  Side effect: ALTER TABLE ADD COLUMN + INSERT field_definitions
+  Side effect: INSERT в field_definitions (данные хранятся в JSONB custom_fields)
 PATCH  /api/matrix/schema/{entity}/fields/{id}  — обновить поле
 DELETE /api/matrix/schema/{entity}/fields/{id}  — удалить поле (с проверкой)
 ```
@@ -381,13 +394,25 @@ GET    /api/matrix/admin/stats               — статистика БД
 GET    /api/matrix/admin/health              — здоровье подключений
 ```
 
-### Каскадная валидация при удалении
+### Soft Delete и FK Constraints
+
+**Стратегия:** Удаление = soft delete (перенос snapshot в `archive_records`), НЕ физическое удаление. Это обходит FK constraints — запись остаётся в таблице с `status_id` = "Архив" (id=3 в `statusy`), а полный snapshot сохраняется в `archive_records` для возможности восстановления.
+
+**Миграция FK:** Существующие FK constraints НЕ меняются (нет `ON DELETE CASCADE`). Вместо этого:
+1. При "удалении" модели: бэкенд проверяет дочерние записи
+2. Если есть активные дочерние — показывает impact и предлагает каскадно архивировать
+3. Архивирование = `UPDATE status_id = 3 (Архив)` для всех затронутых записей + snapshot в `archive_records`
+4. Восстановление = `UPDATE status_id` обратно + удаление из `archive_records`
+5. Физическое удаление (только из admin panel) проходит снизу вверх: сначала tovary, потом artikuly, потом modeli, потом modeli_osnova — чтобы не нарушать FK
+
+**Для справочников (cveta, fabriki)** — нельзя архивировать если есть активные артикулы/модели. Сначала нужно переназначить или архивировать зависимые записи.
 
 ```python
 # services/validation.py
 
 CASCADE_RULES = {
     "modeli_osnova": {
+        "strategy": "cascade_archive",  # архивировать каскадно
         "children": [
             {"table": "modeli", "fk": "model_osnova_id",
              "children": [
@@ -399,21 +424,21 @@ CASCADE_RULES = {
         ]
     },
     "cveta": {
-        "children": [
-            {"table": "artikuly", "fk": "cvet_id"}
-        ],
-        "block_if_active": True  # нельзя удалить цвет если есть активные артикулы
+        "strategy": "block_if_active",   # блокировать если есть активные зависимые
+        "dependents": [
+            {"table": "artikuly", "fk": "cvet_id", "active_check": "status_id != 3"}
+        ]
     },
     "fabriki": {
-        "children": [
-            {"table": "modeli_osnova", "fk": "fabrika_id"}
-        ],
-        "block_if_active": True
+        "strategy": "block_if_active",
+        "dependents": [
+            {"table": "modeli_osnova", "fk": "fabrika_id", "active_check": "status_id != 3"}
+        ]
     }
 }
 
 async def check_delete_impact(entity_type: str, entity_id: int) -> DeleteImpact:
-    """Рекурсивно считает сколько записей затронет удаление."""
+    """Рекурсивно считает сколько записей затронет архивирование."""
     ...
 ```
 
@@ -589,8 +614,10 @@ Generic компонент `DataTable<T>` — ядро всего интерфе
 
 ### Цена по размерам
 
+**Источник ценовых данных:** Цены НЕ хранятся в товарной матрице. Они подтягиваются из внешних источников (WB API, Ozon API, МойСклад) через бэкенд в реальном времени при запросе вида "Финансы". В будущем, если потребуется хранить целевые/рекомендуемые цены — добавим таблицу `target_prices` (model_osnova_id, razmer_id, price, currency).
+
 Для трикотажной коллекции (Vuki, Moon, Ruby, Joy) — цена зависит от размера:
-- В detail panel: сетка S/M/L/XL с индивидуальной ценой, каждая ячейка editable
+- В detail panel: сетка S/M/L/XL с индивидуальной ценой (read-only, из API)
 - В таблице (вид "Финансы"): показывается диапазон "890–1090 ₽"
 
 Для бесшовной коллекции (Wendy, Audrey) — единая цена:
