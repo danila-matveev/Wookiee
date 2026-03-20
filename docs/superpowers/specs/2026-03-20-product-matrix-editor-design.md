@@ -268,7 +268,7 @@ CREATE TABLE hub.ui_preferences (
 ```
 services/product_matrix_api/
 ├── app.py                         — FastAPI app, CORS, error handlers
-├── config.py                      — подключения к двум БД Supabase
+├── config.py                      — подключение к Supabase (public + hub schemas)
 ├── dependencies.py                — auth middleware, role checks
 │
 ├── routes/
@@ -588,7 +588,7 @@ Generic компонент `DataTable<T>` — ядро всего интерфе
 
 - Кнопка "Настроить поля" → dialog с drag-and-drop списком полей
 - Для каждого поля: название, тип, видимость, порядок
-- "+ Добавить поле" → выбор типа → название → API создаёт колонку в БД
+- "+ Добавить поле" → выбор типа → название → API создаёт запись в field_definitions (данные в JSONB custom_fields)
 - Для select-полей: inline-редактирование опций (добавить/удалить/переименовать)
 
 ### Admin Panel
