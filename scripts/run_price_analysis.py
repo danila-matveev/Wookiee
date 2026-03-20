@@ -834,7 +834,10 @@ def analyze_channel(channel: str, start_date: str, end_date: str, learning_store
         else:
             models_agg_data = get_ozon_price_margin_by_model_period(start_date, end_date)
         if models_agg_data and turnover_map:
-            roi_dashboard = compute_model_roi_dashboard(models_agg_data, turnover_map)
+            sales_trends = report.get('sales_trends', {})
+            roi_dashboard = compute_model_roi_dashboard(
+                models_agg_data, turnover_map, sales_trends=sales_trends,
+            )
     except Exception as e:
         logger.warning(f"[{channel}] ROI dashboard failed: {e}")
     report['roi_dashboard'] = roi_dashboard
