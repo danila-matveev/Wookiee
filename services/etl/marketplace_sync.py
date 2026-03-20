@@ -1,13 +1,13 @@
 """Marketplace ETL sync — daily cron job.
 
-Wraps existing ETLOperator from agents/ibrahim/tasks/etl_operator.py.
+Wraps ETLOperator from services/etl/etl_operator.py.
 Not an agent — deterministic script safe to run from cron or CLI.
 """
 
 import asyncio
 import logging
 
-from agents.ibrahim.tasks.etl_operator import ETLOperator
+from services.etl.etl_operator import ETLOperator
 
 logger = logging.getLogger(__name__)
 

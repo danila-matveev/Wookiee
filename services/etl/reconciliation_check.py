@@ -1,6 +1,6 @@
 """Reconciliation check — weekly cron job.
 
-Wraps existing ReconciliationTask from agents/ibrahim/tasks/reconciliation.py.
+Wraps ReconciliationTask from services/etl/reconciliation_task.py.
 Not an agent — deterministic script safe to run from cron or CLI.
 
 Compares managed DB totals against the read-only source DB (89.23.119.253:6433)
@@ -11,7 +11,7 @@ import asyncio
 import logging
 import sys
 
-from agents.ibrahim.tasks.reconciliation import ReconciliationTask
+from services.etl.reconciliation_task import ReconciliationTask
 
 logger = logging.getLogger(__name__)
 

@@ -54,6 +54,19 @@ FINOLOG_API_KEY: str = os.getenv("FINOLOG_API_KEY", "")
 FINOLOG_BIZ_ID: int = int(os.getenv("FINOLOG_BIZ_ID", "48556"))
 FINOLOG_CASH_GAP_THRESHOLD: float = float(os.getenv("FINOLOG_CASH_GAP_THRESHOLD", "1000000"))
 
+# ── ETL Schedule (formerly Ibrahim) ─────────────────────────────────────────
+ETL_DAILY_SYNC_TIME: str = os.getenv("ETL_DAILY_SYNC_TIME", "05:00")
+ETL_WEEKLY_ANALYSIS_TIME: str = os.getenv("ETL_WEEKLY_ANALYSIS_TIME", "03:00")
+ETL_WEEKLY_ANALYSIS_DAY: str = os.getenv("ETL_WEEKLY_ANALYSIS_DAY", "sun")
+ETL_ENABLED: bool = os.getenv("ETL_ENABLED", "true").lower() in ("true", "1", "yes")
+ETL_LLM_MODEL: str = os.getenv("ETL_LLM_MODEL", "moonshotai/kimi-k2")
+
+# ── Finolog Categorizer ─────────────────────────────────────────────────────
+FINOLOG_CATEGORIZATION_TIME: str = os.getenv("FINOLOG_CATEGORIZATION_TIME", "05:30")
+FINOLOG_CATEGORIZATION_ENABLED: bool = os.getenv(
+    "FINOLOG_CATEGORIZATION_ENABLED", "true"
+).lower() in ("true", "1", "yes")
+
 # ── Anomaly thresholds ────────────────────────────────────────────────────────
 ANOMALY_MARGIN_THRESHOLD: float = float(os.getenv("ANOMALY_MARGIN_THRESHOLD", "10.0"))
 ANOMALY_DRR_THRESHOLD: float = float(os.getenv("ANOMALY_DRR_THRESHOLD", "30.0"))

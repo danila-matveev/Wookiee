@@ -18,6 +18,8 @@ services:
     volumes:
       - ../agents/v3/data:/app/agents/v3/data
       - ../agents/oleg/data:/app/agents/oleg/data
+      - ../agents/finolog_categorizer/data:/app/agents/finolog_categorizer/data
+      - ../services/etl/data:/app/services/etl/data
       - ../reports:/app/reports
       - ../scripts:/app/scripts:ro
 
