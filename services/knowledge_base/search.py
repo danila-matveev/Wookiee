@@ -36,6 +36,7 @@ async def search_knowledge(
     module: Optional[str] = None,
     content_type: Optional[str] = None,
     min_score: float = 0.5,
+    source_tag: Optional[str] = None,
 ) -> list[dict]:
     """
     Search the knowledge base.
@@ -43,9 +44,10 @@ async def search_knowledge(
     Args:
         query: Search query in natural language
         limit: Max results to return
-        module: Optional filter by module ("1"-"8" or "processes")
+        module: Optional filter by module ("1"-"8", "processes", "special")
         content_type: Optional filter ("theory", "template", "example")
         min_score: Minimum similarity score (0-1)
+        source_tag: Optional filter ("course", "playbook", "reference", "agent_spec", "guide")
 
     Returns:
         List of result dicts with text, score, and metadata.
@@ -63,6 +65,7 @@ async def search_knowledge(
         module=module,
         content_type=content_type,
         min_similarity=min_score,
+        source_tag=source_tag,
     )
 
     return [
@@ -75,6 +78,7 @@ async def search_knowledge(
             "content_type": r.content_type,
             "chunk_index": r.chunk_index,
             "source_path": r.source_path,
+            "source_tag": r.source_tag,
         }
         for r in results
     ]
