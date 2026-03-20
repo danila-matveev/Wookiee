@@ -3,6 +3,7 @@ SQLite key-value store for Wookiee v3 state persistence.
 
 Handles report delivery dedup, retry tracking, and generic KV storage.
 """
+from __future__ import annotations
 
 import os
 import sqlite3
