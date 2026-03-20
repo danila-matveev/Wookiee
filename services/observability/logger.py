@@ -125,7 +125,6 @@ def _insert_agent_run(
                 %s, %s, %s, %s,
                 %s, %s
             )
-            ON CONFLICT (run_id) DO NOTHING
             """,
             (
                 run_id,
@@ -255,7 +254,7 @@ def _upsert_agent_registry(
                 system_prompt,
                 prompt_hash,
                 md_file_path,
-                psycopg2.extras.Json(mcp_tools) if mcp_tools is not None else None,
+                mcp_tools,  # TEXT[] — pass as Python list, psycopg2 handles it
                 model_tier,
                 default_model,
                 description,
