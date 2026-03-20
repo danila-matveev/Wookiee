@@ -1,6 +1,7 @@
 """Oleg v3 — Analytics Orchestrator.
 
-LangGraph StateGraph that coordinates micro-agents for daily/weekly reports.
+LangGraph StateGraph that coordinates micro-agents for daily/weekly/monthly
+reports, marketing, funnel, finolog, and price analysis.
 Replaces the monolithic OlegOrchestrator from v2.
 """
 import asyncio
@@ -17,11 +18,11 @@ from services.observability.logger import log_orchestrator_run, new_run_id
 logger = logging.getLogger(__name__)
 
 
-# ── State ────────────────────────────────────────────────────────────────
+# ── State ────────────────────────────────────────────────────────────────────
 
 class OlegState(TypedDict):
     """Shared state for Oleg orchestrator graph."""
-    task_type: str  # "daily_report" | "weekly_report" | "ad_hoc"
+    task_type: str  # "daily_report" | "weekly_report" | "monthly_report" | ...
     date_from: str
     date_to: str
     comparison_from: str
@@ -43,21 +44,25 @@ class OlegState(TypedDict):
     total_duration_ms: int
 
 
-# ── Orchestrator ─────────────────────────────────────────────────────────
+# ── Shared pipeline ──────────────────────────────────────────────────────────
 
-async def run_daily_report(
+async def _run_report_pipeline(
+    analysis_agents: list[str],
+    task_context: str,
+    task_type: str,
     date_from: str,
     date_to: str,
     comparison_from: str,
     comparison_to: str,
-    channel: str = "both",
-    trigger: str = "manual",
+    channel: str,
+    trigger: str,
+    compiler_prompt_prefix: str = "Собери аналитический отчёт",
 ) -> dict:
-    """Run a full daily report through the micro-agent pipeline.
+    """Shared pipeline for all report types.
 
-    1. Run margin-analyst, revenue-decomposer, ad-efficiency in parallel
-    2. Pass artifacts to report-compiler
-    3. Return final report
+    1. Run *analysis_agents* in parallel.
+    2. Pass their artifacts to report-compiler.
+    3. Log via observability and return result dict.
 
     Returns:
         {
@@ -75,23 +80,15 @@ async def run_daily_report(
     started_at = datetime.now(timezone.utc)
     start_time = time.monotonic()
 
-    task_context = (
-        f"Период: {date_from} — {date_to}. "
-        f"Сравнение с: {comparison_from} — {comparison_to}. "
-        f"Каналы: {channel}."
-    )
-
-    # ── Phase 1: Run analytical agents in parallel ──
-
-    analysis_agents = ["margin-analyst", "revenue-decomposer", "ad-efficiency"]
+    # ── Phase 1: Run analytical agents in parallel ──────────────────────────
 
     tasks = [
         run_agent(
             agent_name=agent_name,
-            task=f"Проанализируй данные за период. {task_context}",
+            task=f"Проанализируй данные. {task_context}",
             parent_run_id=run_id,
             trigger=trigger,
-            task_type="daily_report",
+            task_type=task_type,
         )
         for agent_name in analysis_agents
     ]
@@ -122,9 +119,8 @@ async def run_daily_report(
             else:
                 agents_failed += 1
 
-    # ── Phase 2: Compile report from artifacts ──
+    # ── Phase 2: Compile report from artifacts ──────────────────────────────
 
-    # Build the task for report-compiler with all artifacts
     compiler_input: dict[str, Any] = {
         "period": {"date_from": date_from, "date_to": date_to},
         "comparison_period": {"date_from": comparison_from, "date_to": comparison_to},
@@ -142,7 +138,7 @@ async def run_daily_report(
             }
 
     compiler_task = (
-        f"Собери аналитический отчёт из следующих артефактов:\n\n"
+        f"{compiler_prompt_prefix}:\n\n"
         f"{json.dumps(compiler_input, ensure_ascii=False, default=str)}"
     )
 
@@ -152,7 +148,7 @@ async def run_daily_report(
         task=compiler_task,
         parent_run_id=run_id,
         trigger=trigger,
-        task_type="daily_report",
+        task_type=task_type,
     )
 
     artifacts["report-compiler"] = compiler_result
@@ -161,7 +157,7 @@ async def run_daily_report(
     else:
         agents_failed += 1
 
-    # ── Determine overall status ──
+    # ── Determine overall status ────────────────────────────────────────────
 
     duration_ms = int((time.monotonic() - start_time) * 1000)
 
@@ -172,13 +168,13 @@ async def run_daily_report(
     else:
         status = "failed"
 
-    # ── Log orchestrator run ──
+    # ── Log orchestrator run ────────────────────────────────────────────────
 
     asyncio.create_task(log_orchestrator_run(
         run_id=run_id,
         orchestrator="oleg",
         orchestrator_version="3.0",
-        task_type="daily_report",
+        task_type=task_type,
         trigger=trigger,
         status=status,
         started_at=started_at,
@@ -203,6 +199,36 @@ async def run_daily_report(
     }
 
 
+# ── Public report entry points ───────────────────────────────────────────────
+
+async def run_daily_report(
+    date_from: str,
+    date_to: str,
+    comparison_from: str,
+    comparison_to: str,
+    channel: str = "both",
+    trigger: str = "manual",
+) -> dict:
+    """Run a full daily report through the micro-agent pipeline."""
+    task_context = (
+        f"Период: {date_from} — {date_to}. "
+        f"Сравнение с: {comparison_from} — {comparison_to}. "
+        f"Каналы: {channel}."
+    )
+    return await _run_report_pipeline(
+        analysis_agents=["margin-analyst", "revenue-decomposer", "ad-efficiency"],
+        task_context=task_context,
+        task_type="daily_report",
+        date_from=date_from,
+        date_to=date_to,
+        comparison_from=comparison_from,
+        comparison_to=comparison_to,
+        channel=channel,
+        trigger=trigger,
+        compiler_prompt_prefix="Собери аналитический отчёт из следующих артефактов",
+    )
+
+
 async def run_weekly_report(
     date_from: str,
     date_to: str,
@@ -211,122 +237,166 @@ async def run_weekly_report(
     channel: str = "both",
     trigger: str = "manual",
 ) -> dict:
-    """Run weekly report — same pipeline as daily but with weekly task type."""
-    run_id = new_run_id()
-    started_at = datetime.now(timezone.utc)
-    start_time = time.monotonic()
-
+    """Run weekly report — same agent set as daily but weekly task type."""
     task_context = (
         f"Недельный отчёт. Период: {date_from} — {date_to}. "
         f"Сравнение с: {comparison_from} — {comparison_to}. "
         f"Каналы: {channel}."
     )
-
-    analysis_agents = ["margin-analyst", "revenue-decomposer", "ad-efficiency"]
-
-    tasks = [
-        run_agent(
-            agent_name=name,
-            task=f"Проанализируй данные за неделю. {task_context}",
-            parent_run_id=run_id,
-            trigger=trigger,
-            task_type="weekly_report",
-        )
-        for name in analysis_agents
-    ]
-
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-
-    artifacts: dict[str, Any] = {}
-    agents_called = len(analysis_agents)
-    agents_succeeded = 0
-    agents_failed = 0
-
-    for name, result in zip(analysis_agents, results):
-        if isinstance(result, Exception):
-            logger.error("Agent %s raised exception: %s", name, result)
-            artifacts[name] = {
-                "agent_name": name,
-                "status": "failed",
-                "artifact": None,
-                "raw_output": str(result),
-                "duration_ms": 0,
-                "run_id": "",
-            }
-            agents_failed += 1
-        else:
-            artifacts[name] = result
-            if result["status"] == "success":
-                agents_succeeded += 1
-            else:
-                agents_failed += 1
-
-    # Compile
-    compiler_input: dict[str, Any] = {
-        "period": {"date_from": date_from, "date_to": date_to},
-        "comparison_period": {"date_from": comparison_from, "date_to": comparison_to},
-        "channel": channel,
-        "artifacts": {},
-    }
-    for n, r in artifacts.items():
-        if r["status"] == "success" and r.get("artifact"):
-            compiler_input["artifacts"][n] = r["artifact"]
-        else:
-            compiler_input["artifacts"][n] = {
-                "status": "failed",
-                "error": r.get("raw_output", "Unknown error")[:500],
-            }
-
-    agents_called += 1
-    compiler_result = await run_agent(
-        agent_name="report-compiler",
-        task=(
-            f"Собери недельный аналитический отчёт:\n\n"
-            f"{json.dumps(compiler_input, ensure_ascii=False, default=str)}"
-        ),
-        parent_run_id=run_id,
-        trigger=trigger,
+    return await _run_report_pipeline(
+        analysis_agents=["margin-analyst", "revenue-decomposer", "ad-efficiency"],
+        task_context=task_context,
         task_type="weekly_report",
+        date_from=date_from,
+        date_to=date_to,
+        comparison_from=comparison_from,
+        comparison_to=comparison_to,
+        channel=channel,
+        trigger=trigger,
+        compiler_prompt_prefix="Собери недельный аналитический отчёт",
     )
-    artifacts["report-compiler"] = compiler_result
-    if compiler_result["status"] == "success":
-        agents_succeeded += 1
-    else:
-        agents_failed += 1
 
-    duration_ms = int((time.monotonic() - start_time) * 1000)
 
-    if agents_failed == 0:
-        status = "success"
-    elif agents_succeeded > 0:
-        status = "partial"
-    else:
-        status = "failed"
-
-    asyncio.create_task(log_orchestrator_run(
-        run_id=run_id,
-        orchestrator="oleg",
-        orchestrator_version="3.0",
-        task_type="weekly_report",
+async def run_monthly_report(
+    date_from: str,
+    date_to: str,
+    comparison_from: str,
+    comparison_to: str,
+    channel: str = "both",
+    trigger: str = "manual",
+) -> dict:
+    """Run monthly report — same agents as daily/weekly, monthly task type."""
+    task_context = (
+        f"Месячный отчёт. Период: {date_from} — {date_to}. "
+        f"Сравнение с: {comparison_from} — {comparison_to}. "
+        f"Каналы: {channel}."
+    )
+    return await _run_report_pipeline(
+        analysis_agents=["margin-analyst", "revenue-decomposer", "ad-efficiency"],
+        task_context=task_context,
+        task_type="monthly_report",
+        date_from=date_from,
+        date_to=date_to,
+        comparison_from=comparison_from,
+        comparison_to=comparison_to,
+        channel=channel,
         trigger=trigger,
-        status=status,
-        started_at=started_at,
-        finished_at=datetime.now(timezone.utc),
-        duration_ms=duration_ms,
-        agents_called=agents_called,
-        agents_succeeded=agents_succeeded,
-        agents_failed=agents_failed,
-        total_tokens=0,
-        total_cost_usd=0.0,
-    ))
+        compiler_prompt_prefix="Собери месячный аналитический отчёт",
+    )
 
-    return {
-        "run_id": run_id,
-        "status": status,
-        "report": compiler_result.get("artifact"),
-        "artifacts": artifacts,
-        "agents_called": agents_called,
-        "agents_succeeded": agents_succeeded,
-        "agents_failed": agents_failed,
-        "duration_ms": duration_ms,
-    }
+
+async def run_marketing_report(
+    date_from: str,
+    date_to: str,
+    comparison_from: str,
+    comparison_to: str,
+    report_period: str = "weekly",
+    channel: str = "both",
+    trigger: str = "manual",
+) -> dict:
+    """Run marketing report (weekly or monthly).
+
+    Args:
+        report_period: "weekly" or "monthly" — determines task_type.
+    """
+    task_type = "marketing_weekly" if report_period == "weekly" else "marketing_monthly"
+    period_label = "Недельный" if report_period == "weekly" else "Месячный"
+    task_context = (
+        f"{period_label} маркетинговый отчёт. Период: {date_from} — {date_to}. "
+        f"Сравнение с: {comparison_from} — {comparison_to}. "
+        f"Каналы: {channel}."
+    )
+    return await _run_report_pipeline(
+        analysis_agents=["campaign-optimizer", "organic-vs-paid", "ad-efficiency"],
+        task_context=task_context,
+        task_type=task_type,
+        date_from=date_from,
+        date_to=date_to,
+        comparison_from=comparison_from,
+        comparison_to=comparison_to,
+        channel=channel,
+        trigger=trigger,
+        compiler_prompt_prefix="Собери маркетинговый отчёт",
+    )
+
+
+async def run_funnel_report(
+    date_from: str,
+    date_to: str,
+    comparison_from: str,
+    comparison_to: str,
+    channel: str = "both",
+    trigger: str = "manual",
+) -> dict:
+    """Run funnel (воронка продаж) weekly report."""
+    task_context = (
+        f"Воронка продаж. Период: {date_from} — {date_to}. "
+        f"Сравнение с: {comparison_from} — {comparison_to}. "
+        f"Каналы: {channel}."
+    )
+    return await _run_report_pipeline(
+        analysis_agents=["funnel-digitizer", "keyword-analyst"],
+        task_context=task_context,
+        task_type="funnel_weekly",
+        date_from=date_from,
+        date_to=date_to,
+        comparison_from=comparison_from,
+        comparison_to=comparison_to,
+        channel=channel,
+        trigger=trigger,
+        compiler_prompt_prefix="Собери отчёт по воронке продаж",
+    )
+
+
+async def run_finolog_report(
+    date_from: str,
+    date_to: str,
+    trigger: str = "manual",
+) -> dict:
+    """Run Finolog ДДС / cash flow weekly report.
+
+    No comparison period or channel needed for cash flow analysis.
+    """
+    task_context = (
+        f"ДДС / cash flow. Период: {date_from} — {date_to}."
+    )
+    return await _run_report_pipeline(
+        analysis_agents=["finolog-analyst"],
+        task_context=task_context,
+        task_type="finolog_weekly",
+        date_from=date_from,
+        date_to=date_to,
+        comparison_from="",
+        comparison_to="",
+        channel="both",
+        trigger=trigger,
+        compiler_prompt_prefix="Собери отчёт ДДС / cash flow",
+    )
+
+
+async def run_price_analysis(
+    date_from: str,
+    date_to: str,
+    comparison_from: str,
+    comparison_to: str,
+    channel: str = "both",
+    trigger: str = "manual",
+) -> dict:
+    """Run price analysis report."""
+    task_context = (
+        f"Ценовой анализ. Период: {date_from} — {date_to}. "
+        f"Сравнение с: {comparison_from} — {comparison_to}. "
+        f"Каналы: {channel}."
+    )
+    return await _run_report_pipeline(
+        analysis_agents=["price-strategist", "hypothesis-tester"],
+        task_context=task_context,
+        task_type="price_analysis",
+        date_from=date_from,
+        date_to=date_to,
+        comparison_from=comparison_from,
+        comparison_to=comparison_to,
+        channel=channel,
+        trigger=trigger,
+        compiler_prompt_prefix="Собери отчёт по ценовому анализу",
+    )
