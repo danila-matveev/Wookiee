@@ -189,8 +189,12 @@ def find_optimal_price_for_roi(
     }
 
 
-def _assign_roi_category(annual_roi: float) -> str:
-    """Присвоение категории модели по уровню ROI."""
+def _assign_roi_category(annual_roi: float, sales_trend: str = 'stable') -> str:
+    """Присвоение категории модели по уровню ROI.
+
+    Если модель попадает в deadstock_risk но продажи растут —
+    переклассифицируем в underperformer (Charlotte fix).
+    """
     if annual_roi > ROI_LEADER_THRESHOLD:
         return 'roi_leader'
     elif annual_roi >= ROI_HEALTHY_THRESHOLD:
@@ -198,6 +202,8 @@ def _assign_roi_category(annual_roi: float) -> str:
     elif annual_roi >= ROI_UNDERPERFORMER_THRESHOLD:
         return 'underperformer'
     else:
+        if sales_trend == 'growth':
+            return 'underperformer'
         return 'deadstock_risk'
 
 
@@ -236,6 +242,7 @@ def _generate_recommendation(category: str, margin_pct: float, turnover_days: fl
 def compute_model_roi_dashboard(
     models_data: list[dict],
     turnover_data: dict,
+    sales_trends: dict = None,  # NEW: {model: {trend: str, growth_pct: float}}
 ) -> list[dict]:
     """
     Дашборд ROI по моделям: расчёт годового ROI, категоризация, рекомендации.
@@ -267,7 +274,11 @@ def compute_model_roi_dashboard(
         annual_roi = compute_annual_roi(margin_pct, turnover_days)
 
         # Категория
-        category = _assign_roi_category(annual_roi)
+        model_trend = 'stable'
+        if sales_trends:
+            trend_info = sales_trends.get(model, {})
+            model_trend = trend_info.get('trend', 'stable')
+        category = _assign_roi_category(annual_roi, sales_trend=model_trend)
 
         # Рекомендация
         recommendation = _generate_recommendation(category, margin_pct, turnover_days)
