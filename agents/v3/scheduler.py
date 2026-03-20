@@ -1,6 +1,6 @@
 """Wookiee v3 — APScheduler cron job configuration.
 
-All 13 cron jobs:
+All 15 cron jobs:
     1.  daily_report          — daily at DAILY_REPORT_TIME (with retry logic)
     2.  weekly_report         — every Monday at WEEKLY_REPORT_TIME
     3.  monthly_report        — days 1-7 of month, Monday, at MONTHLY_REPORT_TIME
@@ -10,9 +10,12 @@ All 13 cron jobs:
     7.  monthly_price_analysis — day N of month at MONTHLY_PRICE_ANALYSIS_TIME
     8.  data_ready_check      — hourly 06-12 MSK, notifies when gates pass
     9.  notion_feedback       — daily, 1h before daily report
-    10. anomaly_monitor       — every N hours at :30 (stub for Task 9)
-    11. watchdog_heartbeat    — every 6h at :00 (stub for Task 9)
+    10. anomaly_monitor       — every N hours at :30
+    11. watchdog_heartbeat    — every 6h at :00
     12. promotion_scan        — every 12h at :15 (only if PROMOTION_SCAN_ENABLED)
+    13. etl_daily_sync        — daily at ETL_DAILY_SYNC_TIME (marketplace sync + reconciliation + quality)
+    14. etl_weekly_analysis   — weekly (Sunday) at ETL_WEEKLY_ANALYSIS_TIME (API docs + schema)
+    15. finolog_categorization — daily at FINOLOG_CATEGORIZATION_TIME (transaction classification)
 """
 from __future__ import annotations
 
@@ -533,11 +536,105 @@ async def _job_promotion_scan() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Job: ETL daily sync (marketplace data)
+# ---------------------------------------------------------------------------
+
+async def _job_etl_daily_sync() -> None:
+    """Cron callback: marketplace ETL sync + reconciliation + data quality check."""
+    date_to = _yesterday_msk()
+    state = _get_state()
+
+    if state.is_delivered("etl_daily_sync", date_to):
+        logger.info("etl_daily_sync already completed for %s, skipping", date_to)
+        return
+
+    try:
+        from services.etl.marketplace_sync import run_marketplace_sync
+        from services.etl.reconciliation_check import run_reconciliation_check
+        from services.etl.data_quality_check import run_data_quality_check
+
+        sync_result = await run_marketplace_sync()
+        recon_result = await run_reconciliation_check(days=1)
+        quality_result = await run_data_quality_check()
+
+        state.mark_delivered("etl_daily_sync", date_to)
+
+        # Alert on failures
+        if not recon_result.get("passed", True):
+            await _send_admin(
+                f"[Wookiee v3] ETL Reconciliation FAIL для {date_to}\n"
+                f"Статус: {recon_result.get('status', 'UNKNOWN')}"
+            )
+        if not quality_result.get("overall_ok", True):
+            await _send_admin(f"[Wookiee v3] Проблемы качества данных за {date_to}")
+
+        logger.info("etl_daily_sync for %s completed", date_to)
+    except Exception as exc:
+        logger.exception("etl_daily_sync failed: %s", exc)
+        await _send_admin(f"[Wookiee v3] Ошибка ETL sync за {date_to}:\n{exc}")
+
+
+# ---------------------------------------------------------------------------
+# Job: ETL weekly analysis (API docs + schema)
+# ---------------------------------------------------------------------------
+
+async def _job_etl_weekly_analysis() -> None:
+    """Cron callback: API documentation + schema analysis (weekly, Sunday)."""
+    date_to = _yesterday_msk()
+    state = _get_state()
+
+    if state.is_delivered("etl_weekly_analysis", date_to):
+        logger.info("etl_weekly_analysis already completed for %s, skipping", date_to)
+        return
+
+    try:
+        from services.etl.api_docs_check import run_api_docs_check
+        from services.etl.schema_check import run_schema_check
+        from shared.clients.openrouter_client import OpenRouterClient
+
+        llm = OpenRouterClient(
+            api_key=config.OPENROUTER_API_KEY,
+            model=config.ETL_LLM_MODEL,
+        )
+        await run_api_docs_check(llm_client=llm)
+        await run_schema_check(llm_client=llm)
+
+        state.mark_delivered("etl_weekly_analysis", date_to)
+        logger.info("etl_weekly_analysis for %s completed", date_to)
+    except Exception as exc:
+        logger.exception("etl_weekly_analysis failed: %s", exc)
+        await _send_admin(f"[Wookiee v3] Ошибка ETL weekly analysis:\n{exc}")
+
+
+# ---------------------------------------------------------------------------
+# Job: Finolog categorization (transaction classification)
+# ---------------------------------------------------------------------------
+
+async def _job_finolog_categorization() -> None:
+    """Cron callback: daily Finolog transaction categorization."""
+    date_to = _yesterday_msk()
+    state = _get_state()
+
+    if state.is_delivered("finolog_categorization", date_to):
+        logger.info("finolog_categorization already completed for %s, skipping", date_to)
+        return
+
+    try:
+        from agents.finolog_categorizer.app import run_scan
+        await run_scan()
+        state.mark_delivered("finolog_categorization", date_to)
+        logger.info("finolog_categorization for %s completed", date_to)
+    except Exception as exc:
+        logger.exception("finolog_categorization failed: %s", exc)
+        await _send_admin(f"[Wookiee v3] Ошибка категоризации Finolog:\n{exc}")
+
+
+# ---------------------------------------------------------------------------
 # Scheduler factory
 # ---------------------------------------------------------------------------
 
 def create_scheduler() -> AsyncIOScheduler:
-    """Build and return a configured AsyncIOScheduler with all 13 jobs."""
+    """Build and return a configured AsyncIOScheduler with all 15 jobs."""
     scheduler = AsyncIOScheduler(timezone=config.TIMEZONE)
 
     job_defaults = {
@@ -683,6 +780,50 @@ def create_scheduler() -> AsyncIOScheduler:
         )
     else:
         logger.info("promotion_scan job skipped: PROMOTION_SCAN_ENABLED=false")
+
+    # ── 13. ETL daily sync ────────────────────────────────────────────────────
+    if config.ETL_ENABLED:
+        etl_daily_h, etl_daily_m = _parse_hm(config.ETL_DAILY_SYNC_TIME)
+        scheduler.add_job(
+            _job_etl_daily_sync,
+            trigger=CronTrigger(
+                hour=etl_daily_h, minute=etl_daily_m,
+                timezone=config.TIMEZONE,
+            ),
+            id="etl_daily_sync",
+            **job_defaults,
+        )
+    else:
+        logger.info("etl_daily_sync job skipped: ETL_ENABLED=false")
+
+    # ── 14. ETL weekly analysis (Sunday) ──────────────────────────────────────
+    if config.ETL_ENABLED:
+        etl_weekly_h, etl_weekly_m = _parse_hm(config.ETL_WEEKLY_ANALYSIS_TIME)
+        scheduler.add_job(
+            _job_etl_weekly_analysis,
+            trigger=CronTrigger(
+                day_of_week=config.ETL_WEEKLY_ANALYSIS_DAY,
+                hour=etl_weekly_h, minute=etl_weekly_m,
+                timezone=config.TIMEZONE,
+            ),
+            id="etl_weekly_analysis",
+            **job_defaults,
+        )
+
+    # ── 15. Finolog categorization (daily) ────────────────────────────────────
+    if config.FINOLOG_CATEGORIZATION_ENABLED and config.FINOLOG_API_KEY:
+        cat_h, cat_m = _parse_hm(config.FINOLOG_CATEGORIZATION_TIME)
+        scheduler.add_job(
+            _job_finolog_categorization,
+            trigger=CronTrigger(
+                hour=cat_h, minute=cat_m,
+                timezone=config.TIMEZONE,
+            ),
+            id="finolog_categorization",
+            **job_defaults,
+        )
+    else:
+        logger.info("finolog_categorization job skipped: disabled or FINOLOG_API_KEY not set")
 
     logger.info(
         "Scheduler configured with %d jobs: %s",

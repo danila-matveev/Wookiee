@@ -1,6 +1,6 @@
 """Data quality check — daily cron job.
 
-Wraps existing DataQuality from agents/ibrahim/tasks/data_quality.py.
+Wraps DataQuality from services/etl/data_quality_task.py.
 Not an agent — deterministic script safe to run from cron or CLI.
 
 Checks: freshness (yesterday loaded), completeness (no gaps in last 30 days),
@@ -10,7 +10,7 @@ consistency (control sums), advertising data cross-validation.
 import asyncio
 import logging
 
-from agents.ibrahim.tasks.data_quality import DataQuality
+from services.etl.data_quality_task import DataQuality
 
 logger = logging.getLogger(__name__)
 
