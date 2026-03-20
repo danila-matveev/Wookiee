@@ -183,6 +183,7 @@ def generate_stock_aware_recommendation(
     price_recommendation: dict,
     stock_health: dict,
     turnover_days: float,
+    sales_trend: str = 'stable',  # NEW
 ) -> dict:
     """
     Наложение складских ограничений на ценовую рекомендацию.
@@ -195,6 +196,9 @@ def generate_stock_aware_recommendation(
             (обязательное поле 'action': 'increase_price' | 'decrease_price' | 'hold')
         stock_health: dict из assess_stock_health()
         turnover_days: оборачиваемость в днях
+        sales_trend: тренд продаж ('growth' | 'stable' | 'decline').
+            При 'growth' + 'overstocked' повышение цены разрешается,
+            так как запас активно распродаётся.
 
     Returns:
         dict — копия рекомендации с добавленными полями:
@@ -246,18 +250,31 @@ def generate_stock_aware_recommendation(
         )
 
     elif original_action == 'increase_price' and status == 'overstocked':
-        result['action'] = 'hold'
-        stock_override = True
-        stock_reasoning = (
-            f"Повышение цены отменено: статус остатков "
-            f"«{_status_label(status)}» ({stock_health.get('weeks_supply', '?')} нед.). "
-            "При текущем уровне затоваривания повышение цены "
-            "замедлит оборот и усугубит проблему."
-        )
-        logger.info(
-            "Stock override: increase_price → hold (status=%s, weeks=%.1f)",
-            status, stock_health.get('weeks_supply', 0),
-        )
+        if sales_trend == 'growth':
+            # Sales growing — overstocked will resolve itself, allow increase
+            stock_reasoning = (
+                f"Повышение цены разрешено несмотря на затоваривание "
+                f"(«{_status_label(status)}», {stock_health.get('weeks_supply', '?')} нед.): "
+                "продажи растут — запас активно распродаётся."
+            )
+            logger.info(
+                "Stock override SKIPPED: increase_price + overstocked but sales_trend=growth "
+                "(status=%s, weeks=%.1f)",
+                status, stock_health.get('weeks_supply', 0),
+            )
+        else:
+            result['action'] = 'hold'
+            stock_override = True
+            stock_reasoning = (
+                f"Повышение цены отменено: статус остатков "
+                f"«{_status_label(status)}» ({stock_health.get('weeks_supply', '?')} нед.). "
+                "При текущем уровне затоваривания повышение цены "
+                "замедлит оборот и усугубит проблему."
+            )
+            logger.info(
+                "Stock override: increase_price → hold (status=%s, weeks=%.1f)",
+                status, stock_health.get('weeks_supply', 0),
+            )
 
     # --- Правило 3: hold при сильном затоваривании → принудительное снижение -
     elif original_action == 'hold' and status == 'severely_overstocked':
