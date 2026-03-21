@@ -485,4 +485,83 @@ def _detect_model_signals(data: dict) -> list[Signal]:
 
 
 def _detect_kb_pattern_signals(data: dict, kb_patterns: list[dict]) -> list[Signal]:
-    return []
+    signals = []
+    if not kb_patterns:
+        return signals
+
+    for pattern in kb_patterns:
+        condition = pattern.get("trigger_condition", {})
+        if not condition:
+            continue
+
+        operator = condition.get("operator", "")
+        threshold = condition.get("threshold", 0)
+
+        if operator == "gap_gt":
+            pair = condition.get("metric_pair", [])
+            if len(pair) != 2:
+                continue
+            val_a = _deep_get(data, pair[0])
+            val_b = _deep_get(data, pair[1])
+            if val_a is None or val_b is None:
+                continue
+            if not _compare(val_a - val_b, ">", threshold):
+                continue
+        else:
+            metric = condition.get("metric", "")
+            if not metric:
+                continue
+            value = _deep_get(data, metric)
+            if value is None:
+                continue
+            if not _compare(value, operator, threshold):
+                continue
+
+        name = pattern.get("pattern_name", "unknown")
+        signals.append(Signal(
+            id=f"kb_{name}",
+            type=f"kb_{name}",
+            category=pattern.get("category", "margin"),
+            severity=pattern.get("severity", "warning"),
+            impact_on=pattern.get("impact_on", "margin"),
+            data={"pattern_name": name, "trigger_condition": condition},
+            hint=pattern.get("description", name),
+            source="kb_pattern",
+        ))
+
+    return signals
+
+
+def _deep_get(data: dict, path: str):
+    """Get nested value by dot-separated path. Returns None if missing."""
+    keys = path.split(".")
+    current = data
+    for key in keys:
+        if isinstance(current, dict):
+            current = current.get(key)
+        else:
+            return None
+        if current is None:
+            return None
+    return current
+
+
+def _compare(value, operator: str, threshold) -> bool:
+    """Compare value against threshold using operator string."""
+    try:
+        value = float(value)
+        threshold = float(threshold)
+    except (TypeError, ValueError):
+        return False
+
+    if operator == ">":
+        return value > threshold
+    elif operator == "<":
+        return value < threshold
+    elif operator == ">=":
+        return value >= threshold
+    elif operator == "<=":
+        return value <= threshold
+    elif operator == "==":
+        return abs(value - threshold) < 0.001
+    return False
