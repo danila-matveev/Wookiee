@@ -380,7 +380,108 @@ def _detect_advertising_signals(data: dict) -> list[Signal]:
 
 
 def _detect_model_signals(data: dict) -> list[Signal]:
-    return []  # Implemented in Task 5
+    signals: list[Signal] = []
+    models = data.get("models", [])
+    if not models:
+        return signals
+
+    channel = data.get("channel", "unknown")
+
+    # Pre-compute median turnover_days (excluding 0)
+    turnover_values = sorted(
+        [m.get("turnover_days", 0) or 0 for m in models if (m.get("turnover_days", 0) or 0) > 0]
+    )
+    median_turnover = turnover_values[len(turnover_values) // 2] if turnover_values else 0
+
+    for m in models:
+        name = m.get("model", "?")
+        margin_pct = m.get("margin_pct", 0) or 0
+        drr_pct = m.get("drr_pct", 0) or 0
+        turnover = m.get("turnover_days", 0) or 0
+        roi = m.get("roi_annual", 0) or 0
+        margin = m.get("margin", 0) or 0
+        adv_total = m.get("adv_total", 0) or 0
+        orders_count = m.get("orders_count", 0) or 0
+        sales_count = m.get("sales_count", 0) or 0
+
+        # 1. low_roi_article: low ROI + low margin + slow turnover
+        if median_turnover > 0 and roi < 50 and margin_pct < 15 and turnover > median_turnover * 1.5:
+            signals.append(Signal(
+                id=f"low_roi_article_{channel}_{name}",
+                type="low_roi_article",
+                category="turnover",
+                severity="warning",
+                impact_on="both",
+                data={"model": name, "roi_annual": roi, "margin_pct": margin_pct, "turnover_days": turnover},
+                hint=f"{name}: ROI {roi}%, маржа {margin_pct}%, оборачиваемость {turnover} дн. — кандидат на вывод",
+                source="model_breakdown",
+            ))
+
+        # 2. high_roi_opportunity: fast turnover + high margin
+        if median_turnover > 0 and turnover > 0 and turnover < median_turnover * 0.5 and margin_pct > 25:
+            signals.append(Signal(
+                id=f"high_roi_opportunity_{channel}_{name}",
+                type="high_roi_opportunity",
+                category="turnover",
+                severity="info",
+                impact_on="both",
+                data={"model": name, "margin_pct": margin_pct, "turnover_days": turnover, "roi_annual": roi},
+                hint=f"{name}: маржа {margin_pct}%, оборачиваемость {turnover} дн. — потенциал для масштабирования",
+                source="model_breakdown",
+            ))
+
+        # 4. romi_critical: ROMI < 50% for advertised models
+        if adv_total > 0 and drr_pct > 0:
+            romi = margin / adv_total
+            if romi < 0.5:
+                signals.append(Signal(
+                    id=f"romi_critical_{channel}_{name}",
+                    type="romi_critical",
+                    category="adv",
+                    severity="critical",
+                    impact_on="margin",
+                    data={"model": name, "romi": round(romi, 2), "margin": margin, "adv_total": adv_total},
+                    hint=f"{name}: ROMI = {round(romi * 100)}% (маржа {margin}₽ / реклама {adv_total}₽) — убыточная реклама",
+                    source="model_breakdown",
+                ))
+
+        # 5. cac_exceeds_profit: CAC > profit per sale
+        if adv_total > 0 and orders_count > 0 and sales_count > 0 and drr_pct > 0:
+            cac = adv_total / orders_count
+            profit_per_sale = margin / sales_count
+            if cac > profit_per_sale:
+                signals.append(Signal(
+                    id=f"cac_exceeds_profit_{channel}_{name}",
+                    type="cac_exceeds_profit",
+                    category="adv",
+                    severity="critical",
+                    impact_on="margin",
+                    data={"model": name, "cac": round(cac), "profit_per_sale": round(profit_per_sale)},
+                    hint=f"{name}: CAC ({round(cac)}₽) > прибыль/продажу ({round(profit_per_sale)}₽)",
+                    source="model_breakdown",
+                ))
+
+    # 3. big_inefficient: top-5 by revenue with margin_pct < 10%
+    sorted_by_rev = sorted(models, key=lambda m: m.get("revenue_before_spp", 0) or 0, reverse=True)
+    for m in sorted_by_rev[:5]:
+        mp = m.get("margin_pct", 0) or 0
+        if mp < 10:
+            name = m.get("model", "?")
+            signals.append(Signal(
+                id=f"big_inefficient_{channel}_{name}",
+                type="big_inefficient",
+                category="model",
+                severity="warning",
+                impact_on="margin",
+                data={"model": name, "margin_pct": mp, "revenue": m.get("revenue_before_spp", 0)},
+                hint=f"{name}: топ по выручке, но маржинальность всего {mp}%",
+                source="model_breakdown",
+            ))
+
+    # status_mismatch: requires product status data not available in model_breakdown
+    # TODO: Implement when get_product_statuses data is integrated
+
+    return signals
 
 
 def _detect_kb_pattern_signals(data: dict, kb_patterns: list[dict]) -> list[Signal]:
