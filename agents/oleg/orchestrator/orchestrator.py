@@ -504,6 +504,7 @@ class OlegOrchestrator:
         """Run Signal Detector on structured data. Pure Python, no LLM."""
         try:
             all_signals = []
+            # TODO: pass kb_patterns when KB pattern loader is implemented (Phase B)
             for source_tag, source_data in structured_data.items():
                 if isinstance(source_data, list):
                     for item in source_data:
