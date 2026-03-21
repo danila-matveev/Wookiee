@@ -20,6 +20,7 @@ import json
 import logging
 import re
 import time
+from datetime import date
 from typing import Dict, Optional
 
 from agents.oleg.orchestrator.chain import (
@@ -526,119 +527,169 @@ class OlegOrchestrator:
         Run advisor chain: Signal Detection -> Advisor -> Validator.
         Returns validated recommendations or empty dict on failure.
         """
-        # Step 1: Signal detection (pure Python, no LLM)
-        signals = await self._run_signal_detection(structured_data)
-        if not signals:
-            logger.info("Advisor chain: no signals detected, skipping")
-            return {"recommendations": [], "signals": []}
-
-        logger.info(f"Advisor chain: {len(signals)} signals detected")
-
-        # Step 2: Advisor — generate recommendations
-        advisor = self.agents.get("advisor")
-        if not advisor:
-            logger.warning("Advisor agent not registered, skipping chain")
-            return {"recommendations": [], "signals": signals}
-
-        advisor_instruction = (
-            f"Сформируй рекомендации для {report_type} отчёта.\n\n"
-            f"signals = {json.dumps(signals, ensure_ascii=False, default=str)}\n\n"
-            f"structured_data = {json.dumps(structured_data, ensure_ascii=False, default=str)}\n\n"
-            f"report_type = \"{report_type}\""
-        )
-
-        advisor_result = await advisor.analyze(
-            instruction=advisor_instruction,
-            context="",
-        )
-
-        # Parse advisor output
-        try:
-            advisor_output = json.loads(advisor_result.content)
-            recommendations = advisor_output.get("recommendations", [])
-        except (json.JSONDecodeError, AttributeError):
-            logger.warning("Advisor output is not valid JSON, skipping validation")
-            return {"recommendations": [], "signals": signals, "raw_advisor": advisor_result.content}
-
-        if not recommendations:
-            return {"recommendations": [], "signals": signals}
-
-        # Step 3: Validator — verify recommendations
-        validator = self.agents.get("validator")
-        if not validator:
-            logger.warning("Validator agent not registered, returning unverified")
-            for r in recommendations:
-                r["verified"] = False
-            return {"recommendations": recommendations, "signals": signals}
-
-        validator_instruction = (
-            f"Проверь рекомендации от Advisor.\n\n"
-            f"recommendations = {json.dumps(recommendations, ensure_ascii=False, default=str)}\n\n"
-            f"signals = {json.dumps(signals, ensure_ascii=False, default=str)}\n\n"
-            f"structured_data = {json.dumps(structured_data, ensure_ascii=False, default=str)}"
-        )
-
-        validator_result = await validator.analyze(
-            instruction=validator_instruction,
-            context="",
-        )
+        advisor_start = time.time()
+        result = {"recommendations": [], "signals": []}
+        attempts = 1
 
         try:
-            verdict = json.loads(validator_result.content)
-        except (json.JSONDecodeError, AttributeError):
-            logger.warning("Validator output is not valid JSON, returning unverified")
-            for r in recommendations:
-                r["verified"] = False
-            return {"recommendations": recommendations, "signals": signals}
+            # Step 1: Signal detection (pure Python, no LLM)
+            signals = await self._run_signal_detection(structured_data)
+            if not signals:
+                logger.info("Advisor chain: no signals detected, skipping")
+                return result
 
-        if verdict.get("verdict") == "pass":
-            for r in recommendations:
-                r["verified"] = True
-            return {"recommendations": recommendations, "signals": signals, "verdict": verdict}
+            logger.info(f"Advisor chain: {len(signals)} signals detected")
 
-        # Step 4: Retry once — send validator feedback to advisor
-        logger.info(f"Validator: FAIL — {verdict.get('issues', [])}")
-        retry_instruction = (
-            f"Валидатор отклонил рекомендации. Исправь и повтори.\n\n"
-            f"Проблемы: {json.dumps(verdict.get('issues', []), ensure_ascii=False)}\n\n"
-            f"Оригинальные рекомендации: {json.dumps(recommendations, ensure_ascii=False, default=str)}\n\n"
-            f"signals = {json.dumps(signals, ensure_ascii=False, default=str)}\n\n"
-            f"report_type = \"{report_type}\""
-        )
+            # Step 2: Advisor — generate recommendations
+            advisor = self.agents.get("advisor")
+            if not advisor:
+                logger.warning("Advisor agent not registered, skipping chain")
+                result = {"recommendations": [], "signals": signals}
+                return result
 
-        retry_result = await advisor.analyze(instruction=retry_instruction, context="")
+            advisor_instruction = (
+                f"Сформируй рекомендации для {report_type} отчёта.\n\n"
+                f"signals = {json.dumps(signals, ensure_ascii=False, default=str)}\n\n"
+                f"structured_data = {json.dumps(structured_data, ensure_ascii=False, default=str)}\n\n"
+                f"report_type = \"{report_type}\""
+            )
+
+            advisor_result = await advisor.analyze(
+                instruction=advisor_instruction,
+                context="",
+            )
+
+            # Parse advisor output
+            try:
+                advisor_output = json.loads(advisor_result.content)
+                recommendations = advisor_output.get("recommendations", [])
+            except (json.JSONDecodeError, AttributeError):
+                logger.warning("Advisor output is not valid JSON, skipping validation")
+                result = {"recommendations": [], "signals": signals, "raw_advisor": advisor_result.content}
+                return result
+
+            if not recommendations:
+                result = {"recommendations": [], "signals": signals}
+                return result
+
+            # Step 3: Validator — verify recommendations
+            validator = self.agents.get("validator")
+            if not validator:
+                logger.warning("Validator agent not registered, returning unverified")
+                for r in recommendations:
+                    r["verified"] = False
+                result = {"recommendations": recommendations, "signals": signals}
+                return result
+
+            validator_instruction = (
+                f"Проверь рекомендации от Advisor.\n\n"
+                f"recommendations = {json.dumps(recommendations, ensure_ascii=False, default=str)}\n\n"
+                f"signals = {json.dumps(signals, ensure_ascii=False, default=str)}\n\n"
+                f"structured_data = {json.dumps(structured_data, ensure_ascii=False, default=str)}"
+            )
+
+            validator_result = await validator.analyze(
+                instruction=validator_instruction,
+                context="",
+            )
+
+            try:
+                verdict = json.loads(validator_result.content)
+            except (json.JSONDecodeError, AttributeError):
+                logger.warning("Validator output is not valid JSON, returning unverified")
+                for r in recommendations:
+                    r["verified"] = False
+                result = {"recommendations": recommendations, "signals": signals}
+                return result
+
+            if verdict.get("verdict") == "pass":
+                for r in recommendations:
+                    r["verified"] = True
+                result = {"recommendations": recommendations, "signals": signals, "verdict": verdict}
+                return result
+
+            # Step 4: Retry once — send validator feedback to advisor
+            logger.info(f"Validator: FAIL — {verdict.get('issues', [])}")
+            attempts = 2
+            retry_instruction = (
+                f"Валидатор отклонил рекомендации. Исправь и повтори.\n\n"
+                f"Проблемы: {json.dumps(verdict.get('issues', []), ensure_ascii=False)}\n\n"
+                f"Оригинальные рекомендации: {json.dumps(recommendations, ensure_ascii=False, default=str)}\n\n"
+                f"signals = {json.dumps(signals, ensure_ascii=False, default=str)}\n\n"
+                f"report_type = \"{report_type}\""
+            )
+
+            retry_result = await advisor.analyze(instruction=retry_instruction, context="")
+            try:
+                retry_output = json.loads(retry_result.content)
+                retry_recs = retry_output.get("recommendations", [])
+            except (json.JSONDecodeError, AttributeError):
+                for r in recommendations:
+                    r["verified"] = False
+                result = {"recommendations": recommendations, "signals": signals}
+                return result
+
+            # Re-validate
+            revalidate_instruction = (
+                f"Проверь исправленные рекомендации.\n\n"
+                f"recommendations = {json.dumps(retry_recs, ensure_ascii=False, default=str)}\n\n"
+                f"signals = {json.dumps(signals, ensure_ascii=False, default=str)}\n\n"
+                f"structured_data = {json.dumps(structured_data, ensure_ascii=False, default=str)}"
+            )
+
+            rev2 = await validator.analyze(instruction=revalidate_instruction, context="")
+            try:
+                verdict2 = json.loads(rev2.content)
+            except (json.JSONDecodeError, AttributeError):
+                verdict2 = {"verdict": "fail"}
+
+            if verdict2.get("verdict") == "pass":
+                for r in retry_recs:
+                    r["verified"] = True
+                result = {"recommendations": retry_recs, "signals": signals, "verdict": verdict2}
+            else:
+                # Final fallback — include unverified
+                logger.warning("Advisor chain: validator failed twice, returning unverified")
+                for r in retry_recs:
+                    r["verified"] = False
+                result = {"recommendations": retry_recs, "signals": signals, "verdict": verdict2}
+
+            return result
+
+        except Exception as e:
+            logger.warning(f"Advisor chain unexpected error: {e}")
+            if not result.get("signals"):
+                result = {"recommendations": [], "signals": []}
+            return result
+
+        finally:
+            duration_ms = int((time.time() - advisor_start) * 1000)
+            result["attempts"] = attempts
+            self._log_recommendation(result, report_type, duration_ms)
+
+    def _log_recommendation(self, result: dict, report_type: str, duration_ms: int):
+        """Log advisor chain result to local SQLite via StateStore."""
         try:
-            retry_output = json.loads(retry_result.content)
-            retry_recs = retry_output.get("recommendations", [])
-        except (json.JSONDecodeError, AttributeError):
-            for r in recommendations:
-                r["verified"] = False
-            return {"recommendations": recommendations, "signals": signals}
-
-        # Re-validate
-        revalidate_instruction = (
-            f"Проверь исправленные рекомендации.\n\n"
-            f"recommendations = {json.dumps(retry_recs, ensure_ascii=False, default=str)}\n\n"
-            f"signals = {json.dumps(signals, ensure_ascii=False, default=str)}\n\n"
-            f"structured_data = {json.dumps(structured_data, ensure_ascii=False, default=str)}"
-        )
-
-        rev2 = await validator.analyze(instruction=revalidate_instruction, context="")
-        try:
-            verdict2 = json.loads(rev2.content)
-        except (json.JSONDecodeError, AttributeError):
-            verdict2 = {"verdict": "fail"}
-
-        if verdict2.get("verdict") == "pass":
-            for r in retry_recs:
-                r["verified"] = True
-            return {"recommendations": retry_recs, "signals": signals, "verdict": verdict2}
-
-        # Final fallback — include unverified
-        logger.warning("Advisor chain: validator failed twice, returning unverified")
-        for r in retry_recs:
-            r["verified"] = False
-        return {"recommendations": retry_recs, "signals": signals, "verdict": verdict2}
+            from agents.oleg.storage.state_store import StateStore
+            store = StateStore("agents/oleg/data/oleg.db")
+            store.log_recommendation(
+                report_date=date.today().isoformat(),
+                report_type=report_type,
+                context="financial",
+                signals_count=len(result.get("signals", [])),
+                recommendations_count=len(result.get("recommendations", [])),
+                validation_verdict=result.get("verdict", {}).get("verdict", "skipped"),
+                validation_attempts=result.get("attempts", 1),
+                signals=result.get("signals", []),
+                recommendations=result.get("recommendations", []),
+                validation_details=result.get("verdict", {}),
+                new_patterns=result.get("new_patterns", []),
+                advisor_cost_usd=0.0,
+                validator_cost_usd=0.0,
+                total_duration_ms=duration_ms,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to log recommendation: {e}")
 
     # ── Multi-model review ────────────────────────────────────────
 
