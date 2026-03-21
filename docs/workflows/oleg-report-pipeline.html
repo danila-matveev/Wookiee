@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Как Олег делает отчёты — Wookiee Workflow</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #fafbfc;
+            --bg-toolbar: #ffffff;
+            --text: #1a1a2e;
+            --text-muted: #6b7280;
+            --border: #e5e7eb;
+            --accent: #3b82f6;
+            --sidebar-bg: #ffffff;
+            --shadow: 0 1px 3px rgba(0,0,0,0.08);
+            --shadow-lg: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        [data-theme="dark"] {
+            --bg: #0f172a;
+            --bg-toolbar: #1e293b;
+            --text: #e2e8f0;
+            --text-muted: #94a3b8;
+            --border: #334155;
+            --accent: #60a5fa;
+            --sidebar-bg: #1e293b;
+            --shadow: 0 1px 3px rgba(0,0,0,0.3);
+            --shadow-lg: 0 4px 12px rgba(0,0,0,0.4);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        /* Toolbar */
+        .toolbar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 20px;
+            background: var(--bg-toolbar);
+            border-bottom: 1px solid var(--border);
+            box-shadow: var(--shadow);
+            z-index: 100;
+            flex-shrink: 0;
+        }
+        .toolbar h1 {
+            font-size: 16px;
+            font-weight: 600;
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .toolbar .badge {
+            font-size: 11px;
+            font-weight: 500;
+            padding: 2px 8px;
+            border-radius: 9999px;
+            background: var(--accent);
+            color: white;
+            white-space: nowrap;
+        }
+        .btn-group {
+            display: flex;
+            gap: 4px;
+            background: var(--bg);
+            border-radius: 8px;
+            padding: 3px;
+        }
+        .btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            border: none;
+            border-radius: 6px;
+            background: transparent;
+            color: var(--text);
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.15s;
+        }
+        .btn:hover { background: var(--border); }
+        .btn-text {
+            width: auto;
+            padding: 0 10px;
+            font-size: 12px;
+            font-weight: 500;
+            font-family: inherit;
+        }
+        /* Main container */
+        .main {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+            position: relative;
+        }
+        /* Diagram area */
+        .diagram-viewport {
+            flex: 1;
+            overflow: hidden;
+            cursor: grab;
+            position: relative;
+        }
+        .diagram-viewport:active { cursor: grabbing; }
+        .diagram-canvas {
+            transform-origin: 0 0;
+            transition: transform 0.08s ease-out;
+            padding: 40px;
+            display: inline-block;
+            min-width: 100%;
+            min-height: 100%;
+        }
+        /* Sidebar */
+        .sidebar {
+            width: 320px;
+            background: var(--sidebar-bg);
+            border-left: 1px solid var(--border);
+            box-shadow: var(--shadow-lg);
+            padding: 20px;
+            overflow-y: auto;
+            transform: translateX(100%);
+            transition: transform 0.25s ease;
+            position: absolute;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            z-index: 50;
+        }
+        .sidebar.open { transform: translateX(0); }
+        .sidebar h2 {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .sidebar .close-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 18px;
+            padding: 4px;
+        }
+        .sidebar .detail-label {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin-top: 16px;
+            margin-bottom: 4px;
+        }
+        .sidebar .detail-value {
+            font-size: 13px;
+            line-height: 1.5;
+            color: var(--text);
+        }
+        /* Zoom indicator */
+        .zoom-indicator {
+            position: absolute;
+            bottom: 16px;
+            left: 16px;
+            font-size: 12px;
+            color: var(--text-muted);
+            background: var(--bg-toolbar);
+            padding: 4px 10px;
+            border-radius: 6px;
+            box-shadow: var(--shadow);
+            z-index: 10;
+        }
+        /* Mermaid theme overrides */
+        .mermaid { font-family: 'Inter', sans-serif !important; }
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateY(80px);
+            background: var(--text);
+            color: var(--bg);
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            transition: transform 0.3s ease;
+            z-index: 200;
+        }
+        .toast.show { transform: translateX(-50%) translateY(0); }
+        @media (max-width: 768px) {
+            .toolbar h1 { font-size: 14px; }
+            .sidebar { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="toolbar">
+        <h1>Как Олег делает отчёты</h1>
+        <span class="badge">Agent Pipeline</span>
+        <div class="btn-group">
+            <button class="btn" onclick="zoomIn()" title="Zoom in">+</button>
+            <button class="btn" onclick="zoomOut()" title="Zoom out">−</button>
+            <button class="btn" onclick="zoomReset()" title="Fit to screen">⊡</button>
+        </div>
+        <button class="btn btn-text" onclick="toggleTheme()" id="themeBtn">🌙</button>
+        <button class="btn btn-text" onclick="copySVG()">📋 SVG</button>
+    </div>
+
+    <div class="main">
+        <div class="diagram-viewport" id="viewport">
+            <div class="diagram-canvas" id="canvas">
+                <pre class="mermaid">
+flowchart TD
+    classDef agent fill:#dbeafe,stroke:#3b82f6,stroke-width:2px,color:#1e3a5f
+    classDef database fill:#dcfce7,stroke:#22c55e,stroke-width:2px,color:#14532d
+    classDef api fill:#ffedd5,stroke:#f97316,stroke-width:2px,color:#7c2d12
+    classDef gate fill:#fef3c7,stroke:#f59e0b,stroke-width:2px,color:#78350f
+    classDef output fill:#f3e8ff,stroke:#a855f7,stroke-width:2px,color:#581c87
+    classDef process fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0c4a6e
+    classDef error fill:#fee2e2,stroke:#ef4444,stroke-width:2px,color:#991b1b
+
+    subgraph triggers["🚀 Запуск отчёта"]
+        tg_cmd["Запрос в Telegram"]:::api
+        cron["По расписанию, каждый день"]:::process
+    end
+
+    subgraph orchestration["🧠 Олег собирает отчёт"]
+        orch["Олег получает задачу"]:::agent
+        reporter["Аналитик: продажи, маржа, трафик"]:::agent
+        researcher["Исследователь: почему цифры изменились"]:::agent
+        marketer["Маркетолог: воронка продаж"]:::agent
+        quality["Контролёр: учитывает обратную связь"]:::agent
+    end
+
+    subgraph data["📊 Источники данных"]
+        pg["База продаж WB + OZON"]:::database
+        supabase["Каталог товаров"]:::database
+        state["Память Олега: история и правила"]:::database
+    end
+
+    subgraph delivery["✅ Подготовка к отправке"]
+        format["Оформление: краткий + подробный"]:::process
+        quality_gate{{"Уже отправляли этот отчёт?"}}:::gate
+    end
+
+    subgraph outputs["📬 Результат"]
+        telegram["Telegram — краткая сводка"]:::output
+        notion["Notion — полный отчёт"]:::output
+        logs["Архив отчётов"]:::output
+    end
+
+    tg_cmd --> orch
+    cron --> orch
+    orch -->|"собери данные"| reporter
+    reporter -->|"продажи и маржа"| pg
+    reporter -->|"товары"| supabase
+    reporter --> check{{"Цифры в порядке?"}}:::gate
+    check -->|"❌ нет, разберись"| researcher
+    researcher -->|"ищет в данных"| pg
+    researcher -->|"вот объяснение"| reporter
+    check -->|"✅ да, всё ок"| format
+    orch -->|"нужна воронка"| marketer
+    marketer -->|"показы → клики → заказы"| pg
+    marketer -->|"результат"| format
+    orch -->|"обратная связь"| quality
+    quality -->|"обновляет правила"| state
+    format --> quality_gate
+    quality_gate -->|"📩 новый"| telegram
+    quality_gate -->|"📩 новый"| notion
+    quality_gate -->|"🔄 дубликат"| logs
+                </pre>
+            </div>
+        </div>
+        <div class="sidebar" id="sidebar">
+            <h2>
+                <span id="sidebarTitle">Node Details</span>
+                <button class="close-btn" onclick="closeSidebar()">✕</button>
+            </h2>
+            <div id="sidebarContent"></div>
+        </div>
+        <div class="zoom-indicator" id="zoomLevel">100%</div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+    <script>
+        // Node details — заполняется для каждой диаграммы
+        window.nodeDetails = {
+  "tg_cmd": {
+    "name": "Запрос через Telegram",
+    "type": "Как ты запускаешь отчёт",
+    "description": "Ты открываешь Telegram, пишешь боту команду — и процесс начинается. Можно попросить дневной отчёт, недельный, месячный, маркетинговый, или задать свободный вопрос текстом.",
+    "notes": "Доступные команды: /report_daily (дневной), /report_weekly (недельный), /report_monthly (месячный), /marketing_daily (маркетинг), /feedback (обратная связь)"
+  },
+  "cron": {
+    "name": "Автоматическое расписание",
+    "type": "Отчёт приходит сам",
+    "description": "Олег сам помнит, когда нужно отправить отчёт. Каждый день в 9:00 утра — дневной отчёт. Каждый понедельник в 10:15 — недельный. Первый понедельник месяца — месячный. Тебе не нужно ничего делать — отчёт придёт сам.",
+    "notes": "Все отчёты приходят по московскому времени. Если отчёт не пришёл — значит данные ещё не загрузились (обычно готовы к 6:00 утра)"
+  },
+  "orch": {
+    "name": "Олег — мозг системы",
+    "type": "Координатор всех процессов",
+    "description": "Олег — это AI-ассистент, который управляет всем процессом. Когда он получает запрос (от тебя или по расписанию), он решает: какой тип отчёта нужен, какие данные собрать, каких помощников подключить. Он как менеджер проекта — сам не считает цифры, но знает, кому что поручить.",
+    "notes": "Олег использует искусственный интеллект для принятия решений. Он учится на твоей обратной связи и со временем делает отчёты лучше."
+  },
+  "reporter": {
+    "name": "Аналитик — собирает цифры",
+    "type": "Главный сборщик данных",
+    "description": "Это рабочая лошадка Олега. Аналитик заходит в базу данных и собирает все нужные цифры: выручка, маржа, количество заказов, средний чек, расходы на рекламу, процент выкупа — всё что нужно для полной картины бизнеса. У него 30 разных инструментов для этого.",
+    "notes": "Аналитик работает по правилам из playbook — набора инструкций, которые Олег обновляет на основе твоей обратной связи. Если ты сказал «уделяй больше внимания марже» — Аналитик будет детальнее разбирать маржу."
+  },
+  "researcher": {
+    "name": "Исследователь — ищет причины",
+    "type": "Детектив для аномалий",
+    "description": "Когда в отчёте что-то выглядит странно (маржа резко упала, расходы на рекламу взлетели, выкупы провалились) — подключается Исследователь. Он копает глубже: проверяет конкретные товары, сравнивает с прошлыми периодами, ищет корреляции. Его задача — не просто сказать 'упало', а объяснить ПОЧЕМУ.",
+    "notes": "Срабатывает автоматически, когда маржа изменилась больше чем на 10% или рекламные расходы (DRR) больше чем на 30%. Результаты возвращает Аналитику для включения в отчёт."
+  },
+  "quality": {
+    "name": "Контролёр качества",
+    "type": "Учитывает твои пожелания",
+    "description": "Когда ты отправляешь /feedback и пишешь что тебе нравится или не нравится в отчётах — Контролёр качества это обрабатывает. Он обновляет внутренние правила, чтобы следующие отчёты учитывали твои пожелания.",
+    "notes": "Например: ты написал 'хочу видеть топ-3 проблемных товара' — Контролёр добавит это правило, и все следующие отчёты будут включать эту секцию."
+  },
+  "marketer": {
+    "name": "Маркетолог — анализ воронки",
+    "type": "Специалист по рекламе и продажам",
+    "description": "Маркетолог смотрит на воронку продаж целиком: сколько людей увидели товар (показы) → сколько кликнули → сколько добавили в корзину → сколько заказали → сколько выкупили. Это помогает понять, на каком этапе теряются покупатели.",
+    "notes": "Включается только для маркетинговых отчётов (/marketing_daily, /marketing_weekly). Для финансовых отчётов его не подключают."
+  },
+  "pg": {
+    "name": "База продаж и заказов",
+    "type": "Хранилище всех данных о бизнесе",
+    "description": "Здесь хранятся все данные с маркетплейсов: каждый заказ, каждая продажа, остатки на складах, расходы на рекламу — и с Wildberries, и с OZON. Данные обновляются каждый день в 5 утра.",
+    "notes": "Это внешний сервер — мы только читаем данные, но не можем их изменять. Данные поступают из нашего ETL-процесса (агент Ибрагим загружает их с маркетплейсов)."
+  },
+  "supabase": {
+    "name": "Каталог товаров",
+    "type": "Справочник по всем товарам",
+    "description": "Здесь хранится всё про наши товары: модели, артикулы, цвета, размеры, к каким категориям относятся, как склеены на маркетплейсах. Когда Аналитик считает продажи по моделям — он берёт эту информацию отсюда.",
+    "notes": "Это наша собственная база, которой управляем мы. Сюда же подключается дашборд Wookiee Hub."
+  },
+  "state": {
+    "name": "Память Олега",
+    "type": "Что Олег помнит между сессиями",
+    "description": "Олег запоминает: какие отчёты он уже отправлял (чтобы не отправить дважды), какие правила ты ему задал через обратную связь, статусы выполнения задач.",
+    "notes": "Благодаря этому Олег не будет отправлять один и тот же отчёт повторно, даже если произойдёт перезапуск системы."
+  },
+  "quality_gate": {
+    "name": "Проверка: всё ли нормально с цифрами?",
+    "type": "Автоматический контроль",
+    "description": "После того как Аналитик собрал все цифры, система автоматически проверяет: нет ли чего-то подозрительного? Если маржа резко упала или расходы на рекламу сильно выросли — отчёт не отправляется сразу, а сначала передаётся Исследователю для разбора причин.",
+    "notes": "Пороги: маржа изменилась на 10%+ или DRR (доля рекламных расходов) изменился на 30%+. Если всё в норме — отчёт сразу идёт на форматирование."
+  },
+  "dedup": {
+    "name": "Защита от повторной отправки",
+    "type": "Предохранитель",
+    "description": "Перед отправкой система проверяет: не отправляли ли мы уже этот отчёт? Это защита на случай технических сбоев — чтобы ты не получил один и тот же отчёт дважды.",
+    "notes": "Проверка действует 5 минут. Если точно такой же отчёт уже был отправлен — он просто сохраняется в архив."
+  },
+  "format": {
+    "name": "Форматирование отчёта",
+    "type": "Подготовка к отправке",
+    "description": "Собранные данные оформляются в два формата: 1) Краткая сводка для Telegram — ключевые цифры, которые можно прочитать за 30 секунд. 2) Подробный отчёт для Notion — с таблицами, сравнениями, рекомендациями.",
+    "notes": "В кратком отчёте: выручка, маржа, количество заказов, ключевые изменения. В подробном: разбивка по каналам, моделям, категориям, проблемные зоны."
+  },
+  "telegram": {
+    "name": "Отчёт в Telegram",
+    "type": "Быстрая сводка",
+    "description": "Краткая сводка приходит прямо в Telegram. Можно прочитать за 30 секунд и сразу понять, как идут дела. Содержит ключевые цифры и сравнение с предыдущим периодом.",
+    "notes": "Формат: заголовок → ключевые метрики → изменения → рекомендации. Всё на одном экране телефона."
+  },
+  "notion": {
+    "name": "Полный отчёт в Notion",
+    "type": "Детальная аналитика",
+    "description": "Подробная версия отчёта со всеми таблицами, графиками и рекомендациями. Удобно открыть на компьютере и разобраться в деталях, если в Telegram-сводке что-то зацепило.",
+    "notes": "Сохраняется как страница в Notion — можно оставлять комментарии, делиться с командой."
+  },
+  "logs": {
+    "name": "Архив отчётов",
+    "type": "История всех отчётов",
+    "description": "Каждый отчёт сохраняется в архив. Если нужно посмотреть, что было в отчёте неделю назад — всё можно найти здесь.",
+    "notes": "Дубликаты (если система попыталась отправить повторно) тоже сохраняются сюда, но не отправляются тебе."
+  }
+};
+
+        const lightTheme = {
+            theme: 'base',
+            themeVariables: {
+                primaryColor: '#dbeafe',
+                primaryBorderColor: '#3b82f6',
+                primaryTextColor: '#1e3a5f',
+                secondaryColor: '#dcfce7',
+                secondaryBorderColor: '#22c55e',
+                secondaryTextColor: '#14532d',
+                tertiaryColor: '#fef3c7',
+                tertiaryBorderColor: '#f59e0b',
+                tertiaryTextColor: '#78350f',
+                lineColor: '#64748b',
+                textColor: '#1a1a2e',
+                mainBkg: '#dbeafe',
+                nodeBorder: '#3b82f6',
+                clusterBkg: '#f0f9ff',
+                clusterBorder: '#bae6fd',
+                titleColor: '#1e3a5f',
+                edgeLabelBackground: '#ffffff',
+                fontFamily: 'Inter, sans-serif',
+                fontSize: '14px'
+            }
+        };
+
+        const darkTheme = {
+            theme: 'base',
+            themeVariables: {
+                primaryColor: '#1e3a5f',
+                primaryBorderColor: '#60a5fa',
+                primaryTextColor: '#e2e8f0',
+                secondaryColor: '#14532d',
+                secondaryBorderColor: '#4ade80',
+                secondaryTextColor: '#dcfce7',
+                tertiaryColor: '#78350f',
+                tertiaryBorderColor: '#fbbf24',
+                tertiaryTextColor: '#fef3c7',
+                lineColor: '#94a3b8',
+                textColor: '#e2e8f0',
+                mainBkg: '#1e3a5f',
+                nodeBorder: '#60a5fa',
+                clusterBkg: '#0f172a',
+                clusterBorder: '#334155',
+                titleColor: '#e2e8f0',
+                edgeLabelBackground: '#1e293b',
+                fontFamily: 'Inter, sans-serif',
+                fontSize: '14px'
+            }
+        };
+
+        function getTheme() {
+            return document.documentElement.dataset.theme === 'dark' ? darkTheme : lightTheme;
+        }
+
+        async function renderDiagram() {
+            const el = document.querySelector('.mermaid');
+            const code = el.textContent.trim();
+            el.removeAttribute('data-processed');
+            el.innerHTML = code;
+            mermaid.initialize({ startOnLoad: false, ...getTheme(), securityLevel: 'loose', flowchart: { curve: 'linear', nodeSpacing: 60, rankSpacing: 80, padding: 20 } });
+            const { svg } = await mermaid.render('mermaid-diagram', code);
+            el.innerHTML = svg;
+            // Attach click handlers to nodes
+            el.querySelectorAll('[id^="flowchart-"], [id^="statediagram-"]').forEach(node => {
+                node.style.cursor = 'pointer';
+                node.addEventListener('click', () => {
+                    const id = node.id.replace(/^(flowchart-|statediagram-)/, '').replace(/-\d+$/, '');
+                    showNodeDetail(id);
+                });
+            });
+            // Also handle data-id clicks for Mermaid v11
+            el.querySelectorAll('.node').forEach(node => {
+                node.style.cursor = 'pointer';
+                node.addEventListener('click', () => {
+                    const id = node.id?.replace(/^(flowchart-|statediagram-)/, '').replace(/-\d+$/, '')
+                             || node.getAttribute('data-id');
+                    if (id) showNodeDetail(id);
+                });
+            });
+        }
+
+        window.showNodeDetail = function(nodeId) {
+            const details = window.nodeDetails[nodeId];
+            if (!details) return;
+            const sidebar = document.getElementById('sidebar');
+            const title = document.getElementById('sidebarTitle');
+            const content = document.getElementById('sidebarContent');
+            title.textContent = details.name || nodeId;
+            let html = '';
+            if (details.type) {
+                html += `<div class="detail-label">Роль</div><div class="detail-value">${details.type}</div>`;
+            }
+            if (details.description) {
+                html += `<div class="detail-label">Что делает</div><div class="detail-value">${details.description}</div>`;
+            }
+            if (details.notes) {
+                html += `<div class="detail-label">Подробнее</div><div class="detail-value">${details.notes}</div>`;
+            }
+            content.innerHTML = html;
+            sidebar.classList.add('open');
+        };
+
+        window.closeSidebar = function() {
+            document.getElementById('sidebar').classList.remove('open');
+        };
+
+        // Zoom & Pan
+        let scale = 1, panX = 0, panY = 0, isPanning = false, startX, startY;
+        const canvas = document.getElementById('canvas');
+        const viewport = document.getElementById('viewport');
+
+        function updateTransform() {
+            canvas.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+            document.getElementById('zoomLevel').textContent = Math.round(scale * 100) + '%';
+        }
+
+        window.zoomIn = () => { scale = Math.min(scale * 1.2, 5); updateTransform(); };
+        window.zoomOut = () => { scale = Math.max(scale / 1.2, 0.1); updateTransform(); };
+        window.zoomReset = () => { scale = 1; panX = 0; panY = 0; updateTransform(); };
+
+        viewport.addEventListener('wheel', e => {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? 0.9 : 1.1;
+            const rect = viewport.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+            const newScale = Math.min(Math.max(scale * delta, 0.1), 5);
+            panX = mx - (mx - panX) * (newScale / scale);
+            panY = my - (my - panY) * (newScale / scale);
+            scale = newScale;
+            updateTransform();
+        }, { passive: false });
+
+        viewport.addEventListener('mousedown', e => {
+            if (e.target.closest('.node')) return;
+            isPanning = true; startX = e.clientX - panX; startY = e.clientY - panY;
+        });
+        window.addEventListener('mousemove', e => {
+            if (!isPanning) return;
+            panX = e.clientX - startX; panY = e.clientY - startY;
+            updateTransform();
+        });
+        window.addEventListener('mouseup', () => { isPanning = false; });
+
+        // Touch support
+        let lastTouchDist = 0;
+        viewport.addEventListener('touchstart', e => {
+            if (e.touches.length === 1) {
+                isPanning = true;
+                startX = e.touches[0].clientX - panX;
+                startY = e.touches[0].clientY - panY;
+            } else if (e.touches.length === 2) {
+                lastTouchDist = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+            }
+        }, { passive: false });
+        viewport.addEventListener('touchmove', e => {
+            e.preventDefault();
+            if (e.touches.length === 1 && isPanning) {
+                panX = e.touches[0].clientX - startX;
+                panY = e.touches[0].clientY - startY;
+                updateTransform();
+            } else if (e.touches.length === 2) {
+                const dist = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+                scale = Math.min(Math.max(scale * (dist / lastTouchDist), 0.1), 5);
+                lastTouchDist = dist;
+                updateTransform();
+            }
+        }, { passive: false });
+        viewport.addEventListener('touchend', () => { isPanning = false; });
+
+        // Theme toggle
+        window.toggleTheme = function() {
+            const html = document.documentElement;
+            const isDark = html.dataset.theme === 'dark';
+            html.dataset.theme = isDark ? 'light' : 'dark';
+            document.getElementById('themeBtn').textContent = isDark ? '🌙' : '☀️';
+            renderDiagram();
+        };
+
+        // Copy SVG
+        window.copySVG = async function() {
+            const svg = document.querySelector('.mermaid svg');
+            if (!svg) return;
+            try {
+                await navigator.clipboard.writeText(svg.outerHTML);
+                showToast('SVG скопирован в буфер обмена');
+            } catch {
+                showToast('Не удалось скопировать');
+            }
+        };
+
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.classList.add('show');
+            setTimeout(() => t.classList.remove('show'), 2000);
+        }
+
+        // Initial render
+        renderDiagram();
+    </script>
+</body>
+</html>

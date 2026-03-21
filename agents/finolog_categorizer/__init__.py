@@ -1,0 +1,1 @@
+# Finolog auto-categorizer agent

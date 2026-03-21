@@ -1,0 +1,59 @@
+# docker-compose.local.yml — локальный запуск eggent + oleg-mcp для тестирования
+# Использование: docker compose -f deploy/docker-compose.local.yml up -d
+
+services:
+  # ── Oleg MCP Server ──
+  oleg-mcp:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: oleg_mcp_local
+    restart: unless-stopped
+    command: ["python", "-m", "agents.oleg.mcp_server"]
+
+    env_file:
+      - ../.env
+
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TZ=Europe/Moscow
+      - MCP_HOST=0.0.0.0
+      - MCP_PORT=8080
+
+    ports:
+      - "8090:8080"
+
+    volumes:
+      - ../agents/oleg/data:/app/agents/oleg/data
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ── Eggent: AI workspace ──
+  eggent:
+    build:
+      context: /tmp/eggent
+      dockerfile: Dockerfile
+    container_name: eggent_local
+    restart: unless-stopped
+
+    environment:
+      - NODE_ENV=production
+      - HOSTNAME=0.0.0.0
+      - PORT=3000
+
+    ports:
+      - "3100:3000"
+
+    volumes:
+      - eggent-data-local:/app/data
+
+    depends_on:
+      - oleg-mcp
+
+volumes:
+  eggent-data-local:

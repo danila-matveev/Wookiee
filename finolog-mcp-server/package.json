@@ -1,0 +1,39 @@
+{
+  "name": "finolog-mcp-server",
+  "version": "0.1.0",
+  "description": "Model Context Protocol server for Finolog API integration",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "finolog-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "mcp-server",
+    "finolog",
+    "model-context-protocol",
+    "typescript",
+    "api-integration"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "axios": "^1.7.9",
+    "dotenv": "^16.4.7",
+    "winston": "^3.17.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
