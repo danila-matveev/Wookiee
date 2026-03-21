@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.tools import StructuredTool
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
@@ -259,6 +259,20 @@ def get_llm(model: Optional[str] = None, temperature: float = 0.0) -> ChatOpenAI
     )
 
 
+# ── Token usage helpers ──────────────────────────────────────────────────
+
+def extract_token_usage(messages: list) -> dict[str, int]:
+    """Sum token usage from all AIMessages in a LangGraph result."""
+    usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    for msg in messages:
+        if isinstance(msg, AIMessage) and hasattr(msg, "response_metadata"):
+            token_usage = msg.response_metadata.get("token_usage", {})
+            usage["prompt_tokens"] += token_usage.get("prompt_tokens", 0)
+            usage["completion_tokens"] += token_usage.get("completion_tokens", 0)
+            usage["total_tokens"] += token_usage.get("total_tokens", 0)
+    return usage
+
+
 # ── Agent execution ─────────────────────────────────────────────────────
 
 async def run_agent(
@@ -320,6 +334,8 @@ async def run_agent(
     artifact: Any = None
     status: str = "success"
     error_message: Optional[str] = None
+    usage: dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    cost_usd: float = 0.0
 
     try:
         result = await asyncio.wait_for(
@@ -339,6 +355,11 @@ async def run_agent(
                 artifact = json.loads(json_match.group())
         except (json.JSONDecodeError, AttributeError):
             pass
+
+        # Token usage & cost
+        usage = extract_token_usage(result.get("messages", []))
+        model_used = model or config.MODEL_MAIN
+        cost_usd = config.calc_cost(model_used, usage["prompt_tokens"], usage["completion_tokens"])
 
     except asyncio.TimeoutError:
         duration_ms = int((time.monotonic() - start_time) * 1000)
@@ -372,6 +393,10 @@ async def run_agent(
         task_type=task_type,
         trigger=trigger,
         parent_run_id=parent_run_id,
+        prompt_tokens=usage["prompt_tokens"],
+        completion_tokens=usage["completion_tokens"],
+        total_tokens=usage["total_tokens"],
+        cost_usd=cost_usd,
     ))
 
     return {
@@ -381,4 +406,8 @@ async def run_agent(
         "raw_output": raw_output,
         "duration_ms": duration_ms,
         "run_id": run_id,
+        "prompt_tokens": usage["prompt_tokens"],
+        "completion_tokens": usage["completion_tokens"],
+        "total_tokens": usage["total_tokens"],
+        "cost_usd": cost_usd,
     }
