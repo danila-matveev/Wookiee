@@ -587,3 +587,48 @@ class SavedViewRead(BaseModel):
     is_default: bool = False
     sort_order: int = 0
     created_at: Optional[datetime] = None
+
+
+# ── Phase 5: Delete / Archive / Admin ────────────────────────────────────────
+
+class DeleteImpact(BaseModel):
+    entity_type: str
+    entity_id: int
+    entity_name: str
+    strategy: str  # "cascade_archive" | "block_if_active" | "simple"
+    children: dict[str, int] = {}
+    blocked_by: Optional[dict[str, int]] = None
+    message: str
+
+
+class DeleteChallenge(BaseModel):
+    requires_confirmation: bool = True
+    challenge: str  # e.g. "27 × 3"
+    expected_hash: str  # sha256(answer + salt)
+    impact: DeleteImpact
+
+
+class ArchiveRecordRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    original_table: str
+    original_id: int
+    full_record: dict
+    related_records: Optional[list] = None
+    deleted_by: Optional[str] = None
+    deleted_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    restore_available: bool = True
+
+
+class TableStats(BaseModel):
+    name: str
+    count: int
+    growth_week: int = 0
+    growth_month: int = 0
+
+
+class DbStats(BaseModel):
+    tables: list[TableStats]
+    total_records: int
