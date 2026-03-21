@@ -167,7 +167,8 @@ BEGIN
         ca.file_size
     FROM content_assets ca
     WHERE
-        (filter_model IS NULL OR LOWER(ca.model_name) = LOWER(filter_model))
+        ca.status = 'indexed'
+        AND (filter_model IS NULL OR LOWER(ca.model_name) = LOWER(filter_model))
         AND (filter_color IS NULL OR LOWER(ca.color) = LOWER(filter_color))
         AND (filter_category IS NULL OR LOWER(ca.content_category) = LOWER(filter_category))
         AND (filter_sku IS NULL OR ca.sku = filter_sku)
