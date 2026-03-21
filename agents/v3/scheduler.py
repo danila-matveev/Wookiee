@@ -9,7 +9,7 @@ All 15 cron jobs:
     6.  finolog_weekly        — every Friday at FINOLOG_WEEKLY_REPORT_TIME (if key set)
     7.  monthly_price_analysis — day N of month at MONTHLY_PRICE_ANALYSIS_TIME
     8.  data_ready_check      — hourly 06-12 MSK, notifies when gates pass
-    9.  notion_feedback       — daily, 1h before daily report
+    9.  notion_feedback       — every 60 min (polls Notion for new comments)
     10. anomaly_monitor       — every N hours at :30
     11. watchdog_heartbeat    — every 6h at :00
     12. promotion_scan        — every 12h at :15 (only if PROMOTION_SCAN_ENABLED)
@@ -693,10 +693,6 @@ def create_scheduler() -> AsyncIOScheduler:
     finolog_h, finolog_m = _parse_hm(config.FINOLOG_WEEKLY_REPORT_TIME)
     price_h, price_m = _parse_hm(config.MONTHLY_PRICE_ANALYSIS_TIME)
 
-    # 1h before daily report for Notion feedback pre-pull
-    feedback_h = daily_h - 1 if daily_h > 0 else 23
-    feedback_m = daily_m
-
     # ── 1. Daily report ─────────────────────────────────────────────────────
     scheduler.add_job(
         _job_daily_report,
@@ -778,10 +774,11 @@ def create_scheduler() -> AsyncIOScheduler:
         **job_defaults,
     )
 
-    # ── 9. Notion feedback (1h before daily report) ───────────────────────────
+    # ── 9. Notion feedback (every 60 min) ────────────────────────────────────
+    from apscheduler.triggers.interval import IntervalTrigger
     scheduler.add_job(
         _job_notion_feedback,
-        trigger=CronTrigger(hour=feedback_h, minute=feedback_m, timezone=config.TIMEZONE),
+        trigger=IntervalTrigger(minutes=60),
         id="notion_feedback",
         **job_defaults,
     )
