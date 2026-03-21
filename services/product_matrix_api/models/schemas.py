@@ -632,3 +632,100 @@ class TableStats(BaseModel):
 class DbStats(BaseModel):
     tables: list[TableStats]
     total_records: int
+
+
+# ── External Data: Stock ─────────────────────────────────────────────────────
+
+class StockChannel(BaseModel):
+    stock_mp: float
+    daily_sales: float
+    turnover_days: float
+    sales_count: int
+    days_in_stock: int
+
+
+class MoySkladStock(BaseModel):
+    stock_main: float
+    stock_transit: float
+    total: float
+    snapshot_date: Optional[str]
+    is_stale: bool
+
+
+class StockResponse(BaseModel):
+    entity_type: str
+    entity_id: int
+    entity_name: str
+    period_days: int
+    wb: Optional[StockChannel]
+    ozon: Optional[StockChannel]
+    moysklad: Optional[MoySkladStock]
+    total_stock: float
+    total_turnover_days: Optional[float]
+
+
+# ── External Data: Finance ───────────────────────────────────────────────────
+
+class ExpenseItem(BaseModel):
+    value: float
+    pct: float
+    delta_value: Optional[float] = None
+    delta_pct: Optional[float] = None
+
+
+class DRR(BaseModel):
+    total: float
+    internal: float
+    external: float
+
+
+class FinanceChannel(BaseModel):
+    revenue_before_spp: float
+    revenue_after_spp: float
+    margin: float
+    margin_pct: float
+    orders_count: int
+    orders_sum: float
+    sales_count: int
+    sales_sum: float
+    avg_check_before_spp: float
+    avg_check_after_spp: float
+    spp_pct: float
+    buyout_pct: float
+    returns_count: int
+    returns_pct: float
+    expenses: dict[str, ExpenseItem]
+    drr: DRR
+
+
+class FinanceDelta(BaseModel):
+    revenue_before_spp: float
+    revenue_after_spp: float
+    margin: float
+    margin_pct: float
+    orders_count: int
+    orders_sum: float
+    sales_count: int
+    avg_check_before_spp: float
+    avg_check_after_spp: float
+    spp_pct: float
+    buyout_pct: float
+    returns_count: int
+    returns_pct: float
+    drr_total: float
+    drr_internal: float
+    drr_external: float
+
+
+class FinanceResponse(BaseModel):
+    entity_type: str
+    entity_id: int
+    entity_name: str
+    period_start: str
+    period_end: str
+    compare_period_start: Optional[str]
+    compare_period_end: Optional[str]
+    wb: Optional[FinanceChannel]
+    ozon: Optional[FinanceChannel]
+    delta_wb: Optional[FinanceDelta]
+    delta_ozon: Optional[FinanceDelta]
