@@ -123,7 +123,7 @@ Imported by every compiler prompt. Defines HOW to format, not WHAT content.
 
 **Used for:** marketing_weekly, marketing_monthly
 
-**Input artifacts:** ad-efficiency, campaign-optimizer, funnel-digitizer
+**Input artifacts:** campaign-optimizer, organic-vs-paid, ad-efficiency (same as current `run_marketing_report`), plus funnel-digitizer for funnel sections
 
 **10-section structure:**
 
@@ -147,7 +147,7 @@ Imported by every compiler prompt. Defines HOW to format, not WHAT content.
 
 **Used for:** funnel_weekly, funnel_monthly
 
-**Input artifacts:** funnel-digitizer
+**Input artifacts:** funnel-digitizer, keyword-analyst (same as current `run_funnel_report`)
 
 **Structure:**
 
@@ -216,17 +216,25 @@ Imported by every compiler prompt. Defines HOW to format, not WHAT content.
 
 ### 3.1 COMPILER_MAP
 
+Keyed by `task_type` values used in orchestrator (not ReportType enum values):
+
 ```python
 COMPILER_MAP = {
-    "daily": "report-compiler-financial",
-    "weekly": "report-compiler-financial",
-    "monthly": "report-compiler-financial",
+    # Financial analysis (daily/weekly/monthly)
+    "daily_report": "report-compiler-financial",
+    "weekly_report": "report-compiler-financial",
+    "monthly_report": "report-compiler-financial",
+    # Marketing
     "marketing_weekly": "report-compiler-marketing",
     "marketing_monthly": "report-compiler-marketing",
+    # Funnel
     "funnel_weekly": "report-compiler-funnel",
     "funnel_monthly": "report-compiler-funnel",
+    # Pricing (all phases use same compiler)
+    "price_analysis": "report-compiler-pricing",
     "price_weekly": "report-compiler-pricing",
     "price_monthly": "report-compiler-pricing",
+    # Finolog
     "finolog_weekly": "report-compiler-finolog",
 }
 ```
@@ -234,20 +242,20 @@ COMPILER_MAP = {
 ### 3.2 Pipeline modification
 
 In `_run_report_pipeline()`:
-- Accept `report_type` parameter
-- Look up compiler prompt name from `COMPILER_MAP`
-- Load both `report-style-guide.md` and the specific compiler prompt
-- Pass both as system context to compiler agent
-- Pass `report_type` to compiler so it knows period-specific behavior (daily vs weekly vs monthly)
+- Use existing `task_type` parameter to look up compiler prompt: `COMPILER_MAP.get(task_type, "report-compiler-financial")`
+- Replace hardcoded `run_agent(agent_name="report-compiler", ...)` (line 262) with `run_agent(agent_name=compiler_name, ...)`
+- **Style guide loading:** Read `report-style-guide.md` content and prepend it to the `compiler_prompt_prefix` so the compiler agent receives both formatting rules and task context in a single prompt. No changes to `run_agent()` signature needed.
+- Add `task_type` to `compiler_input` dict so the compiler knows period-specific behavior (daily vs weekly vs monthly)
 
-### 3.3 New orchestrator methods
+### 3.3 Price analysis pipeline
 
-Add entry points for new report types:
-- `run_marketing_monthly_report(date_from, date_to)` — same agents as `run_marketing_report` but with monthly period
-- `run_funnel_monthly_report(date_from, date_to)` — same agents as `run_funnel_report` but with monthly period
-- `run_price_monthly_report(date_from, date_to)` — same agents as `run_price_analysis` but with monthly period
+`run_price_analysis()` has a custom 3-phase pipeline that calls `_run_report_pipeline()` with `skip_compiler=True` for phases 1-2, then calls `run_agent("report-compiler", ...)` directly for phase 3 (line 632). Change the phase 3 `run_agent` call to use `COMPILER_MAP["price_analysis"]` instead of hardcoded `"report-compiler"`.
 
-Or alternatively, parameterize existing methods with `period` parameter.
+### 3.4 New orchestrator methods
+
+- `run_marketing_report()` already accepts `report_period` parameter ("weekly"/"monthly") — no new method needed
+- `run_funnel_report()` — add `report_period` parameter (default "weekly"), set `task_type = "funnel_weekly" if report_period == "weekly" else "funnel_monthly"`
+- `run_price_analysis()` — add `report_period` parameter (default "weekly"), set appropriate `task_type`
 
 ---
 
@@ -271,7 +279,9 @@ Each with `.orchestrator_method`, `.notion_label`, `.human_name` properties.
 
 ### 4.3 Conductor integration
 
-No changes needed in `conductor.py` — it iterates `get_today_reports(today)` and handles each type through the same `generate_and_validate` flow. Cron triggers `data_ready_check` at approximate times; if gates fail, `DateTrigger` retry is scheduled. Report generates when data is ready.
+Minimal changes in `conductor.py`:
+- `_compute_dates()` — add new monthly types (`marketing_monthly`, `funnel_monthly`, `price_monthly`) to the monthly date range branch. Currently the `else` branch handles unknown types as monthly, but explicitly listing them prevents fragile fallthrough.
+- Rest of conductor logic (data_ready_check, generate_and_validate, gates, retry) works unchanged — it iterates `get_today_reports(today)` and handles each type through the same flow.
 
 ---
 
@@ -294,14 +304,15 @@ No changes needed in `conductor.py` — it iterates `get_today_reports(today)` a
 - `agents/v3/delivery/notion.py` — new entries in `_REPORT_TYPE_MAP` for marketing_monthly, funnel_monthly, price_monthly
 
 ### 5.4 Updated files
-- `agents/v3/agents/report-conductor.md` — updated to reference new compiler structure for validation
+- `agents/v3/agents/report-conductor.md` — this is the LLM validation prompt used by `llm_validate()` (deferred feature). Update its "expected report structure" section to list all 5 compiler types instead of referencing single report-compiler.md. Low priority — `llm_validate()` is not yet active.
 
 ---
 
 ## 6. Success Criteria
 
-1. All 10 report types generate with correct formatting (toggles, tables, dates, trust envelope)
-2. Format is consistent across runs — same report type always produces same structure
-3. Style guide changes propagate to all report types
-4. New monthly report types (marketing, funnel, pricing) generate and deliver to Notion
-5. Existing tests pass, new tests cover COMPILER_MAP routing
+1. All 10 report types generate with toggle headings, Notion tables, Russian dates, and trust envelope (where `_meta` present)
+2. `quick_validate()` passes for all report types — key structural checks (non-empty content, telegram length, no failure phrases)
+3. Style guide is loaded alongside every compiler prompt — verified by checking `compiler_prompt_prefix` in logs
+4. New monthly report types (marketing, funnel, pricing) generate and deliver to Notion with correct `_REPORT_TYPE_MAP` entries
+5. Existing tests pass. New tests: COMPILER_MAP routing returns correct compiler for each task_type, new ReportType enum values have valid properties
+6. Old `report-compiler.md` deleted, no remaining references to it in orchestrator or runner
