@@ -122,7 +122,7 @@ def save_proposed_patterns(patterns: list[dict]) -> int:
                     psycopg2.extras.Json(p["trigger_condition"]) if "trigger_condition" in p else "{}",
                     p.get("severity", "warning"),
                     p.get("hint_template") or p.get("action_hint", ""),
-                    p.get("impact_on", "revenue"),
+                    p.get("impact_on", "both"),
                     p.get("confidence", "medium"),
                 ),
             )
