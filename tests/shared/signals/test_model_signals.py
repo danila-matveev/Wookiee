@@ -14,13 +14,18 @@ def _make_model_data(models: list[dict]) -> dict:
 
 def _model(name="TestModel", margin_pct=20, drr_pct=5, turnover_days=30,
            roi_annual=200, margin=50000, adv_total=10000, orders_count=100,
-           sales_count=80, revenue_before_spp=300000):
-    return {
+           sales_count=80, revenue_before_spp=300000, status=None, abc=None):
+    d = {
         "model": name, "margin_pct": margin_pct, "drr_pct": drr_pct,
         "turnover_days": turnover_days, "roi_annual": roi_annual,
         "margin": margin, "adv_total": adv_total, "orders_count": orders_count,
         "sales_count": sales_count, "revenue_before_spp": revenue_before_spp,
     }
+    if status is not None:
+        d["status"] = status
+    if abc is not None:
+        d["abc"] = abc
+    return d
 
 
 def test_low_roi_article():
@@ -85,3 +90,36 @@ def test_no_signals_healthy_models():
     signals = detect_signals(_make_model_data(models))
     critical = [s for s in signals if s.severity in ("critical", "warning")]
     assert len(critical) == 0
+
+
+def test_status_mismatch_fires():
+    """Model marked Выводим with ABC=A and high margin → status_mismatch."""
+    models = [
+        _model("Vuki", margin_pct=25, margin=200000, status="Выводим", abc="A"),
+    ]
+    signals = detect_signals(_make_model_data(models))
+    types = {s.type for s in signals}
+    assert "status_mismatch" in types
+    sm = [s for s in signals if s.type == "status_mismatch"][0]
+    assert sm.severity == "critical"
+    assert "Vuki" in sm.hint
+
+
+def test_status_mismatch_not_fires_low_margin():
+    """Model marked Выводим but low margin → no status_mismatch."""
+    models = [
+        _model("Luna", margin_pct=10, margin=5000, status="Выводим", abc="B"),
+    ]
+    signals = detect_signals(_make_model_data(models))
+    types = {s.type for s in signals}
+    assert "status_mismatch" not in types
+
+
+def test_status_mismatch_not_fires_active():
+    """Active model with ABC=A → no status_mismatch."""
+    models = [
+        _model("Ruby", margin_pct=30, margin=300000, status="Продается", abc="A"),
+    ]
+    signals = detect_signals(_make_model_data(models))
+    types = {s.type for s in signals}
+    assert "status_mismatch" not in types

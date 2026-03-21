@@ -478,8 +478,25 @@ def _detect_model_signals(data: dict) -> list[Signal]:
                 source="model_breakdown",
             ))
 
-    # status_mismatch: requires product status data not available in model_breakdown
-    # TODO: Implement when get_product_statuses data is integrated
+    # status_mismatch: model marked "Выводим" but ABC=A/B and margin_pct > 15%
+    for m in models:
+        status = m.get("status")
+        abc = m.get("abc")
+        mp = m.get("margin_pct", 0)
+        name = m.get("model", "?")
+
+        if status == "Выводим" and abc in ("A", "B") and mp > 15:
+            signals.append(Signal(
+                id=f"status_mismatch_{channel}_{name}",
+                type="status_mismatch",
+                category="model",
+                severity="critical",
+                impact_on="margin",
+                data={"model": name, "status": status, "abc": abc,
+                      "margin_pct": mp, "margin": m.get("margin", 0)},
+                hint=f"{name}: помечена «Выводим», но ABC={abc}, маржинальность {mp}% — пересмотреть статус",
+                source="model_breakdown",
+            ))
 
     return signals
 
