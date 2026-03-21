@@ -19,6 +19,7 @@ Audit knowledge base coverage and health. Assess completeness, freshness, and st
 
 ## Output Format
 JSON artifact with:
+- _meta: {confidence: float 0-1, confidence_reason: string, data_coverage: float 0-1, limitations: [string], conclusions: [{statement: string, type: "driver"|"anti_driver"|"recommendation"|"anomaly"|"metric", confidence: float 0-1, confidence_reason: string, data_coverage: float 0-1, limitations: [string], sources: [string]}]}
 - audit_date: string (ISO date)
 - total_entries: int
 - verified_entries: int
