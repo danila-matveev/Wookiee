@@ -25,6 +25,7 @@ from typing import Dict, Optional
 from agents.oleg.orchestrator.chain import (
     AgentStep, ChainResult, OrchestratorDecision, MAX_CHAIN_STEPS,
 )
+from shared.signals import detect_signals
 from agents.oleg.orchestrator.prompts import (
     DECIDE_NEXT_STEP_PROMPT,
     REVIEW_SYNTHESIS_PROMPT,
@@ -32,6 +33,15 @@ from agents.oleg.orchestrator.prompts import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Tool name -> signal source tag
+SOURCE_MAP = {
+    "get_plan_vs_fact": "plan_vs_fact",
+    "get_brand_finance": "brand_finance",
+    "get_margin_levers": "margin_levers",
+    "get_advertising_stats": "advertising",
+    "get_model_breakdown": "model_breakdown",
+}
 
 
 class OlegOrchestrator:
@@ -62,6 +72,7 @@ class OlegOrchestrator:
         self.review_task_types = review_task_types or []
         self.review_max_tokens = review_max_tokens
         self.review_mode = review_mode
+        self._agent_results: dict = {}  # runtime only, not serialized
 
     async def run_chain(
         self, task: str, task_type: str, context: dict = None,
@@ -76,6 +87,7 @@ class OlegOrchestrator:
         start_time = time.time()
         chain_history: list[AgentStep] = []
         total_cost = 0.0
+        self._agent_results.clear()
 
         for step in range(self.max_chain_steps):
             # Decide next step
@@ -123,6 +135,9 @@ class OlegOrchestrator:
             )
             agent_duration = int((time.time() - agent_start) * 1000)
 
+            # Save full AgentResult for structured_data extraction
+            self._agent_results[agent_name] = result
+
             # Record step
             chain_history.append(AgentStep(
                 agent=agent_name,
@@ -133,6 +148,41 @@ class OlegOrchestrator:
                 iterations=result.iterations,
             ))
             total_cost += result.total_cost
+
+        # --- Advisor chain: detect signals and generate recommendations ---
+        if chain_history:
+            structured_data = {}
+            for step_entry in chain_history:
+                if step_entry.agent in ("reporter", "marketer", "funnel"):
+                    agent_result = self._agent_results.get(step_entry.agent)
+                    if agent_result:
+                        extracted = self._extract_structured_data(agent_result)
+                        structured_data.update(extracted)
+
+            if structured_data:
+                report_type = "daily"
+                if "weekly" in task_type:
+                    report_type = "weekly"
+                elif "monthly" in task_type:
+                    report_type = "monthly"
+
+                try:
+                    advisor_result = await self._run_advisor_chain(
+                        structured_data=structured_data,
+                        report_type=report_type,
+                        chain_history=chain_history,
+                    )
+                    if advisor_result.get("recommendations"):
+                        chain_history.append(AgentStep(
+                            agent="advisor_chain",
+                            instruction="Signal Detection → Advisor → Validator",
+                            result=json.dumps(advisor_result, ensure_ascii=False, default=str),
+                            cost_usd=0.0,
+                            duration_ms=0,
+                            iterations=0,
+                        ))
+                except Exception as e:
+                    logger.warning(f"Advisor chain failed: {e}")
 
         # Synthesize final answer
         synthesis = await self._synthesize(task, chain_history)
@@ -426,6 +476,168 @@ class OlegOrchestrator:
                 f"[{step.agent}]: {step.result[:2000]}"
             )
         return "\n\n".join(parts)
+
+    def _extract_structured_data(self, result) -> dict:
+        """Extract structured data from agent's tool call history."""
+        collected = {}
+        for step in result.steps:
+            source_tag = SOURCE_MAP.get(step.tool_name)
+            if not source_tag or not step.tool_result:
+                continue
+            try:
+                parsed = json.loads(step.tool_result)
+                if isinstance(parsed, dict):
+                    parsed["_source"] = source_tag
+                    if source_tag in collected:
+                        if not isinstance(collected[source_tag], list):
+                            collected[source_tag] = [collected[source_tag]]
+                        collected[source_tag].append(parsed)
+                    else:
+                        collected[source_tag] = parsed
+            except (json.JSONDecodeError, TypeError):
+                continue
+        return collected
+
+    # ── Advisor chain ─────────────────────────────────────────────
+
+    async def _run_signal_detection(self, structured_data: dict) -> list:
+        """Run Signal Detector on structured data. Pure Python, no LLM."""
+        try:
+            all_signals = []
+            for source_tag, source_data in structured_data.items():
+                if isinstance(source_data, list):
+                    for item in source_data:
+                        all_signals.extend(detect_signals(data=item))
+                else:
+                    all_signals.extend(detect_signals(data=source_data))
+            return [vars(s) for s in all_signals]
+        except Exception as e:
+            logger.warning(f"Signal detection failed: {e}")
+            return []
+
+    async def _run_advisor_chain(
+        self,
+        structured_data: dict,
+        report_type: str,
+        chain_history: list,
+    ) -> dict:
+        """
+        Run advisor chain: Signal Detection -> Advisor -> Validator.
+        Returns validated recommendations or empty dict on failure.
+        """
+        # Step 1: Signal detection (pure Python, no LLM)
+        signals = await self._run_signal_detection(structured_data)
+        if not signals:
+            logger.info("Advisor chain: no signals detected, skipping")
+            return {"recommendations": [], "signals": []}
+
+        logger.info(f"Advisor chain: {len(signals)} signals detected")
+
+        # Step 2: Advisor — generate recommendations
+        advisor = self.agents.get("advisor")
+        if not advisor:
+            logger.warning("Advisor agent not registered, skipping chain")
+            return {"recommendations": [], "signals": signals}
+
+        advisor_instruction = (
+            f"Сформируй рекомендации для {report_type} отчёта.\n\n"
+            f"signals = {json.dumps(signals, ensure_ascii=False, default=str)}\n\n"
+            f"structured_data = {json.dumps(structured_data, ensure_ascii=False, default=str)}\n\n"
+            f"report_type = \"{report_type}\""
+        )
+
+        advisor_result = await advisor.analyze(
+            instruction=advisor_instruction,
+            context="",
+        )
+
+        # Parse advisor output
+        try:
+            advisor_output = json.loads(advisor_result.content)
+            recommendations = advisor_output.get("recommendations", [])
+        except (json.JSONDecodeError, AttributeError):
+            logger.warning("Advisor output is not valid JSON, skipping validation")
+            return {"recommendations": [], "signals": signals, "raw_advisor": advisor_result.content}
+
+        if not recommendations:
+            return {"recommendations": [], "signals": signals}
+
+        # Step 3: Validator — verify recommendations
+        validator = self.agents.get("validator")
+        if not validator:
+            logger.warning("Validator agent not registered, returning unverified")
+            for r in recommendations:
+                r["verified"] = False
+            return {"recommendations": recommendations, "signals": signals}
+
+        validator_instruction = (
+            f"Проверь рекомендации от Advisor.\n\n"
+            f"recommendations = {json.dumps(recommendations, ensure_ascii=False, default=str)}\n\n"
+            f"signals = {json.dumps(signals, ensure_ascii=False, default=str)}\n\n"
+            f"structured_data = {json.dumps(structured_data, ensure_ascii=False, default=str)}"
+        )
+
+        validator_result = await validator.analyze(
+            instruction=validator_instruction,
+            context="",
+        )
+
+        try:
+            verdict = json.loads(validator_result.content)
+        except (json.JSONDecodeError, AttributeError):
+            logger.warning("Validator output is not valid JSON, returning unverified")
+            for r in recommendations:
+                r["verified"] = False
+            return {"recommendations": recommendations, "signals": signals}
+
+        if verdict.get("verdict") == "pass":
+            for r in recommendations:
+                r["verified"] = True
+            return {"recommendations": recommendations, "signals": signals, "verdict": verdict}
+
+        # Step 4: Retry once — send validator feedback to advisor
+        logger.info(f"Validator: FAIL — {verdict.get('issues', [])}")
+        retry_instruction = (
+            f"Валидатор отклонил рекомендации. Исправь и повтори.\n\n"
+            f"Проблемы: {json.dumps(verdict.get('issues', []), ensure_ascii=False)}\n\n"
+            f"Оригинальные рекомендации: {json.dumps(recommendations, ensure_ascii=False, default=str)}\n\n"
+            f"signals = {json.dumps(signals, ensure_ascii=False, default=str)}\n\n"
+            f"report_type = \"{report_type}\""
+        )
+
+        retry_result = await advisor.analyze(instruction=retry_instruction, context="")
+        try:
+            retry_output = json.loads(retry_result.content)
+            retry_recs = retry_output.get("recommendations", [])
+        except (json.JSONDecodeError, AttributeError):
+            for r in recommendations:
+                r["verified"] = False
+            return {"recommendations": recommendations, "signals": signals}
+
+        # Re-validate
+        revalidate_instruction = (
+            f"Проверь исправленные рекомендации.\n\n"
+            f"recommendations = {json.dumps(retry_recs, ensure_ascii=False, default=str)}\n\n"
+            f"signals = {json.dumps(signals, ensure_ascii=False, default=str)}\n\n"
+            f"structured_data = {json.dumps(structured_data, ensure_ascii=False, default=str)}"
+        )
+
+        rev2 = await validator.analyze(instruction=revalidate_instruction, context="")
+        try:
+            verdict2 = json.loads(rev2.content)
+        except (json.JSONDecodeError, AttributeError):
+            verdict2 = {"verdict": "fail"}
+
+        if verdict2.get("verdict") == "pass":
+            for r in retry_recs:
+                r["verified"] = True
+            return {"recommendations": retry_recs, "signals": signals, "verdict": verdict2}
+
+        # Final fallback — include unverified
+        logger.warning("Advisor chain: validator failed twice, returning unverified")
+        for r in retry_recs:
+            r["verified"] = False
+        return {"recommendations": retry_recs, "signals": signals, "verdict": verdict2}
 
     # ── Multi-model review ────────────────────────────────────────
 
