@@ -545,6 +545,7 @@ class OlegOrchestrator:
         advisor_start = time.time()
         result = {"recommendations": [], "signals": []}
         attempts = 1
+        new_patterns = []
 
         try:
             # Step 1: Signal detection (pure Python, no LLM)
@@ -582,6 +583,16 @@ class OlegOrchestrator:
                 logger.warning("Advisor output is not valid JSON, skipping validation")
                 result = {"recommendations": [], "signals": signals, "raw_advisor": advisor_result.content}
                 return result
+
+            # Extract and save proposed patterns (Phase 3: Self-Learning)
+            new_patterns = advisor_output.get("new_patterns", [])
+            if new_patterns:
+                try:
+                    from shared.signals.kb_patterns import save_proposed_patterns
+                    saved = save_proposed_patterns(new_patterns)
+                    logger.info(f"Advisor proposed {len(new_patterns)} patterns, {saved} saved")
+                except Exception as e:
+                    logger.warning(f"Failed to save proposed patterns: {e}")
 
             if not recommendations:
                 result = {"recommendations": [], "signals": signals}
@@ -682,6 +693,8 @@ class OlegOrchestrator:
         finally:
             duration_ms = int((time.time() - advisor_start) * 1000)
             result["attempts"] = attempts
+            if new_patterns:
+                result["new_patterns"] = new_patterns
             self._log_recommendation(result, report_type, duration_ms)
 
     def _log_recommendation(self, result: dict, report_type: str, duration_ms: int):
