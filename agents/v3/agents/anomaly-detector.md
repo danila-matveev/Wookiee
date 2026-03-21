@@ -26,6 +26,7 @@ Detect metric anomalies exceeding 10% deviation from baseline, rank by severity,
 
 ## Output Format
 JSON artifact with:
+- _meta: {confidence: float 0-1, confidence_reason: string, data_coverage: float 0-1, limitations: [string], conclusions: [{statement: string, type: "driver"|"anti_driver"|"recommendation"|"anomaly"|"metric", confidence: float 0-1, confidence_reason: string, data_coverage: float 0-1, limitations: [string], sources: [string]}]}
 - period: {date_from, date_to}
 - baseline_window: string (e.g. "7-day rolling average")
 - data_quality_status: {ok: bool, issues: [string]}

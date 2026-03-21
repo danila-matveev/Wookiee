@@ -19,6 +19,7 @@ Track agent health across the v3 multi-agent system. Measure success rates by ag
 
 ## Output Format
 JSON artifact with:
+- _meta: {confidence: float 0-1, confidence_reason: string, data_coverage: float 0-1, limitations: [string], conclusions: [{statement: string, type: "driver"|"anti_driver"|"recommendation"|"anomaly"|"metric", confidence: float 0-1, confidence_reason: string, data_coverage: float 0-1, limitations: [string], sources: [string]}]}
 - report_at: string (ISO timestamp)
 - window_days: 7
 - fleet_summary: {total_agents: int, healthy: int, degraded: int, failing: int, overall_status: "ok"|"degraded"|"critical"}

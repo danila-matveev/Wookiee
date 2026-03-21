@@ -59,6 +59,7 @@ Read team feedback comments from Notion report pages, decide which comments cont
 
 ## Output Format
 JSON artifact with:
+- _meta: {confidence: float 0-1, confidence_reason: string, data_coverage: float 0-1, limitations: [string], conclusions: [{statement: string, type: "driver"|"anti_driver"|"recommendation"|"anomaly"|"metric", confidence: float 0-1, confidence_reason: string, data_coverage: float 0-1, limitations: [string], sources: [string]}]}
 - processed: int (total comments handled)
 - new_instructions: int (new instructions saved)
 - skipped: int (already processed or system's own comments)

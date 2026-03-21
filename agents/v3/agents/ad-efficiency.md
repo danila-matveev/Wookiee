@@ -23,6 +23,7 @@ Analyze advertising efficiency across channels. Calculate ROI, ROMI, DRR. Classi
 
 ## Output Format
 JSON artifact with:
+- _meta: {confidence: float 0-1, confidence_reason: string, data_coverage: float 0-1, limitations: [string], conclusions: [{statement: string, type: "driver"|"anti_driver"|"recommendation"|"anomaly"|"metric", confidence: float 0-1, confidence_reason: string, data_coverage: float 0-1, limitations: [string], sources: [string]}]}
 - period: {date_from, date_to}
 - brand_drr: {drr_orders_pct, drr_sales_pct, adv_internal_rub, adv_external_rub}
 - channels: [{channel, drr_orders_pct, drr_sales_pct, adv_internal, adv_external, funnel: {card_opens, add_to_cart, orders, ctr_pct, conv_cart_pct, conv_order_pct, cart_to_order_pct}}]

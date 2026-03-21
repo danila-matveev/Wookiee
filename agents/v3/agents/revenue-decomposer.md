@@ -24,6 +24,7 @@ Break down revenue by channels, models, and plan-fact. Detect volume/price drive
 
 ## Output Format
 JSON artifact with:
+- _meta: {confidence: float 0-1, confidence_reason: string, data_coverage: float 0-1, limitations: [string], conclusions: [{statement: string, type: "driver"|"anti_driver"|"recommendation"|"anomaly"|"metric", confidence: float 0-1, confidence_reason: string, data_coverage: float 0-1, limitations: [string], sources: [string]}]}
 - period: {date_from, date_to}
 - brand_totals: {revenue_rub, orders_rub, orders_count, avg_check_orders, avg_check_sales}
 - channel_breakdown: [{channel, revenue_rub, orders_rub, orders_count, delta_pct}]
