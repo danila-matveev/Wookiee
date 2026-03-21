@@ -673,7 +673,7 @@ async def _job_finolog_categorization() -> None:
 # Scheduler factory
 # ---------------------------------------------------------------------------
 
-def create_scheduler() -> AsyncIOScheduler:
+def _setup_legacy_scheduler() -> AsyncIOScheduler:
     """Build and return a configured AsyncIOScheduler with all 15 jobs."""
     scheduler = AsyncIOScheduler(timezone=config.TIMEZONE)
 
@@ -868,3 +868,160 @@ def create_scheduler() -> AsyncIOScheduler:
         [j.id for j in scheduler.get_jobs()],
     )
     return scheduler
+
+
+# ---------------------------------------------------------------------------
+# Conductor scheduler
+# ---------------------------------------------------------------------------
+
+def _setup_conductor_scheduler() -> AsyncIOScheduler:
+    """Conductor mode: smart triggers instead of individual report cron jobs.
+
+    Jobs:
+    1. data_ready_check — hourly 06:00-12:00 (gates + generate + validate)
+    2. deadline_check — 12:00 (alert if reports missing)
+    3. catchup_check — 15:00 (reuses data_ready_check with daily_only=True)
+    4. anomaly_monitor — every N hours
+    5. watchdog_heartbeat — every 6h (log-only, no Telegram)
+    6. notion_feedback — every 60 min
+    + Non-report jobs (ETL, promotion scan, finolog categorization) unchanged
+    """
+    from agents.v3.conductor.state import ConductorState
+    from agents.v3.conductor.conductor import data_ready_check, deadline_check
+
+    scheduler = AsyncIOScheduler(timezone=config.TIMEZONE)
+    job_defaults = {
+        "misfire_grace_time": 3600,
+        "coalesce": True,
+        "max_instances": 1,
+    }
+
+    state = ConductorState(db_path=config.STATE_DB_PATH)
+    state.ensure_table()
+
+    from agents.v3 import orchestrator
+
+    # 1. data_ready_check — hourly 06:00-12:00
+    scheduler.add_job(
+        data_ready_check,
+        trigger=CronTrigger(hour="6-12", minute=0, timezone=config.TIMEZONE),
+        kwargs={
+            "gate_checker": _gate_checker,
+            "conductor_state": state,
+            "telegram_send": _send_admin,
+            "orchestrator": orchestrator,
+            "delivery": _deliver,
+            "scheduler": scheduler,
+        },
+        id="data_ready_check",
+        **job_defaults,
+    )
+
+    # 2. deadline_check — 12:00
+    scheduler.add_job(
+        deadline_check,
+        trigger=CronTrigger(hour=config.CONDUCTOR_DEADLINE_HOUR, minute=0, timezone=config.TIMEZONE),
+        kwargs={
+            "conductor_state": state,
+            "telegram_send": _send_admin,
+            "gate_checker": _gate_checker,
+        },
+        id="deadline_check",
+        **job_defaults,
+    )
+
+    # 3. catchup_check — 15:00 (reuses data_ready_check with daily_only=True)
+    scheduler.add_job(
+        data_ready_check,
+        trigger=CronTrigger(hour=config.CONDUCTOR_CATCHUP_HOUR, minute=0, timezone=config.TIMEZONE),
+        kwargs={
+            "gate_checker": _gate_checker,
+            "conductor_state": state,
+            "telegram_send": _send_admin,
+            "orchestrator": orchestrator,
+            "delivery": _deliver,
+            "scheduler": scheduler,
+            "daily_only": True,
+        },
+        id="catchup_check",
+        **job_defaults,
+    )
+
+    # 4. Anomaly monitor
+    interval_h = config.ANOMALY_MONITOR_INTERVAL_HOURS
+    scheduler.add_job(
+        _job_anomaly_monitor,
+        trigger=CronTrigger(hour=f"*/{interval_h}", minute=30, timezone=config.TIMEZONE),
+        id="anomaly_monitor",
+        **job_defaults,
+    )
+
+    # 5. Watchdog heartbeat (log-only in conductor mode)
+    watchdog_h = config.WATCHDOG_HEARTBEAT_INTERVAL_HOURS
+    scheduler.add_job(
+        _job_watchdog,
+        trigger=CronTrigger(hour=f"*/{watchdog_h}", minute=0, timezone=config.TIMEZONE),
+        id="watchdog_heartbeat",
+        **job_defaults,
+    )
+
+    # 6. Notion feedback
+    from apscheduler.triggers.interval import IntervalTrigger
+    scheduler.add_job(
+        _job_notion_feedback,
+        trigger=IntervalTrigger(minutes=60),
+        id="notion_feedback",
+        **job_defaults,
+    )
+
+    # ── Non-report jobs (unchanged from legacy) ──────────────────────────
+    if config.PROMOTION_SCAN_ENABLED:
+        scheduler.add_job(
+            _job_promotion_scan,
+            trigger=CronTrigger(hour="*/12", minute=15, timezone=config.TIMEZONE),
+            id="promotion_scan",
+            **job_defaults,
+        )
+
+    if config.ETL_ENABLED:
+        etl_daily_h, etl_daily_m = _parse_hm(config.ETL_DAILY_SYNC_TIME)
+        scheduler.add_job(
+            _job_etl_daily_sync,
+            trigger=CronTrigger(hour=etl_daily_h, minute=etl_daily_m, timezone=config.TIMEZONE),
+            id="etl_daily_sync",
+            **job_defaults,
+        )
+        etl_weekly_h, etl_weekly_m = _parse_hm(config.ETL_WEEKLY_ANALYSIS_TIME)
+        scheduler.add_job(
+            _job_etl_weekly_analysis,
+            trigger=CronTrigger(
+                day_of_week=config.ETL_WEEKLY_ANALYSIS_DAY,
+                hour=etl_weekly_h, minute=etl_weekly_m,
+                timezone=config.TIMEZONE,
+            ),
+            id="etl_weekly_analysis",
+            **job_defaults,
+        )
+
+    if config.FINOLOG_CATEGORIZATION_ENABLED and config.FINOLOG_API_KEY:
+        cat_h, cat_m = _parse_hm(config.FINOLOG_CATEGORIZATION_TIME)
+        scheduler.add_job(
+            _job_finolog_categorization,
+            trigger=CronTrigger(hour=cat_h, minute=cat_m, timezone=config.TIMEZONE),
+            id="finolog_categorization",
+            **job_defaults,
+        )
+
+    logger.info(
+        "Conductor scheduler configured with %d jobs: %s",
+        len(scheduler.get_jobs()),
+        [j.id for j in scheduler.get_jobs()],
+    )
+    return scheduler
+
+
+def create_scheduler() -> AsyncIOScheduler:
+    """Build scheduler — conductor mode or legacy based on config."""
+    if config.USE_CONDUCTOR:
+        return _setup_conductor_scheduler()
+    return _setup_legacy_scheduler()
