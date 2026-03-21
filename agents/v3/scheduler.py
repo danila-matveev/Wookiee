@@ -259,39 +259,46 @@ async def _job_data_ready_check(scheduler: AsyncIOScheduler) -> None:
 async def _job_notion_feedback() -> None:
     """Collect Notion feedback and process into persistent agent instructions.
 
-    Runs 1h before daily report. Uses PromptTuner to:
-    1. Fetch recent comments from Notion report pages
-    2. Classify each comment by target micro-agent
-    3. Extract actionable instructions
-    4. Store in StateStore as persistent instructions
-    5. Post confirmation comment on Notion
+    Runs 1h before daily report. Launches the prompt-tuner micro-agent which:
+    1. Fetches recent comments from Notion report pages
+    2. Classifies each comment and decides target micro-agents
+    3. Saves actionable instructions to StateStore
+    4. Posts confirmation comments on Notion
     """
     if not config.PROMPT_TUNER_ENABLED:
         logger.debug("notion_feedback: PromptTuner disabled")
         return
 
-    from agents.v3.delivery.notion import NotionDelivery
-    from agents.v3.prompt_tuner import PromptTuner
-
-    notion = NotionDelivery(config.NOTION_TOKEN, config.NOTION_DATABASE_ID)
-    if not notion.enabled:
-        logger.info("notion_feedback: Notion not configured")
-        return
-
-    state = _get_state()
-    tuner = PromptTuner(notion=notion, state=state)
+    from agents.v3.runner import run_agent
 
     try:
-        result = await tuner.run()
-        logger.info(
-            "notion_feedback: processed=%d, new_instructions=%d, skipped=%d",
-            result.get("processed", 0),
-            result.get("new_instructions", 0),
-            result.get("skipped", 0),
+        result = await run_agent(
+            agent_name="prompt-tuner",
+            task=(
+                "Обработай новые комментарии из Notion. "
+                "Получи фидбек, определи какие комментарии содержат actionable инструкции, "
+                "сохрани их для соответствующих агентов и подтверди в Notion."
+            ),
+            trigger="cron",
+            task_type="prompt_tuner",
+            timeout=config.AGENT_TIMEOUT,
         )
+
+        if result["status"] == "success":
+            logger.info("notion_feedback: prompt-tuner completed in %dms", result["duration_ms"])
+        else:
+            logger.warning(
+                "notion_feedback: prompt-tuner %s — %s",
+                result["status"],
+                result["raw_output"][:300],
+            )
+            if result["status"] == "failed":
+                await _send_admin(
+                    f"[Wookiee v3] prompt-tuner failed:\n{result['raw_output'][:500]}"
+                )
     except Exception as exc:
-        logger.exception("notion_feedback (PromptTuner) failed: %s", exc)
-        await _send_admin(f"[Wookiee v3] Ошибка PromptTuner:\n{exc}")
+        logger.exception("notion_feedback (prompt-tuner) failed: %s", exc)
+        await _send_admin(f"[Wookiee v3] Ошибка prompt-tuner:\n{exc}")
 
 
 # ---------------------------------------------------------------------------
