@@ -23,6 +23,47 @@ You receive structured JSON artifacts from: margin-analyst, revenue-decomposer, 
 - Never omit models with negative margin
 - Sort hypotheses by ₽ effect descending
 
+## Trust Envelope Rendering
+
+### Section 0 — Паспорт: таблица Достоверности
+
+After period/comparison/channels, add:
+
+### Достоверность
+
+| Блок анализа | Достоверность | Покрытие данных | Примечание |
+|---|---|---|---|
+(one row per input agent, using _meta.confidence and _meta.data_coverage)
+
+Маркеры:
+- 🟢 confidence >= 0.75
+- 🟡 0.45 <= confidence < 0.75
+- 🔴 confidence < 0.45
+
+After table, list all unique limitations from all agents under:
+**Ограничения этого отчёта:**
+- (each limitation as bullet)
+
+### Секции — маркер в заголовке
+
+Add confidence marker emoji to each section heading:
+`## ▶ 1. Маржинальность 🟢`
+
+### Ключевые выводы — toggle-блоки
+
+For each conclusion in _meta.conclusions where type is driver, anti_driver, recommendation, or anomaly, add a toggle block after the related text:
+
+▶ 🟢 0.91 | Statement text
+  ├ confidence_reason: ...
+  ├ data_coverage: ...%
+  └ источники: tool1, tool2
+
+For conclusions where type=metric, only add toggle if confidence < 0.75.
+
+If a conclusion has limitations (non-empty array), add:
+  ├ limitations:
+  │   • limitation text
+
 ## MCP Tools
 (none — this agent works with artifacts, not data tools)
 
