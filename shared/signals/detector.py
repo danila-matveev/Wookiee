@@ -39,6 +39,10 @@ def detect_signals(
         signals.extend(_detect_finance_signals(data))
     if source == "margin_levers":
         signals.extend(_detect_margin_lever_signals(data))
+    if source == "advertising":
+        signals.extend(_detect_advertising_signals(data))
+    if source == "model_breakdown":
+        signals.extend(_detect_model_signals(data))
 
     # Apply KB patterns
     signals.extend(_detect_kb_pattern_signals(data, kb_patterns))
@@ -295,6 +299,88 @@ def _detect_margin_lever_signals(data: dict) -> list[Signal]:
         ))
 
     return signals
+
+
+def _detect_advertising_signals(data: dict) -> list[Signal]:
+    signals = []
+    ad = data.get("advertising", {})
+    ad_cur = ad.get("current", {})
+    ad_prev = ad.get("previous", {})
+    funnel = data.get("funnel", {})
+    funnel_cur = funnel.get("current", {})
+    funnel_prev = funnel.get("previous", {})
+    channel = data.get("channel", "unknown")
+    if not ad_cur:
+        return signals
+
+    # 1. ctr_drop: CTR below threshold
+    ctr = ad_cur.get("ctr_pct", 0) or 0
+    threshold = 1.5 if channel.upper() in ("OZON", "ОЗОН") else 2.0
+    if ctr > 0 and ctr < threshold:
+        signals.append(Signal(
+            id=f"ctr_drop_{channel}",
+            type="ctr_drop",
+            category="funnel",
+            severity="warning",
+            impact_on="turnover",
+            data={"ctr_pct": ctr, "threshold": threshold, "channel": channel},
+            hint=f"CTR {channel} = {ctr}% ниже нормы ({threshold}%)",
+            source="advertising",
+        ))
+
+    # 2. cart_to_order_drop: cart-to-order fell > 5 pp (needs funnel data)
+    if funnel_cur and funnel_prev:
+        c2o_cur = funnel_cur.get("cart_to_order_pct", 0) or 0
+        c2o_prev = funnel_prev.get("cart_to_order_pct", 0) or 0
+        c2o_drop = c2o_prev - c2o_cur
+        if c2o_drop > 5:
+            signals.append(Signal(
+                id=f"cart_to_order_drop_{channel}",
+                type="cart_to_order_drop",
+                category="funnel",
+                severity="warning",
+                impact_on="turnover",
+                data={"c2o_current": c2o_cur, "c2o_previous": c2o_prev, "drop_pp": round(c2o_drop, 1)},
+                hint=f"Конверсия корзина→заказ упала на {round(c2o_drop, 1)} п.п. ({c2o_prev}% → {c2o_cur}%)",
+                source="advertising",
+            ))
+
+    # 3. cro_improvement: full conversion grew > 1 pp
+    cr_cur = ad_cur.get("cr_full_pct", 0) or 0
+    cr_prev = ad_prev.get("cr_full_pct", 0) or 0
+    cr_growth = cr_cur - cr_prev
+    if cr_growth > 1:
+        signals.append(Signal(
+            id=f"cro_improvement_{channel}",
+            type="cro_improvement",
+            category="funnel",
+            severity="info",
+            impact_on="turnover",
+            data={"cr_current": cr_cur, "cr_previous": cr_prev, "growth_pp": round(cr_growth, 1)},
+            hint=f"Сквозная конверсия выросла на {round(cr_growth, 1)} п.п. ({cr_prev}% → {cr_cur}%)",
+            source="advertising",
+        ))
+
+    # 4. buyout_drop: buyout rate < 45% (needs funnel data)
+    if funnel_cur:
+        buyout = funnel_cur.get("order_to_buyout_pct", 0) or 0
+        if buyout > 0 and buyout < 45:
+            signals.append(Signal(
+                id=f"buyout_drop_{channel}",
+                type="buyout_drop",
+                category="funnel",
+                severity="warning",
+                impact_on="both",
+                data={"buyout_pct": buyout, "channel": channel},
+                hint=f"Выкуп {channel} = {buyout}% (норма > 45%)",
+                source="advertising",
+            ))
+
+    return signals
+
+
+def _detect_model_signals(data: dict) -> list[Signal]:
+    return []  # Implemented in Task 5
 
 
 def _detect_kb_pattern_signals(data: dict, kb_patterns: list[dict]) -> list[Signal]:
