@@ -85,6 +85,13 @@ def _build_tool_registry() -> dict[str, dict]:
             return await execute_kb_tool(_tool_name, kwargs)
         registry[name] = {"handler": _kb_handler, "definition": tdef, "server": "wookiee-kb"}
 
+    # ── wookiee-prompt-tuner ──────────────────────────────────────────────
+    from agents.v3.prompt_tuner import PROMPT_TUNER_TOOL_DEFINITIONS, PROMPT_TUNER_TOOL_HANDLERS
+    for tdef in PROMPT_TUNER_TOOL_DEFINITIONS:
+        name = tdef["function"]["name"]
+        if name in PROMPT_TUNER_TOOL_HANDLERS:
+            registry[name] = {"handler": PROMPT_TUNER_TOOL_HANDLERS[name], "definition": tdef, "server": "wookiee-prompt-tuner"}
+
     return registry
 
 
