@@ -4,7 +4,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Generic, Optional, TypeVar
 
-from pydantic import BaseModel, ConfigDict
+import re
+
+from pydantic import BaseModel, ConfigDict, field_validator
 
 T = TypeVar("T")
 
@@ -455,3 +457,133 @@ class BulkActionRequest(BaseModel):
     ids: list[int]
     action: str  # "update" | "delete"
     changes: Optional[dict] = None  # for "update"
+
+
+# ── Constants ────────────────────────────────────────────────────────────────
+
+VALID_ENTITY_TYPES = {
+    "modeli_osnova", "modeli", "artikuly", "tovary", "cveta",
+    "fabriki", "importery", "skleyki_wb", "skleyki_ozon", "sertifikaty",
+}
+
+VALID_FIELD_TYPES = {
+    "text", "number", "select", "multi_select", "file",
+    "url", "relation", "date", "checkbox", "formula", "rollup",
+}
+
+FIELD_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]{0,99}$")
+
+
+# ── Field Definitions ────────────────────────────────────────────────────────
+
+class FieldDefinitionCreate(BaseModel):
+    entity_type: str
+    field_name: str
+    display_name: str
+    field_type: str
+    config: Optional[dict] = None
+    section: Optional[str] = None
+    sort_order: int = 0
+    is_system: bool = False
+    is_visible: bool = True
+
+    @field_validator("field_type")
+    @classmethod
+    def validate_field_type(cls, v: str) -> str:
+        if v not in VALID_FIELD_TYPES:
+            raise ValueError(f"field_type must be one of {sorted(VALID_FIELD_TYPES)}, got '{v}'")
+        return v
+
+    @field_validator("entity_type")
+    @classmethod
+    def validate_entity_type(cls, v: str) -> str:
+        if v not in VALID_ENTITY_TYPES:
+            raise ValueError(f"entity_type must be one of {sorted(VALID_ENTITY_TYPES)}, got '{v}'")
+        return v
+
+    @field_validator("field_name")
+    @classmethod
+    def validate_field_name(cls, v: str) -> str:
+        if not FIELD_NAME_PATTERN.match(v):
+            raise ValueError(
+                f"field_name must match ^[a-z][a-z0-9_]{{0,99}}$, got '{v}'"
+            )
+        return v
+
+
+class FieldDefinitionUpdate(BaseModel):
+    display_name: Optional[str] = None
+    field_type: Optional[str] = None
+    config: Optional[dict] = None
+    section: Optional[str] = None
+    sort_order: Optional[int] = None
+    is_visible: Optional[bool] = None
+
+    @field_validator("field_type")
+    @classmethod
+    def validate_field_type(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in VALID_FIELD_TYPES:
+            raise ValueError(f"field_type must be one of {sorted(VALID_FIELD_TYPES)}, got '{v}'")
+        return v
+
+
+class FieldDefinitionRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    entity_type: str
+    field_name: str
+    display_name: str
+    field_type: str
+    config: Optional[dict] = None
+    section: Optional[str] = None
+    sort_order: int = 0
+    is_system: bool = False
+    is_visible: bool = True
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+# ── Saved Views ──────────────────────────────────────────────────────────────
+
+class ViewConfig(BaseModel):
+    columns: list[str] = []
+    filters: list[dict[str, Any]] = []
+    sort: list[dict[str, Any]] = []
+    group_by: Optional[str] = None
+
+
+class SavedViewCreate(BaseModel):
+    entity_type: str
+    name: str
+    config: dict
+    user_id: Optional[int] = None
+    is_default: bool = False
+    sort_order: int = 0
+
+    @field_validator("entity_type")
+    @classmethod
+    def validate_entity_type(cls, v: str) -> str:
+        if v not in VALID_ENTITY_TYPES:
+            raise ValueError(f"entity_type must be one of {sorted(VALID_ENTITY_TYPES)}, got '{v}'")
+        return v
+
+
+class SavedViewUpdate(BaseModel):
+    name: Optional[str] = None
+    config: Optional[dict] = None
+    is_default: Optional[bool] = None
+    sort_order: Optional[int] = None
+
+
+class SavedViewRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    user_id: Optional[int] = None
+    entity_type: str
+    name: str
+    config: dict
+    is_default: bool = False
+    sort_order: int = 0
+    created_at: Optional[datetime] = None
