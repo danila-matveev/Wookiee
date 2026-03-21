@@ -501,21 +501,36 @@ class OlegOrchestrator:
 
     # ── Advisor chain ─────────────────────────────────────────────
 
-    async def _run_signal_detection(self, structured_data: dict) -> list:
-        """Run Signal Detector on structured data. Pure Python, no LLM."""
+    def _load_kb_patterns(self) -> list[dict]:
+        """Load KB patterns from Supabase. Returns [] on failure."""
         try:
+            from shared.signals.kb_patterns import load_kb_patterns
+            return load_kb_patterns(verified_only=True)
+        except Exception as e:
+            logger.warning(f"Failed to load KB patterns: {e}")
+            return []
+
+    async def _run_signal_detection(self, structured_data: dict) -> tuple[list, list]:
+        """Run Signal Detector on structured data. Pure Python, no LLM.
+
+        Returns:
+            (signals_as_dicts, kb_patterns) — signals and loaded KB patterns
+            for downstream use (Validator).
+        """
+        try:
+            kb_patterns = self._load_kb_patterns()
             all_signals = []
-            # TODO: pass kb_patterns when KB pattern loader is implemented (Phase B)
             for source_tag, source_data in structured_data.items():
+                relevant_kb = [p for p in kb_patterns if p.get("source_tag") == source_tag]
                 if isinstance(source_data, list):
                     for item in source_data:
-                        all_signals.extend(detect_signals(data=item))
+                        all_signals.extend(detect_signals(data=item, kb_patterns=relevant_kb))
                 else:
-                    all_signals.extend(detect_signals(data=source_data))
-            return [vars(s) for s in all_signals]
+                    all_signals.extend(detect_signals(data=source_data, kb_patterns=relevant_kb))
+            return [vars(s) for s in all_signals], kb_patterns
         except Exception as e:
             logger.warning(f"Signal detection failed: {e}")
-            return []
+            return [], []
 
     async def _run_advisor_chain(
         self,
@@ -533,7 +548,7 @@ class OlegOrchestrator:
 
         try:
             # Step 1: Signal detection (pure Python, no LLM)
-            signals = await self._run_signal_detection(structured_data)
+            signals, kb_patterns = await self._run_signal_detection(structured_data)
             if not signals:
                 logger.info("Advisor chain: no signals detected, skipping")
                 return result
@@ -585,7 +600,8 @@ class OlegOrchestrator:
                 f"Проверь рекомендации от Advisor.\n\n"
                 f"recommendations = {json.dumps(recommendations, ensure_ascii=False, default=str)}\n\n"
                 f"signals = {json.dumps(signals, ensure_ascii=False, default=str)}\n\n"
-                f"structured_data = {json.dumps(structured_data, ensure_ascii=False, default=str)}"
+                f"structured_data = {json.dumps(structured_data, ensure_ascii=False, default=str)}\n\n"
+                f"kb_patterns = {json.dumps(kb_patterns, ensure_ascii=False, default=str)}"
             )
 
             validator_result = await validator.analyze(
@@ -634,7 +650,8 @@ class OlegOrchestrator:
                 f"Проверь исправленные рекомендации.\n\n"
                 f"recommendations = {json.dumps(retry_recs, ensure_ascii=False, default=str)}\n\n"
                 f"signals = {json.dumps(signals, ensure_ascii=False, default=str)}\n\n"
-                f"structured_data = {json.dumps(structured_data, ensure_ascii=False, default=str)}"
+                f"structured_data = {json.dumps(structured_data, ensure_ascii=False, default=str)}\n\n"
+                f"kb_patterns = {json.dumps(kb_patterns, ensure_ascii=False, default=str)}"
             )
 
             rev2 = await validator.analyze(instruction=revalidate_instruction, context="")
