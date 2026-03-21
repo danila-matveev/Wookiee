@@ -74,3 +74,30 @@ def test_extract_usage_empty_messages():
     from agents.v3.runner import extract_token_usage
     usage = extract_token_usage([])
     assert usage["total_tokens"] == 0
+
+
+# --- Meta Sanity Check ---
+
+def test_sanitize_meta_low_coverage_caps_confidence():
+    from agents.v3.runner import sanitize_meta
+    meta = {"confidence": 0.9, "data_coverage": 0.3, "limitations": []}
+    sanitize_meta(meta)
+    assert meta["confidence"] <= 0.5
+    assert "data_coverage < 50%" in meta["limitations"][0]
+
+
+def test_sanitize_meta_ok_coverage_keeps_confidence():
+    from agents.v3.runner import sanitize_meta
+    meta = {"confidence": 0.9, "data_coverage": 0.8, "limitations": []}
+    sanitize_meta(meta)
+    assert meta["confidence"] == 0.9
+    assert meta["limitations"] == []
+
+
+def test_sanitize_meta_missing_fields_no_mutation():
+    from agents.v3.runner import sanitize_meta
+    meta = {}
+    sanitize_meta(meta)  # should not raise
+    # Empty dict should not be mutated (coverage=1.0 default, no cap triggered)
+    assert "confidence" not in meta
+    assert "limitations" not in meta

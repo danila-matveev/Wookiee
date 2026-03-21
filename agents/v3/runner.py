@@ -273,6 +273,17 @@ def extract_token_usage(messages: list) -> dict[str, int]:
     return usage
 
 
+def sanitize_meta(meta: dict) -> None:
+    """Enforce sanity rules on _meta block (mutates in place)."""
+    coverage = meta.get("data_coverage", 1.0)
+    confidence = meta.get("confidence", 0.0)
+    if coverage < 0.5 and confidence > 0.6:
+        meta["confidence"] = min(confidence, 0.5)
+        meta.setdefault("limitations", []).append(
+            "confidence снижен автоматически: data_coverage < 50%"
+        )
+
+
 # ── Agent execution ─────────────────────────────────────────────────────
 
 async def run_agent(
@@ -355,6 +366,10 @@ async def run_agent(
                 artifact = json.loads(json_match.group())
         except (json.JSONDecodeError, AttributeError):
             pass
+
+        # Sanitize _meta if present
+        if artifact and isinstance(artifact, dict) and "_meta" in artifact:
+            sanitize_meta(artifact["_meta"])
 
         # Token usage & cost
         usage = extract_token_usage(result.get("messages", []))
