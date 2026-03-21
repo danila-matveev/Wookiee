@@ -1,0 +1,102 @@
+<h2>Какие сущности нужны как управляемые "базы"?</h2>
+<p class="subtitle">Каждая выбранная сущность получит: табличный вид, карточку детали, создание/редактирование, связи с другими сущностями. Выбери все нужные.</p>
+
+<div style="margin-bottom: 24px; padding: 16px; background: var(--surface); border-radius: 12px; border: 1px solid var(--border);">
+  <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="var(--text-secondary)" stroke-width="1.5"/><path d="M8 4v4M8 10v1" stroke="var(--text-secondary)" stroke-width="1.5" stroke-linecap="round"/></svg>
+    <span style="font-size: 13px; color: var(--text-secondary);">Кликни на все сущности, которые нужно включить в редактор. Можно выбрать несколько.</span>
+  </div>
+</div>
+
+<!-- Core Product Hierarchy -->
+<h3 style="margin-bottom: 12px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary);">Основная иерархия товаров</h3>
+
+<div class="options" data-multiselect>
+  <div class="option" data-choice="modeli_osnova" onclick="toggleSelect(this)" style="border-left: 3px solid #7c3aed;">
+    <div class="letter" style="background: #7c3aed;">1</div>
+    <div class="content">
+      <h3>Модели основы <span style="font-size: 12px; color: var(--text-secondary); font-weight: normal;">(22 записи)</span></h3>
+      <p>Vuki, Moon, Ruby, Joy, Wendy, Audrey... Категория, коллекция, материал, состав, размерный ряд, вес, упаковка, описание для сайта, ТН ВЭД.</p>
+      <div style="margin-top: 6px; font-size: 12px; color: var(--text-secondary);">Связи: категория, коллекция, фабрика → модели → артикулы → товары</div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="modeli" onclick="toggleSelect(this)" style="border-left: 3px solid #2563eb;">
+    <div class="letter" style="background: #2563eb;">2</div>
+    <div class="content">
+      <h3>Модели (по юрлицам) <span style="font-size: 12px; color: var(--text-secondary); font-weight: normal;">(40 записей)</span></h3>
+      <p>Vuki-ИП, Vuki-ООО, VukiN, Vuki2... Вариация модели для конкретного импортёра. Артикул модели, статус, набор (да/нет), российский размер.</p>
+      <div style="margin-top: 6px; font-size: 12px; color: var(--text-secondary);">Связи: модель основа, импортёр → артикулы → товары</div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="artikuly" onclick="toggleSelect(this)" style="border-left: 3px solid #059669;">
+    <div class="letter" style="background: #059669;">3</div>
+    <div class="content">
+      <h3>Артикулы <span style="font-size: 12px; color: var(--text-secondary); font-weight: normal;">(478 записей)</span></h3>
+      <p>wendy/36, Vuki/2... Модель + цвет = артикул. Номенклатура WB, артикул Ozon, статус.</p>
+      <div style="margin-top: 6px; font-size: 12px; color: var(--text-secondary);">Связи: модель, цвет → товары, склейки WB/Ozon</div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="tovary" onclick="toggleSelect(this)" style="border-left: 3px solid #d97706;">
+    <div class="letter" style="background: #d97706;">4</div>
+    <div class="content">
+      <h3>Товары (SKU) <span style="font-size: 12px; color: var(--text-secondary); font-weight: normal;">(1450 записей)</span></h3>
+      <p>Конечный уровень: баркод, артикул + размер, Ozon Product ID, FBO SKU, Lamoda SKU, статус WB, статус Ozon.</p>
+      <div style="margin-top: 6px; font-size: 12px; color: var(--text-secondary);">Связи: артикул, размер, склейки WB/Ozon</div>
+    </div>
+  </div>
+</div>
+
+<!-- Reference Tables -->
+<h3 style="margin-top: 28px; margin-bottom: 12px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary);">Справочники</h3>
+
+<div class="options" data-multiselect>
+  <div class="option" data-choice="cveta" onclick="toggleSelect(this)" style="border-left: 3px solid #ec4899;">
+    <div class="letter" style="background: #ec4899;">5</div>
+    <div class="content">
+      <h3>Цвета <span style="font-size: 12px; color: var(--text-secondary); font-weight: normal;">(137 записей)</span></h3>
+      <p>Color code, название RU/EN, ластовица, статус. Семьи: tricot (80+), seamless_wendy (20), seamless_audrey (20).</p>
+      <div style="margin-top: 6px; font-size: 12px; color: var(--text-secondary);">Связи: → артикулы (к каким моделям привязан цвет)</div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="fabriki" onclick="toggleSelect(this)" style="border-left: 3px solid #8b5cf6;">
+    <div class="letter" style="background: #8b5cf6;">6</div>
+    <div class="content">
+      <h3>Фабрики (производители) <span style="font-size: 12px; color: var(--text-secondary); font-weight: normal;">(справочник)</span></h3>
+      <p>Страна происхождения. Какие модели производим на каждой фабрике.</p>
+      <div style="margin-top: 6px; font-size: 12px; color: var(--text-secondary);">Связи: → модели основы</div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="importery" onclick="toggleSelect(this)" style="border-left: 3px solid #0891b2;">
+    <div class="letter" style="background: #0891b2;">7</div>
+    <div class="content">
+      <h3>Импортёры (юрлица) <span style="font-size: 12px; color: var(--text-secondary); font-weight: normal;">(справочник)</span></h3>
+      <p>ИП Медведева, ООО ВУКИ... ИНН, адрес, английское название. К каким моделям привязан.</p>
+      <div style="margin-top: 6px; font-size: 12px; color: var(--text-secondary);">Связи: → модели</div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="skleyki" onclick="toggleSelect(this)" style="border-left: 3px solid #f59e0b;">
+    <div class="letter" style="background: #f59e0b;">8</div>
+    <div class="content">
+      <h3>Склейки WB / Ozon <span style="font-size: 12px; color: var(--text-secondary); font-weight: normal;">(группировки карточек)</span></h3>
+      <p>Как товары объединены в карточки на маркетплейсах. Many-to-many с товарами.</p>
+      <div style="margin-top: 6px; font-size: 12px; color: var(--text-secondary);">Связи: импортёр, → товары (many-to-many)</div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="kategorii_kollekcii" onclick="toggleSelect(this)" style="border-left: 3px solid #64748b;">
+    <div class="letter" style="background: #64748b;">9</div>
+    <div class="content">
+      <h3>Категории + Коллекции + Статусы + Размеры <span style="font-size: 12px; color: var(--text-secondary); font-weight: normal;">(мелкие справочники)</span></h3>
+      <p>Комплект белья, Трусы, Боди... / Трикотажное белье, Спортивная... / Продаётся, Архив... / XS-XXL. Редко меняются, но нужно уметь добавлять.</p>
+      <div style="margin-top: 6px; font-size: 12px; color: var(--text-secondary);">Можно как отдельный раздел "Настройки" или inline при создании записей</div>
+    </div>
+  </div>
+</div>
+
+<p style="margin-top: 24px; font-size: 13px; color: var(--text-secondary);"><strong>Рекомендация:</strong> Включить всё (1-9). Основная иерархия (1-4) — как полноценные страницы с drill-down. Справочники (5-8) — как отдельные вкладки в сайдбаре. Мелкие справочники (9) — раздел "Настройки" с простыми списками. Начнём с моделей основ + цветов, остальное добавим итеративно.</p>
