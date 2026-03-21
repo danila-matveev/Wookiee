@@ -20,6 +20,7 @@ from services.product_matrix_api.routes.bulk import router as bulk_router
 from services.product_matrix_api.routes.schema import router as schema_router
 from services.product_matrix_api.routes.views import router as views_router
 from services.product_matrix_api.routes.delete import router as delete_router
+from services.product_matrix_api.routes.archive import router as archive_router
 
 app = FastAPI(title="Product Matrix API", version="0.1.0")
 
@@ -52,6 +53,7 @@ app.include_router(bulk_router)
 app.include_router(schema_router)
 app.include_router(views_router)
 app.include_router(delete_router)
+app.include_router(archive_router)
 
 
 @app.get("/health")
