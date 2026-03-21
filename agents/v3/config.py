@@ -122,3 +122,8 @@ PROMPT_TUNER_ENABLED: bool = os.getenv("PROMPT_TUNER_ENABLED", "true").lower() i
     "true", "1", "yes",
 )
 PROMPT_TUNER_MAX_INSTRUCTIONS: int = int(os.getenv("PROMPT_TUNER_MAX_INSTRUCTIONS", "10"))
+
+# ── Conductor ────────────────────────────────────────────────────────────────
+USE_CONDUCTOR: bool = os.getenv("USE_CONDUCTOR", "true").lower() in ("true", "1", "yes")
+CONDUCTOR_DEADLINE_HOUR: int = int(os.getenv("CONDUCTOR_DEADLINE_HOUR", "12"))
+CONDUCTOR_CATCHUP_HOUR: int = int(os.getenv("CONDUCTOR_CATCHUP_HOUR", "15"))
