@@ -168,3 +168,290 @@ class LookupItem(BaseModel):
 
     id: int
     nazvanie: str
+
+
+# ── Artikuly ─────────────────────────────────────────────────────────────────
+
+class ArtikulCreate(BaseModel):
+    artikul: str
+    model_id: Optional[int] = None
+    cvet_id: Optional[int] = None
+    status_id: Optional[int] = None
+    nomenklatura_wb: Optional[int] = None
+    artikul_ozon: Optional[str] = None
+
+
+class ArtikulUpdate(BaseModel):
+    artikul: Optional[str] = None
+    model_id: Optional[int] = None
+    cvet_id: Optional[int] = None
+    status_id: Optional[int] = None
+    nomenklatura_wb: Optional[int] = None
+    artikul_ozon: Optional[str] = None
+
+
+class ArtikulRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    artikul: str
+    model_id: Optional[int] = None
+    cvet_id: Optional[int] = None
+    status_id: Optional[int] = None
+    nomenklatura_wb: Optional[int] = None
+    artikul_ozon: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    model_name: Optional[str] = None
+    cvet_name: Optional[str] = None
+    status_name: Optional[str] = None
+    tovary_count: Optional[int] = None
+
+
+# ── Tovary (SKU) ─────────────────────────────────────────────────────────────
+
+class TovarCreate(BaseModel):
+    barkod: str
+    barkod_gs1: Optional[str] = None
+    barkod_gs2: Optional[str] = None
+    barkod_perehod: Optional[str] = None
+    artikul_id: Optional[int] = None
+    razmer_id: Optional[int] = None
+    status_id: Optional[int] = None
+    status_ozon_id: Optional[int] = None
+    ozon_product_id: Optional[int] = None
+    ozon_fbo_sku_id: Optional[int] = None
+    lamoda_seller_sku: Optional[str] = None
+    sku_china_size: Optional[str] = None
+
+
+class TovarUpdate(BaseModel):
+    barkod: Optional[str] = None
+    barkod_gs1: Optional[str] = None
+    barkod_gs2: Optional[str] = None
+    barkod_perehod: Optional[str] = None
+    artikul_id: Optional[int] = None
+    razmer_id: Optional[int] = None
+    status_id: Optional[int] = None
+    status_ozon_id: Optional[int] = None
+    ozon_product_id: Optional[int] = None
+    ozon_fbo_sku_id: Optional[int] = None
+    lamoda_seller_sku: Optional[str] = None
+    sku_china_size: Optional[str] = None
+
+
+class TovarRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    barkod: str
+    barkod_gs1: Optional[str] = None
+    barkod_gs2: Optional[str] = None
+    barkod_perehod: Optional[str] = None
+    artikul_id: Optional[int] = None
+    razmer_id: Optional[int] = None
+    status_id: Optional[int] = None
+    status_ozon_id: Optional[int] = None
+    ozon_product_id: Optional[int] = None
+    ozon_fbo_sku_id: Optional[int] = None
+    lamoda_seller_sku: Optional[str] = None
+    sku_china_size: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    artikul_name: Optional[str] = None
+    razmer_name: Optional[str] = None
+    status_name: Optional[str] = None
+    status_ozon_name: Optional[str] = None
+
+
+# ── Cveta (Colors) ───────────────────────────────────────────────────────────
+
+class CvetCreate(BaseModel):
+    color_code: str
+    cvet: Optional[str] = None
+    color: Optional[str] = None
+    lastovica: Optional[str] = None
+    status_id: Optional[int] = None
+
+
+class CvetUpdate(BaseModel):
+    color_code: Optional[str] = None
+    cvet: Optional[str] = None
+    color: Optional[str] = None
+    lastovica: Optional[str] = None
+    status_id: Optional[int] = None
+
+
+class CvetRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    color_code: str
+    cvet: Optional[str] = None
+    color: Optional[str] = None
+    lastovica: Optional[str] = None
+    status_id: Optional[int] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    status_name: Optional[str] = None
+    artikuly_count: Optional[int] = None
+
+
+# ── Fabriki (Factories) ─────────────────────────────────────────────────────
+
+class FabrikaCreate(BaseModel):
+    nazvanie: str
+    strana: Optional[str] = None
+
+
+class FabrikaUpdate(BaseModel):
+    nazvanie: Optional[str] = None
+    strana: Optional[str] = None
+
+
+class FabrikaRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    nazvanie: str
+    strana: Optional[str] = None
+    modeli_count: Optional[int] = None
+
+
+# ── Importery (Importers) ───────────────────────────────────────────────────
+
+class ImporterCreate(BaseModel):
+    nazvanie: str
+    nazvanie_en: Optional[str] = None
+    inn: Optional[str] = None
+    adres: Optional[str] = None
+
+
+class ImporterUpdate(BaseModel):
+    nazvanie: Optional[str] = None
+    nazvanie_en: Optional[str] = None
+    inn: Optional[str] = None
+    adres: Optional[str] = None
+
+
+class ImporterRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    nazvanie: str
+    nazvanie_en: Optional[str] = None
+    inn: Optional[str] = None
+    adres: Optional[str] = None
+    modeli_count: Optional[int] = None
+
+
+# ── Skleyki WB (Marketplace cards WB) ───────────────────────────────────────
+
+class SleykaWBCreate(BaseModel):
+    nazvanie: str
+    importer_id: Optional[int] = None
+
+
+class SleykaWBUpdate(BaseModel):
+    nazvanie: Optional[str] = None
+    importer_id: Optional[int] = None
+
+
+class SleykaWBRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    nazvanie: str
+    importer_id: Optional[int] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    importer_name: Optional[str] = None
+    tovary_count: Optional[int] = None
+
+
+# ── Skleyki Ozon (Marketplace cards Ozon) ───────────────────────────────────
+
+class SleykaOzonCreate(BaseModel):
+    nazvanie: str
+    importer_id: Optional[int] = None
+
+
+class SleykaOzonUpdate(BaseModel):
+    nazvanie: Optional[str] = None
+    importer_id: Optional[int] = None
+
+
+class SleykaOzonRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    nazvanie: str
+    importer_id: Optional[int] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    importer_name: Optional[str] = None
+    tovary_count: Optional[int] = None
+
+
+# ── Sertifikaty (Certificates) ──────────────────────────────────────────────
+
+class SertifikatCreate(BaseModel):
+    nazvanie: str
+    tip: Optional[str] = None
+    nomer: Optional[str] = None
+    data_vydachi: Optional[str] = None
+    data_okonchaniya: Optional[str] = None
+    organ_sertifikacii: Optional[str] = None
+    file_url: Optional[str] = None
+    gruppa_sertifikata: Optional[str] = None
+
+
+class SertifikatUpdate(BaseModel):
+    nazvanie: Optional[str] = None
+    tip: Optional[str] = None
+    nomer: Optional[str] = None
+    data_vydachi: Optional[str] = None
+    data_okonchaniya: Optional[str] = None
+    organ_sertifikacii: Optional[str] = None
+    file_url: Optional[str] = None
+    gruppa_sertifikata: Optional[str] = None
+
+
+class SertifikatRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    nazvanie: str
+    tip: Optional[str] = None
+    nomer: Optional[str] = None
+    data_vydachi: Optional[datetime] = None
+    data_okonchaniya: Optional[datetime] = None
+    organ_sertifikacii: Optional[str] = None
+    file_url: Optional[str] = None
+    gruppa_sertifikata: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+# ── Search ───────────────────────────────────────────────────────────────────
+
+class SearchResult(BaseModel):
+    entity: str
+    id: int
+    name: str
+    match_field: str
+    match_text: str
+
+
+class SearchResponse(BaseModel):
+    results: list[SearchResult]
+    total: int
+    by_entity: dict[str, int]
+
+
+# ── Bulk Operations ─────────────────────────────────────────────────────────
+
+class BulkActionRequest(BaseModel):
+    ids: list[int]
+    action: str  # "update" | "delete"
+    changes: Optional[dict] = None  # for "update"
