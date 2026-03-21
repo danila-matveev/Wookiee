@@ -101,3 +101,58 @@ def test_sanitize_meta_missing_fields_no_mutation():
     # Empty dict should not be mutated (coverage=1.0 default, no cap triggered)
     assert "confidence" not in meta
     assert "limitations" not in meta
+
+
+# --- Confidence Aggregation ---
+
+def test_aggregate_confidence_weighted():
+    from agents.v3.orchestrator import aggregate_confidence
+    confidences = {
+        "margin-analyst": 0.9,     # weight 1.0
+        "revenue-decomposer": 0.8, # weight 1.0
+        "hypothesis-tester": 0.5,  # weight 0.5
+    }
+    result = aggregate_confidence(confidences)
+    # (1.0*0.9 + 1.0*0.8 + 0.5*0.5) / (1.0+1.0+0.5) = 1.95/2.5 = 0.78
+    assert result == pytest.approx(0.78, abs=0.01)
+
+
+def test_aggregate_confidence_empty():
+    from agents.v3.orchestrator import aggregate_confidence
+    assert aggregate_confidence({}) == 0.0
+
+
+def test_aggregate_confidence_unknown_agent_gets_default_weight():
+    from agents.v3.orchestrator import aggregate_confidence
+    confidences = {"some-new-agent": 0.7}
+    result = aggregate_confidence(confidences)
+    assert result == pytest.approx(0.7, abs=0.01)
+
+
+def test_worst_limitation_picks_lowest_confidence():
+    from agents.v3.orchestrator import worst_limitation
+    artifacts = {
+        "margin-analyst": {
+            "_meta": {"confidence": 0.9, "limitations": []},
+        },
+        "ad-efficiency": {
+            "_meta": {"confidence": 0.5, "limitations": ["OZON кабинет не обновлялся"]},
+        },
+    }
+    result = worst_limitation(artifacts)
+    assert "ad-efficiency" in result
+    assert "OZON" in result
+
+
+def test_worst_limitation_all_green():
+    from agents.v3.orchestrator import worst_limitation
+    artifacts = {
+        "margin-analyst": {"_meta": {"confidence": 0.9, "limitations": []}},
+    }
+    assert worst_limitation(artifacts) is None
+
+
+def test_failed_agent_meta_injected():
+    from agents.v3.orchestrator import FAILED_AGENT_META
+    assert FAILED_AGENT_META["confidence"] == 0.0
+    assert FAILED_AGENT_META["conclusions"] == []
