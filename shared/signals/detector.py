@@ -226,7 +226,75 @@ def _detect_finance_signals(data: dict) -> list[Signal]:
 
 
 def _detect_margin_lever_signals(data: dict) -> list[Signal]:
-    return []
+    signals = []
+    levers = data.get("levers", {})
+    waterfall = data.get("waterfall", {})
+    if not levers:
+        return signals
+
+    channel = data.get("channel", "unknown")
+
+    # 1. spp_shift_up: SPP grew > 2 pp
+    spp = levers.get("spp_pct", {})
+    spp_cur = spp.get("current", 0) or 0
+    spp_prev = spp.get("previous", 0) or 0
+    spp_delta = spp_cur - spp_prev
+    if spp_delta > 2:
+        signals.append(Signal(
+            id=f"spp_shift_up_{channel}",
+            type="spp_shift_up",
+            category="price",
+            severity="info",
+            impact_on="margin",
+            data={"spp_current": spp_cur, "spp_previous": spp_prev, "delta_pp": round(spp_delta, 1)},
+            hint=f"СПП выросла на {round(spp_delta, 1)} п.п. ({spp_prev}% → {spp_cur}%) — можно поднять базовую цену",
+            source="margin_levers",
+        ))
+
+    # 2. spp_shift_down: SPP dropped > 2 pp
+    if spp_delta < -2:
+        signals.append(Signal(
+            id=f"spp_shift_down_{channel}",
+            type="spp_shift_down",
+            category="price",
+            severity="warning",
+            impact_on="margin",
+            data={"spp_current": spp_cur, "spp_previous": spp_prev, "delta_pp": round(spp_delta, 1)},
+            hint=f"СПП упала на {round(abs(spp_delta), 1)} п.п. ({spp_prev}% → {spp_cur}%) — клиентская цена выросла",
+            source="margin_levers",
+        ))
+
+    # 3. adv_overspend: DRR above threshold (WB > 12%, Ozon > 18%)
+    drr = levers.get("drr_pct", {})
+    drr_cur = drr.get("current", 0) or 0
+    threshold = 18 if channel.upper() in ("OZON", "ОЗОН") else 12
+    if drr_cur > threshold:
+        signals.append(Signal(
+            id=f"adv_overspend_{channel}",
+            type="adv_overspend",
+            category="adv",
+            severity="critical" if drr_cur > threshold * 1.5 else "warning",
+            impact_on="margin",
+            data={"drr_pct": drr_cur, "threshold": threshold, "channel": channel},
+            hint=f"ДРР {channel} = {round(drr_cur, 1)}% при норме < {threshold}%",
+            source="margin_levers",
+        ))
+
+    # 4. adv_underspend: DRR < 3% and revenue not growing
+    revenue_change = waterfall.get("revenue_change", 0) or 0
+    if drr_cur < 3 and revenue_change <= 0:
+        signals.append(Signal(
+            id=f"adv_underspend_{channel}",
+            type="adv_underspend",
+            category="adv",
+            severity="info",
+            impact_on="turnover",
+            data={"drr_pct": drr_cur, "revenue_change": revenue_change},
+            hint=f"ДРР {channel} всего {round(drr_cur, 1)}%, выручка не растёт — мало трафика",
+            source="margin_levers",
+        ))
+
+    return signals
 
 
 def _detect_kb_pattern_signals(data: dict, kb_patterns: list[dict]) -> list[Signal]:
