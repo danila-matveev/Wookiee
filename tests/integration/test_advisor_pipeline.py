@@ -76,3 +76,90 @@ def test_direction_map_covers_all_signal_types():
         assert isinstance(actions, list) and len(actions) >= 1, (
             f"DIRECTION_MAP['{name}'] must be a non-empty list, got {actions}"
         )
+
+
+def test_finance_data_produces_signals():
+    """Brand finance data with anomalies produces correct signal types."""
+    data = {
+        "_source": "brand_finance",
+        "brand": {
+            "current": {
+                "margin_pct": 18.0, "revenue_before_spp": 1_000_000,
+                "revenue_after_spp": 850_000, "logistics": 90_000,
+                "cogs_per_unit": 320, "orders_rub": 1_200_000,
+                "orders_count": 400, "sales_count": 500,
+            },
+            "previous": {
+                "margin_pct": 24.0, "revenue_before_spp": 900_000,
+                "revenue_after_spp": 770_000, "logistics": 50_000,
+                "cogs_per_unit": 280, "orders_rub": 1_000_000,
+                "orders_count": 380, "sales_count": 450,
+            },
+            "changes": {
+                "cogs_per_unit_change_pct": 14.3,
+                "revenue_before_spp_change_pct": 11.1,
+            },
+        },
+    }
+    signals = detect_signals(data)
+    types = {s.type for s in signals}
+    assert "margin_pct_drop" in types
+    assert "cogs_anomaly" in types
+    assert "logistics_overweight" in types
+
+
+def test_model_breakdown_detects_romi():
+    """Model breakdown with low ROMI model produces romi_critical signal."""
+    data = {
+        "_source": "model_breakdown",
+        "channel": "WB",
+        "models": [
+            {"model": "Good", "margin_pct": 25, "drr_pct": 5, "turnover_days": 20,
+             "roi_annual": 300, "margin": 100000, "adv_total": 15000,
+             "orders_count": 200, "sales_count": 180, "revenue_before_spp": 500000},
+            {"model": "Bad", "margin_pct": 8, "drr_pct": 25, "turnover_days": 45,
+             "roi_annual": 30, "margin": 5000, "adv_total": 25000,
+             "orders_count": 50, "sales_count": 40, "revenue_before_spp": 100000},
+        ],
+    }
+    signals = detect_signals(data)
+    types = {s.type for s in signals}
+    assert "romi_critical" in types
+    romi_sig = [s for s in signals if s.type == "romi_critical"][0]
+    assert "Bad" in romi_sig.hint
+
+
+def test_multiple_sources_all_detected():
+    """Signals from different sources are all collected."""
+    plan_fact = {
+        "_source": "plan_vs_fact",
+        "days_elapsed": 15,
+        "brand_total": {"metrics": {
+            "orders_count": {"completion_mtd_pct": 130},
+            "margin": {"completion_mtd_pct": 95},
+            "sales_count": {"completion_mtd_pct": 110},
+            "revenue": {"completion_mtd_pct": 115},
+            "adv_internal": {"completion_mtd_pct": 100},
+            "adv_external": {"completion_mtd_pct": 100},
+        }},
+    }
+    margin_levers = {
+        "_source": "margin_levers",
+        "channel": "WB",
+        "levers": {
+            "spp_pct": {"current": 20.0, "previous": 15.0},
+            "drr_pct": {"current": 8.0, "previous": 7.0},
+        },
+        "waterfall": {"revenue_change": 50000},
+    }
+
+    signals_pf = detect_signals(plan_fact)
+    signals_ml = detect_signals(margin_levers)
+    all_signals = signals_pf + signals_ml
+
+    sources = {s.source for s in all_signals}
+    assert "plan_vs_fact" in sources
+    assert "margin_levers" in sources
+    types = {s.type for s in all_signals}
+    assert "margin_lags_orders" in types
+    assert "spp_shift_up" in types
