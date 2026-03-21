@@ -122,17 +122,36 @@ def format_report_message(
     agents_failed = report.get("agents_failed", 0)
     duration_ms = report.get("duration_ms")
 
-    footer_parts: list[str] = []
-    if agents_called is not None:
-        status = f"{agents_succeeded}/{agents_called}"
-        if agents_failed:
-            status += f" (ошибок: {agents_failed})"
-        footer_parts.append(f"Агентов: {status}")
-    if duration_ms is not None:
-        footer_parts.append(f"Время: {duration_ms / 1000:.1f}с")
+    # Trust Envelope + Cost in footer
+    agg_confidence = report.get("aggregate_confidence")
+    worst_lim = report.get("worst_limitation")
+    total_cost = report.get("total_cost_usd", 0.0)
 
-    if footer_parts:
-        body += f"\n\n<i>{' | '.join(footer_parts)}</i>"
+    # Confidence marker
+    if agg_confidence is not None:
+        if agg_confidence >= 0.75:
+            conf_marker = f"🟢 {agg_confidence}"
+        elif agg_confidence >= 0.45:
+            conf_marker = f"🟡 {agg_confidence}"
+        else:
+            conf_marker = f"🔴 {agg_confidence}"
+    else:
+        conf_marker = None
+
+    # Build footer parts
+    footer_parts = []
+    if conf_marker:
+        footer_parts.append(conf_marker)
+    if total_cost > 0:
+        footer_parts.append(f"${total_cost:.4f}")
+    footer_parts.append(f"Агентов: {agents_succeeded}/{agents_called}")
+    footer_parts.append(f"{duration_ms / 1000:.1f}с")
+
+    body += f"\n\n<i>{' | '.join(footer_parts)}</i>"
+
+    # Worst limitation line (if yellow/red)
+    if worst_lim and agg_confidence is not None and agg_confidence < 0.75:
+        body += f"\n<i>⚠️ {worst_lim}</i>"
 
     return body
 
