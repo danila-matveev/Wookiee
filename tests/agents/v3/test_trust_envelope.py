@@ -156,3 +156,45 @@ def test_failed_agent_meta_injected():
     from agents.v3.orchestrator import FAILED_AGENT_META
     assert FAILED_AGENT_META["confidence"] == 0.0
     assert FAILED_AGENT_META["conclusions"] == []
+
+
+# --- Integration: full pipeline mock ---
+
+def test_full_trust_envelope_pipeline():
+    """Verify _meta flows from agent artifact through aggregation."""
+    from agents.v3.orchestrator import (
+        aggregate_confidence, worst_limitation, FAILED_AGENT_META,
+    )
+
+    # Simulate 3 agent results
+    artifacts = {
+        "margin-analyst": {
+            "_meta": {"confidence": 0.9, "data_coverage": 0.98, "limitations": [], "conclusions": []},
+            "artifact": {"margin_rub": 847200},
+        },
+        "ad-efficiency": {
+            "_meta": {"confidence": 0.64, "data_coverage": 0.78, "limitations": ["OZON кабинет лаг 2 дня"], "conclusions": []},
+            "artifact": {"drr_pct": 8.2},
+        },
+        "hypothesis-tester": {
+            "_meta": FAILED_AGENT_META.copy(),
+            "artifact": {},
+        },
+    }
+
+    # Aggregate
+    confidences = {n: a["_meta"]["confidence"] for n, a in artifacts.items()}
+    agg = aggregate_confidence(confidences)
+    worst = worst_limitation(artifacts)
+
+    # margin-analyst: 1.0 * 0.9 = 0.9
+    # ad-efficiency: 1.0 * 0.64 = 0.64
+    # hypothesis-tester: 0.5 * 0.0 = 0.0
+    # total weights: 1.0 + 1.0 + 0.5 = 2.5
+    # weighted sum: 0.9 + 0.64 + 0.0 = 1.54
+    # agg = 1.54 / 2.5 = 0.616 → 0.62
+    assert 0.5 < agg < 0.7
+
+    # Worst should be hypothesis-tester (confidence=0.0)
+    assert worst is not None
+    assert "hypothesis-tester" in worst
