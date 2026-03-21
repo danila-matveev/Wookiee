@@ -37,6 +37,7 @@ def load_kb_patterns(verified_only: bool = True) -> list[dict]:
     Returns:
         List of pattern dicts, or [] on any error.
     """
+    conn = None
     try:
         conn = _get_supabase_conn()
         cur = conn.cursor()
@@ -63,7 +64,6 @@ def load_kb_patterns(verified_only: bool = True) -> list[dict]:
 
         rows = cur.fetchall()
         cur.close()
-        conn.close()
 
         patterns = []
         for row in rows:
@@ -84,6 +84,10 @@ def load_kb_patterns(verified_only: bool = True) -> list[dict]:
         logger.warning("kb_patterns: failed to load patterns: %s", exc)
         return []
 
+    finally:
+        if conn is not None:
+            conn.close()
+
 
 def save_proposed_patterns(patterns: list[dict]) -> int:
     """Insert proposed patterns with verified=false, created_by='advisor'.
@@ -99,6 +103,7 @@ def save_proposed_patterns(patterns: list[dict]) -> int:
     if not patterns:
         return 0
 
+    conn = None
     try:
         conn = _get_supabase_conn()
         cur = conn.cursor()
@@ -130,10 +135,12 @@ def save_proposed_patterns(patterns: list[dict]) -> int:
 
         conn.commit()
         cur.close()
-        conn.close()
-
         return inserted
 
     except Exception as exc:
         logger.warning("kb_patterns: failed to save proposed patterns: %s", exc)
         return 0
+
+    finally:
+        if conn is not None:
+            conn.close()

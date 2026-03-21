@@ -702,6 +702,7 @@ class OlegOrchestrator:
         try:
             from agents.oleg.storage.state_store import StateStore
             store = StateStore("agents/oleg/data/oleg.db")
+            store.init_db()
             store.log_recommendation(
                 report_date=date.today().isoformat(),
                 report_type=report_type,

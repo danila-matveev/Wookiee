@@ -211,10 +211,10 @@ class StateStore:
         new_patterns: list = None, advisor_cost_usd: float = 0.0,
         validator_cost_usd: float = 0.0, total_duration_ms: int = 0,
     ) -> int:
-        signals_json = json.dumps(signals) if signals is not None else None
-        recommendations_json = json.dumps(recommendations) if recommendations is not None else None
-        validation_details_json = json.dumps(validation_details) if validation_details is not None else None
-        new_patterns_json = json.dumps(new_patterns) if new_patterns is not None else None
+        signals_json = json.dumps(signals, ensure_ascii=False, default=str) if signals is not None else None
+        recommendations_json = json.dumps(recommendations, ensure_ascii=False, default=str) if recommendations is not None else None
+        validation_details_json = json.dumps(validation_details, ensure_ascii=False, default=str) if validation_details is not None else None
+        new_patterns_json = json.dumps(new_patterns, ensure_ascii=False, default=str) if new_patterns is not None else None
 
         with sqlite3.connect(self.db_path) as conn:
             cur = conn.execute(
