@@ -33,6 +33,7 @@
         "confidence": 0.91,
         "confidence_reason": "данные 7/7 дней, невязка 0.3%",
         "data_coverage": 0.98,
+        "limitations": [],
         "sources": ["get_margin_levers", "get_logistics_costs"]
       },
       {
@@ -73,7 +74,7 @@
 | `confidence` | float 0.0–1.0 | обязательно | Надёжность конкретного вывода |
 | `confidence_reason` | string | обязательно | Почему такой confidence |
 | `data_coverage` | float 0.0–1.0 | обязательно | Покрытие данных для этого вывода |
-| `limitations` | string[] | если confidence < 0.75 | Оговорки |
+| `limitations` | string[] | обязательно (может быть []) | Оговорки |
 | `sources` | string[] | обязательно | Какие MCP tools использовались |
 
 ### 1.4. Визуальные маркеры (3 уровня)
@@ -96,6 +97,22 @@ if meta.get("data_coverage", 1.0) < 0.5 and meta.get("confidence", 0) > 0.6:
         "confidence снижен автоматически: data_coverage < 50%"
     )
 ```
+
+### 1.5.1. Fallback `_meta` для упавших агентов
+
+Если агент завершился с ошибкой (`status: "failed"` или `"timeout"`), оркестратор инжектит stub `_meta`:
+
+```python
+FAILED_AGENT_META = {
+    "confidence": 0.0,
+    "confidence_reason": "агент не выполнился",
+    "data_coverage": 0.0,
+    "limitations": ["агент завершился с ошибкой"],
+    "conclusions": [],
+}
+```
+
+Это гарантирует, что report-compiler всегда получает `_meta` у каждого артефакта — не нужен null-check.
 
 ### 1.6. Отображение в Notion (полный отчёт)
 
@@ -173,7 +190,8 @@ if meta.get("data_coverage", 1.0) < 0.5 and meta.get("confidence", 0) > 0.6:
 
 ```python
 # Средневзвешенный confidence
-weights = {
+# confidences: dict[str, float] — {agent_name: confidence_value}
+AGENT_WEIGHTS: dict[str, float] = {
     "margin-analyst": 1.0,
     "revenue-decomposer": 1.0,
     "ad-efficiency": 1.0,
@@ -183,8 +201,61 @@ weights = {
     "anomaly-detector": 0.5,
 }
 
-aggregate = sum(w * c for w, c in zip(weights, confidences)) / sum(weights)
+def aggregate_confidence(confidences: dict[str, float]) -> float:
+    """Средневзвешенный confidence по всем агентам."""
+    total_weight = 0.0
+    weighted_sum = 0.0
+    for agent_name, conf in confidences.items():
+        w = AGENT_WEIGHTS.get(agent_name, 0.5)  # default 0.5 для неизвестных
+        weighted_sum += w * conf
+        total_weight += w
+    return round(weighted_sum / total_weight, 2) if total_weight > 0 else 0.0
+
+# Найти самое критичное ограничение для Telegram
+def worst_limitation(artifacts: dict) -> str | None:
+    """Вернуть самое критичное ограничение (от агента с минимальным confidence).
+
+    ВАЖНО: вызывать ПОСЛЕ инъекции FAILED_AGENT_META для упавших агентов.
+    Агент без _meta трактуется как confidence=0.0 (worst case).
+    """
+    worst_agent = min(
+        ((name, art.get("_meta", {}).get("confidence", 0.0))
+         for name, art in artifacts.items()
+         if art.get("_meta", {}).get("confidence", 0.0) < 0.75),
+        key=lambda x: x[1],
+        default=None,
+    )
+    if worst_agent:
+        name = worst_agent[0]
+        lims = artifacts[name]["_meta"].get("limitations", [])
+        return f"{name}: {lims[0]}" if lims else None
+    return None
 ```
+
+### 1.9. Передача confidence через orchestrator return dict
+
+Оркестратор добавляет в свой return dict:
+
+```python
+return {
+    "run_id": ...,
+    "status": ...,
+    "report": ...,
+    "artifacts": ...,
+    # Существующие поля:
+    "agents_called": ...,
+    "agents_succeeded": ...,
+    "agents_failed": ...,
+    "duration_ms": ...,
+    # NEW — Trust Envelope aggregate:
+    "aggregate_confidence": aggregate_confidence(confidences),
+    "worst_limitation": worst_limitation(artifacts),
+    "total_tokens": total_tokens,
+    "total_cost_usd": total_cost,
+}
+```
+
+Telegram delivery использует `aggregate_confidence` и `worst_limitation` для футера.
 
 ---
 
@@ -205,26 +276,29 @@ aggregate = sum(w * c for w, c in zip(weights, confidences)) / sum(weights)
 
 #### runner.py — извлечение токенов
 
-После `agent.ainvoke()` извлечь usage из последнего AIMessage:
+После `agent.ainvoke()` суммировать usage из ВСЕХ AIMessage (ReAct агент вызывает LLM несколько раз — на каждый tool call):
 
 ```python
-# LangChain ChatOpenAI через OpenRouter возвращает usage в response_metadata
+from langchain_core.messages import AIMessage
+
+# Суммируем токены по всем вызовам LLM в рамках одного агента
 messages = result["messages"]
 usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
 for msg in messages:
-    if hasattr(msg, "response_metadata"):
+    if isinstance(msg, AIMessage) and hasattr(msg, "response_metadata"):
         token_usage = msg.response_metadata.get("token_usage", {})
         usage["prompt_tokens"] += token_usage.get("prompt_tokens", 0)
         usage["completion_tokens"] += token_usage.get("completion_tokens", 0)
         usage["total_tokens"] += token_usage.get("total_tokens", 0)
 
 # Расчёт стоимости
-model = config.MODEL_MAIN  # или из agent_config
+# ВАЖНО: config.PRICING хранит цены per 1K tokens (не per 1M)
+model = agent_config.get("model", config.MODEL_MAIN)
 rates = config.PRICING.get(model, {"input": 0.001, "output": 0.001})
 cost_usd = round(
-    (usage["prompt_tokens"] / 1_000_000) * rates["input"]
-    + (usage["completion_tokens"] / 1_000_000) * rates["output"],
+    (usage["prompt_tokens"] / 1_000) * rates["input"]
+    + (usage["completion_tokens"] / 1_000) * rates["output"],
     6,
 )
 ```
@@ -280,7 +354,7 @@ footer = f"${total_cost:.4f} | Агентов: {succeeded}/{called} | {duration:
 | `agents/v3/agents/report-compiler.md` | Правила отображения маркеров, таблица Достоверности, toggle-блоки |
 | `agents/v3/runner.py` | Санитарная проверка `_meta` + извлечение токенов + расчёт cost |
 | `agents/v3/orchestrator.py` | Агрегация confidence + агрегация токенов/cost |
-| `agents/v3/delivery/telegram.py` | Строка confidence + cost в футере |
+| `agents/v3/delivery/telegram.py` | Строка confidence + cost в футере (использует `aggregate_confidence`, `worst_limitation`, `total_cost_usd` из return dict оркестратора) |
 | `agents/v3/config.py` | Возможно обновить PRICING если модели изменились |
 
 ---
