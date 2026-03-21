@@ -445,8 +445,8 @@ def _detect_model_signals(data: dict) -> list[Signal]:
                     source="model_breakdown",
                 ))
 
-        # 5. cac_exceeds_profit: CAC > profit per sale
-        if adv_total > 0 and orders_count > 0 and sales_count > 0 and drr_pct > 0:
+        # 5. cac_exceeds_profit: CAC > profit per sale (only for profitable models)
+        if adv_total > 0 and orders_count > 0 and sales_count > 0 and drr_pct > 0 and margin > 0:
             cac = adv_total / orders_count
             profit_per_sale = margin / sales_count
             if cac > profit_per_sale:
