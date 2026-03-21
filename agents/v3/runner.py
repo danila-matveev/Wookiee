@@ -167,10 +167,47 @@ def parse_agent_md(md_path: Path) -> dict:
 
 # ── Tool builder ────────────────────────────────────────────────────────
 
+def _json_type_to_python(json_type: str) -> type:
+    """Map JSON Schema type to Python type for Pydantic."""
+    return {"string": str, "integer": int, "number": float, "boolean": bool}.get(json_type, str)
+
+
+def _build_args_schema(name: str, func_def: dict):
+    """Build a Pydantic model from OpenAI function calling parameters."""
+    from pydantic import BaseModel, Field
+
+    params = func_def.get("parameters", {})
+    properties = params.get("properties", {})
+    required_fields = set(params.get("required", []))
+
+    if not properties:
+        return None
+
+    field_definitions: dict[str, Any] = {}
+    for field_name, field_spec in properties.items():
+        field_type = _json_type_to_python(field_spec.get("type", "string"))
+        description = field_spec.get("description", "")
+        default = field_spec.get("default")
+
+        if field_name in required_fields:
+            field_definitions[field_name] = (field_type, Field(description=description))
+        elif default is not None:
+            field_definitions[field_name] = (field_type, Field(default=default, description=description))
+        else:
+            field_definitions[field_name] = (Optional[field_type], Field(default=None, description=description))
+
+    # Dynamically create a Pydantic model
+    schema_name = "".join(part.capitalize() for part in name.split("_")) + "Input"
+    model = type(schema_name, (BaseModel,), {"__annotations__": {k: v[0] for k, v in field_definitions.items()}, **{k: v[1] for k, v in field_definitions.items()}})
+    return model
+
+
 def _make_langchain_tool(name: str, entry: dict) -> StructuredTool:
     """Convert a tool registry entry to a LangChain StructuredTool."""
     func_def = entry["definition"]["function"]
     handler = entry["handler"]
+
+    args_schema = _build_args_schema(name, func_def)
 
     async def _invoke(**kwargs: Any) -> str:
         try:
@@ -187,7 +224,7 @@ def _make_langchain_tool(name: str, entry: dict) -> StructuredTool:
         coroutine=_invoke,
         name=name,
         description=func_def.get("description", ""),
-        args_schema=None,  # Accept **kwargs; LangChain will pass args by name
+        args_schema=args_schema,
     )
 
 
