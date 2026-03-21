@@ -86,7 +86,6 @@ SOURCE_MAP = {
     "get_margin_levers": "margin_levers",
     "get_advertising_stats": "advertising",
     "get_model_breakdown": "model_breakdown",
-    "get_channel_finance": "channel_finance",
 }
 
 def _extract_structured_data(self, result: AgentResult) -> dict:
@@ -235,6 +234,7 @@ data["models"]  # список моделей с margin_pct, drr_pct, turnover_d
 | `big_inefficient` | top-5 по revenue, `margin_pct < 10` | warning |
 | `romi_critical` | модель с `drr_pct > 0` и ROMI < 50% (margin/adv_total < 0.5) | critical |
 | `cac_exceeds_profit` | `adv_total / orders_count > margin / sales_count` (CAC > profit per sale) | critical |
+| `status_mismatch` | модель помечена "Выводим", но ABC=A/B и `margin_pct > 15%` | critical |
 
 ### _detect_kb_pattern_signals(data, kb_patterns) — generic pattern matcher
 
