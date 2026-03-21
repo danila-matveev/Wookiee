@@ -56,7 +56,7 @@
    - OAuth-авторизованный клиент через библиотеку `yadisk`
    - Рекурсивный обход папок
    - Скачивание файлов для индексации
-   - Генерация превью-ссылок на лету
+   - Генерация превью-ссылок на лету (параллельно через asyncio.gather)
 
 2. **Indexer Pipeline** (`services/content_kb/indexer.py`)
    - Обходит `/Контент/2025/` рекурсивно
@@ -83,6 +83,10 @@
 ```sql
 CREATE TABLE content_assets (
     id              BIGSERIAL PRIMARY KEY,
+    -- Используем 3072 (максимум Gemini Embedding 2) для image embeddings:
+    -- мультимодальные embeddings требуют больше измерений для качественного
+    -- кодирования визуальной информации. Текстовая KB использует 768 — это
+    -- разные пространства, кросс-поиск между ними не предполагается.
     embedding       vector(3072) NOT NULL,
 
     -- Путь и файл
@@ -98,9 +102,11 @@ CREATE TABLE content_assets (
     model_name      VARCHAR(100),     -- Bella, Vuki, Alice, Moon, Ruby...
     color           VARCHAR(100),     -- black, white, beige, brown, light_beige...
     sku             VARCHAR(50),      -- артикул WB (257144777)
+    status          VARCHAR(20) NOT NULL DEFAULT 'indexed',  -- indexed, failed, deleted
 
     -- Системные
-    indexed_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    indexed_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ
 );
 
 -- Индексы
@@ -109,9 +115,11 @@ CREATE INDEX idx_content_assets_color ON content_assets (color);
 CREATE INDEX idx_content_assets_category ON content_assets (content_category);
 CREATE INDEX idx_content_assets_sku ON content_assets (sku);
 
--- Векторный индекс (создаётся после первичной индексации)
+-- Векторный индекс (создаётся после первичной индексации, при >10K записей).
+-- Для ~5000 фото exact scan достаточно быстрый, индекс не обязателен.
+-- При росте рассмотреть HNSW (лучше recall, не требует training step):
 -- CREATE INDEX idx_content_embedding ON content_assets
---   USING ivfflat (embedding vector_cosine_ops) WITH (lists = N);
+--   USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);
 
 -- RLS
 ALTER TABLE content_assets ENABLE ROW LEVEL SECURITY;
@@ -227,19 +235,26 @@ def index_all():
     files = client.list_images_recursive("/Контент/2025")
     new_files = [f for f in files if f.md5 not in existing_md5s]
 
-    for batch in chunks(new_files, size=6):  # API limit: 6 images per request
-        images = []
-        metadatas = []
-        for file_info in batch:
+    for file_info in new_files:
+        try:
             image_bytes = client.download_bytes(file_info.path)
+
+            # Resize if >10MB (Gemini limit ~20MB, resize for safety)
+            if len(image_bytes) > 10 * 1024 * 1024:
+                image_bytes = resize_image(image_bytes, max_size=4096)
+
             metadata = parse_path_metadata(file_info.path)
-            images.append(image_bytes)
-            metadatas.append({**metadata, **file_info})
 
-        embeddings = embedder.embed_images(images)
+            # embed_content принимает одно изображение за раз
+            embedding = embedder.embed_image(image_bytes)
 
-        store.insert_batch(embeddings, metadatas)
-        time.sleep(2)  # rate limiting
+            store.insert(embedding, {**metadata, **file_info})
+        except Exception as e:
+            store.mark_failed(file_info.path, str(e))
+            logger.warning(f"Failed to index {file_info.path}: {e}")
+            continue
+
+        time.sleep(1)  # rate limiting
 ```
 
 ### Skipped content (phase 1)
@@ -250,18 +265,27 @@ def index_all():
 
 ### Rate Limiting
 
-- Gemini Embedding 2: до 6 изображений за запрос
+- Gemini Embedding 2 `embed_content`: одно изображение за вызов
 - Бесплатный тарифр: ограничения RPM (уточнить при реализации)
-- Пауза 2 сек между батчами
-- Exponential backoff при 429
+- Пауза 1 сек между запросами
+- Exponential backoff при 429 (MAX_RETRIES=8, BASE_BACKOFF=15s — как в существующей KB)
+
+### Image Size Handling
+
+- Gemini API лимит: ~20MB на изображение
+- Фото бренда: PNG 2-5MB (каталожные), до 10-15MB (RAW-adjacent)
+- Если файл > 10MB — ресайз до max 4096px по длинной стороне перед отправкой
+- Повреждённые/нечитаемые файлы: пропускаем, логируем, помечаем status=failed
 
 ### Incremental Indexing
 
-1. При запуске: загружаем set(md5) всех уже проиндексированных файлов
-2. Для каждого файла с диска: если md5 есть в set — пропускаем
-3. Новые файлы: индексируем
-4. Удалённые файлы: помечаем (или удаляем) из БД
-5. Запуск: `python -m services.content_kb.scripts.index_all`
+1. При запуске: загружаем dict {md5: disk_path} всех проиндексированных файлов
+2. Для каждого файла с диска:
+   - md5 есть и путь совпадает → пропускаем
+   - md5 есть но путь другой → файл перемещён, UPDATE disk_path + metadata
+   - md5 нет → новый файл, индексируем
+3. Файлы в БД, которых нет на диске → UPDATE status='deleted'
+4. Запуск: `python -m services.content_kb.scripts.index_all`
 
 ## Micro-Agent: content-searcher
 
@@ -375,6 +399,7 @@ JSON artifact with:
 
 ### Шаг 2: Получить OAuth-токен
 
+**Вариант А (простой, токен ~1 год):**
 1. Открыть в браузере:
    ```
    https://oauth.yandex.ru/authorize?response_type=token&client_id=YOUR_CLIENT_ID
@@ -383,12 +408,21 @@ JSON artifact with:
 3. Подтвердить доступ
 4. Скопировать `access_token` из URL-редиректа
 
+**Вариант Б (production, с refresh token):**
+1. Использовать `response_type=code` вместо `token`
+2. Получить authorization code → обменять на access_token + refresh_token
+3. Хранить оба токена, обновлять access_token автоматически
+
+Для первой фазы достаточно варианта А. При переходе на крон — перейти на вариант Б.
+
 ### Шаг 3: Сохранить в проект
 
 Добавить в `.env`:
 ```
 YANDEX_DISK_TOKEN=your_oauth_token_here
 ```
+
+**Важно:** токен из варианта А живёт ~1 год. Если крон-индексатор получит 401 — нужно обновить токен вручную (или перейти на вариант Б с refresh token).
 
 ### Шаг 4: Проверить
 
@@ -405,7 +439,7 @@ print(list(client.listdir("/")))  # список файлов
 services/content_kb/
 ├── __init__.py
 ├── __main__.py              # uvicorn entrypoint
-├── config.py                # YANDEX_DISK_TOKEN, embedding config, DB connection
+├── config.py                # YANDEX_DISK_TOKEN, embedding config, DB connection (паттерн из knowledge_base/config.py)
 ├── embedder.py              # GeminiEmbedder (reuse pattern from knowledge_base)
 ├── store.py                 # ContentStore — pgvector CRUD
 ├── yadisk_client.py         # Yandex Disk OAuth client wrapper
@@ -436,6 +470,10 @@ agents/v3/agents/
 | Yandex Disk API | Бесплатно | $0 |
 | **Итого старт** | | **~$1** |
 | **Итого в месяц** | | **~$0.30** |
+
+**Время первичной индексации:** ~5000 фото × (скачивание ~1с + embedding ~1с + пауза 1с) ≈ 4-5 часов. Запускается в фоне, можно прервать и продолжить (инкрементально).
+
+**Объём скачивания:** ~5000 × ~3MB = ~15GB (временные файлы, удаляются после embedding).
 
 ## Future Enhancements (не в этой фазе)
 
