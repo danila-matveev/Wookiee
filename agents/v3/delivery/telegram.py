@@ -117,10 +117,10 @@ def format_report_message(
     if page_url:
         body += f'\n\n<a href="{page_url}">Полный отчёт в Notion</a>'
 
-    agents_called = report.get("agents_called")
-    agents_succeeded = report.get("agents_succeeded")
+    agents_called = report.get("agents_called", 0) or 0
+    agents_succeeded = report.get("agents_succeeded", 0) or 0
     agents_failed = report.get("agents_failed", 0)
-    duration_ms = report.get("duration_ms")
+    duration_ms = report.get("duration_ms", 0) or 0
 
     # Trust Envelope + Cost in footer
     agg_confidence = report.get("aggregate_confidence")
