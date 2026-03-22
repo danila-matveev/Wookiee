@@ -19,6 +19,7 @@
 | ETL Pipeline (services/etl) | Активен | [agents/ibrahim.md](agents/ibrahim.md) |
 | WB localization service | Активен | [agents/mp-localization.md](agents/mp-localization.md) |
 | Analytics Engine | Активен | [agents/analytics-engine.md](agents/analytics-engine.md) |
+| Content KB (vector search) | Активен | Spec: [specs/2026-03-21-content-knowledge-base-design.md](superpowers/specs/2026-03-21-content-knowledge-base-design.md) |
 
 ## Guides
 
