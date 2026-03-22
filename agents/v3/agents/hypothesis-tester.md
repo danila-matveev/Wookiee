@@ -22,6 +22,7 @@ Run statistical hypothesis tests on pricing experiments and natural price variat
 
 ## Output Format
 JSON artifact with:
+- _meta: {confidence: float 0-1, confidence_reason: string, data_coverage: float 0-1, limitations: [string], conclusions: [{statement: string, type: "driver"|"anti_driver"|"recommendation"|"anomaly"|"metric", confidence: float 0-1, confidence_reason: string, data_coverage: float 0-1, limitations: [string], sources: [string]}]}
 - hypothesis: {h0: string, h1: string, model, channel, period: {date_from, date_to}}
 - kb_prior: {found: bool, prior_results: [string]}
 - data_sufficiency: {sample_size, min_required, sufficient: bool, reason: string}

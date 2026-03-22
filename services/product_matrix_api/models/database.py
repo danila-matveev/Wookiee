@@ -142,3 +142,18 @@ class HubAuditLog(_DefaultsMixin, Base):
     user_agent: Mapped[Optional[str]] = mapped_column(Text)
     request_id: Mapped[Optional[str]] = mapped_column(String(36))
     metadata_: Mapped[Optional[dict]] = mapped_column("metadata", JSON, default=dict)
+
+
+class HubSavedView(_DefaultsMixin, Base):
+    """Сохранённые представления таблиц (per user)."""
+    __tablename__ = "saved_views"
+    __table_args__ = {"schema": "hub"}
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[Optional[int]] = mapped_column(Integer)
+    entity_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    config: Mapped[dict] = mapped_column(JSON, nullable=False)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

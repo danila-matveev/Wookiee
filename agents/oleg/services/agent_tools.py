@@ -22,7 +22,8 @@ from shared.data_layer import (
     get_ozon_finance, get_ozon_by_model, get_ozon_orders_by_model,
     get_ozon_traffic, get_ozon_daily_series, get_ozon_daily_series_range,
     get_ozon_weekly_breakdown, get_ozon_avg_stock,
-    get_artikuly_statuses, validate_wb_data_quality,
+    get_artikuly_statuses, get_model_statuses_mapped,
+    validate_wb_data_quality,
     get_total_avg_stock,
     get_plan_by_period, get_moysklad_stock_by_model,
     to_float, calc_change,
@@ -810,6 +811,28 @@ async def _handle_model_breakdown(channel: str, start_date: str, end_date: str) 
     
     # Sort by margin descending after building the full list
     models_list.sort(key=lambda x: x["margin"], reverse=True)
+
+    # Enrich with status from Supabase
+    try:
+        model_statuses = get_model_statuses_mapped()
+    except Exception:
+        model_statuses = {}
+
+    # Calculate ABC classification from margin share
+    total_margin = sum(max(m["margin"], 0) for m in models_list)
+    cumulative = 0.0
+    for m in models_list:
+        if total_margin > 0 and m["margin"] > 0:
+            cumulative += m["margin"] / total_margin * 100
+            if cumulative <= 80:
+                m["abc"] = "A"
+            elif cumulative <= 95:
+                m["abc"] = "B"
+            else:
+                m["abc"] = "C"
+        else:
+            m["abc"] = "C"
+        m["status"] = model_statuses.get(m["model"], None)
 
     return {
         "channel": channel.upper(),

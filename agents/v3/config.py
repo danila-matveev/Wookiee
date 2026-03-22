@@ -22,6 +22,17 @@ PRICING: dict = {
     "google/gemini-3-flash-preview": {"input": 0.0005, "output": 0.003},
 }
 
+
+def calc_cost(model: str, prompt_tokens: int, completion_tokens: int) -> float:
+    """Calculate cost in USD based on model pricing (per 1K tokens)."""
+    rates = PRICING.get(model, {"input": 0.001, "output": 0.001})
+    return round(
+        (prompt_tokens / 1_000) * rates["input"]
+        + (completion_tokens / 1_000) * rates["output"],
+        6,
+    )
+
+
 # ── Agent MD files directory ──────────────────────────────────────────────────
 AGENTS_DIR: Path = PROJECT_ROOT / "agents" / "v3" / "agents"
 
@@ -111,3 +122,8 @@ PROMPT_TUNER_ENABLED: bool = os.getenv("PROMPT_TUNER_ENABLED", "true").lower() i
     "true", "1", "yes",
 )
 PROMPT_TUNER_MAX_INSTRUCTIONS: int = int(os.getenv("PROMPT_TUNER_MAX_INSTRUCTIONS", "10"))
+
+# ── Conductor ────────────────────────────────────────────────────────────────
+USE_CONDUCTOR: bool = os.getenv("USE_CONDUCTOR", "true").lower() in ("true", "1", "yes")
+CONDUCTOR_DEADLINE_HOUR: int = int(os.getenv("CONDUCTOR_DEADLINE_HOUR", "12"))
+CONDUCTOR_CATCHUP_HOUR: int = int(os.getenv("CONDUCTOR_CATCHUP_HOUR", "15"))

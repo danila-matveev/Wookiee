@@ -21,6 +21,7 @@ Perform systematic data quality checks: freshness (yesterday's data loaded), com
 
 ## Output Format
 JSON artifact with:
+- _meta: {confidence: float 0-1, confidence_reason: string, data_coverage: float 0-1, limitations: [string], conclusions: [{statement: string, type: "driver"|"anti_driver"|"recommendation"|"anomaly"|"metric", confidence: float 0-1, confidence_reason: string, data_coverage: float 0-1, limitations: [string], sources: [string]}]}
 - run_at: string (ISO timestamp)
 - checks: {
     freshness: {

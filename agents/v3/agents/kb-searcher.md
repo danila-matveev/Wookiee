@@ -18,6 +18,7 @@ Search the knowledge base using semantic search and return relevant knowledge en
 
 ## Output Format
 JSON artifact with:
+- _meta: {confidence: float 0-1, confidence_reason: string, data_coverage: float 0-1, limitations: [string], conclusions: [{statement: string, type: "driver"|"anti_driver"|"recommendation"|"anomaly"|"metric", confidence: float 0-1, confidence_reason: string, data_coverage: float 0-1, limitations: [string], sources: [string]}]}
 - query: string (original user query)
 - results_count: int
 - results: [{id, module, file, title, relevance_score, summary, created_at, is_stale}]
