@@ -35,6 +35,8 @@ def report_exception(
 ) -> str:
     """Исключение при генерации отчёта (exception handler)."""
     period = date_from if date_from == date_to else f"{date_from}–{date_to}"
+    if not period:
+        return f"Ошибка «{report_type}»:\n{str(exc)[:300]}"
     return f"Ошибка отчёта «{report_type}» за {period}:\n{str(exc)[:300]}"
 
 
