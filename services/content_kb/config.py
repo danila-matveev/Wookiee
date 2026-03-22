@@ -15,7 +15,7 @@ load_dotenv(PROJECT_ROOT / '.env')
 
 # Yandex Disk
 YANDEX_DISK_TOKEN: str = os.getenv('YANDEX_DISK_TOKEN', '')
-YANDEX_DISK_ROOT: str = os.getenv('YANDEX_DISK_ROOT', '/Контент/2025')
+YANDEX_DISK_ROOT: str = os.getenv('YANDEX_DISK_ROOT', '/Wookiee/Контент/2025')
 
 # Gemini Embedding
 GOOGLE_API_KEY: str = os.getenv('GOOGLE_API_KEY', '')
