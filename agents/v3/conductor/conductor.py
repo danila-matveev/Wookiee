@@ -8,7 +8,7 @@ from datetime import date, datetime, timedelta
 from agents.v3.conductor.schedule import get_today_reports, ReportType
 from agents.v3.conductor.state import ConductorState
 from agents.v3.conductor.validator import quick_validate, ValidationVerdict
-from agents.v3.conductor.messages import format_data_ready, format_alert
+from agents.v3.delivery import messages
 
 logger = logging.getLogger(__name__)
 
@@ -130,17 +130,17 @@ async def data_ready_check(
         logger.info("All reports already generated for %s", today)
         return
 
-    # 3. Send "data ready" notification
+    # 3. Send "data ready" notification (deduplicated)
     yesterday = today - timedelta(days=1)
     day_month = f"{yesterday.day} {_month_name(yesterday.month)}"
+    report_date = str(today)
 
-    msg = format_data_ready(
-        wb_info=_extract_gate_info(wb_gates),
-        ozon_info=_extract_gate_info(ozon_gates),
-        pending=pending,
-        report_date=day_month,
-    )
-    await telegram_send(msg)
+    if not conductor_state.already_notified(report_date):
+        pending_names = [rt.human_name for rt in pending]
+        await telegram_send(messages.data_ready(day_month, pending_names))
+        conductor_state.mark_notified(report_date)
+    else:
+        logger.debug("data_ready: already notified for %s, skipping message", report_date)
 
     # 4. Generate + validate each report
     for report_type in pending:
@@ -248,8 +248,15 @@ async def generate_and_validate(
         # All attempts exhausted or verdict == FAIL
         conductor_state.log(report_date, report_type.value, status="failed",
                            attempt=attempt, error=validation.reason)
-        alert = format_alert(report_type, validation.reason, attempt, MAX_ATTEMPTS)
-        await telegram_send(alert)
+        # Отправляем ошибку только на последней попытке (промежуточные ретраи молчат)
+        if attempt >= MAX_ATTEMPTS:
+            alert = messages.report_error(
+                report_date, report_type.human_name,
+                validation.reason, attempt, MAX_ATTEMPTS,
+            )
+            await telegram_send(alert)
+        else:
+            logger.warning("Report %s attempt %d/%d failed: %s", report_type, attempt, MAX_ATTEMPTS, validation.reason)
         logger.error("Report %s failed after %d attempts: %s",
                      report_type.value, attempt, validation.reason)
 

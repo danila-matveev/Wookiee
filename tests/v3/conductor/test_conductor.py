@@ -26,6 +26,7 @@ def mock_state():
     state = MagicMock()
     state.get_successful.return_value = set()
     state.get_attempts.return_value = 0
+    state.already_notified.return_value = False
     return state
 
 
