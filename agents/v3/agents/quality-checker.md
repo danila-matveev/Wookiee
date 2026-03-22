@@ -22,6 +22,7 @@ Process operational feedback, verify claims against actual data, and update the 
 
 ## Output Format
 JSON artifact with:
+- _meta: {confidence: float 0-1, confidence_reason: string, data_coverage: float 0-1, limitations: [string], conclusions: [{statement: string, type: "driver"|"anti_driver"|"recommendation"|"anomaly"|"metric", confidence: float 0-1, confidence_reason: string, data_coverage: float 0-1, limitations: [string], sources: [string]}]}
 - feedback_received: string (original claim verbatim)
 - received_at: string (ISO date)
 - verification: {

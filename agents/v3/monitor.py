@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from agents.v3 import config
+from agents.v3.delivery import messages
 
 logger = logging.getLogger(__name__)
 
@@ -57,11 +58,16 @@ async def _check_llm() -> bool:
 
 
 async def _check_db() -> bool:
-    """Check DB connectivity via a simple SELECT 1."""
+    """Check DB connectivity via a simple SELECT 1 (runs in thread to avoid blocking)."""
     try:
+        import asyncio
         from shared.data_layer import _db_cursor, _get_wb_connection
-        with _db_cursor(_get_wb_connection()) as cur:
-            cur.execute("SELECT 1")
+
+        def _sync_check():
+            with _db_cursor(_get_wb_connection()) as cur:
+                cur.execute("SELECT 1")
+
+        await asyncio.to_thread(_sync_check)
         return True
     except Exception as exc:
         logger.warning("_check_db failed: %s", exc)
@@ -69,11 +75,30 @@ async def _check_db() -> bool:
 
 
 async def _check_last_run() -> bool:
-    """Check whether the last orchestrator run was successful (Supabase observability log)."""
+    """Check whether the last orchestrator run was successful (observability log).
+
+    Queries the orchestrator_runs table for the most recent run.
+    Returns True if last run succeeded or no runs exist yet.
+    """
     try:
-        from services.observability.logger import get_last_run_status
-        status = await get_last_run_status()
-        return status in ("success", None)  # None means no run yet — acceptable
+        import asyncio
+        from services.observability.logger import _get_conn
+
+        def _sync_check():
+            conn = _get_conn()
+            try:
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT status FROM orchestrator_runs "
+                    "ORDER BY started_at DESC LIMIT 1"
+                )
+                row = cur.fetchone()
+                return row[0] if row else None
+            finally:
+                conn.close()
+
+        status = await asyncio.to_thread(_sync_check)
+        return status in ("success", "partial", None)
     except Exception as exc:
         logger.warning("_check_last_run failed: %s", exc)
         return False
@@ -201,38 +226,6 @@ class AnomalyMonitor:
             "4. Return JSON with anomalies list and summary."
         )
 
-    def _format_alert(self, artifact: dict) -> str:
-        """Format the anomaly artifact as a Telegram alert message."""
-        summary = artifact.get("summary", {})
-        critical = summary.get("critical_count", 0)
-        warning = summary.get("warning_count", 0)
-        info = summary.get("info_count", 0)
-        top = summary.get("top_priority_anomaly", "")
-        summary_text = artifact.get("summary_text", "")
-
-        lines = [
-            "[Wookiee v3] Обнаружены аномалии",
-            f"Критических: {critical} | Предупреждений: {warning} | Инфо: {info}",
-        ]
-        if top:
-            lines.append(f"Приоритет: {top}")
-        if summary_text:
-            lines.append("")
-            lines.append(summary_text)
-
-        anomalies = artifact.get("anomalies", [])
-        critical_anomalies = [a for a in anomalies if a.get("severity") == "critical"]
-        if critical_anomalies:
-            lines.append("")
-            lines.append("Критические аномалии:")
-            for a in critical_anomalies[:3]:  # Cap at 3 to keep message short
-                metric = a.get("metric", "")
-                dev = a.get("deviation_pct", 0)
-                channel = a.get("channel", "")
-                lines.append(f"  • {metric} ({channel}): {dev:+.1f}%")
-
-        return "\n".join(lines)
-
     async def check_and_alert(self) -> None:
         """Main entry point: run anomaly detection and send alert if needed."""
         from agents.v3.runner import run_agent
@@ -279,7 +272,7 @@ class AnomalyMonitor:
         )
 
         if total_actionable > 0:
-            alert_text = self._format_alert(artifact)
+            alert_text = messages.anomaly_report(artifact)
             await _send_admin(alert_text)
             logger.info("AnomalyMonitor: alert sent (%d actionable anomalies)", total_actionable)
         else:
@@ -336,27 +329,8 @@ class Watchdog:
         if status == "ok":
             return
 
-        now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-        emoji_map = {"warning": "⚠️", "critical": "🔴"}
-        level_label = {"warning": "ПРЕДУПРЕЖДЕНИЕ", "critical": "КРИТИЧНО"}
-
-        lines = [
-            f"[Wookiee v3] Watchdog — {level_label[status]}",
-            f"Время: {now_str}",
-            f"Упавшие проверки: {', '.join(failed)}",
-            f"Прошедшие проверки: {', '.join(passed) if passed else 'нет'}",
-        ]
-
-        check_details = {
-            "llm": "OpenRouter API (LLM completions)",
-            "db": "База данных WB (SELECT 1)",
-            "last_run": "Статус последнего запуска оркестратора",
-        }
-        lines.append("")
-        for name in failed:
-            lines.append(f"  ✗ {check_details.get(name, name)}")
-
-        await _send_admin("\n".join(lines))
+        msg = messages.watchdog_alert(status, failed, passed)
+        await _send_admin(msg)
         logger.warning("Watchdog: alert sent (status=%s, failed=%s)", status, failed)
 
     async def on_report_success(self, report_type: str) -> None:
@@ -380,14 +354,8 @@ class Watchdog:
         )
 
         if count >= self._FAILURE_ALERT_THRESHOLD:
-            now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-            await _send_admin(
-                f"[Wookiee v3] Watchdog — ПОВТОРНЫЕ СБОИ\n"
-                f"Отчёт: {report_type}\n"
-                f"Подряд неудач: {count}\n"
-                f"Время: {now_str}\n"
-                "Требуется ручная проверка."
-            )
+            msg = messages.watchdog_repeated_failures(report_type, count)
+            await _send_admin(msg)
 
 
 # ---------------------------------------------------------------------------

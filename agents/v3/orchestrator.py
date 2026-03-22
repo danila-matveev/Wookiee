@@ -21,6 +21,63 @@ from services.observability.logger import log_orchestrator_run, new_run_id
 logger = logging.getLogger(__name__)
 
 
+# ── Confidence & cost constants ───────────────────────────────────────────────
+
+FAILED_AGENT_META: dict = {
+    "confidence": 0.0,
+    "confidence_reason": "агент не выполнился",
+    "data_coverage": 0.0,
+    "limitations": ["агент завершился с ошибкой"],
+    "conclusions": [],
+}
+
+AGENT_WEIGHTS: dict[str, float] = {
+    "margin-analyst": 1.0,
+    "revenue-decomposer": 1.0,
+    "ad-efficiency": 1.0,
+    "price-strategist": 1.0,
+    "pricing-impact-analyst": 0.5,
+    "hypothesis-tester": 0.5,
+    "anomaly-detector": 0.5,
+}
+
+
+def aggregate_confidence(confidences: dict[str, float]) -> float:
+    """Weighted average confidence across agents."""
+    if not confidences:
+        return 0.0
+    total_weight = 0.0
+    weighted_sum = 0.0
+    for agent_name, conf in confidences.items():
+        w = AGENT_WEIGHTS.get(agent_name, 0.5)
+        weighted_sum += w * conf
+        total_weight += w
+    return round(weighted_sum / total_weight, 2) if total_weight > 0 else 0.0
+
+
+def worst_limitation(artifacts: dict) -> str | None:
+    """Return worst limitation string for Telegram footer.
+
+    MUST be called AFTER FAILED_AGENT_META injection for failed agents.
+    Missing _meta is treated as confidence=0.0 (worst case).
+    Excludes report-compiler (it doesn't produce analytical conclusions).
+    """
+    candidates = []
+    for name, art in artifacts.items():
+        if name == "report-compiler":
+            continue
+        meta = art.get("_meta") or {}
+        conf = meta.get("confidence", 0.0)
+        if conf < 0.75:
+            candidates.append((name, conf))
+    if not candidates:
+        return None
+    name, _ = min(candidates, key=lambda x: x[1])
+    meta = (artifacts[name].get("_meta") or {})
+    lims = meta.get("limitations", [])
+    return f"{name}: {lims[0]}" if lims else None
+
+
 def load_persistent_instructions(state: StateStore, agent_names: list[str]) -> str:
     """Load active persistent instructions for given agents from StateStore.
 
@@ -101,7 +158,7 @@ async def _run_report_pipeline(
         {
             "run_id": str,
             "status": "success" | "partial" | "failed",
-            "report": {detailed_report, brief_report, telegram_summary},
+            "report": {detailed_report, telegram_summary},
             "artifacts": {agent_name: result},
             "agents_called": int,
             "agents_succeeded": int,
@@ -169,6 +226,13 @@ async def _run_report_pipeline(
             else:
                 agents_failed += 1
 
+    # Inject FAILED_AGENT_META for failed agents
+    for agent_name, result in artifacts.items():
+        if result["status"] != "success":
+            if isinstance(result.get("artifact"), dict) or result.get("artifact") is None:
+                result.setdefault("artifact", {})
+                result["artifact"]["_meta"] = FAILED_AGENT_META.copy()
+
     # ── Phase 2: Compile report from artifacts (unless skipped) ──────────────
 
     compiler_result = None
@@ -220,6 +284,32 @@ async def _run_report_pipeline(
     else:
         status = "failed"
 
+    # ── Aggregate confidence, limitations, tokens & cost ────────────────────
+
+    # Aggregate confidence (exclude report-compiler)
+    confidences = {}
+    for name, result in artifacts.items():
+        if name == "report-compiler":
+            continue
+        art = result.get("artifact") if isinstance(result, dict) else result
+        meta = (art.get("_meta") or {}) if isinstance(art, dict) else {}
+        if "confidence" in meta:
+            confidences[name] = meta["confidence"]
+
+    agg_confidence = aggregate_confidence(confidences)
+
+    # Build artifacts view for worst_limitation
+    artifacts_for_lim = {}
+    for name, result in artifacts.items():
+        art = result.get("artifact") if isinstance(result, dict) else result
+        artifacts_for_lim[name] = art if isinstance(art, dict) else {}
+
+    worst_lim = worst_limitation(artifacts_for_lim)
+
+    # Aggregate tokens & cost
+    total_tokens = sum(r.get("total_tokens", 0) for r in artifacts.values() if isinstance(r, dict))
+    total_cost = sum(r.get("cost_usd", 0.0) for r in artifacts.values() if isinstance(r, dict))
+
     # ── Log orchestrator run ────────────────────────────────────────────────
 
     asyncio.create_task(log_orchestrator_run(
@@ -235,19 +325,23 @@ async def _run_report_pipeline(
         agents_called=agents_called,
         agents_succeeded=agents_succeeded,
         agents_failed=agents_failed,
-        total_tokens=0,  # TODO: aggregate from agent results
-        total_cost_usd=0.0,
+        total_tokens=total_tokens,
+        total_cost_usd=total_cost,
     ))
 
     return {
         "run_id": run_id,
         "status": status,
-        "report": compiler_result.get("artifact") if compiler_result else None,
+        "report": (compiler_result.get("artifact") or {}) if compiler_result else {},
         "artifacts": artifacts,
         "agents_called": agents_called,
         "agents_succeeded": agents_succeeded,
         "agents_failed": agents_failed,
         "duration_ms": duration_ms,
+        "aggregate_confidence": agg_confidence,
+        "worst_limitation": worst_lim,
+        "total_tokens": total_tokens,
+        "total_cost_usd": total_cost,
     }
 
 
@@ -523,10 +617,10 @@ async def run_price_analysis(
 
     compiler_task = (
         "Собери отчёт по ценовому анализу. "
-        "Используй 7-секционную структуру ценового отчёта:\n"
-        "0) Паспорт  1) Executive summary  2) Ценовая матрица  "
-        "3) Тренды продаж  4) Сток-ценовая матрица  "
-        "5) Маркетинговый импакт  6) Валидация гипотез  7) План действий\n\n"
+        "Используй 8-секционную структуру ценового отчёта:\n"
+        "0) Паспорт  1) Итоги  2) Ценовая матрица  "
+        "3) Тренды продаж  4) Матрица остатки-цена  "
+        "5) Влияние на маркетинг  6) Проверка гипотез  7) План действий\n\n"
         f"{json.dumps(compiler_input, ensure_ascii=False, default=str)}"
     )
 
@@ -552,6 +646,35 @@ async def run_price_analysis(
 
     status = "success" if total_failed == 0 else ("partial" if total_succeeded > 0 else "failed")
 
+    # Inject FAILED_AGENT_META for failed agents
+    for name, result in all_artifacts.items():
+        if name == "report-compiler":
+            continue
+        if isinstance(result, dict) and result.get("status") != "success":
+            result.setdefault("artifact", {})
+            result["artifact"]["_meta"] = FAILED_AGENT_META.copy()
+
+    # Aggregate confidence
+    confidences = {}
+    for name, result in all_artifacts.items():
+        if name == "report-compiler":
+            continue
+        art = result.get("artifact") if isinstance(result, dict) else result
+        meta = (art.get("_meta") or {}) if isinstance(art, dict) else {}
+        if "confidence" in meta:
+            confidences[name] = meta["confidence"]
+
+    agg_confidence = aggregate_confidence(confidences)
+
+    artifacts_for_lim = {
+        n: (r.get("artifact") if isinstance(r, dict) else r) or {}
+        for n, r in all_artifacts.items()
+    }
+    worst_lim = worst_limitation(artifacts_for_lim)
+
+    total_tokens = sum(r.get("total_tokens", 0) for r in all_artifacts.values() if isinstance(r, dict))
+    total_cost = sum(r.get("cost_usd", 0.0) for r in all_artifacts.values() if isinstance(r, dict))
+
     asyncio.create_task(log_orchestrator_run(
         run_id=run_id,
         orchestrator="oleg",
@@ -565,8 +688,8 @@ async def run_price_analysis(
         agents_called=total_called,
         agents_succeeded=total_succeeded,
         agents_failed=total_failed,
-        total_tokens=0,
-        total_cost_usd=0.0,
+        total_tokens=total_tokens,
+        total_cost_usd=total_cost,
     ))
 
     logger.info(
@@ -577,10 +700,15 @@ async def run_price_analysis(
     return {
         "run_id": run_id,
         "status": status,
-        "report": compiler_result.get("artifact"),
+        # compiler_result может быть None если skip_compiler=True или сбой
+        "report": (compiler_result.get("artifact") or {}) if compiler_result else {},
         "artifacts": all_artifacts,
         "agents_called": total_called,
         "agents_succeeded": total_succeeded,
         "agents_failed": total_failed,
         "duration_ms": duration_ms,
+        "aggregate_confidence": agg_confidence,
+        "worst_limitation": worst_lim,
+        "total_tokens": total_tokens,
+        "total_cost_usd": total_cost,
     }

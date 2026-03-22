@@ -22,6 +22,7 @@ Review data will come from future wookiee-wb MCP server. For now, this is an int
 
 ## Output Format
 JSON artifact with:
+- _meta: {confidence: float 0-1, confidence_reason: string, data_coverage: float 0-1, limitations: [string], conclusions: [{statement: string, type: "driver"|"anti_driver"|"recommendation"|"anomaly"|"metric", confidence: float 0-1, confidence_reason: string, data_coverage: float 0-1, limitations: [string], sources: [string]}]}
 - period: {date_from, date_to}
 - channel: string
 - kb_context: {found: bool, known_issues: [string]}

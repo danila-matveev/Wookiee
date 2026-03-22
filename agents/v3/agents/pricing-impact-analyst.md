@@ -27,6 +27,7 @@ Answer: "If we change price by X%, how should we adjust ad budget?" and "Given c
 
 ## Output Format
 JSON artifact with:
+- _meta: {confidence: float 0-1, confidence_reason: string, data_coverage: float 0-1, limitations: [string], conclusions: [{statement: string, type: "driver"|"anti_driver"|"recommendation"|"anomaly"|"metric", confidence: float 0-1, confidence_reason: string, data_coverage: float 0-1, limitations: [string], sources: [string]}]}
 - models: [{model, channel, price_change_pct, current_drr, expected_drr_after, ad_budget_current_rub, ad_budget_adjustment_rub, ad_budget_adjustment_pct, romi_before, romi_after, organic_share_pct, net_margin_impact_monthly_rub, rationale}]
 - total_budget_delta_rub: float
 - total_margin_impact_rub: float

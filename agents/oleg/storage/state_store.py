@@ -75,6 +75,26 @@ class StateStore:
                     sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     reviewed_at TIMESTAMP
                 );
+
+                CREATE TABLE IF NOT EXISTS recommendation_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    report_date TEXT NOT NULL,
+                    report_type TEXT NOT NULL,
+                    context TEXT NOT NULL DEFAULT 'financial',
+                    channel TEXT,
+                    signals_count INTEGER DEFAULT 0,
+                    recommendations_count INTEGER DEFAULT 0,
+                    validation_verdict TEXT DEFAULT 'skipped',
+                    validation_attempts INTEGER DEFAULT 1,
+                    signals TEXT,
+                    recommendations TEXT,
+                    validation_details TEXT,
+                    new_patterns TEXT,
+                    advisor_cost_usd REAL DEFAULT 0,
+                    validator_cost_usd REAL DEFAULT 0,
+                    total_duration_ms INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
             """)
         logger.info(f"StateStore initialized at {self.db_path}")
 
@@ -179,3 +199,68 @@ class StateStore:
                 (last_n,),
             ).fetchall()
             return [dict(r) for r in rows]
+
+    # ── Recommendation Log ────────────────────────────────────
+
+    def log_recommendation(
+        self, report_date: str, report_type: str, context: str = "financial",
+        channel: str = None, signals_count: int = 0,
+        recommendations_count: int = 0, validation_verdict: str = "skipped",
+        validation_attempts: int = 1, signals: list = None,
+        recommendations: list = None, validation_details: dict = None,
+        new_patterns: list = None, advisor_cost_usd: float = 0.0,
+        validator_cost_usd: float = 0.0, total_duration_ms: int = 0,
+    ) -> int:
+        signals_json = json.dumps(signals, ensure_ascii=False, default=str) if signals is not None else None
+        recommendations_json = json.dumps(recommendations, ensure_ascii=False, default=str) if recommendations is not None else None
+        validation_details_json = json.dumps(validation_details, ensure_ascii=False, default=str) if validation_details is not None else None
+        new_patterns_json = json.dumps(new_patterns, ensure_ascii=False, default=str) if new_patterns is not None else None
+
+        with sqlite3.connect(self.db_path) as conn:
+            cur = conn.execute(
+                "INSERT INTO recommendation_log "
+                "(report_date, report_type, context, channel, signals_count, "
+                "recommendations_count, validation_verdict, validation_attempts, "
+                "signals, recommendations, validation_details, new_patterns, "
+                "advisor_cost_usd, validator_cost_usd, total_duration_ms) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    report_date, report_type, context, channel, signals_count,
+                    recommendations_count, validation_verdict, validation_attempts,
+                    signals_json, recommendations_json, validation_details_json,
+                    new_patterns_json, advisor_cost_usd, validator_cost_usd,
+                    total_duration_ms,
+                ),
+            )
+            return cur.lastrowid
+
+    def get_recommendation_stats(self, days: int = 7) -> dict:
+        """Return basic stats for recommendation_log over the last N days."""
+        with sqlite3.connect(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT "
+                "  COUNT(*) AS total_runs, "
+                "  AVG(signals_count) AS avg_signals, "
+                "  AVG(recommendations_count) AS avg_recommendations, "
+                "  SUM(CASE WHEN validation_verdict = 'pass' THEN 1 ELSE 0 END) AS pass_count, "
+                "  SUM(CASE WHEN validation_verdict = 'fail' THEN 1 ELSE 0 END) AS fail_count "
+                "FROM recommendation_log "
+                "WHERE created_at >= datetime('now', ?)",
+                (f"-{days} days",),
+            ).fetchone()
+
+        total_runs = row[0] or 0
+        avg_signals = row[1] or 0.0
+        avg_recommendations = row[2] or 0.0
+        pass_count = row[3] or 0
+        fail_count = row[4] or 0
+        pass_rate = pass_count / total_runs if total_runs > 0 else 0.0
+
+        return {
+            "total_runs": total_runs,
+            "avg_signals": avg_signals,
+            "avg_recommendations": avg_recommendations,
+            "pass_count": pass_count,
+            "fail_count": fail_count,
+            "pass_rate": pass_rate,
+        }
