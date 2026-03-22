@@ -56,7 +56,8 @@ async def deliver(
         "telegram": {"sent": False, "chat_ids_sent": [], "errors": []},
     }
 
-    inner = report.get("report", {})
+    # `or {}` вместо default: ключ "report" может быть None (не отсутствовать)
+    inner = report.get("report") or {}
     detailed_md = inner.get("detailed_report", "")
 
     # ------------------------------------------------------------------

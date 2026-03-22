@@ -158,7 +158,7 @@ async def _run_report_pipeline(
         {
             "run_id": str,
             "status": "success" | "partial" | "failed",
-            "report": {detailed_report, brief_report, telegram_summary},
+            "report": {detailed_report, telegram_summary},
             "artifacts": {agent_name: result},
             "agents_called": int,
             "agents_succeeded": int,
@@ -332,7 +332,7 @@ async def _run_report_pipeline(
     return {
         "run_id": run_id,
         "status": status,
-        "report": compiler_result.get("artifact") if compiler_result else None,
+        "report": (compiler_result.get("artifact") or {}) if compiler_result else {},
         "artifacts": artifacts,
         "agents_called": agents_called,
         "agents_succeeded": agents_succeeded,
@@ -700,7 +700,8 @@ async def run_price_analysis(
     return {
         "run_id": run_id,
         "status": status,
-        "report": compiler_result.get("artifact"),
+        # compiler_result может быть None если skip_compiler=True или сбой
+        "report": (compiler_result.get("artifact") or {}) if compiler_result else {},
         "artifacts": all_artifacts,
         "agents_called": total_called,
         "agents_succeeded": total_succeeded,
