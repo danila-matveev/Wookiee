@@ -8,6 +8,7 @@ class ConductorState:
 
     def __init__(self, db_path: str = "agents/v3/data/v3_state.db"):
         self._db_path = db_path
+        self._notified_dates: set[str] = set()
 
     def _conn(self) -> sqlite3.Connection:
         return sqlite3.connect(self._db_path)
@@ -81,3 +82,11 @@ class ConductorState:
                 (date, report_type),
             ).fetchone()
         return row[0] if row else 0
+
+    def already_notified(self, report_date: str) -> bool:
+        """Check if data_ready notification was already sent for this date."""
+        return report_date in self._notified_dates
+
+    def mark_notified(self, report_date: str) -> None:
+        """Mark that data_ready notification was sent for this date."""
+        self._notified_dates.add(report_date)
