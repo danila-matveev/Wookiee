@@ -29,6 +29,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 
 from agents.v3 import config
+from agents.v3.delivery import messages
 from agents.v3.gates import GateChecker
 from agents.v3.state import StateStore
 
@@ -171,12 +172,7 @@ async def _run_daily_report_attempt(
                 date_to, new_count, retry_at.isoformat(),
             )
             status_msg = gate_result.format_status_message()
-            await _send_admin(
-                f"[Wookiee v3] Ежедневный отчёт — попытка {new_count}/3\n"
-                f"Дата: {date_to}\n"
-                f"Следующая попытка: {retry_at.strftime('%H:%M')} MSK\n\n"
-                f"{status_msg}"
-            )
+            await _send_admin(messages.report_error(date_to, "дневной фин", str(status_msg), new_count, 3))
             scheduler.add_job(
                 _run_daily_report_attempt,
                 trigger=DateTrigger(run_date=retry_at.astimezone(pytz.utc)),
@@ -192,12 +188,7 @@ async def _run_daily_report_attempt(
                 "daily_report gates failed for %s — all 3 retries exhausted", date_to
             )
             status_msg = gate_result.format_status_message()
-            await _send_admin(
-                f"[Wookiee v3] Ежедневный отчёт — все попытки исчерпаны\n"
-                f"Дата: {date_to}\n"
-                f"Отчёт не будет сгенерирован.\n\n"
-                f"{status_msg}"
-            )
+            await _send_admin(messages.report_retries_exhausted(date_to, "дневной фин"))
             state.set(f"skipped:daily_report:{date_to}", "gates_failed")
         return
 
@@ -218,7 +209,7 @@ async def _run_daily_report_attempt(
         logger.info("daily_report for %s delivered (status=%s)", date_to, result.get("status"))
     except Exception as exc:
         logger.exception("daily_report failed for %s: %s", date_to, exc)
-        await _send_admin(f"[Wookiee v3] Ошибка ежедневного отчёта за {date_to}:\n{exc}")
+        await _send_admin(messages.report_exception("дневной фин", date_from, date_to, exc))
 
 
 async def _job_daily_report(scheduler: AsyncIOScheduler) -> None:
@@ -243,10 +234,7 @@ async def _job_data_ready_check(scheduler: AsyncIOScheduler) -> None:
     gate_result = _gate_checker.check_both()
     if gate_result.can_generate:
         logger.info("data_ready_check: gates passed for %s — triggering daily report early", date_to)
-        await _send_admin(
-            f"[Wookiee v3] Данные готовы для {date_to}, запускаю ежедневный отчёт...\n"
-            f"{gate_result.format_status_message()}"
-        )
+        await _send_admin(messages.data_ready(date_to, ["дневной фин"]))
         await _run_daily_report_attempt(scheduler, trigger="data_ready_check")
     else:
         logger.debug("data_ready_check: gates not yet passed for %s", date_to)
@@ -293,12 +281,10 @@ async def _job_notion_feedback() -> None:
                 result["raw_output"][:300],
             )
             if result["status"] == "failed":
-                await _send_admin(
-                    f"[Wookiee v3] prompt-tuner failed:\n{result['raw_output'][:500]}"
-                )
+                await _send_admin(messages.report_exception("prompt-tuner", "", "", Exception(result['raw_output'][:300])))
     except Exception as exc:
         logger.exception("notion_feedback (prompt-tuner) failed: %s", exc)
-        await _send_admin(f"[Wookiee v3] Ошибка prompt-tuner:\n{exc}")
+        await _send_admin(messages.report_exception("prompt-tuner", "", "", exc))
 
 
 # ---------------------------------------------------------------------------
@@ -333,7 +319,7 @@ async def _job_weekly_report() -> None:
         logger.info("weekly_report for %s–%s delivered", date_from, date_to)
     except Exception as exc:
         logger.exception("weekly_report failed: %s", exc)
-        await _send_admin(f"[Wookiee v3] Ошибка недельного отчёта ({date_from}–{date_to}):\n{exc}")
+        await _send_admin(messages.report_exception("недельный фин", date_from, date_to, exc))
 
 
 # ---------------------------------------------------------------------------
@@ -370,7 +356,7 @@ async def _job_monthly_report() -> None:
         logger.info("monthly_report for %s–%s delivered", date_from, date_to)
     except Exception as exc:
         logger.exception("monthly_report failed: %s", exc)
-        await _send_admin(f"[Wookiee v3] Ошибка месячного отчёта ({date_from}–{date_to}):\n{exc}")
+        await _send_admin(messages.report_exception("месячный фин", date_from, date_to, exc))
 
 
 # ---------------------------------------------------------------------------
@@ -407,9 +393,7 @@ async def _job_weekly_marketing_bundle() -> None:
             logger.info("marketing_weekly for %s–%s delivered", date_from, date_to)
         except Exception as exc:
             logger.exception("marketing_weekly failed: %s", exc)
-            await _send_admin(
-                f"[Wookiee v3] Ошибка маркетингового отчёта ({date_from}–{date_to}):\n{exc}"
-            )
+            await _send_admin(messages.report_exception("маркетинговый", date_from, date_to, exc))
 
     async def _run_funnel() -> None:
         if state.is_delivered("funnel_weekly", date_to):
@@ -430,9 +414,7 @@ async def _job_weekly_marketing_bundle() -> None:
             logger.info("funnel_weekly for %s–%s delivered", date_from, date_to)
         except Exception as exc:
             logger.exception("funnel_weekly failed: %s", exc)
-            await _send_admin(
-                f"[Wookiee v3] Ошибка отчёта по воронке ({date_from}–{date_to}):\n{exc}"
-            )
+            await _send_admin(messages.report_exception("воронка", date_from, date_to, exc))
 
     await asyncio.gather(_run_marketing(), _run_funnel())
 
@@ -471,9 +453,7 @@ async def _job_marketing_monthly() -> None:
         logger.info("marketing_monthly for %s–%s delivered", date_from, date_to)
     except Exception as exc:
         logger.exception("marketing_monthly failed: %s", exc)
-        await _send_admin(
-            f"[Wookiee v3] Ошибка месячного маркетингового отчёта ({date_from}–{date_to}):\n{exc}"
-        )
+        await _send_admin(messages.report_exception("маркетинговый месячный", date_from, date_to, exc))
 
 
 # ---------------------------------------------------------------------------
@@ -501,9 +481,7 @@ async def _job_finolog_weekly() -> None:
         logger.info("finolog_weekly for %s–%s delivered", date_from, date_to)
     except Exception as exc:
         logger.exception("finolog_weekly failed: %s", exc)
-        await _send_admin(
-            f"[Wookiee v3] Ошибка ДДС отчёта ({date_from}–{date_to}):\n{exc}"
-        )
+        await _send_admin(messages.report_exception("ДДС", date_from, date_to, exc))
 
 
 # ---------------------------------------------------------------------------
@@ -539,9 +517,7 @@ async def _job_price_analysis() -> None:
         logger.info("price_analysis for %s–%s delivered", date_from, date_to)
     except Exception as exc:
         logger.exception("price_analysis failed: %s", exc)
-        await _send_admin(
-            f"[Wookiee v3] Ошибка ценового анализа ({date_from}–{date_to}):\n{exc}"
-        )
+        await _send_admin(messages.report_exception("ценовой анализ", date_from, date_to, exc))
 
 
 # ---------------------------------------------------------------------------
@@ -556,7 +532,7 @@ async def _job_anomaly_monitor() -> None:
         await monitor.check_and_alert()
     except Exception as exc:
         logger.exception("anomaly_monitor job failed: %s", exc)
-        await _send_admin(f"[Wookiee v3] Ошибка anomaly monitor:\n{exc}")
+        await _send_admin(messages.report_exception("anomaly monitor", "", "", exc))
 
 
 async def _job_watchdog() -> None:
@@ -567,7 +543,7 @@ async def _job_watchdog() -> None:
         await watchdog.heartbeat()
     except Exception as exc:
         logger.exception("watchdog_heartbeat job failed: %s", exc)
-        await _send_admin(f"[Wookiee v3] Ошибка watchdog:\n{exc}")
+        await _send_admin(messages.report_exception("watchdog", "", "", exc))
 
 
 async def _job_promotion_scan() -> None:
@@ -601,17 +577,15 @@ async def _job_etl_daily_sync() -> None:
 
         # Alert on failures
         if not recon_result.get("passed", True):
-            await _send_admin(
-                f"[Wookiee v3] ETL Reconciliation FAIL для {date_to}\n"
-                f"Статус: {recon_result.get('status', 'UNKNOWN')}"
-            )
+            reason = recon_result.get('status', 'UNKNOWN')
+            await _send_admin(messages.report_exception("ETL reconciliation", date_to, date_to, Exception(reason)))
         if not quality_result.get("overall_ok", True):
             await _send_admin(f"[Wookiee v3] Проблемы качества данных за {date_to}")
 
         logger.info("etl_daily_sync for %s completed", date_to)
     except Exception as exc:
         logger.exception("etl_daily_sync failed: %s", exc)
-        await _send_admin(f"[Wookiee v3] Ошибка ETL sync за {date_to}:\n{exc}")
+        await _send_admin(messages.report_exception("ETL sync", date_to, date_to, exc))
 
 
 # ---------------------------------------------------------------------------
@@ -643,7 +617,7 @@ async def _job_etl_weekly_analysis() -> None:
         logger.info("etl_weekly_analysis for %s completed", date_to)
     except Exception as exc:
         logger.exception("etl_weekly_analysis failed: %s", exc)
-        await _send_admin(f"[Wookiee v3] Ошибка ETL weekly analysis:\n{exc}")
+        await _send_admin(messages.report_exception("ETL weekly analysis", "", "", exc))
 
 
 # ---------------------------------------------------------------------------
@@ -666,7 +640,7 @@ async def _job_finolog_categorization() -> None:
         logger.info("finolog_categorization for %s completed", date_to)
     except Exception as exc:
         logger.exception("finolog_categorization failed: %s", exc)
-        await _send_admin(f"[Wookiee v3] Ошибка категоризации Finolog:\n{exc}")
+        await _send_admin(messages.report_exception("категоризация Finolog", "", "", exc))
 
 
 # ---------------------------------------------------------------------------
