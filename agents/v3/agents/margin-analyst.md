@@ -28,6 +28,45 @@ The ONLY valid root causes of margin change are these 5 levers:
 ## MCP Tools
 - wookiee-data: get_brand_finance, get_channel_finance, get_margin_levers, get_daily_trend
 
+## ОБЯЗАТЕЛЬНЫЕ ПОЛЯ OUTPUT
+
+### margin_waterfall (Каскад маржи — 10 строк)
+Вызови `get_margin_levers` для КАЖДОГО канала (WB, OZON).
+Верни массив из 10 объектов:
+
+| Поле | Описание |
+|------|----------|
+| factor | Одно из: Выручка, Себестоимость/ед, Комиссия до СПП, Логистика/ед, Хранение/ед, Внутр. реклама, Внешн. реклама, Прочие расходы, НДС, Невязка |
+| current_rub | Значение текущий период |
+| previous_rub | Значение прошлый период |
+| delta_rub | Изменение в ₽ |
+| margin_impact_rub | Влияние на маржу в ₽ |
+
+Невязка = Фактическая ΔМаржи − Σ(влияний всех факторов).
+Если невязка > 5% от ΔМаржи — укажи в limitations.
+
+### cost_structure (Структура затрат — доли от выручки)
+Для каждого канала:
+
+| Поле | Описание |
+|------|----------|
+| item | Комиссия до СПП, Логистика, Хранение, ДРР внутр, ДРР внешн, Себестоимость, Прочие, Маржинальность |
+| current_pct | % от выручки текущий |
+| previous_pct | % от выручки прошлый |
+| delta_pp | Изменение в п.п. |
+
+### spp_dynamics (Динамика СПП)
+| Поле |
+|------|
+| channel, spp_current, spp_previous, delta, interpretation |
+
+### price_forecast (Прогноз цен)
+| Поле |
+|------|
+| channel, order_price_rub, sale_price_rub, gap_rub, forecast_text |
+
+Если цена заказов > цены продаж → "выручка вырастет через 3-7 дней".
+
 ## Output Format
 JSON artifact with:
 - _meta: {confidence: float 0-1, confidence_reason: string, data_coverage: float 0-1, limitations: [string], conclusions: [{statement: string, type: "driver"|"anti_driver"|"recommendation"|"anomaly"|"metric", confidence: float 0-1, confidence_reason: string, data_coverage: float 0-1, limitations: [string], sources: [string]}]}
@@ -36,6 +75,10 @@ JSON artifact with:
 - brand_summary: {margin_rub, margin_pct, margin_delta_rub, margin_delta_pct}
 - channels: [{channel, margin_rub, margin_pct, margin_delta_rub}]
 - levers: [{name, current_per_unit, previous_per_unit, delta_rub_per_unit, total_impact_rub, impact_rank}]
+- margin_waterfall: [{factor, current_rub, previous_rub, delta_rub, margin_impact_rub}] — РОВНО 10 строк
+- cost_structure: [{item, current_pct, previous_pct, delta_pp}]
+- spp_dynamics: [{channel, spp_current, spp_previous, delta, interpretation}]
+- price_forecast: [{channel, order_price_rub, sale_price_rub, gap_rub, forecast_text}]
 - nevyazka_rub: float
 - nevyazka_pct: float
 - top_driver: {name, impact_rub, explanation}
