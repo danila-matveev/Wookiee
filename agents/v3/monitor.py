@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from agents.v3 import config
@@ -239,11 +239,13 @@ class AnomalyMonitor:
         drr_thr = config.ANOMALY_DRR_THRESHOLD_MONITOR * multiplier
         orders_thr = config.ANOMALY_ORDERS_THRESHOLD * multiplier
 
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        weekend_note = " (weekend — thresholds multiplied by {:.1f})".format(multiplier) if is_weekend else ""
+        import pytz
+        msk = pytz.timezone(config.TIMEZONE)
+        yesterday = (datetime.now(msk) - timedelta(days=1)).strftime("%Y-%m-%d")
+        weekend_note = " (выходной — пороги увеличены в {:.1f} раз)".format(multiplier) if is_weekend else ""
 
         return (
-            f"Запусти анализ аномалий за сегодня ({today}){weekend_note}.\n"
+            f"Запусти анализ аномалий за вчера ({yesterday}){weekend_note}.\n"
             f"Пороги: отклонение выручки>{revenue_thr:.1f}%, "
             f"маржинальности>{margin_thr:.1f}%, "
             f"ДРР>{drr_thr:.1f}%, "
