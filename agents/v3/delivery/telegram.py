@@ -14,6 +14,9 @@ from aiogram import Bot
 logger = logging.getLogger(__name__)
 
 MAX_TELEGRAM_MSG = 4000
+# Максимальная длина telegram_summary — если compiler вывалил весь отчёт,
+# обрезаем до разумного размера и ссылаем на Notion.
+MAX_SUMMARY_LEN = 1500
 
 
 # ---------------------------------------------------------------------------
@@ -109,13 +112,24 @@ def format_report_message(
       - report.duration_ms
     """
     inner = report.get("report", {})
-    body = inner.get("telegram_summary") or inner.get("brief_report") or ""
+    body = inner.get("telegram_summary") or ""
+
+    # Обрезаем слишком длинный summary (compiler иногда вываливает весь отчёт)
+    if len(body) > MAX_SUMMARY_LEN:
+        # Обрезаем по последнему полному абзацу до лимита
+        cut = body[:MAX_SUMMARY_LEN].rfind("\n\n")
+        if cut < MAX_SUMMARY_LEN // 2:
+            cut = body[:MAX_SUMMARY_LEN].rfind("\n")
+        if cut < MAX_SUMMARY_LEN // 3:
+            cut = MAX_SUMMARY_LEN
+        body = body[:cut].rstrip()
+        body += "\n\n<i>... полный отчёт ниже по ссылке</i>"
 
     if caveats:
         body = add_caveats_header(body, caveats)
 
     if page_url:
-        body += f'\n\n<a href="{page_url}">Полный отчёт в Notion</a>'
+        body += f'\n\n<a href="{page_url}">📋 Полный отчёт в Notion</a>'
 
     agents_called = report.get("agents_called", 0) or 0
     agents_succeeded = report.get("agents_succeeded", 0) or 0

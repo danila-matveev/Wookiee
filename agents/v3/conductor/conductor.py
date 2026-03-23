@@ -292,10 +292,14 @@ async def deadline_check(
         diagnostics = "Gates OK, но отчёты не были запущены"
 
     missing_names = ", ".join(r.human_name for r in missing)
-    msg = (
-        f"⚠️ Дедлайн 12:00: отчёты не сформированы\n\n"
-        f"Не готовы: {missing_names}\n"
-        f"Диагностика: {diagnostics}\n\n"
-        f"Действие: catchup_check в 15:00 проверит повторно"
-    )
-    await telegram_send(msg)
+
+    # Translate diagnostics to human-readable
+    if "не поступили" in diagnostics.lower():
+        human_diagnostics = "Данные от маркетплейсов ещё не поступили"
+    elif "gates ok" in diagnostics.lower():
+        human_diagnostics = "Данные есть, но генерация не запустилась"
+    else:
+        human_diagnostics = diagnostics
+
+    from agents.v3.delivery import messages
+    await telegram_send(messages.deadline_missed(missing_names, human_diagnostics))
