@@ -249,9 +249,13 @@ async def _run_report_pipeline(
             if result["status"] == "success" and result.get("artifact"):
                 compiler_input["artifacts"][name] = result["artifact"]
             else:
+                error_msg = result.get("raw_output", "Unknown error")[:500]
+                failure_reason = "timeout" if "timeout" in error_msg.lower() else "error"
                 compiler_input["artifacts"][name] = {
                     "status": "failed",
-                    "error": result.get("raw_output", "Unknown error")[:500],
+                    "failure_reason": failure_reason,
+                    "error": error_msg,
+                    "_meta": FAILED_AGENT_META,
                 }
 
         compiler_task = (
