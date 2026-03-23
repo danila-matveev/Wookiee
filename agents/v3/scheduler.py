@@ -513,14 +513,20 @@ async def _job_price_analysis() -> None:
 # ---------------------------------------------------------------------------
 
 async def _job_anomaly_monitor() -> None:
-    """Cron callback: anomaly monitor — runs every ANOMALY_MONITOR_INTERVAL_HOURS hours."""
+    """Cron callback: anomaly monitor — runs only if yesterday's data is ready (gates passed)."""
+    # Не анализируем данные, пока gate checks не подтвердили их готовность
+    gate_result = _gate_checker.check_both()
+    if not gate_result.can_generate:
+        logger.info("anomaly_monitor: gates not passed, skipping (data not ready)")
+        return
+
     from agents.v3.monitor import get_anomaly_monitor
     monitor = get_anomaly_monitor()
     try:
         await monitor.check_and_alert()
     except Exception as exc:
         logger.exception("anomaly_monitor job failed: %s", exc)
-        await _send_admin(messages.report_exception("anomaly monitor", "", "", exc))
+        await _send_admin(messages.report_exception("мониторинг аномалий", "", "", exc))
 
 
 async def _job_watchdog() -> None:
