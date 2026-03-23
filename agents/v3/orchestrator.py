@@ -229,9 +229,9 @@ async def _run_report_pipeline(
     # Inject FAILED_AGENT_META for failed agents
     for agent_name, result in artifacts.items():
         if result["status"] != "success":
-            if isinstance(result.get("artifact"), dict) or result.get("artifact") is None:
-                result.setdefault("artifact", {})
-                result["artifact"]["_meta"] = FAILED_AGENT_META.copy()
+            if not isinstance(result.get("artifact"), dict):
+                result["artifact"] = {}
+            result["artifact"]["_meta"] = FAILED_AGENT_META.copy()
 
     # ── Phase 2: Compile report from artifacts (unless skipped) ──────────────
 
@@ -657,7 +657,8 @@ async def run_price_analysis(
         if name == "report-compiler":
             continue
         if isinstance(result, dict) and result.get("status") != "success":
-            result.setdefault("artifact", {})
+            if not isinstance(result.get("artifact"), dict):
+                result["artifact"] = {}
             result["artifact"]["_meta"] = FAILED_AGENT_META.copy()
 
     # Aggregate confidence
