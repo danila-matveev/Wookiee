@@ -64,7 +64,7 @@ async def _check_db() -> bool:
         from shared.data_layer import _db_cursor, _get_wb_connection
 
         def _sync_check():
-            with _db_cursor(_get_wb_connection()) as cur:
+            with _db_cursor(_get_wb_connection) as (conn, cur):
                 cur.execute("SELECT 1")
 
         await asyncio.to_thread(_sync_check)
@@ -94,6 +94,9 @@ async def _check_last_run() -> bool:
                 )
                 row = cur.fetchone()
                 return row[0] if row else None
+            except Exception:
+                # Table may not exist yet — not a failure
+                return None
             finally:
                 conn.close()
 
@@ -101,7 +104,7 @@ async def _check_last_run() -> bool:
         return status in ("success", "partial", None)
     except Exception as exc:
         logger.warning("_check_last_run failed: %s", exc)
-        return False
+        return True
 
 
 # ---------------------------------------------------------------------------

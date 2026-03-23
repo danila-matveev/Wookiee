@@ -5,6 +5,7 @@ Syncs orchestrator reports to a Notion database (upsert by period + type).
 Ported from agents/oleg/services/notion_service.py.
 """
 from __future__ import annotations
+import asyncio
 import logging
 import re
 from datetime import datetime, timedelta
@@ -34,6 +35,7 @@ _REPORT_TYPE_MAP: dict[str, tuple[str, str]] = {
     "marketing_weekly":   ("Маркетинговый анализ",      "Еженедельный маркетинговый анализ"),
     "marketing_monthly":  ("Маркетинговый анализ",      "Ежемесячный маркетинговый анализ"),
     "marketing_custom":   ("Маркетинговый анализ",      "Маркетинговый анализ"),
+    "price_analysis":        ("Ценовой анализ",         "Ценовой анализ"),
     "Ценовой анализ":        ("Ценовой анализ",        "Ценовой анализ"),
     "price_weekly":          ("Ценовой анализ",        "Еженедельный ценовой анализ"),
     "price_monthly":         ("Ценовой анализ",        "Ценовой анализ"),
@@ -68,6 +70,12 @@ class NotionDelivery:
     def __init__(self, token: str, database_id: str):
         self.token = token
         self.database_id = database_id
+        self._locks: dict[str, asyncio.Lock] = {}
+
+    def _get_lock(self, report_type: str) -> asyncio.Lock:
+        if report_type not in self._locks:
+            self._locks[report_type] = asyncio.Lock()
+        return self._locks[report_type]
 
     @property
     def enabled(self) -> bool:
@@ -113,75 +121,76 @@ class NotionDelivery:
             logger.warning("Notion not configured, skipping sync")
             return None
 
-        try:
-            _map = _REPORT_TYPE_MAP.get(report_type)
-            if _map:
-                notion_label, title_prefix = _map
-            else:
-                notion_label, title_prefix = report_type, report_type
+        async with self._get_lock(report_type):
+            try:
+                _map = _REPORT_TYPE_MAP.get(report_type)
+                if _map:
+                    notion_label, title_prefix = _map
+                else:
+                    notion_label, title_prefix = report_type, report_type
 
-            title = f"{title_prefix} за {_format_date_range_ru(start_date, end_date)}"
-            report_type = notion_label
+                title = f"{title_prefix} за {_format_date_range_ru(start_date, end_date)}"
+                report_type = notion_label
 
-            report_md = remove_empty_sections(report_md)
-            blocks = md_to_notion_blocks(report_md)
+                report_md = remove_empty_sections(report_md)
+                blocks = md_to_notion_blocks(report_md)
 
-            existing = await self._find_existing_page(start_date, end_date, report_type)
+                existing = await self._find_existing_page(start_date, end_date, report_type)
 
-            if existing:
-                page_id = existing["id"]
-                page_url = existing["url"]
-                logger.info(f"Notion: updating existing page {page_id}")
+                if existing:
+                    page_id = existing["id"]
+                    page_url = existing["url"]
+                    logger.info(f"Notion: updating existing page {page_id}")
 
-                await self._delete_page_content(page_id)
+                    await self._delete_page_content(page_id)
 
-                properties = {
-                    "Name": {"title": [{"text": {"content": title}}]},
-                    "Статус": {"select": {"name": "Актуальный"}},
-                }
-                if source:
-                    properties["Источник"] = {"select": {"name": source}}
-                if report_type:
-                    properties["Тип анализа"] = {"select": {"name": report_type}}
+                    properties = {
+                        "Name": {"title": [{"text": {"content": title}}]},
+                        "Статус": {"select": {"name": "Актуальный"}},
+                    }
+                    if source:
+                        properties["Источник"] = {"select": {"name": source}}
+                    if report_type:
+                        properties["Тип анализа"] = {"select": {"name": report_type}}
 
-                await self._request("PATCH", f"pages/{page_id}", {"properties": properties})
-                await self._append_blocks(page_id, blocks)
+                    await self._request("PATCH", f"pages/{page_id}", {"properties": properties})
+                    await self._append_blocks(page_id, blocks)
 
-                logger.info(f"Notion: page updated \u2014 {page_url}")
-                return page_url
-            else:
-                logger.info(f"Notion: creating new page for {start_date} \u2014 {end_date}")
+                    logger.info(f"Notion: page updated \u2014 {page_url}")
+                    return page_url
+                else:
+                    logger.info(f"Notion: creating new page for {start_date} \u2014 {end_date}")
 
-                properties = {
-                    "Name": {"title": [{"text": {"content": title}}]},
-                    "Период начала": {"date": {"start": start_date}},
-                    "Период конца": {"date": {"start": end_date}},
-                    "Статус": {"select": {"name": "Актуальный"}},
-                }
-                if source:
-                    properties["Источник"] = {"select": {"name": source}}
-                if report_type:
-                    properties["Тип анализа"] = {"select": {"name": report_type}}
+                    properties = {
+                        "Name": {"title": [{"text": {"content": title}}]},
+                        "Период начала": {"date": {"start": start_date}},
+                        "Период конца": {"date": {"start": end_date}},
+                        "Статус": {"select": {"name": "Актуальный"}},
+                    }
+                    if source:
+                        properties["Источник"] = {"select": {"name": source}}
+                    if report_type:
+                        properties["Тип анализа"] = {"select": {"name": report_type}}
 
-                page_payload = {
-                    "parent": {"database_id": self.database_id},
-                    "properties": properties,
-                    "children": blocks[:100],
-                }
+                    page_payload = {
+                        "parent": {"database_id": self.database_id},
+                        "properties": properties,
+                        "children": blocks[:100],
+                    }
 
-                result = await self._request("POST", "pages", page_payload)
-                page_id = result["id"]
-                page_url = result["url"]
+                    result = await self._request("POST", "pages", page_payload)
+                    page_id = result["id"]
+                    page_url = result["url"]
 
-                if len(blocks) > 100:
-                    await self._append_blocks(page_id, blocks[100:])
+                    if len(blocks) > 100:
+                        await self._append_blocks(page_id, blocks[100:])
 
-                logger.info(f"Notion: page created \u2014 {page_url}")
-                return page_url
+                    logger.info(f"Notion: page created \u2014 {page_url}")
+                    return page_url
 
-        except Exception as e:
-            logger.error(f"Notion sync failed: {e}")
-            return None
+            except Exception as e:
+                logger.error(f"Notion sync failed: {e}")
+                return None
 
     async def get_recent_feedback(self, days: int = 7) -> list[dict]:
         """Fetch comments from report pages created in the last N days.

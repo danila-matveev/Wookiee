@@ -1,18 +1,21 @@
 Создай еженедельный аналитический отчёт. $ARGUMENTS — дата любого дня недели (по умолчанию — прошлая неделя).
 
-Workflow Олега (AI финансовый аналитик Wookiee):
+Workflow V3 orchestrator (micro-agent pipeline):
 
 1. Запусти скрипт:
    ```
    python3 scripts/run_report.py weekly $ARGUMENTS
    ```
 
-2. Скрипт определяет понедельник и воскресенье для указанной недели, инициализирует OlegApp → pipeline → orchestrator → reporter agent.
-   Reporter использует playbook `agents/oleg/playbook.md` и все доступные tools включая daily_trend и advertising_stats.
+2. Скрипт определяет понедельник и воскресенье для указанной недели, затем вызывает `agents.v3.orchestrator.run_weekly_report()`, который:
+   - Параллельно запускает micro-агентов: margin-analyst, revenue-decomposer, ad-efficiency
+   - Передаёт артефакты в report-compiler для финальной сборки
+   - Логирует run через services/observability
 
 3. Результат:
-   - Краткая сводка (brief_summary) — для Telegram
-   - Подробный отчёт (detailed_report) — для Notion
-   - Стоимость генерации, количество шагов, длительность
+   - telegram_summary — краткая сводка для Telegram
+   - detailed_report — подробный отчёт для Notion
+   - aggregate_confidence — уровень доверия к данным
+   - Стоимость генерации, количество агентов, длительность
 
-4. Покажи пользователю краткую сводку и ссылку на Notion (если была синхронизация)
+4. Покажи пользователю краткую сводку и метрики качества (confidence, limitations)

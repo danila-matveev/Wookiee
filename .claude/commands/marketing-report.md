@@ -5,19 +5,22 @@
 - /marketing-report 2026-02-17 2026-02-23 — за период
 - /marketing-report — за прошлую неделю
 
-Workflow Олега (AI маркетинговый аналитик Wookiee):
+Workflow V3 orchestrator (micro-agent pipeline):
 
 1. Запусти скрипт:
    ```
    python3 scripts/run_report.py marketing $ARGUMENTS
    ```
 
-2. Скрипт инициализирует OlegApp → pipeline → orchestrator → marketer agent.
-   Marketer использует playbook `agents/oleg/marketing_playbook.md` и все маркетинговые tools (get_marketing_overview, get_funnel_analysis, get_external_ad_breakdown, get_model_ad_efficiency, get_organic_vs_paid, get_ad_daily_trend, get_campaign_performance, get_ad_budget_utilization, get_ad_spend_correlation и др.)
+2. Скрипт определяет тип маркетингового отчёта (daily/weekly/monthly), затем вызывает `agents.v3.orchestrator.run_marketing_report()`, который:
+   - Параллельно запускает micro-агентов: campaign-optimizer, organic-vs-paid, ad-efficiency
+   - Передаёт артефакты в report-compiler для финальной сборки
+   - Логирует run через services/observability
 
 3. Результат:
-   - Краткая сводка (brief_summary) — для Telegram
-   - Подробный отчёт (detailed_report) — для Notion
-   - Стоимость генерации, количество шагов, длительность
+   - telegram_summary — краткая сводка для Telegram
+   - detailed_report — подробный отчёт для Notion
+   - aggregate_confidence — уровень доверия к данным
+   - Стоимость генерации, количество агентов, длительность
 
-4. Покажи пользователю краткую сводку и ссылку на Notion (если была синхронизация)
+4. Покажи пользователю краткую сводку и метрики качества (confidence, limitations)

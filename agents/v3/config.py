@@ -37,7 +37,7 @@ def calc_cost(model: str, prompt_tokens: int, completion_tokens: int) -> float:
 AGENTS_DIR: Path = PROJECT_ROOT / "agents" / "v3" / "agents"
 
 # ── Timeouts (seconds) ────────────────────────────────────────────────────────
-AGENT_TIMEOUT: int = int(os.getenv("AGENT_TIMEOUT", "120"))
+AGENT_TIMEOUT: int = int(os.getenv("AGENT_TIMEOUT", "180"))
 ORCHESTRATOR_TIMEOUT: int = int(os.getenv("ORCHESTRATOR_TIMEOUT", "600"))
 
 # ── Telegram ──────────────────────────────────────────────────────────────────

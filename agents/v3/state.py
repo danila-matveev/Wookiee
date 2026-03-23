@@ -68,10 +68,18 @@ class StateStore:
     # ---- delivery dedup ---------------------------------------------------
 
     def mark_delivered(self, report_type: str, date: str) -> None:
-        self.set(f"delivered:{report_type}:{date}", "1", ttl_hours=48)
+        self.set(f"delivered:{report_type}:{date}", "1")
 
     def is_delivered(self, report_type: str, date: str) -> bool:
         return self.exists(f"delivered:{report_type}:{date}")
+
+    def store_page_id(self, report_type: str, date: str, page_id: str) -> None:
+        """Store Notion page ID for a delivered report."""
+        self.set(f"page_id:{report_type}:{date}", page_id)
+
+    def get_page_id(self, report_type: str, date: str) -> str | None:
+        """Get stored Notion page ID for a delivered report."""
+        return self.get(f"page_id:{report_type}:{date}")
 
     # ---- retry tracking ---------------------------------------------------
 
