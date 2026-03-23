@@ -160,39 +160,66 @@ def get_wb_orders_by_article(start_date, end_date):
 
 
 def get_wb_barcode_to_marketplace_mapping():
-    """Build non-marketplace → marketplace barcode mapping from WB nomenclature.
+    """Build barcode → canonical barcode mapping from WB nomenclature.
 
-    abc_date splits data across multiple barcode formats per product:
+    Products can have multiple barcodes per (nmid, techsize, lk) group:
     - Marketplace (20xx): sales + financial data
     - GS2 (468xx): orders data
     - GS1/EAN (460-467xx): additional sales/financial data
 
-    This mapping remaps ALL non-marketplace barcodes to their marketplace
-    equivalent so data merges into a single entry per product.
+    This mapping remaps ALL alternative barcodes to a single canonical barcode
+    so data merges into one entry per product. Canonical barcode priority:
+    marketplace (20xx) > first barcode alphabetically.
 
-    Returns dict[non_marketplace_barcode_str -> marketplace_barcode_str].
+    Returns dict[barcode_str -> canonical_barcode_str].
     """
     conn = _get_wb_connection()
     cur = conn.cursor()
     query = """
     WITH grouped AS (
         SELECT nmid, techsize, lk,
-               array_agg(DISTINCT barcod) FILTER (WHERE LEFT(barcod, 2) = '20') AS mkt,
-               array_agg(DISTINCT barcod) FILTER (WHERE LEFT(barcod, 2) != '20') AS non_mkt
+               array_agg(DISTINCT barcod ORDER BY barcod) AS all_bcs,
+               array_agg(DISTINCT barcod ORDER BY barcod)
+                   FILTER (WHERE LEFT(barcod, 2) = '20') AS mkt
         FROM nomenclature
         WHERE barcod IS NOT NULL AND barcod != ''
         GROUP BY nmid, techsize, lk
-        HAVING array_length(array_agg(DISTINCT barcod) FILTER (WHERE LEFT(barcod, 2) = '20'), 1) > 0
-           AND array_length(array_agg(DISTINCT barcod) FILTER (WHERE LEFT(barcod, 2) != '20'), 1) > 0
+        HAVING COUNT(DISTINCT barcod) > 1
     )
-    SELECT unnest(non_mkt) as src_bc, mkt[1] as mkt_bc
+    SELECT unnest(all_bcs) AS src_bc,
+           COALESCE(mkt[1], all_bcs[1]) AS canonical_bc
     FROM grouped;
     """
     cur.execute(query)
-    mapping = {str(r[0]): str(r[1]) for r in cur.fetchall()}
+    # Exclude self-mappings to keep dict lean.
+    # When a barcode appears in multiple (nmid, techsize, lk) groups
+    # (e.g. different LKs), prefer the mapping to a marketplace barcode.
+    mapping = {}
+    for r in cur.fetchall():
+        src, canonical = str(r[0]), str(r[1])
+        if src == canonical:
+            continue
+        existing = mapping.get(src)
+        if existing is None:
+            mapping[src] = canonical
+        elif canonical.startswith('20') and not existing.startswith('20'):
+            mapping[src] = canonical
+
+    # Resolve chains: if A→B and B→C, collapse to A→C.
+    # This happens when a barcode belongs to multiple nomenclature groups
+    # and intermediate mappings form a chain instead of direct links.
+    changed = True
+    while changed:
+        changed = False
+        for src in list(mapping):
+            target = mapping[src]
+            if target in mapping:
+                mapping[src] = mapping[target]
+                changed = True
+
     cur.close()
     conn.close()
-    print(f"[data_layer] barcode→marketplace mapping: {len(mapping)} entries")
+    print(f"[data_layer] barcode→canonical mapping: {len(mapping)} entries")
     return mapping
 
 
