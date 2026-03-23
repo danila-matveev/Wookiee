@@ -1,5 +1,8 @@
 """Run any report pipeline directly (bypasses Telegram bot).
 
+Uses V3 orchestrator (micro-agent pipeline) — parallel analytical agents
+followed by report-compiler.
+
 Usage:
     python scripts/run_report.py daily                           # yesterday
     python scripts/run_report.py daily 2026-03-05                # specific date
@@ -48,8 +51,16 @@ def _week_bounds(reference: date) -> tuple[date, date]:
     return monday, sunday
 
 
-def _detect_report_type(start: date, end: date) -> str:
-    """Auto-detect report type based on period length."""
+def _prev_period(start: date, end: date) -> tuple[date, date]:
+    """Calculate comparison period (same length, immediately preceding)."""
+    length = (end - start).days + 1
+    comp_end = start - timedelta(days=1)
+    comp_start = comp_end - timedelta(days=length - 1)
+    return comp_start, comp_end
+
+
+def _detect_report_period(start: date, end: date) -> str:
+    """Auto-detect report period label based on date range length."""
     days = (end - start).days + 1
     if days == 1:
         return "daily"
@@ -57,82 +68,46 @@ def _detect_report_type(start: date, end: date) -> str:
         return "weekly"
     elif 27 <= days <= 31:
         return "monthly"
-    return "custom"
-
-
-def _detect_marketing_type(start: date, end: date) -> str:
-    """Auto-detect marketing report type based on period length."""
-    days = (end - start).days
-    if days == 0:
-        return "marketing_daily"
-    elif days <= 7:
-        return "marketing_weekly"
-    elif days <= 31:
-        return "marketing_monthly"
-    return "marketing_custom"
+    return "weekly"
 
 
 # ---------------------------------------------------------------------------
-# Core: generate report and deliver to Notion
+# Core: generate report via V3 orchestrator and print results
 # ---------------------------------------------------------------------------
 
-async def _generate_and_deliver(
-    start: date,
-    end: date,
-    report_type_str: str,
-    channel: str | None = None,
-    context: dict | None = None,
-):
-    from agents.oleg.app import OlegApp
-    from agents.oleg.pipeline.report_types import ReportRequest, ReportType
+def _print_result(result: dict):
+    """Print V3 orchestrator result to console."""
+    status = result.get("status", "unknown")
+    duration = result.get("duration_ms", 0)
+    called = result.get("agents_called", 0)
+    succeeded = result.get("agents_succeeded", 0)
+    failed = result.get("agents_failed", 0)
+    confidence = result.get("aggregate_confidence", 0.0)
+    cost = result.get("total_cost_usd", 0.0)
+    tokens = result.get("total_tokens", 0)
 
-    report_type = ReportType(report_type_str)
+    print(f"\nStatus: {status.upper()}")
+    print(f"Agents: {succeeded}/{called} succeeded, {failed} failed")
+    print(f"Confidence: {confidence:.0%}")
+    print(f"Duration: {duration}ms | Tokens: {tokens} | Cost: ${cost:.4f}")
 
-    app = OlegApp()
-    await app.setup()
+    report = result.get("report", {})
+    if isinstance(report, dict):
+        telegram = report.get("telegram_summary")
+        detailed = report.get("detailed_report")
+        if telegram:
+            print("\n--- TELEGRAM SUMMARY ---")
+            print(telegram)
+        if detailed:
+            print("\n--- DETAILED REPORT ---")
+            print(detailed)
+    elif isinstance(report, str) and report:
+        print("\n--- REPORT ---")
+        print(report)
 
-    request = ReportRequest(
-        report_type=report_type,
-        start_date=str(start) if not isinstance(start, str) else start,
-        end_date=str(end) if not isinstance(end, str) else end,
-        channel=channel,
-        context=context,
-    )
-
-    print(f"Starting {report_type_str} report for {start} — {end}...")
-    result = await app.pipeline.generate_report(request)
-
-    if result is None:
-        print("FAILED: Gates did not pass")
-        return
-
-    print(f"SUCCESS! Steps: {result.chain_steps}, Cost: ${result.cost_usd:.4f}")
-    print(f"Duration: {result.duration_ms}ms")
-    print("--- BRIEF ---")
-    print(result.brief_summary or "No summary")
-    print("--- DETAILED ---")
-    print(result.detailed_report or "No detailed report")
-
-    # Deliver to Notion
-    try:
-        from agents.oleg import config
-        from agents.oleg.services.notion_service import NotionService
-        notion = NotionService(
-            token=config.NOTION_TOKEN,
-            database_id=config.NOTION_DATABASE_ID,
-        )
-        if notion.enabled:
-            page_url = await notion.sync_report(
-                start_date=str(start),
-                end_date=str(end),
-                report_md=result.detailed_report or result.brief_summary or "",
-                source="CLI (manual)",
-                report_type=result.report_type.value,
-                chain_steps=result.chain_steps,
-            )
-            print(f"\nNotion: {page_url}")
-    except Exception as e:
-        print(f"\nNotion sync failed: {e}")
+    worst = result.get("worst_limitation")
+    if worst:
+        print(f"\nWorst limitation: {worst}")
 
 
 # ---------------------------------------------------------------------------
@@ -140,37 +115,56 @@ async def _generate_and_deliver(
 # ---------------------------------------------------------------------------
 
 def cmd_daily(args: list[str]):
+    from agents.v3.orchestrator import run_daily_report
+
     if args:
         target = _parse_date(args[0])
     else:
         target = date.today() - timedelta(days=1)
 
-    # Use CUSTOM type for historical dates to bypass gate checks
-    # (gates check today's ETL, not the target date's ETL)
-    from agents.oleg.services.time_utils import get_yesterday_msk
-    yesterday = get_yesterday_msk()
-    rtype = "daily" if target == yesterday else "custom"
+    comp_start, comp_end = _prev_period(target, target)
 
-    asyncio.run(_generate_and_deliver(target, target, rtype, channel="wb"))
+    print(f"Starting daily report for {target} (comparison: {comp_start} — {comp_end})...")
+    result = asyncio.run(run_daily_report(
+        date_from=str(target),
+        date_to=str(target),
+        comparison_from=str(comp_start),
+        comparison_to=str(comp_end),
+        trigger="user_cli",
+    ))
+    _print_result(result)
 
 
 def cmd_weekly(args: list[str]):
+    from agents.v3.orchestrator import run_weekly_report
+
     if args:
         ref = _parse_date(args[0])
     else:
         ref = date.today() - timedelta(days=7)
 
     monday, sunday = _week_bounds(ref)
-    asyncio.run(_generate_and_deliver(monday, sunday, "weekly", channel="wb"))
+    comp_start, comp_end = _prev_period(monday, sunday)
+
+    print(f"Starting weekly report for {monday} — {sunday} (comparison: {comp_start} — {comp_end})...")
+    result = asyncio.run(run_weekly_report(
+        date_from=str(monday),
+        date_to=str(sunday),
+        comparison_from=str(comp_start),
+        comparison_to=str(comp_end),
+        trigger="user_cli",
+    ))
+    _print_result(result)
 
 
 def cmd_period(args: list[str]):
     if len(args) < 2:
-        print("Usage: python scripts/run_report.py period YYYY-MM-DD YYYY-MM-DD [--type daily|weekly|monthly|custom]")
+        print("Usage: python scripts/run_report.py period YYYY-MM-DD YYYY-MM-DD [--type daily|weekly|monthly]")
         sys.exit(1)
 
     start = _parse_date(args[0])
     end = _parse_date(args[1])
+    comp_start, comp_end = _prev_period(start, end)
 
     type_override = None
     if "--type" in args:
@@ -178,50 +172,89 @@ def cmd_period(args: list[str]):
         if idx + 1 < len(args):
             type_override = args[idx + 1]
 
-    rtype = type_override or _detect_report_type(start, end)
-    asyncio.run(_generate_and_deliver(start, end, rtype, channel="wb"))
+    rtype = type_override or _detect_report_period(start, end)
+
+    # Route to the appropriate V3 orchestrator function
+    from agents.v3 import orchestrator
+
+    runner_map = {
+        "daily": orchestrator.run_daily_report,
+        "weekly": orchestrator.run_weekly_report,
+        "monthly": orchestrator.run_monthly_report,
+    }
+    runner = runner_map.get(rtype, orchestrator.run_weekly_report)
+
+    print(f"Starting {rtype} report for {start} — {end} (comparison: {comp_start} — {comp_end})...")
+    result = asyncio.run(runner(
+        date_from=str(start),
+        date_to=str(end),
+        comparison_from=str(comp_start),
+        comparison_to=str(comp_end),
+        trigger="user_cli",
+    ))
+    _print_result(result)
 
 
 def cmd_funnel(args: list[str]):
+    from agents.v3.orchestrator import run_funnel_report
+
     if args:
         ref = _parse_date(args[0])
     else:
         ref = date.today() - timedelta(days=7)
 
     monday, sunday = _week_bounds(ref)
+    comp_start, comp_end = _prev_period(monday, sunday)
 
-    async def _run():
-        from agents.oleg.services.funnel_tools import get_all_models_funnel_bundle
-        print(f"Pre-fetching funnel data for {monday} — {sunday}...")
-        data_bundle = await get_all_models_funnel_bundle(str(monday), str(sunday))
-        models_count = len(data_bundle.get("models", []))
-        print(f"Found {models_count} active models with A/B articles")
-        if models_count == 0:
-            print("No active models — aborting")
-            return
-        await _generate_and_deliver(
-            monday, sunday, "funnel_weekly",
-            context={"data_bundle": data_bundle},
-        )
-
-    asyncio.run(_run())
+    print(f"Starting funnel report for {monday} — {sunday} (comparison: {comp_start} — {comp_end})...")
+    result = asyncio.run(run_funnel_report(
+        date_from=str(monday),
+        date_to=str(sunday),
+        comparison_from=str(comp_start),
+        comparison_to=str(comp_end),
+        trigger="user_cli",
+    ))
+    _print_result(result)
 
 
 def cmd_marketing(args: list[str]):
+    from agents.v3.orchestrator import run_marketing_report
+
     if len(args) == 0:
         # Default: weekly report for last week
         monday, sunday = _week_bounds(date.today() - timedelta(days=7))
-        asyncio.run(_generate_and_deliver(monday, sunday, "marketing_weekly"))
+        comp_start, comp_end = _prev_period(monday, sunday)
+        report_period = "weekly"
+        start, end = monday, sunday
     elif len(args) == 1:
-        # Single date → daily report
-        target = _parse_date(args[0])
-        asyncio.run(_generate_and_deliver(target, target, "marketing_daily"))
-    elif len(args) >= 2:
-        # Two dates → auto-detect type by length
+        # Single date -> daily report
+        start = _parse_date(args[0])
+        end = start
+        comp_start, comp_end = _prev_period(start, end)
+        report_period = "daily"
+    else:
+        # Two dates -> auto-detect type by length
         start = _parse_date(args[0])
         end = _parse_date(args[1])
-        rtype = _detect_marketing_type(start, end)
-        asyncio.run(_generate_and_deliver(start, end, rtype))
+        comp_start, comp_end = _prev_period(start, end)
+        days = (end - start).days
+        if days == 0:
+            report_period = "daily"
+        elif days <= 7:
+            report_period = "weekly"
+        else:
+            report_period = "monthly"
+
+    print(f"Starting marketing ({report_period}) report for {start} — {end} (comparison: {comp_start} — {comp_end})...")
+    result = asyncio.run(run_marketing_report(
+        date_from=str(start),
+        date_to=str(end),
+        comparison_from=str(comp_start),
+        comparison_to=str(comp_end),
+        report_period=report_period,
+        trigger="user_cli",
+    ))
+    _print_result(result)
 
 
 # ---------------------------------------------------------------------------
