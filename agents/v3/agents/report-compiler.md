@@ -23,6 +23,80 @@
 - Никогда не пропускай модели с отрицательной маржой
 - Гипотезы сортируй по ₽ эффекту убывание
 
+## Точные требования к секциям
+
+### Секция 3: Ключевые изменения — РОВНО 19 строк
+Merge `brand_metrics` (поля 1-15) из revenue-decomposer с `brand_metrics_funnel` (поля 16-19) из ad-efficiency.
+При конфликте данных — приоритет ad-efficiency для воронковых метрик.
+
+| # | Метрика | Источник |
+|---|---------|---------|
+| 1 | Маржа ₽ | revenue-decomposer.brand_metrics.margin_rub |
+| 2 | Маржинальность % | revenue-decomposer.brand_metrics.margin_pct |
+| 3 | Продажи шт | revenue-decomposer.brand_metrics.sales_count |
+| 4 | Продажи ₽ | revenue-decomposer.brand_metrics.sales_rub |
+| 5 | Заказы ₽ | revenue-decomposer.brand_metrics.orders_rub |
+| 6 | Заказы шт | revenue-decomposer.brand_metrics.orders_count |
+| 7 | Внутр. реклама ₽ | revenue-decomposer.brand_metrics.adv_internal_rub |
+| 8 | Внешн. реклама ₽ | revenue-decomposer.brand_metrics.adv_external_rub |
+| 9 | ДРР от заказов % | revenue-decomposer.brand_metrics.drr_orders_pct |
+| 10 | ДРР от продаж % | revenue-decomposer.brand_metrics.drr_sales_pct |
+| 11 | Ср. чек заказов ₽ | revenue-decomposer.brand_metrics.avg_check_orders |
+| 12 | Ср. чек продаж ₽ | revenue-decomposer.brand_metrics.avg_check_sales |
+| 13 | Оборачиваемость дн | revenue-decomposer.brand_metrics.turnover_days |
+| 14 | Годовой ROI % | revenue-decomposer.brand_metrics.roi_annual_pct |
+| 15 | СПП средневзвеш. % | revenue-decomposer.brand_metrics.spp_weighted_pct |
+| 16 | Переходы в карточку | ad-efficiency.brand_metrics_funnel.card_opens |
+| 17 | Добавления в корзину | ad-efficiency.brand_metrics_funnel.add_to_cart |
+| 18 | CR открытие→корзина % | ad-efficiency.brand_metrics_funnel.cr_open_to_cart_pct |
+| 19 | CR корзина→заказ % | ad-efficiency.brand_metrics_funnel.cr_cart_to_order_pct |
+
+Каждая строка: | Метрика | Текущий | Прошлый | Δ абс | Δ % |
+
+### Секция 5: Каскад маржинальности — РОВНО 10 строк
+Из margin-analyst.margin_waterfall:
+
+| # | Статья |
+|---|--------|
+| 1 | Выручка |
+| 2 | Себестоимость/ед |
+| 3 | Комиссия до СПП |
+| 4 | Логистика/ед |
+| 5 | Хранение/ед |
+| 6 | Внутр. реклама |
+| 7 | Внешн. реклама |
+| 8 | Прочие расходы |
+| 9 | НДС |
+| 10 | Невязка |
+
+Каждая строка: | Статья | Текущий ₽ | Прошлый ₽ | Δ ₽ | Влияние на маржу ₽ |
+
+### Секция 6: Площадки
+Обязательные подсекции для КАЖДОГО канала (WB, OZON):
+- 6.X.1 Объём и выручка (из revenue-decomposer.channel_breakdown)
+- 6.X.2 Модели — ВСЕ модели из revenue-decomposer.models (таблица: Модель, Маржа ₽, ΔМаржа%, Маржинальность%, Остаток FBO, Свой склад, В пути, Итого, Оборачиваемость дн, ROI%, ДРР%)
+- 6.X.3 Воронка — из ad-efficiency.funnel (таблица объёмов + таблица конверсий с бенчмарками)
+- 6.X.4 Структура затрат — из margin-analyst.cost_structure
+- 6.X.5 Реклама — из ad-efficiency.ad_stats (Показы, Клики, CTR%, CPC₽, CPM₽, CPO₽, Расход₽)
+
+## НЕ СОКРАЩАЙ ОТЧЁТ
+Каждая таблица ОБЯЗАТЕЛЬНА. Если данные получены от агента — секция должна быть заполнена.
+Если агент не вернул данные — напиши "Данные недоступны: [причина]", но НЕ пропускай секцию целиком.
+
+## Graceful Degradation (при timeout агента)
+
+Если агент вернул `status: "failed"`:
+1. НЕ пропускай секции, за которые он отвечал
+2. Проверь, есть ли пересекающиеся данные у других агентов
+3. Если данные частично доступны — построй секцию из них с пометкой "⚠️ Неполные данные"
+4. Если данных нет совсем — выведи "Секция N: [название] — данные недоступны (timeout [agent_name])"
+5. В sections_skipped укажи причину
+
+Примеры fallback:
+- margin-analyst timeout → секция 5 (каскад) недоступна, но секция 3 (ключевые изменения) строится из revenue-decomposer
+- ad-efficiency timeout → воронка и реклама недоступны, но финансовые метрики есть из revenue-decomposer
+- revenue-decomposer timeout → модели недоступны, но маржа и реклама доступны
+
 ## КРИТИЧЕСКИ ВАЖНО: Разделение выходных данных
 - `detailed_report` содержит ТОЛЬКО секции 0-10. Никаких дополнительных секций.
 - `telegram_summary` — ОТДЕЛЬНОЕ поле в JSON-артефакте, НЕ часть detailed_report.
@@ -114,3 +188,37 @@ JSON-артефакт:
 Toggle-заголовки (## ▶) для секций 2-7.
 Модели во всех таблицах сортируй по месячному эффекту убывание.
 Telegram-сводка должна содержать: общее кол-во моделей, топ-3 действия, общий ожидаемый месячный эффект.
+
+## Условная логика по типу отчёта
+
+Тип отчёта определяется по `task_type` в artifact_context.
+
+### Если task_type = marketing_daily, marketing_weekly или marketing_monthly
+
+Используй 10-секционную маркетинговую структуру вместо стандартных 11 секций:
+
+0. Паспорт
+1. Исполнительная сводка — 5-7 ключевых выводов по маркетингу
+2. Анализ по каналам (WB + OZON) — таблица: канал, расход, заказы от рекламы, ДРР, ROMI
+3. Анализ воронки — из funnel-digitizer: полная воронка с бенчмарками и bottleneck
+4. Органика vs Платное — из campaign-optimizer/ad-efficiency: доля органики, тренд
+5. Внешняя реклама — из campaign-optimizer.external_breakdown: блогеры, VK, creators
+6. Эффективность по моделям — ROMI matrix из campaign-optimizer.campaigns
+7. Дневная динамика рекламы — из campaign-optimizer.daily_dynamics
+8. Средний чек и связь с ДРР — корреляция avg_check → drr
+9. Рекомендации и план действий — из _meta.conclusions type=recommendation
+
+### Если task_type = funnel_weekly
+
+Используй 5-секционную воронковую структуру:
+
+0. Паспорт
+1. Общий обзор бренда — таблица: переходы, заказы, выкупы, выручка, маржа, ДРР, ROMI
+2. Модельная декомпозиция — по каждой модели: full funnel + WoW тренд
+3. Bottleneck analysis — из funnel-digitizer.bottleneck
+4. Keyword portfolio — если доступны данные keyword-analyst
+5. Рекомендации — из _meta.conclusions
+
+### По умолчанию (daily_report, weekly_report, monthly_report)
+
+Стандартная 11-секционная структура (секции 0-10 как описано выше).

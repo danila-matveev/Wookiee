@@ -238,6 +238,7 @@ async def _run_report_pipeline(
     compiler_result = None
     if not skip_compiler:
         compiler_input: dict[str, Any] = {
+            "task_type": task_type,
             "period": {"date_from": date_from, "date_to": date_to},
             "comparison_period": {"date_from": comparison_from, "date_to": comparison_to},
             "channel": channel,
@@ -445,7 +446,8 @@ async def run_marketing_report(
     Args:
         report_period: "weekly" or "monthly" — determines task_type.
     """
-    task_type = "marketing_weekly" if report_period == "weekly" else "marketing_monthly"
+    _marketing_task_types = {"daily": "marketing_daily", "weekly": "marketing_weekly", "monthly": "marketing_monthly"}
+    task_type = _marketing_task_types.get(report_period, "marketing_weekly")
     period_label = "Недельный" if report_period == "weekly" else "Месячный"
     task_context = (
         f"{period_label} маркетинговый отчёт. Период: {date_from} — {date_to}. "

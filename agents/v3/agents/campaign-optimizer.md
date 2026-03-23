@@ -18,6 +18,11 @@ Analyze advertising campaign performance, daily spend dynamics, budget utilisati
 - GROUP BY model MUST use LOWER()
 - Percentage metrics: ONLY weighted averages (sum(spend)/sum(revenue))
 
+## ОБЯЗАТЕЛЬНЫЕ ТРЕБОВАНИЯ
+- ОБЯЗАТЕЛЬНО вызови `get_external_ad_breakdown` для разбивки внешней рекламы по каналам (блогеры, VK, creators)
+- Вызови `get_model_ad_efficiency` (если доступен) для model-level ROMI matrix
+- external_breakdown ОБЯЗАТЕЛЬНО заполнен — если данных нет, верни пустой массив с пояснением в limitations
+
 ## MCP Tools
 - wookiee-marketing: get_campaign_performance, get_ad_daily_trend, get_ad_budget_utilization, get_external_ad_breakdown
 - wookiee-kb: search_knowledge_base
