@@ -93,22 +93,10 @@ def _parse_hm(time_str: str) -> tuple[int, int]:
 
 
 # ---------------------------------------------------------------------------
-# Admin notification helper
+# Admin notification helper (delegates to monitor.py with rate limiting)
 # ---------------------------------------------------------------------------
 
-async def _send_admin(text: str) -> None:
-    """Send a plain-text message to the admin Telegram chat."""
-    if not config.TELEGRAM_BOT_TOKEN or not config.ADMIN_CHAT_ID:
-        return
-    try:
-        from aiogram import Bot
-        bot = Bot(token=config.TELEGRAM_BOT_TOKEN)
-        try:
-            await bot.send_message(config.ADMIN_CHAT_ID, text)
-        finally:
-            await bot.session.close()
-    except Exception as exc:
-        logger.error("_send_admin failed: %s", exc)
+from agents.v3.monitor import _send_admin  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -580,7 +568,7 @@ async def _job_etl_daily_sync() -> None:
             reason = recon_result.get('status', 'UNKNOWN')
             await _send_admin(messages.report_exception("ETL reconciliation", date_to, date_to, Exception(reason)))
         if not quality_result.get("overall_ok", True):
-            await _send_admin(f"[Wookiee v3] Проблемы качества данных за {date_to}")
+            await _send_admin(messages.data_quality_issue(date_to))
 
         logger.info("etl_daily_sync for %s completed", date_to)
     except Exception as exc:

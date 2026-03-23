@@ -16,18 +16,43 @@ logger = logging.getLogger(__name__)
 # Admin notification helper
 # ---------------------------------------------------------------------------
 
+_recent_messages: dict[str, float] = {}  # message_hash → timestamp
+_RATE_LIMIT_SEC = 300  # Не отправлять одинаковые сообщения чаще чем раз в 5 минут
+
+
 async def _send_admin(text: str) -> None:
-    """Send a plain-text message to the admin Telegram chat."""
+    """Send a plain-text message to the admin Telegram chat.
+
+    Rate-limited: identical messages suppressed within 5 minutes.
+    """
     if not config.TELEGRAM_BOT_TOKEN or not config.ADMIN_CHAT_ID:
         logger.debug("_send_admin: no token/chat_id configured, skipping")
         return
+
+    # Rate limit — подавляем дубли одинаковых сообщений
+    import hashlib
+    msg_hash = hashlib.md5(text.encode()).hexdigest()[:12]
+    now = time.monotonic()
+
+    last_sent = _recent_messages.get(msg_hash, 0)
+    if now - last_sent < _RATE_LIMIT_SEC:
+        logger.debug("_send_admin: rate-limited (same message sent %.0fs ago)", now - last_sent)
+        return
+
     try:
         from aiogram import Bot
         bot = Bot(token=config.TELEGRAM_BOT_TOKEN)
         try:
             await bot.send_message(config.ADMIN_CHAT_ID, text)
+            _recent_messages[msg_hash] = now
         finally:
             await bot.session.close()
+
+        # Cleanup old entries (keep dict from growing)
+        stale = [k for k, v in _recent_messages.items() if now - v > _RATE_LIMIT_SEC * 2]
+        for k in stale:
+            del _recent_messages[k]
+
     except Exception as exc:
         logger.error("_send_admin failed: %s", exc)
 
@@ -218,15 +243,16 @@ class AnomalyMonitor:
         weekend_note = " (weekend — thresholds multiplied by {:.1f})".format(multiplier) if is_weekend else ""
 
         return (
-            f"Run anomaly detection for today ({today}){weekend_note}.\n"
-            f"Thresholds: revenue_deviation>{revenue_thr:.1f}%, "
-            f"margin_pct_deviation>{margin_thr:.1f}%, "
-            f"drr_deviation>{drr_thr:.1f}%, "
-            f"orders_deviation>{orders_thr:.1f}%.\n"
-            "1. Call search_knowledge_base first to check for known patterns.\n"
-            "2. Call validate_data_quality before flagging business anomalies.\n"
-            "3. Get brand finance baseline, daily trend, channel split.\n"
-            "4. Return JSON with anomalies list and summary."
+            f"Запусти анализ аномалий за сегодня ({today}){weekend_note}.\n"
+            f"Пороги: отклонение выручки>{revenue_thr:.1f}%, "
+            f"маржинальности>{margin_thr:.1f}%, "
+            f"ДРР>{drr_thr:.1f}%, "
+            f"заказов>{orders_thr:.1f}%.\n"
+            "1. Сначала search_knowledge_base — проверь известные паттерны.\n"
+            "2. validate_data_quality — исключи проблемы пайплайна данных.\n"
+            "3. get_brand_finance, get_daily_trend, get_channel_finance — базовые метрики.\n"
+            "4. Верни JSON с anomalies и summary.\n"
+            "ВАЖНО: summary_text и top_priority_anomaly — ОБЯЗАТЕЛЬНО на русском языке."
         )
 
     async def check_and_alert(self) -> None:
@@ -290,17 +316,23 @@ class Watchdog:
     """System health watchdog — checks LLM API, DB, and last report status.
 
     Runs every WATCHDOG_HEARTBEAT_INTERVAL_HOURS hours.
-    Sends a Telegram alert on warning (some checks fail) or critical (all fail).
+    Smart suppression: only alerts on STATE CHANGE (was OK → now failed)
+    or every Nth consecutive failure, not every heartbeat.
     """
 
     _FAILURE_ALERT_THRESHOLD = 3
+    _REPEAT_ALERT_EVERY = 4  # Повторять алерт каждые N проверок (при persistent failure)
 
     def __init__(self) -> None:
         # Track consecutive report failures per report_type
         self._report_failures: dict[str, int] = {}
+        # Track previous check results for state-change detection
+        self._prev_checks: dict[str, bool] = {}
+        # Count consecutive failures per check for suppression
+        self._consecutive_failures: dict[str, int] = {}
 
     async def heartbeat(self) -> None:
-        """Main entry point: run all health checks and alert if degraded."""
+        """Main entry point: run all health checks and alert only on state changes."""
         logger.info("Watchdog: starting heartbeat")
 
         llm_ok = await _check_llm()
@@ -328,6 +360,46 @@ class Watchdog:
             passed,
             failed,
         )
+
+        # Определяем, нужно ли слать алерт
+        should_alert = False
+        newly_failed = []
+        recovered = []
+
+        for name, ok in checks.items():
+            prev_ok = self._prev_checks.get(name, True)  # Default: was OK
+            if not ok:
+                self._consecutive_failures[name] = self._consecutive_failures.get(name, 0) + 1
+                if prev_ok:
+                    # Было OK → стало FAIL — новый сбой
+                    newly_failed.append(name)
+                    should_alert = True
+                elif self._consecutive_failures[name] % self._REPEAT_ALERT_EVERY == 0:
+                    # Persistent failure — напоминаем каждые N проверок
+                    should_alert = True
+            else:
+                if not prev_ok:
+                    # Было FAIL → стало OK — восстановление
+                    recovered.append(name)
+                    should_alert = True
+                self._consecutive_failures[name] = 0
+
+            self._prev_checks[name] = ok
+
+        if not should_alert:
+            logger.info("Watchdog: no state change, suppressing alert")
+            return
+
+        # Отправляем восстановление отдельно
+        if recovered and not failed:
+            check_descriptions = {
+                "llm": "Нейросеть (OpenRouter)",
+                "db": "База данных аналитики",
+                "last_run": "Последний запуск",
+            }
+            names = ", ".join(check_descriptions.get(n, n) for n in recovered)
+            await _send_admin(f"✅ Восстановлено: {names}")
+            return
 
         if status == "ok":
             return
