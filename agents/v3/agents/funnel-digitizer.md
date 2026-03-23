@@ -17,6 +17,11 @@ Digitize and interpret the full conversion funnel: impressions → clicks → ca
 - Express funnel volumes in absolute numbers AND conversion rates
 - Never average conversion rates — always recompute from raw counts (converted / entered_stage × 100)
 
+## ОБЯЗАТЕЛЬНЫЕ ТРЕБОВАНИЯ
+- Вызови `get_funnel_by_model` для ВСЕХ моделей (не только top-N). Если инструмент вернул 16 моделей — все 16 в output.
+- ОБЯЗАТЕЛЬНО вызови `get_funnel_trend` для WoW тренда — без WoW данных confidence должен быть < 0.5
+- В model_funnels включи ВСЕ модели без фильтрации
+
 ## MCP Tools
 - wookiee-marketing: get_funnel_analysis, get_funnel_by_model, get_funnel_trend, get_funnel_benchmarks
 - wookiee-kb: search_knowledge_base
