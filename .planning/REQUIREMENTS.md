@@ -85,37 +85,37 @@ Deferred to future milestone. Tracked but not in current roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FOUND-01 | — | Pending |
-| FOUND-02 | — | Pending |
-| FOUND-03 | — | Pending |
-| TABLE-01 | — | Pending |
-| TABLE-02 | — | Pending |
-| TABLE-03 | — | Pending |
-| TABLE-04 | — | Pending |
-| TABLE-05 | — | Pending |
-| TABLE-06 | — | Pending |
-| TABLE-07 | — | Pending |
-| PANEL-01 | — | Pending |
-| PANEL-02 | — | Pending |
-| PANEL-03 | — | Pending |
-| PANEL-04 | — | Pending |
-| PANEL-05 | — | Pending |
-| PANEL-06 | — | Pending |
-| PANEL-07 | — | Pending |
-| PANEL-08 | — | Pending |
-| CRUD-01 | — | Pending |
-| CRUD-02 | — | Pending |
-| FILT-01 | — | Pending |
-| FILT-02 | — | Pending |
-| FILT-03 | — | Pending |
-| FILT-04 | — | Pending |
-| FILT-05 | — | Pending |
+| FOUND-01 | Phase 1 | Pending |
+| FOUND-02 | Phase 1 | Pending |
+| FOUND-03 | Phase 1 | Pending |
+| TABLE-01 | Phase 3 | Pending |
+| TABLE-02 | Phase 3 | Pending |
+| TABLE-03 | Phase 3 | Pending |
+| TABLE-04 | Phase 3 | Pending |
+| TABLE-05 | Phase 3 | Pending |
+| TABLE-06 | Phase 3 | Pending |
+| TABLE-07 | Phase 3 | Pending |
+| PANEL-01 | Phase 2 | Pending |
+| PANEL-02 | Phase 2 | Pending |
+| PANEL-03 | Phase 2 | Pending |
+| PANEL-04 | Phase 2 | Pending |
+| PANEL-05 | Phase 2 | Pending |
+| PANEL-06 | Phase 2 | Pending |
+| PANEL-07 | Phase 2 | Pending |
+| PANEL-08 | Phase 2 | Pending |
+| CRUD-01 | Phase 3 | Pending |
+| CRUD-02 | Phase 3 | Pending |
+| FILT-01 | Phase 4 | Pending |
+| FILT-02 | Phase 4 | Pending |
+| FILT-03 | Phase 4 | Pending |
+| FILT-04 | Phase 4 | Pending |
+| FILT-05 | Phase 4 | Pending |
 
 **Coverage:**
 - v1 requirements: 25 total
-- Mapped to phases: 0
-- Unmapped: 25 ⚠️
+- Mapped to phases: 25
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-03-23*
-*Last updated: 2026-03-23 after initial definition*
+*Last updated: 2026-03-23 — traceability populated after roadmap creation*
