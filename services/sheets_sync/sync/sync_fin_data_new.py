@@ -232,10 +232,17 @@ def sync(start_date: str | None = None, end_date: str | None = None) -> int:
         _calculate_derived_metrics(item, days_in_period)
 
     # 8. Build financial rows aligned to sheet barcodes
+    #    Sheet may have GS1/GS2 barcodes (463..., 468...) while combined
+    #    is keyed by marketplace barcodes (20...) after gs2_mapping remap.
+    #    Fall back to gs2_mapping lookup when direct match fails.
     fin_rows = []
     matched = 0
     for bc in sheet_barcodes:
         item = combined.get(bc)
+        if not item:
+            mkt_bc = gs2_mapping.get(bc)
+            if mkt_bc:
+                item = combined.get(mkt_bc)
         if item:
             fin_rows.append(_build_fin_row(item))
             matched += 1
