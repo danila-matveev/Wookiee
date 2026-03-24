@@ -121,6 +121,20 @@ def _ensure_report_fields(report: dict) -> dict:
     if existing and len(existing) >= 3000:
         return report
 
+    # Flatten nested report key — some models wrap data inside daily_report/weekly_report/etc.
+    _REPORT_KEYS = {
+        "daily_report", "weekly_report", "monthly_report",
+        "marketing_weekly", "marketing_monthly", "marketing_daily",
+        "funnel_weekly", "price_analysis", "finolog_weekly",
+    }
+    for rk in _REPORT_KEYS:
+        nested = report.get(rk)
+        if isinstance(nested, dict):
+            for k, v in nested.items():
+                if k not in report or not report[k]:
+                    report[k] = v
+            break
+
     lines: list[str] = []
 
     # Meta / passport
@@ -210,8 +224,12 @@ def _ensure_report_fields(report: dict) -> dict:
         ("channels_overview", "Площадки", 6),
         ("product_analysis", "Модели", 6),
         ("drivers_antidrivers", "Драйверы и антидрайверы", 7),
+        ("drivers", "Драйверы и антидрайверы", 7),
+        ("model_performance", "Модели", 6),
+        ("metrics", "Ключевые метрики", 3),
         ("advertising_efficiency", "Реклама", 7),
         ("advertising_efficiency_analysis", "Реклама", 7),
+        ("ad_efficiency", "Реклама", 7),
         ("hypotheses", "Гипотезы → Действия", 8),
         ("operational_metrics", "Операционные метрики", 8),
         ("recommendations", "Рекомендации", 9),
