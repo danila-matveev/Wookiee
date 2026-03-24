@@ -56,9 +56,26 @@ async def deliver(
         "telegram": {"sent": False, "chat_ids_sent": [], "errors": []},
     }
 
+    # Quality gate: don't deliver empty or failed reports
+    status = report.get("status", "unknown")
+    if status == "failed":
+        logger.warning("Delivery skipped: report status is 'failed' (type=%s)", report_type)
+        result["notion"]["error"] = "Report failed — delivery skipped"
+        result["telegram"]["errors"].append("Report failed — delivery skipped")
+        return result
+
     # `or {}` вместо default: ключ "report" может быть None (не отсутствовать)
     inner = report.get("report") or {}
     detailed_md = inner.get("detailed_report", "")
+
+    if not detailed_md or len(detailed_md.strip()) < 50:
+        logger.warning(
+            "Delivery skipped: detailed_report is empty or too short (%d chars, type=%s)",
+            len(detailed_md.strip()) if detailed_md else 0, report_type,
+        )
+        result["notion"]["error"] = "Report content is empty — delivery skipped"
+        result["telegram"]["errors"].append("Report content is empty — delivery skipped")
+        return result
 
     # ------------------------------------------------------------------
     # 1. Notion (first, so we get page_url for Telegram)
@@ -98,6 +115,7 @@ async def deliver(
                     report=report,
                     page_url=page_url,
                     caveats=caveats,
+                    report_type=report_type,
                 )
                 result["telegram"] = tg_result
             else:
