@@ -16,6 +16,11 @@ from typing import Any, Optional, TypedDict
 from agents.v3 import config
 from agents.v3.runner import run_agent
 from agents.v3.state import StateStore
+from agents.v3.report_formatter import (
+    ensure_report_fields as _ensure_report_fields,
+    fill_telegram_summary as _fill_telegram_summary,
+    COMPILER_FORMAT_INSTRUCTIONS,
+)
 from services.observability.logger import log_orchestrator_run, new_run_id
 
 logger = logging.getLogger(__name__)
@@ -106,13 +111,8 @@ def load_persistent_instructions(state: StateStore, agent_names: list[str]) -> s
     )
 
 
-def _ensure_report_fields(report: dict) -> dict:
-    """Fallback: convert structured JSON artifact to detailed_report + telegram_summary.
-
-    Some LLMs return structured JSON (meta, executive_summary, etc.) instead of
-    the expected {detailed_report: "markdown...", telegram_summary: "bbcode..."}.
-    This converts the structured data into markdown so Notion pages aren't empty.
-    """
+def _ensure_report_fields_legacy(report: dict) -> dict:
+    """[DEPRECATED — replaced by agents.v3.report_formatter.ensure_report_fields]"""
     if not report or not isinstance(report, dict):
         return report
 
@@ -311,11 +311,8 @@ def _ensure_report_fields(report: dict) -> dict:
     return report
 
 
-def _fill_telegram_summary(report: dict) -> None:
-    """Generate telegram_summary from detailed_report if missing.
-
-    Strips markdown formatting and takes the first meaningful lines.
-    """
+def _fill_telegram_summary_legacy(report: dict) -> None:
+    """[DEPRECATED — replaced by agents.v3.report_formatter.fill_telegram_summary]"""
     if not report or not isinstance(report, dict):
         return
     if (report.get("telegram_summary") or "").strip():
@@ -503,8 +500,9 @@ async def _run_report_pipeline(
                 }
 
         compiler_task = (
-            f"{compiler_prompt_prefix}:\n\n"
-            f"{json.dumps(compiler_input, ensure_ascii=False, default=str)}"
+            f"{compiler_prompt_prefix}:\n"
+            f"{COMPILER_FORMAT_INSTRUCTIONS}\n"
+            f"Данные:\n{json.dumps(compiler_input, ensure_ascii=False, default=str)}"
         )
 
         agents_called += 1
@@ -585,10 +583,11 @@ async def _run_report_pipeline(
         report_data = {"detailed_report": raw_artifact, "telegram_summary": ""}
     elif isinstance(raw_artifact, dict):
         report_data = raw_artifact
-        if not report_data.get("detailed_report"):
-            report_data = _ensure_report_fields(report_data)
     else:
         report_data = {}
+
+    # Always run deterministic formatter — it checks quality internally
+    report_data = _ensure_report_fields(report_data)
 
     # Fallback: generate telegram_summary from detailed_report if empty
     _fill_telegram_summary(report_data)
@@ -885,8 +884,9 @@ async def run_price_analysis(
         "Используй 8-секционную структуру ценового отчёта:\n"
         "0) Паспорт  1) Итоги  2) Ценовая матрица  "
         "3) Тренды продаж  4) Матрица остатки-цена  "
-        "5) Влияние на маркетинг  6) Проверка гипотез  7) План действий\n\n"
-        f"{json.dumps(compiler_input, ensure_ascii=False, default=str)}"
+        "5) Влияние на маркетинг  6) Проверка гипотез  7) План действий\n"
+        f"{COMPILER_FORMAT_INSTRUCTIONS}\n"
+        f"Данные:\n{json.dumps(compiler_input, ensure_ascii=False, default=str)}"
     )
 
     compiler_result = await run_agent(
@@ -969,10 +969,11 @@ async def run_price_analysis(
         price_report = {"detailed_report": raw_price, "telegram_summary": ""}
     elif isinstance(raw_price, dict):
         price_report = raw_price
-        if not price_report.get("detailed_report"):
-            price_report = _ensure_report_fields(price_report)
     else:
         price_report = {}
+
+    # Always run deterministic formatter — it checks quality internally
+    price_report = _ensure_report_fields(price_report)
 
     # Fallback: generate telegram_summary from detailed_report if empty
     _fill_telegram_summary(price_report)
