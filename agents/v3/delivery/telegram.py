@@ -101,8 +101,11 @@ def format_cost_footer(
 
 _REPORT_TYPE_LABELS: dict[str, str] = {
     "daily": "📊 Дневной финансовый отчёт",
+    "daily_report": "📊 Дневной финансовый отчёт",
     "weekly": "📈 Недельный финансовый отчёт",
+    "weekly_report": "📈 Недельный финансовый отчёт",
     "monthly": "📅 Месячный финансовый отчёт",
+    "monthly_report": "📅 Месячный финансовый отчёт",
     "marketing_daily": "📢 Дневной маркетинговый отчёт",
     "marketing_weekly": "📢 Недельный маркетинговый отчёт",
     "marketing_monthly": "📢 Месячный маркетинговый отчёт",
