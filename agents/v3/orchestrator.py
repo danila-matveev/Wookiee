@@ -116,8 +116,9 @@ def _ensure_report_fields(report: dict) -> dict:
     if not report or not isinstance(report, dict):
         return report
 
-    # Already has detailed_report — nothing to do
-    if report.get("detailed_report"):
+    # Skip if detailed_report already exists AND is substantial (>= 3000 chars)
+    existing = report.get("detailed_report", "")
+    if existing and len(existing) >= 3000:
         return report
 
     lines: list[str] = []
@@ -196,20 +197,26 @@ def _ensure_report_fields(report: dict) -> dict:
     section_map = [
         # Financial
         ("plan_fact", "План-Факт", 2),
+        ("plan_vs_fact", "План-Факт", 2),
         ("financial_performance", "Ключевые изменения", 3),
         ("key_changes", "Ключевые изменения", 3),
+        ("revenue_and_orders_analysis", "Выручка и заказы", 3),
         ("pricing_strategy", "Ценовая стратегия и СПП", 4),
         ("margin_waterfall", "Каскад маржинальности", 5),
         ("margin_cascade", "Каскад маржинальности", 5),
+        ("margin_analysis", "Каскад маржинальности", 5),
         ("channel_analysis", "Площадки", 6),
         ("channels", "Площадки", 6),
+        ("channels_overview", "Площадки", 6),
         ("product_analysis", "Модели", 6),
         ("drivers_antidrivers", "Драйверы и антидрайверы", 7),
         ("advertising_efficiency", "Реклама", 7),
+        ("advertising_efficiency_analysis", "Реклама", 7),
         ("hypotheses", "Гипотезы → Действия", 8),
         ("operational_metrics", "Операционные метрики", 8),
         ("recommendations", "Рекомендации", 9),
         ("advisor_recommendations", "Рекомендации Advisor", 9),
+        ("limitations", "Ограничения данных", 0),
         ("summary", "Сводка", 10),
         # Marketing
         ("campaign_data", "Рекламные кампании", 2),
