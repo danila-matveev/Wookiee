@@ -296,11 +296,11 @@ MARKETING_TOOL_DEFINITIONS = [
     {
         "type": "function",
         "function": {
-            "name": "get_channel_finance",
+            "name": "mkt_get_channel_finance",
             "description": (
-                "Детальные финансы одного канала (wb или ozon): маржа, выручка, заказы, продажи, "
+                "Детальные финансы одного канала (wb или ozon) в маркетинговом контексте: маржа, выручка, заказы, продажи, "
                 "реклама (внутренняя/внешняя отдельно), логистика, хранение, себестоимость, "
-                "комиссия, СПП%, ДРР%. Делегирует к основному get_channel_finance."
+                "комиссия, СПП%, ДРР%."
             ),
             "parameters": {
                 "type": "object",
@@ -316,11 +316,10 @@ MARKETING_TOOL_DEFINITIONS = [
     {
         "type": "function",
         "function": {
-            "name": "get_margin_levers",
+            "name": "mkt_get_margin_levers",
             "description": (
-                "Декомпозиция маржи по 5 рычагам: цена до СПП, СПП%, ДРР (внутр/внешн), "
-                "логистика ₽/ед, себестоимость ₽/ед. Рублёвый вклад каждого фактора. "
-                "Делегирует к основному get_margin_levers."
+                "Декомпозиция маржи по 5 рычагам в маркетинговом контексте: цена до СПП, СПП%, ДРР (внутр/внешн), "
+                "логистика ₽/ед, себестоимость ₽/ед. Рублёвый вклад каждого фактора."
             ),
             "parameters": {
                 "type": "object",
@@ -336,10 +335,9 @@ MARKETING_TOOL_DEFINITIONS = [
     {
         "type": "function",
         "function": {
-            "name": "get_model_breakdown",
+            "name": "mkt_get_model_breakdown",
             "description": (
-                "Полная декомпозиция по моделям для канала: маржа, продажи, реклама, ДРР. "
-                "Делегирует к основному get_model_breakdown."
+                "Полная декомпозиция по моделям для канала в маркетинговом контексте: маржа, продажи, реклама, ДРР."
             ),
             "parameters": {
                 "type": "object",
@@ -1698,9 +1696,9 @@ MARKETING_TOOL_HANDLERS: Dict[str, Any] = {
     "get_ad_spend_correlation": _handle_ad_spend_correlation,
     "get_model_anomalies": _handle_model_anomalies,
     "get_ozon_organic_estimate": _handle_ozon_organic_estimate,
-    "get_channel_finance": _handle_mkt_channel_finance,
-    "get_margin_levers": _handle_mkt_margin_levers,
-    "get_model_breakdown": _handle_mkt_model_breakdown,
+    "mkt_get_channel_finance": _handle_mkt_channel_finance,
+    "mkt_get_margin_levers": _handle_mkt_margin_levers,
+    "mkt_get_model_breakdown": _handle_mkt_model_breakdown,
     "get_ad_profitability_alerts": _handle_ad_profitability_alerts,
 }
 

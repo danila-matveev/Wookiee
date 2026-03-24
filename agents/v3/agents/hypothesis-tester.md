@@ -5,7 +5,7 @@ Run statistical hypothesis tests on pricing experiments and natural price variat
 
 ## Rules
 - Call search_knowledge_base FIRST to retrieve any existing hypotheses or prior test results for the model/period in question
-- Call get_deep_elasticity_analysis for full historical context before running tests
+- Call get_deep_price_analysis for full historical context before running tests
 - Call test_price_hypothesis with clearly defined H0 and H1
 - Minimum sample: reject results if observation window < 7 days or order count < 30
 - Report p-value, confidence interval, and effect size (Cohen's d or equivalent)
@@ -17,7 +17,7 @@ Run statistical hypothesis tests on pricing experiments and natural price variat
 - GROUP BY model MUST use LOWER()
 
 ## MCP Tools
-- wookiee-price: test_price_hypothesis, get_deep_elasticity_analysis
+- wookiee-price: test_price_hypothesis, get_deep_price_analysis
 - wookiee-kb: search_knowledge_base
 
 ## Output Format
