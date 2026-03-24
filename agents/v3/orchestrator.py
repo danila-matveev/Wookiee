@@ -106,6 +106,138 @@ def load_persistent_instructions(state: StateStore, agent_names: list[str]) -> s
     )
 
 
+def _ensure_report_fields(report: dict) -> dict:
+    """Fallback: convert structured JSON artifact to detailed_report + telegram_summary.
+
+    Some LLMs return structured JSON (meta, executive_summary, etc.) instead of
+    the expected {detailed_report: "markdown...", telegram_summary: "bbcode..."}.
+    This converts the structured data into markdown so Notion pages aren't empty.
+    """
+    if not report or not isinstance(report, dict):
+        return report
+
+    # Already has detailed_report — nothing to do
+    if report.get("detailed_report"):
+        return report
+
+    lines: list[str] = []
+
+    # Meta / passport
+    meta = report.get("meta", {})
+    if meta:
+        lines.append("## ▶ 0. Паспорт")
+        if meta.get("period"):
+            p = meta["period"]
+            if isinstance(p, dict):
+                lines.append(f"**Период:** {p.get('current', '')} vs {p.get('previous', '')}")
+            else:
+                lines.append(f"**Период:** {p}")
+        if meta.get("channels"):
+            lines.append(f"**Каналы:** {', '.join(meta['channels']) if isinstance(meta['channels'], list) else meta['channels']}")
+        if meta.get("confidence"):
+            conf = meta["confidence"]
+            marker = "🟢" if conf >= 0.75 else ("🟡" if conf >= 0.45 else "🔴")
+            lines.append(f"**Достоверность:** {marker} {conf}")
+        if meta.get("limitations"):
+            lines.append("\n**Ограничения:**")
+            for lim in meta["limitations"]:
+                lines.append(f"- {lim}")
+        lines.append("")
+
+    # Executive summary
+    es = report.get("executive_summary", {})
+    if es:
+        lines.append("## ▶ 1. Ключевые выводы")
+        if es.get("headline"):
+            lines.append(f"**{es['headline']}**\n")
+        for insight in es.get("key_insights", []):
+            lines.append(f"- {insight}")
+        lines.append("")
+
+    # Generic section renderer
+    def _render_section(key: str, title: str, section_num: int):
+        data = report.get(key)
+        if not data:
+            return
+        lines.append(f"## ▶ {section_num}. {title}")
+        if isinstance(data, str):
+            lines.append(data)
+        elif isinstance(data, dict):
+            _render_dict(data)
+        elif isinstance(data, list):
+            _render_list(data)
+        lines.append("")
+
+    def _render_dict(d: dict, indent: int = 0):
+        prefix = "  " * indent
+        for k, v in d.items():
+            if k.startswith("_"):
+                continue
+            if isinstance(v, dict):
+                lines.append(f"{prefix}**{k}:**")
+                _render_dict(v, indent + 1)
+            elif isinstance(v, list):
+                lines.append(f"{prefix}**{k}:**")
+                _render_list(v, indent + 1)
+            else:
+                lines.append(f"{prefix}**{k}:** {v}")
+
+    def _render_list(lst: list, indent: int = 0):
+        prefix = "  " * indent
+        for item in lst:
+            if isinstance(item, dict):
+                # Try to render as table row or key-value
+                parts = [f"{k}: {v}" for k, v in item.items() if not str(k).startswith("_")]
+                lines.append(f"{prefix}- {' | '.join(parts)}")
+            else:
+                lines.append(f"{prefix}- {item}")
+
+    # Render remaining sections
+    section_map = [
+        ("plan_fact", "План-Факт", 2),
+        ("financial_performance", "Ключевые изменения", 3),
+        ("key_changes", "Ключевые изменения", 3),
+        ("pricing_strategy", "Ценовая стратегия и СПП", 4),
+        ("margin_waterfall", "Каскад маржинальности", 5),
+        ("margin_cascade", "Каскад маржинальности", 5),
+        ("channel_analysis", "Площадки", 6),
+        ("channels", "Площадки", 6),
+        ("product_analysis", "Модели", 6),
+        ("drivers_antidrivers", "Драйверы и антидрайверы", 7),
+        ("advertising_efficiency", "Реклама", 7),
+        ("hypotheses", "Гипотезы → Действия", 8),
+        ("operational_metrics", "Операционные метрики", 8),
+        ("recommendations", "Рекомендации", 9),
+        ("advisor_recommendations", "Рекомендации Advisor", 9),
+        ("summary", "Сводка", 10),
+    ]
+
+    rendered_sections = set()
+    for key, title, num in section_map:
+        if key in report and num not in rendered_sections:
+            _render_section(key, title, num)
+            rendered_sections.add(num)
+
+    detailed = "\n".join(lines)
+
+    # Build telegram summary from executive_summary
+    tg_lines = []
+    if es:
+        if es.get("headline"):
+            tg_lines.append(f"[b]{es['headline']}[/b]")
+        for insight in es.get("key_insights", [])[:5]:
+            tg_lines.append(f"• {insight}")
+
+    report["detailed_report"] = detailed
+    report["telegram_summary"] = "\n".join(tg_lines) if tg_lines else ""
+
+    logger.info(
+        "Fallback: converted structured JSON to detailed_report (%d chars) + telegram_summary (%d chars)",
+        len(detailed), len(report["telegram_summary"]),
+    )
+    return report
+
+
 # ── State ────────────────────────────────────────────────────────────────────
 
 class OlegState(TypedDict):
@@ -334,10 +466,15 @@ async def _run_report_pipeline(
         total_cost_usd=total_cost,
     ))
 
+    # Ensure report has detailed_report + telegram_summary
+    report_data = (compiler_result.get("artifact") or {}) if compiler_result else {}
+    if isinstance(report_data, dict) and not report_data.get("detailed_report"):
+        report_data = _ensure_report_fields(report_data)
+
     return {
         "run_id": run_id,
         "status": status,
-        "report": (compiler_result.get("artifact") or {}) if compiler_result else {},
+        "report": report_data,
         "artifacts": artifacts,
         "agents_called": agents_called,
         "agents_succeeded": agents_succeeded,
@@ -704,11 +841,15 @@ async def run_price_analysis(
         status, total_called, duration_ms,
     )
 
+    # Ensure report has detailed_report + telegram_summary
+    price_report = (compiler_result.get("artifact") or {}) if compiler_result else {}
+    if isinstance(price_report, dict) and not price_report.get("detailed_report"):
+        price_report = _ensure_report_fields(price_report)
+
     return {
         "run_id": run_id,
         "status": status,
-        # compiler_result может быть None если skip_compiler=True или сбой
-        "report": (compiler_result.get("artifact") or {}) if compiler_result else {},
+        "report": price_report,
         "artifacts": all_artifacts,
         "agents_called": total_called,
         "agents_succeeded": total_succeeded,
