@@ -467,9 +467,16 @@ async def _run_report_pipeline(
     ))
 
     # Ensure report has detailed_report + telegram_summary
-    report_data = (compiler_result.get("artifact") or {}) if compiler_result else {}
-    if isinstance(report_data, dict) and not report_data.get("detailed_report"):
-        report_data = _ensure_report_fields(report_data)
+    raw_artifact = compiler_result.get("artifact") if compiler_result else None
+    if isinstance(raw_artifact, str):
+        # Compiler returned raw markdown instead of JSON — wrap it
+        report_data = {"detailed_report": raw_artifact, "telegram_summary": ""}
+    elif isinstance(raw_artifact, dict):
+        report_data = raw_artifact
+        if not report_data.get("detailed_report"):
+            report_data = _ensure_report_fields(report_data)
+    else:
+        report_data = {}
 
     return {
         "run_id": run_id,
@@ -842,9 +849,15 @@ async def run_price_analysis(
     )
 
     # Ensure report has detailed_report + telegram_summary
-    price_report = (compiler_result.get("artifact") or {}) if compiler_result else {}
-    if isinstance(price_report, dict) and not price_report.get("detailed_report"):
-        price_report = _ensure_report_fields(price_report)
+    raw_price = compiler_result.get("artifact") if compiler_result else None
+    if isinstance(raw_price, str):
+        price_report = {"detailed_report": raw_price, "telegram_summary": ""}
+    elif isinstance(raw_price, dict):
+        price_report = raw_price
+        if not price_report.get("detailed_report"):
+            price_report = _ensure_report_fields(price_report)
+    else:
+        price_report = {}
 
     return {
         "run_id": run_id,
