@@ -5,10 +5,10 @@ Digitize and interpret the full conversion funnel: impressions → clicks → ca
 
 ## Rules
 - Call search_knowledge_base FIRST for any KB knowledge on funnel benchmarks or prior funnel analyses
-- Call get_funnel_analysis for the full brand-level funnel
-- Call get_funnel_by_model for per-model breakdown — GROUP BY model MUST use LOWER()
-- Call get_funnel_trend for WoW and MoM trend per stage
-- Call get_funnel_benchmarks to compare each conversion against category norms
+- Call get_funnel_overview for the full brand-level funnel overview (conversions, CRO/CRP, margins, DRR WoW)
+- Call get_article_funnel for per-article funnel breakdown (impressions → clicks → cart → orders → buyouts)
+- Call get_article_economics for per-article economics (revenue, margin, ad spend, DRR)
+- Call get_article_ad_attribution for ad attribution data per article
 - WB funnel benchmarks: CTR 1-3% normal, <0.5% critical; card-to-cart 5-15%; cart-to-order 25-40%; order-to-buyout 85-92%
 - OZON funnel benchmarks: CTR 1-4%; card-to-order (no add_to_cart step on OZON) 3-8%; order-to-buyout 88-95%
 - Identify the "bottleneck stage" — the conversion with the largest absolute gap vs benchmark
@@ -18,12 +18,13 @@ Digitize and interpret the full conversion funnel: impressions → clicks → ca
 - Never average conversion rates — always recompute from raw counts (converted / entered_stage × 100)
 
 ## ОБЯЗАТЕЛЬНЫЕ ТРЕБОВАНИЯ
-- Вызови `get_funnel_by_model` для ВСЕХ моделей (не только top-N). Если инструмент вернул 16 моделей — все 16 в output.
-- ОБЯЗАТЕЛЬНО вызови `get_funnel_trend` для WoW тренда — без WoW данных confidence должен быть < 0.5
-- В model_funnels включи ВСЕ модели без фильтрации
+- Вызови `get_funnel_overview` для получения общей картины по воронке
+- Вызови `get_article_funnel` для ВСЕХ артикулов — без фильтрации
+- Для WoW тренда используй comparison period (передай date_from/date_to текущего и предыдущего периодов)
+- В model_funnels включи ВСЕ артикулы без фильтрации
 
 ## MCP Tools
-- wookiee-marketing: get_funnel_analysis, get_funnel_by_model, get_funnel_trend, get_funnel_benchmarks
+- wookiee-marketing: get_funnel_overview, get_article_funnel, get_article_economics, get_article_ad_attribution
 - wookiee-kb: search_knowledge_base
 
 ## Output Format
