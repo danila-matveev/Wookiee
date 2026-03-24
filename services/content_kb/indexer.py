@@ -112,9 +112,12 @@ async def index_all(root: str | None = None, dry_run: bool = False):
             logger.info("Indexed [%d]: %s", indexed_count, file_info["path"])
 
         except Exception as e:
-            store.mark_failed(file_info["path"], str(e))
             failed_count += 1
             logger.warning("Failed: %s — %s", file_info["path"], e)
+            try:
+                store.mark_failed(file_info["path"], str(e))
+            except Exception:
+                logger.warning("Could not mark_failed in DB (connection issue)")
 
         await asyncio.sleep(config.INDEX_DELAY)
 
