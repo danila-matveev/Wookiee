@@ -264,10 +264,32 @@ def _ensure_report_fields(report: dict) -> dict:
     ]
 
     rendered_sections = set()
+    rendered_keys = set()
     for key, title, num in section_map:
         if key in report and num not in rendered_sections:
             _render_section(key, title, num)
             rendered_sections.add(num)
+            rendered_keys.add(key)
+
+    # Render any remaining structured data not covered by section_map
+    _SKIP_KEYS = {
+        "detailed_report", "telegram_summary", "meta", "executive_summary",
+        "report_type", "period", "comparison_period", "channel", "task_type",
+        "sections_included", "sections_skipped", "warnings", "_meta",
+    }
+    next_section = max(rendered_sections, default=10) + 1
+    for key, value in report.items():
+        if key in rendered_keys or key in _SKIP_KEYS:
+            continue
+        if key.startswith("_"):
+            continue
+        if not value:
+            continue
+        # Convert underscored key to human-readable title
+        title = key.replace("_", " ").title()
+        _render_section(key, title, next_section)
+        rendered_keys.add(key)
+        next_section += 1
 
     detailed = "\n".join(lines)
 
