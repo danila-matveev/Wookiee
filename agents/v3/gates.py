@@ -317,7 +317,11 @@ class GateChecker:
     # ---- public API -------------------------------------------------------
 
     def check_all(self, marketplace: str = "wb") -> GateCheckResult:
-        """Run all 6 gates for a single marketplace."""
+        """Run all 6 gates for a single marketplace.
+
+        DB connection errors are treated as "unknown" (soft caveat),
+        not hard failures — so infrastructure issues don't block reports.
+        """
         gates = [
             self._gate_etl_ran_today(marketplace),
             self._gate_source_data_loaded(marketplace),
@@ -327,15 +331,31 @@ class GateChecker:
             self._gate_margin_fill(marketplace),
         ]
 
-        hard_failed = [g for g in gates if g.is_hard and not g.passed]
+        # Distinguish real data failures from DB connection errors
+        hard_failed = []
+        db_errors = []
+        for g in gates:
+            if g.is_hard and not g.passed:
+                if g.detail.startswith("Ошибка:"):
+                    # DB/infra error — demote to soft caveat
+                    db_errors.append(g)
+                    logger.warning(
+                        "Gate %s failed with DB error (demoted to soft): %s",
+                        g.name, g.detail,
+                    )
+                else:
+                    hard_failed.append(g)
+
         soft_failed = [g for g in gates if not g.is_hard and not g.passed]
 
         caveats = [f"{g.name}: {g.detail}" for g in soft_failed]
+        if db_errors:
+            caveats += [f"⚠️ {g.name}: {g.detail} (БД недоступна, проверка пропущена)" for g in db_errors]
 
         return GateCheckResult(
             gates=gates,
             can_generate=len(hard_failed) == 0,
-            has_caveats=len(soft_failed) > 0,
+            has_caveats=len(soft_failed) > 0 or len(db_errors) > 0,
             caveats=caveats,
         )
 

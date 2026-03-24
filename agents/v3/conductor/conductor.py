@@ -5,7 +5,7 @@ Coordinates: gate checks → schedule → generation → validation → delivery
 import logging
 from datetime import date, datetime, timedelta
 
-from agents.v3.conductor.schedule import get_today_reports, ReportType
+from agents.v3.conductor.schedule import get_today_reports, get_missed_reports, ReportType
 from agents.v3.conductor.state import ConductorState
 from agents.v3.conductor.validator import quick_validate, ValidationVerdict
 from agents.v3.delivery import messages
@@ -125,6 +125,18 @@ async def data_ready_check(
         schedule = [r for r in schedule if r == ReportType.DAILY]
     done = conductor_state.get_successful(str(today))
     pending = [r for r in schedule if r.value not in done]
+
+    # 2b. Recover missed weekly/monthly reports from past days
+    if not daily_only:
+        all_successful = conductor_state.get_all_successful_types(lookback_days=7)
+        failed_or_missing = conductor_state.get_failed_types(lookback_days=7)
+        # Add types that were scheduled but neither succeeded nor are already pending
+        missed = get_missed_reports(today, failed_or_missing)
+        pending_values = {r.value for r in pending}
+        for rt in missed:
+            if rt.value not in all_successful and rt.value not in pending_values:
+                pending.append(rt)
+                logger.info("Recovering missed report: %s", rt.value)
 
     if not pending:
         logger.info("All reports already generated for %s", today)

@@ -83,10 +83,53 @@ class ConductorState:
             ).fetchone()
         return row[0] if row else 0
 
+    def get_all_successful_types(self, lookback_days: int = 7) -> set:
+        """Return all report_types that succeeded in the last N days."""
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT DISTINCT report_type FROM conductor_log "
+                "WHERE status = 'success' AND date >= date('now', ?)",
+                (f"-{lookback_days} days",),
+            ).fetchall()
+        return {r[0] for r in rows}
+
+    def get_failed_types(self, lookback_days: int = 7) -> set:
+        """Return report_types that failed (or never succeeded) in the last N days.
+
+        A type is 'failed' if its last status is 'failed' or it was scheduled
+        but has no conductor_log entry at all.
+        """
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT DISTINCT report_type FROM conductor_log "
+                "WHERE status = 'failed' AND date >= date('now', ?) "
+                "AND report_type NOT IN ("
+                "  SELECT report_type FROM conductor_log "
+                "  WHERE status = 'success' AND date >= date('now', ?)"
+                ")",
+                (f"-{lookback_days} days", f"-{lookback_days} days"),
+            ).fetchall()
+        return {r[0] for r in rows}
+
     def already_notified(self, report_date: str) -> bool:
-        """Check if data_ready notification was already sent for this date."""
-        return report_date in self._notified_dates
+        """Check if data_ready notification was already sent for this date.
+
+        Persisted in SQLite to survive container restarts.
+        """
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM conductor_log WHERE date = ? AND status = 'notified' LIMIT 1",
+                (report_date,),
+            ).fetchone()
+        return row is not None or report_date in self._notified_dates
 
     def mark_notified(self, report_date: str) -> None:
         """Mark that data_ready notification was sent for this date."""
         self._notified_dates.add(report_date)
+        # Persist to SQLite so it survives restarts
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO conductor_log (date, report_type, status, attempts) "
+                "VALUES (?, '_notification', 'notified', 0)",
+                (report_date,),
+            )

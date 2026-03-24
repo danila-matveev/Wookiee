@@ -1,4 +1,5 @@
 """Report quality validation — quick checks + LLM validation."""
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -36,6 +37,7 @@ def quick_validate(report: dict) -> ValidationResult:
     3. No known failure phrases in content
     4. telegram_summary length >= MIN_TELEGRAM_SUMMARY_LEN
     5. detailed_report length >= MIN_DETAILED_REPORT_LEN
+    6. Content quality: Russian text + toggle headers (## ▶)
     """
     # 1. Failed status
     if report.get("status") == "failed" or report.get("report") is None:
@@ -48,6 +50,13 @@ def quick_validate(report: dict) -> ValidationResult:
     r = report["report"]
     detailed = r.get("detailed_report", "") or ""
     telegram = r.get("telegram_summary", "") or ""
+
+    # Handle non-string detailed_report (compiler returned dict/list)
+    if not isinstance(detailed, str):
+        return ValidationResult(
+            verdict=ValidationVerdict.RETRY,
+            reason=f"detailed_report is {type(detailed).__name__}, not string",
+        )
 
     # 2. Empty content
     if not detailed.strip():
@@ -87,6 +96,23 @@ def quick_validate(report: dict) -> ValidationResult:
         return ValidationResult(
             verdict=ValidationVerdict.RETRY,
             reason=f"Подробный отчёт слишком короткий ({len(detailed)} < {MIN_DETAILED_REPORT_LEN})",
+        )
+
+    # 5. Content quality — must contain Russian text and toggle headers
+    has_russian = bool(re.search(r'[а-яА-ЯёЁ]', detailed))
+    has_toggles = "## ▶" in detailed
+    has_tables = "|" in detailed and "---" in detailed
+
+    if not has_russian:
+        return ValidationResult(
+            verdict=ValidationVerdict.RETRY,
+            reason="detailed_report не содержит русский текст (возможно raw JSON)",
+        )
+
+    if not has_toggles and not has_tables:
+        return ValidationResult(
+            verdict=ValidationVerdict.RETRY,
+            reason="detailed_report без toggle-заголовков и таблиц (неправильный формат)",
         )
 
     # All checks passed

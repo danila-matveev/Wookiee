@@ -90,3 +90,37 @@ def get_today_reports(d: date) -> list:
         ]
 
     return reports
+
+
+# ── Weekly report types that only trigger on specific days ────────────────
+_WEEKLY_TYPES = {
+    ReportType.WEEKLY, ReportType.MARKETING_WEEKLY,
+    ReportType.FUNNEL_WEEKLY, ReportType.PRICE_WEEKLY,
+}
+_FRIDAY_TYPES = {ReportType.FINOLOG_WEEKLY}
+_MONTHLY_TYPES = {ReportType.MONTHLY, ReportType.MARKETING_MONTHLY, ReportType.PRICE_MONTHLY}
+
+
+def get_missed_reports(today: date, failed_or_missing: set[str], lookback_days: int = 6) -> list:
+    """Return report types that were scheduled in the past `lookback_days` but are
+    in `failed_or_missing` (set of report_type value strings).
+
+    This allows recovery of weekly reports that failed on Monday but are
+    retried on Tuesday-Sunday.
+    """
+    from datetime import timedelta
+    missed: list = []
+    seen: set = set()
+
+    for offset in range(1, lookback_days + 1):
+        past = today - timedelta(days=offset)
+        scheduled = get_today_reports(past)
+        for rt in scheduled:
+            if rt.value in failed_or_missing and rt not in seen:
+                # Don't recover daily reports from past days — stale data
+                if rt == ReportType.DAILY:
+                    continue
+                missed.append(rt)
+                seen.add(rt)
+
+    return missed
