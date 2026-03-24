@@ -142,8 +142,12 @@ class ContentStore:
             conn.commit()
         except Exception as e:
             conn.rollback()
-            logger.error("Update path failed: %s", e)
-            raise
+            # UniqueViolation: target path already exists — skip silently
+            if "UniqueViolation" in type(e).__name__ or "duplicate key" in str(e):
+                logger.warning("Skip move (target path exists): %s", new_path)
+            else:
+                logger.error("Update path failed: %s", e)
+                raise
         finally:
             cur.close()
             conn.close()
