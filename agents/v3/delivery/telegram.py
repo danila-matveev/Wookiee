@@ -99,10 +99,25 @@ def format_cost_footer(
 # High-level API
 # ---------------------------------------------------------------------------
 
+_REPORT_TYPE_LABELS: dict[str, str] = {
+    "daily": "📊 Дневной финансовый отчёт",
+    "weekly": "📈 Недельный финансовый отчёт",
+    "monthly": "📅 Месячный финансовый отчёт",
+    "marketing_daily": "📢 Дневной маркетинговый отчёт",
+    "marketing_weekly": "📢 Недельный маркетинговый отчёт",
+    "marketing_monthly": "📢 Месячный маркетинговый отчёт",
+    "funnel_weekly": "🔄 Воронка продаж (неделя)",
+    "funnel_monthly": "🔄 Воронка продаж (месяц)",
+    "finolog_weekly": "💰 ДДС / Cash Flow (неделя)",
+    "price_analysis": "💲 Ценовой анализ",
+}
+
+
 def format_report_message(
     report: dict,
     page_url: str | None = None,
     caveats: list[str] | None = None,
+    report_type: str | None = None,
 ) -> str:
     """Assemble the full Telegram message from an orchestrator result dict.
 
@@ -113,6 +128,11 @@ def format_report_message(
     """
     inner = report.get("report", {})
     body = inner.get("telegram_summary") or ""
+
+    # Report title header
+    if report_type:
+        label = _REPORT_TYPE_LABELS.get(report_type, report_type)
+        body = f"<b>{label}</b>\n\n{body}" if body else f"<b>{label}</b>"
 
     # Обрезаем слишком длинный summary (compiler иногда вываливает весь отчёт)
     if len(body) > MAX_SUMMARY_LEN:
@@ -176,12 +196,13 @@ async def send_report(
     report: dict,
     page_url: str | None = None,
     caveats: list[str] | None = None,
+    report_type: str | None = None,
 ) -> dict:
     """Send a formatted report to all specified Telegram chats.
 
     Returns ``{"sent": bool, "chat_ids_sent": [...], "errors": [...]}``.
     """
-    message = format_report_message(report, page_url=page_url, caveats=caveats)
+    message = format_report_message(report, page_url=page_url, caveats=caveats, report_type=report_type)
     chunks = split_html_message(message)
 
     bot = Bot(token=bot_token)
