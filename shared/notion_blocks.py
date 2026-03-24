@@ -7,25 +7,63 @@ Pure functions with no dependencies except ``re``.
 import re
 
 
+def _plain(content: str) -> dict:
+    return {"type": "text", "text": {"content": content}}
+
+
+def _annotated(content: str, **annotations) -> dict:
+    ann = {"bold": False, "italic": False, "strikethrough": False,
+           "underline": False, "code": False, "color": "default"}
+    ann.update(annotations)
+    return {"type": "text", "text": {"content": content}, "annotations": ann}
+
+
+def _link(text: str, url: str) -> dict:
+    return {"type": "text", "text": {"content": text, "link": {"url": url}}}
+
+
+# Token pattern: bold, italic, inline code, links, or plain text
+_INLINE_RE = re.compile(
+    r'(\*\*[^*]+\*\*)'        # **bold**
+    r'|(\*[^*]+\*)'           # *italic*
+    r'|(`[^`]+`)'             # `code`
+    r'|(\[[^\]]+\]\([^)]+\))' # [text](url)
+)
+
+
 def parse_inline(text):
-    """Parse bold markers (**...** and [b]...[/b]) into Notion rich_text array."""
+    """Parse inline markdown (bold, italic, code, links, BBCode) into Notion rich_text array."""
     # Normalize BBCode to markdown bold
     text = re.sub(r'\[b\](.*?)\[/b\]', r'**\1**', text)
+
     parts = []
-    segments = re.split(r'(\*\*[^*]+\*\*)', text)
-    for seg in segments:
-        if seg.startswith('**') and seg.endswith('**'):
-            parts.append({
-                "type": "text",
-                "text": {"content": seg[2:-2]},
-                "annotations": {
-                    "bold": True, "italic": False, "strikethrough": False,
-                    "underline": False, "code": False, "color": "default",
-                },
-            })
-        elif seg:
-            parts.append({"type": "text", "text": {"content": seg}})
-    return parts if parts else [{"type": "text", "text": {"content": text}}]
+    last_end = 0
+
+    for m in _INLINE_RE.finditer(text):
+        # Append plain text before this match
+        if m.start() > last_end:
+            parts.append(_plain(text[last_end:m.start()]))
+
+        token = m.group()
+        if token.startswith('**') and token.endswith('**'):
+            parts.append(_annotated(token[2:-2], bold=True))
+        elif token.startswith('`') and token.endswith('`'):
+            parts.append(_annotated(token[1:-1], code=True))
+        elif token.startswith('['):
+            # [text](url)
+            link_m = re.match(r'\[([^\]]+)\]\(([^)]+)\)', token)
+            if link_m:
+                parts.append(_link(link_m.group(1), link_m.group(2)))
+        elif token.startswith('*') and token.endswith('*'):
+            parts.append(_annotated(token[1:-1], italic=True))
+
+        last_end = m.end()
+
+    # Append remaining plain text
+    if last_end < len(text):
+        parts.append(_plain(text[last_end:]))
+
+    return parts if parts else [_plain(text)]
 
 
 def remove_empty_sections(md_text: str) -> str:
@@ -63,6 +101,12 @@ def remove_empty_sections(md_text: str) -> str:
 
             if not has_content:
                 indices_to_remove.add(i)
+                # Also remove trailing empty lines between removed header and next
+                for k in range(i + 1, len(parsed)):
+                    if parsed[k]['type'] == 'empty':
+                        indices_to_remove.add(k)
+                    else:
+                        break
 
     result_lines = []
     for i in range(len(parsed)):

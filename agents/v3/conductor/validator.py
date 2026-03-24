@@ -57,10 +57,15 @@ def quick_validate(report: dict) -> ValidationResult:
         )
 
     if not telegram.strip():
-        return ValidationResult(
-            verdict=ValidationVerdict.RETRY,
-            reason="Telegram-саммари пуст (telegram_summary)",
-        )
+        # If detailed_report is substantial, allow delivery —
+        # orchestrator will generate telegram_summary from detailed_report
+        if len(detailed) >= MIN_DETAILED_REPORT_LEN:
+            pass  # continue to remaining checks
+        else:
+            return ValidationResult(
+                verdict=ValidationVerdict.RETRY,
+                reason="Telegram-саммари пуст и detailed_report слишком короткий",
+            )
 
     # 3. Known failure phrases
     for phrase in _FAILURE_PHRASES:
@@ -71,11 +76,11 @@ def quick_validate(report: dict) -> ValidationResult:
                 details={"phrase": phrase},
             )
 
-    # 4. Too short
-    if len(telegram) < MIN_TELEGRAM_SUMMARY_LEN:
+    # 4. Too short (skip telegram check if detailed_report is substantial — fallback will generate summary)
+    if len(telegram) < MIN_TELEGRAM_SUMMARY_LEN and len(detailed) < MIN_DETAILED_REPORT_LEN:
         return ValidationResult(
             verdict=ValidationVerdict.RETRY,
-            reason=f"Telegram-саммари слишком короткий ({len(telegram)} < {MIN_TELEGRAM_SUMMARY_LEN})",
+            reason=f"Telegram-саммари слишком короткий ({len(telegram)} < {MIN_TELEGRAM_SUMMARY_LEN}) и detailed_report тоже",
         )
 
     if len(detailed) < MIN_DETAILED_REPORT_LEN:

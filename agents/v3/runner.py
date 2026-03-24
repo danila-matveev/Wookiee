@@ -322,7 +322,11 @@ async def run_agent(
 
     agent_config = parse_agent_md(md_path)
     tools = build_tools_for_agent(agent_config)
-    llm = get_llm(model=model)
+    # Use dedicated compiler model for report-compiler (better format compliance)
+    effective_model = model
+    if not effective_model and agent_name == "report-compiler":
+        effective_model = config.MODEL_COMPILER
+    llm = get_llm(model=effective_model)
 
     # Build system prompt from parsed MD sections
     system_prompt = (
@@ -373,7 +377,7 @@ async def run_agent(
 
         # Token usage & cost
         usage = extract_token_usage(result.get("messages", []))
-        model_used = model or config.MODEL_MAIN
+        model_used = effective_model or config.MODEL_MAIN
         cost_usd = config.calc_cost(model_used, usage["prompt_tokens"], usage["completion_tokens"])
 
     except asyncio.TimeoutError:

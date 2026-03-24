@@ -192,8 +192,9 @@ def _ensure_report_fields(report: dict) -> dict:
             else:
                 lines.append(f"{prefix}- {item}")
 
-    # Render remaining sections
+    # Render remaining sections — covers financial, marketing, funnel, price report types
     section_map = [
+        # Financial
         ("plan_fact", "План-Факт", 2),
         ("financial_performance", "Ключевые изменения", 3),
         ("key_changes", "Ключевые изменения", 3),
@@ -210,6 +211,31 @@ def _ensure_report_fields(report: dict) -> dict:
         ("recommendations", "Рекомендации", 9),
         ("advisor_recommendations", "Рекомендации Advisor", 9),
         ("summary", "Сводка", 10),
+        # Marketing
+        ("campaign_data", "Рекламные кампании", 2),
+        ("campaign_analysis", "Рекламные кампании", 2),
+        ("organic_vs_paid", "Органика vs Реклама", 3),
+        ("organic_paid_split", "Органика vs Реклама", 3),
+        ("funnel_analysis", "Воронка маркетинга", 4),
+        ("model_efficiency", "Эффективность по моделям", 5),
+        ("ad_efficiency", "Эффективность рекламы", 5),
+        ("channel_mix", "Канальный микс", 6),
+        # Funnel
+        ("brand_funnel", "Воронка бренда", 2),
+        ("model_funnels", "Воронки по моделям", 3),
+        ("bottleneck", "Узкие места", 4),
+        ("bottlenecks", "Узкие места", 4),
+        ("keyword_portfolio", "Ключевые слова", 5),
+        ("keyword_analysis", "Ключевые слова", 5),
+        ("conversion_analysis", "Анализ конверсий", 3),
+        # Price
+        ("price_matrix", "Ценовая матрица", 2),
+        ("price_trends", "Тренды продаж", 3),
+        ("sales_trends", "Тренды продаж", 3),
+        ("stock_price_matrix", "Матрица остатки-цена", 4),
+        ("marketing_impact", "Влияние на маркетинг", 5),
+        ("hypothesis_results", "Проверка гипотез", 6),
+        ("action_plan", "План действий", 7),
     ]
 
     rendered_sections = set()
@@ -236,6 +262,45 @@ def _ensure_report_fields(report: dict) -> dict:
         len(detailed), len(report["telegram_summary"]),
     )
     return report
+
+
+def _fill_telegram_summary(report: dict) -> None:
+    """Generate telegram_summary from detailed_report if missing.
+
+    Strips markdown formatting and takes the first meaningful lines.
+    """
+    if not report or not isinstance(report, dict):
+        return
+    if (report.get("telegram_summary") or "").strip():
+        return
+
+    detailed = (report.get("detailed_report") or "").strip()
+    if not detailed:
+        return
+
+    import re as _re
+
+    # Strip markdown headers, toggle markers, bold markers
+    clean = _re.sub(r"^#{1,3}\s+▶?\s*", "", detailed, flags=_re.MULTILINE)
+    clean = clean.replace("**", "")
+
+    # Take first non-empty lines up to ~1000 chars
+    lines = [ln.strip() for ln in clean.split("\n") if ln.strip()]
+    summary_lines: list[str] = []
+    total = 0
+    for ln in lines:
+        if total + len(ln) > 1000:
+            break
+        # Skip table separator rows
+        if _re.match(r"^[\|\-\s:]+$", ln):
+            continue
+        summary_lines.append(ln)
+        total += len(ln)
+
+    summary = "\n".join(summary_lines)
+    if summary:
+        report["telegram_summary"] = summary
+        logger.info("Fallback: generated telegram_summary from detailed_report (%d chars)", len(summary))
 
 
 # ── State ────────────────────────────────────────────────────────────────────
@@ -477,6 +542,9 @@ async def _run_report_pipeline(
             report_data = _ensure_report_fields(report_data)
     else:
         report_data = {}
+
+    # Fallback: generate telegram_summary from detailed_report if empty
+    _fill_telegram_summary(report_data)
 
     return {
         "run_id": run_id,
@@ -858,6 +926,9 @@ async def run_price_analysis(
             price_report = _ensure_report_fields(price_report)
     else:
         price_report = {}
+
+    # Fallback: generate telegram_summary from detailed_report if empty
+    _fill_telegram_summary(price_report)
 
     return {
         "run_id": run_id,
