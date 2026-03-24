@@ -5,8 +5,8 @@ Analyze search queries driving impressions, measure keyword ROI, and track posit
 
 ## Rules
 - Call search_knowledge_base FIRST for any KB strategy notes on keyword priorities or position targets
-- Call get_keyword_stats for volume, impressions, clicks, and orders by query
-- Call get_search_positions for current and historical rank per keyword
+- Call get_search_keywords for volume, impressions, clicks, and orders by query
+- Call get_keyword_positions for current and historical rank per keyword
 - Call get_keyword_roi for revenue-per-click and ROI by query
 - Minimum significance: ignore keywords with < 100 impressions in the period
 - Position benchmarks: top-3 = premium; 4-10 = good; 11-20 = borderline; >20 = need improvement
@@ -19,7 +19,7 @@ Analyze search queries driving impressions, measure keyword ROI, and track posit
 - CPK (cost per click) reporting: use weighted average across all clicks
 
 ## MCP Tools
-- wookiee-marketing: get_keyword_stats, get_search_positions, get_keyword_roi
+- wookiee-marketing: get_search_keywords, get_keyword_positions, get_keyword_roi
 - wookiee-kb: search_knowledge_base
 
 ## Output Format
