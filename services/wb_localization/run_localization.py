@@ -109,11 +109,11 @@ def parse_args():
 # ЗАГРУЗКА ДАННЫХ ЧЕРЕЗ API
 # ============================================
 
-def fetch_wb_data(cabinet, days: int) -> tuple[list[dict], list[dict]]:
-    """Загрузка остатков и заказов из WB API для одного кабинета.
+def fetch_wb_data(cabinet, days: int) -> tuple[list[dict], list[dict], dict[str, float]]:
+    """Загрузка остатков, заказов и цен из WB API для одного кабинета.
 
     Returns:
-        (remains_data, orders_data)
+        (remains_data, orders_data, prices_dict)
     """
     client = WBClient(api_key=cabinet.wb_api_key, cabinet_name=cabinet.name)
     try:
@@ -124,7 +124,7 @@ def fetch_wb_data(cabinet, days: int) -> tuple[list[dict], list[dict]]:
 
         if not remains:
             print(f"   [{cabinet.name}] ОШИБКА: нет данных по остаткам")
-            return [], []
+            return [], [], {}
 
         # 2. Заказы за период
         date_from = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%dT00:00:00')
@@ -132,7 +132,29 @@ def fetch_wb_data(cabinet, days: int) -> tuple[list[dict], list[dict]]:
         orders = client.get_supplier_orders(date_from=date_from)
         print(f"   [{cabinet.name}] Получено: {len(orders)} заказов")
 
-        return remains, orders
+        # 3. Цены (для расчёта ИРП-нагрузки)
+        print(f"   [{cabinet.name}] Запрос цен (prices API)...")
+        prices_dict: dict[str, float] = {}
+        try:
+            prices_raw = client.get_prices()
+            for item in prices_raw:
+                vendor_code = item.get('vendorCode', '')
+                sizes = item.get('sizes', [])
+                if vendor_code and sizes:
+                    # Берём максимальную цену среди размеров (retail price до скидки)
+                    max_price = 0
+                    for sz in sizes:
+                        price = sz.get('price', 0) or 0
+                        if price > max_price:
+                            max_price = price
+                    if max_price > 0:
+                        prices_dict[vendor_code.lower()] = max_price
+            print(f"   [{cabinet.name}] Цены: {len(prices_dict)} артикулов")
+        except Exception as e:
+            logger.warning("Не удалось загрузить цены: %s", e)
+            print(f"   [{cabinet.name}] Цены: ошибка ({e}), продолжаем без ИРП-расчёта")
+
+        return remains, orders, prices_dict
     finally:
         client.close()
 
@@ -235,7 +257,8 @@ def transform_orders_to_df_regions(
         wh_fd = get_warehouse_fd(wh_name)
 
         # oblast пустое в API — ФО доставки в oblastOkrugName
-        delivery_region = o.get('oblastOkrugName', '') or o.get('oblast', '')
+        # Для СНГ-заказов оба поля пустые → fallback на countryName
+        delivery_region = o.get('oblastOkrugName', '') or o.get('oblast', '') or o.get('countryName', '')
         delivery_fd = get_delivery_fd(delivery_region)
 
         # Пропускаем если не можем определить ФО или не российский
@@ -347,7 +370,27 @@ def _print_summary(report_path: Path) -> None:
         print(f"\n   Перемещений: {moves_count} ({moves_qty} шт)")
         print(f"   Допоставок:  {supply_count} ({supply_qty} шт)")
 
-        # Топ-5 критичных SKU
+        # ИРП-анализ
+        if 'ИРП-анализ' in xls.sheet_names:
+            df_irp = pd.read_excel(xls, sheet_name='ИРП-анализ')
+            if not df_irp.empty:
+                irp_count = len(df_irp)
+                irp_total = df_irp['ИРП-нагрузка ₽/мес'].sum() if 'ИРП-нагрузка ₽/мес' in df_irp.columns else 0
+                print(f"\n   --- ИРП-зона ---")
+                print(f"   Артикулов в ИРП-зоне (< 60%): {irp_count}")
+                print(f"   Общая ИРП-нагрузка: {irp_total:,.0f} ₽/мес")
+                # Топ-5 по ИРП-нагрузке
+                if 'ИРП-нагрузка ₽/мес' in df_irp.columns:
+                    top5_irp = df_irp.nlargest(5, 'ИРП-нагрузка ₽/мес')
+                    print("   Топ-5 по ИРП-нагрузке:")
+                    for _, r in top5_irp.iterrows():
+                        art = r.get('Артикул продавца', '?')
+                        loc = r.get('Индекс, %', 0)
+                        impact = r.get('ИРП-нагрузка ₽/мес', 0)
+                        zone = r.get('Зона', '')
+                        print(f"     {art}: лок {loc:.0f}%, {impact:,.0f} ₽/мес [{zone}]")
+
+        # Топ-5 критичных SKU (ИЛ-зона)
         if 'Анализ_SKU' in xls.sheet_names:
             df_sku = pd.read_excel(xls, sheet_name='Анализ_SKU')
             if 'Индекс, %' in df_sku.columns and 'Всего заказов' in df_sku.columns:
@@ -357,7 +400,7 @@ def _print_summary(report_path: Path) -> None:
                 problem['impact'] = problem['Всего заказов'] * (75 - problem['Индекс, %'])
                 top5 = problem.nlargest(5, 'impact')
                 if not top5.empty:
-                    print("\n   --- Топ-5 критичных SKU ---")
+                    print("\n   --- Топ-5 критичных SKU (ИЛ-зона) ---")
                     for _, r in top5.iterrows():
                         art = r.get('Артикул продавца', '?')
                         sz = r.get('Размер', '')
@@ -385,6 +428,26 @@ def _build_result_payload(cabinet_name: str, analysis: dict[str, Any]) -> dict[s
     total_orders = float(sku_stats['Всего заказов'].sum()) if 'Всего заказов' in sku_stats.columns else 0.0
     overall_index = (total_local / total_orders * 100) if total_orders > 0 else 0.0
 
+    # ИРП-статистика
+    irp_zone_count = 0
+    irp_impact_rub = 0.0
+    il_zone_count = 0
+    if 'Зона' in sku_stats.columns:
+        irp_zone_count = int((sku_stats['Зона'] == 'ИРП-зона').sum())
+        il_zone_count = int((sku_stats['Зона'] == 'ИЛ-зона').sum())
+    if 'ИРП-нагрузка ₽/мес' in sku_stats.columns:
+        irp_impact_rub = float(sku_stats['ИРП-нагрузка ₽/мес'].sum())
+
+    # Средневзвешенные ИЛ/ИРП (текущие)
+    il_current = 1.0
+    irp_current = 0.0
+    if 'КТР' in sku_stats.columns and 'Всего заказов' in sku_stats.columns:
+        w = sku_stats['Всего заказов']
+        if w.sum() > 0:
+            il_current = float((sku_stats['КТР'] * w).sum() / w.sum())
+            if 'КРП%' in sku_stats.columns:
+                irp_current = float((sku_stats['КРП%'] * w).sum() / w.sum())
+
     summary = {
         'overall_index': round(overall_index, 1),
         'total_sku': int(len(sku_stats)),
@@ -393,6 +456,11 @@ def _build_result_payload(cabinet_name: str, analysis: dict[str, Any]) -> dict[s
         'movements_qty': int(moves_df['Кол-во'].sum()) if 'Кол-во' in moves_df.columns and len(moves_df) > 0 else 0,
         'supplies_count': int(len(supply_df)),
         'supplies_qty': int(supply_df['Кол-во'].sum()) if 'Кол-во' in supply_df.columns and len(supply_df) > 0 else 0,
+        'il_current': round(il_current, 2),
+        'irp_current': round(irp_current, 2),
+        'irp_zone_sku': irp_zone_count,
+        'il_zone_sku': il_zone_count,
+        'irp_impact_rub_month': round(irp_impact_rub, 0),
     }
 
     regions: list[dict[str, Any]] = []
@@ -412,16 +480,29 @@ def _build_result_payload(cabinet_name: str, analysis: dict[str, Any]) -> dict[s
             (sku_stats['Индекс, %'] < 75) & (sku_stats['Всего заказов'] > 0)
         ].copy()
         if not problem.empty:
-            problem['impact'] = problem['Всего заказов'] * (75 - problem['Индекс, %'])
+            # Сортировка: ИРП-нагрузка (₽/мес) если есть, иначе старый impact
+            has_irp = 'ИРП-нагрузка ₽/мес' in problem.columns
+            if has_irp:
+                problem['impact'] = problem['ИРП-нагрузка ₽/мес'].fillna(0)
+                # Для артикулов без ИРП-нагрузки — старая формула
+                no_irp = problem['impact'] <= 0
+                problem.loc[no_irp, 'impact'] = problem.loc[no_irp, 'Всего заказов'] * (75 - problem.loc[no_irp, 'Индекс, %'])
+            else:
+                problem['impact'] = problem['Всего заказов'] * (75 - problem['Индекс, %'])
             top10 = problem.nlargest(10, 'impact')
             for _, row in top10.iterrows():
-                top_problems.append({
+                entry: dict[str, Any] = {
                     'article': row.get('Артикул продавца', ''),
                     'size': row.get('Размер', ''),
                     'index': round(float(row.get('Индекс, %', 0)), 1),
                     'orders': int(row.get('Всего заказов', 0)),
                     'impact': round(float(row.get('impact', 0)), 0),
-                })
+                }
+                if has_irp:
+                    entry['zone'] = row.get('Зона', '')
+                    entry['krp_pct'] = round(float(row.get('КРП%', 0)), 2)
+                    entry['irp_rub_month'] = round(float(row.get('ИРП-нагрузка ₽/мес', 0)), 0)
+                top_problems.append(entry)
 
     return {
         'cabinet': cabinet_name,
@@ -433,6 +514,7 @@ def _build_result_payload(cabinet_name: str, analysis: dict[str, Any]) -> dict[s
         'comparison': None,
         '_moves_df': moves_df,
         '_supply_df': supply_df,
+        '_sku_stats': sku_stats,
     }
 
 
@@ -464,6 +546,21 @@ def _attach_comparison_and_save(result: dict[str, Any], history_store: History) 
             'index_change': round(curr_index - prev_index, 1),
             'regions_improved': improved,
             'regions_worsened': worsened,
+            # IRP dynamics
+            'prev_il_current': prev_summary.get('il_current', 1.0),
+            'il_current_change': round(
+                curr_summary.get('il_current', 1.0) - prev_summary.get('il_current', 1.0), 3
+            ),
+            'prev_irp_current': prev_summary.get('irp_current', 0.0),
+            'irp_current_change': round(
+                curr_summary.get('irp_current', 0.0) - prev_summary.get('irp_current', 0.0), 3
+            ),
+            'prev_irp_impact': prev_summary.get('irp_impact_rub_month', 0),
+            'irp_impact_change': round(
+                curr_summary.get('irp_impact_rub_month', 0) - prev_summary.get('irp_impact_rub_month', 0), 0
+            ),
+            'prev_irp_zone_sku': prev_summary.get('irp_zone_sku', 0),
+            'irp_zone_sku_change': curr_summary.get('irp_zone_sku', 0) - prev_summary.get('irp_zone_sku', 0),
         }
 
     history_store.save_run(result)
@@ -485,7 +582,7 @@ def run_for_cabinet(
 
     # 1. Загрузка данных из WB API
     print("\n1. Загрузка данных из WB API...")
-    remains, orders = fetch_wb_data(cabinet, args.days)
+    remains, orders, prices_dict = fetch_wb_data(cabinet, args.days)
 
     if not remains:
         print(f"   ОШИБКА: нет остатков для {cabinet.name}")
@@ -534,6 +631,7 @@ def run_for_cabinet(
         output_file=output_file,
         own_stock=own_stock,
         max_turnover_days=args.max_turnover_days,
+        prices=prices_dict,
     )
 
     report_path = analysis['report_path']
