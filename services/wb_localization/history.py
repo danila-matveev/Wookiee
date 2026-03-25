@@ -48,6 +48,7 @@ class History:
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
         self._auto_migrate()
+        self._ensure_irp_columns()
 
     def _get_conn(self) -> sqlite3.Connection:
         conn = sqlite3.connect(str(self._db_path), timeout=self._timeout)
@@ -58,6 +59,25 @@ class History:
     def _init_db(self) -> None:
         with self._get_conn() as conn:
             conn.executescript(_SCHEMA)
+
+    _IRP_COLUMNS = [
+        ("il_current", "REAL", "1.0"),
+        ("irp_current", "REAL", "0.0"),
+        ("irp_zone_sku", "INTEGER", "0"),
+        ("il_zone_sku", "INTEGER", "0"),
+        ("irp_impact_rub_month", "REAL", "0.0"),
+    ]
+
+    def _ensure_irp_columns(self) -> None:
+        """Add IRP columns if they don't exist (safe ALTER TABLE migration)."""
+        with self._get_conn() as conn:
+            existing = {row[1] for row in conn.execute("PRAGMA table_info(reports)").fetchall()}
+            for col_name, col_type, default in self._IRP_COLUMNS:
+                if col_name not in existing:
+                    conn.execute(
+                        f"ALTER TABLE reports ADD COLUMN {col_name} {col_type} DEFAULT {default}"
+                    )
+                    logger.info("Миграция: добавлена колонка reports.%s", col_name)
 
     def _auto_migrate(self) -> None:
         """Одноразовая миграция из history.json (если файл существует)."""
@@ -125,8 +145,10 @@ class History:
                     overall_index, total_sku, sku_with_orders,
                     movements_count, movements_qty,
                     supplies_count, supplies_qty,
-                    regions_json, top_problems_json)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    regions_json, top_problems_json,
+                    il_current, irp_current, irp_zone_sku,
+                    il_zone_sku, irp_impact_rub_month)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     result.get("cabinet", ""),
                     result.get("timestamp", ""),
@@ -140,6 +162,11 @@ class History:
                     summary.get("supplies_qty", 0),
                     json.dumps(result.get("regions", []), ensure_ascii=False),
                     json.dumps(result.get("top_problems", [])[:10], ensure_ascii=False),
+                    summary.get("il_current", 1.0),
+                    summary.get("irp_current", 0.0),
+                    summary.get("irp_zone_sku", 0),
+                    summary.get("il_zone_sku", 0),
+                    summary.get("irp_impact_rub_month", 0.0),
                 ),
             )
         logger.info("Сохранён расчёт %s от %s", result.get("cabinet"), result.get("timestamp"))
@@ -177,6 +204,7 @@ class History:
     @staticmethod
     def _row_to_dict(row: sqlite3.Row) -> dict:
         """Преобразовать строку SQLite в dict (совместимый со старым форматом)."""
+        keys = row.keys()
         return {
             "cabinet": row["cabinet"],
             "timestamp": row["timestamp"],
@@ -189,6 +217,11 @@ class History:
                 "movements_qty": row["movements_qty"],
                 "supplies_count": row["supplies_count"],
                 "supplies_qty": row["supplies_qty"],
+                "il_current": row["il_current"] if "il_current" in keys else 1.0,
+                "irp_current": row["irp_current"] if "irp_current" in keys else 0.0,
+                "irp_zone_sku": row["irp_zone_sku"] if "irp_zone_sku" in keys else 0,
+                "il_zone_sku": row["il_zone_sku"] if "il_zone_sku" in keys else 0,
+                "irp_impact_rub_month": row["irp_impact_rub_month"] if "irp_impact_rub_month" in keys else 0.0,
             },
             "regions": json.loads(row["regions_json"] or "[]"),
             "top_problems": json.loads(row["top_problems_json"] or "[]"),
