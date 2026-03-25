@@ -55,6 +55,9 @@ ALTER TABLE wb_tariffs ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON wb_tariffs FROM anon, authenticated;
 GRANT SELECT ON wb_tariffs TO authenticated;
 
+CREATE POLICY wb_tariffs_select ON wb_tariffs
+    FOR SELECT TO authenticated USING (true);
+
 REVOKE ALL ON SEQUENCE wb_tariffs_id_seq FROM anon, authenticated;
 """
 
