@@ -4,6 +4,9 @@ import { matrixApi, type ModelOsnova, type ModelVariation, type FieldDefinition 
 import { useMatrixStore } from "@/stores/matrix-store"
 import { DataTable } from "@/components/matrix/data-table"
 import { ViewTabs } from "@/components/matrix/view-tabs"
+import { MatrixTopbar } from "@/components/matrix/matrix-topbar"
+import { PaginationControls } from "@/components/matrix/pagination-controls"
+import { CreateRecordDialog } from "@/components/matrix/create-record-dialog"
 import { useTableState } from "@/hooks/use-table-state"
 import { fieldDefsToColumns } from "@/lib/field-def-columns"
 import { ENTITY_BACKEND_MAP } from "@/components/matrix/panel/types"
@@ -17,6 +20,8 @@ export function ModelsPage() {
   const lookupCache = useMatrixStore((s) => s.lookupCache)
 
   const tableState = useTableState("models")
+  const [createOpen, setCreateOpen] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   // Fetch field definitions for column generation
   const { data: fieldDefs } = useApiQuery<FieldDefinition[]>(
@@ -30,7 +35,7 @@ export function ModelsPage() {
 
   const { data, loading } = useApiQuery(
     () => matrixApi.listModels(tableState.apiParams),
-    [tableState.page, tableState.sort.field, tableState.sort.order],
+    [tableState.page, tableState.sort.field, tableState.sort.order, refreshKey],
   )
 
   const [childrenMap, setChildrenMap] = useState<Map<number, ModelVariation[]>>(new Map())
@@ -46,8 +51,20 @@ export function ModelsPage() {
     }
   }, [expandedRows])
 
+  function handleCreated(newId: number) {
+    tableState.setPage(1)
+    setRefreshKey((k) => k + 1)
+    openDetailPanel(newId)
+  }
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-0">
+      <MatrixTopbar
+        fieldDefs={fieldDefs ?? undefined}
+        hiddenFields={tableState.hiddenFields}
+        onToggleField={tableState.toggleFieldVisibility}
+        onCreateClick={() => setCreateOpen(true)}
+      />
       <ViewTabs />
       <DataTable
         columns={columns}
@@ -63,6 +80,25 @@ export function ModelsPage() {
         onSort={tableState.toggleSort}
         sortState={tableState.sort}
       />
+      {data && (
+        <PaginationControls
+          page={data.page}
+          pages={data.pages}
+          total={data.total}
+          perPage={data.per_page}
+          onPageChange={tableState.setPage}
+        />
+      )}
+      {fieldDefs && (
+        <CreateRecordDialog
+          entityType="models"
+          fieldDefs={fieldDefs}
+          lookupCache={lookupCache}
+          open={createOpen}
+          onOpenChange={setCreateOpen}
+          onCreated={handleCreated}
+        />
+      )}
     </div>
   )
 }

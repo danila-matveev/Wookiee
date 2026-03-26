@@ -3,6 +3,7 @@ import { matrixApi, type Cvet } from "@/lib/matrix-api"
 import { useMatrixStore } from "@/stores/matrix-store"
 import { DataTable, type Column } from "@/components/matrix/data-table"
 import { ViewTabs } from "@/components/matrix/view-tabs"
+import { MatrixTopbar } from "@/components/matrix/matrix-topbar"
 
 const columns: Column<Cvet>[] = [
   { key: "color_code", label: "Код цвета", width: 120, type: "text" },
@@ -24,7 +25,8 @@ export function ColorsPage() {
   )
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-0">
+      <MatrixTopbar />
       <ViewTabs />
       <DataTable
         columns={columns}
