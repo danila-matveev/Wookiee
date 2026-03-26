@@ -41,7 +41,8 @@ def _print_jobs(scheduler) -> None:
     jobs = scheduler.get_jobs()
     print(f"\nWookiee v3 scheduler — {len(jobs)} job(s) configured:\n")
     for job in jobs:
-        print(f"  [{job.id:40s}]  next_run={job.next_run_time}  trigger={job.trigger}")
+        next_run = getattr(job, "next_run_time", None)
+        print(f"  [{job.id:40s}]  next_run={next_run}  trigger={job.trigger}")
     print()
 
 

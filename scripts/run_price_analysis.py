@@ -1949,8 +1949,8 @@ def _format_single_hypothesis(h: dict, CONFIDENCE_NAME: dict, CATEGORY_NAME: dic
 async def deliver_to_notion(report_md: str, channel: str, start_date: str, end_date: str) -> str | None:
     """Save report to Notion, return page URL."""
     try:
-        from agents.oleg import config
-        from agents.oleg.services.notion_service import NotionService
+        from agents.v3 import config
+        from agents.v3.delivery.notion import NotionDelivery as NotionService
         notion = NotionService(
             token=config.NOTION_TOKEN,
             database_id=config.NOTION_DATABASE_ID,

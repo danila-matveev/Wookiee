@@ -639,6 +639,88 @@ async def _job_finolog_categorization() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Job: localization weekly report (Monday 13:00 MSK)
+# ---------------------------------------------------------------------------
+
+async def _job_localization_weekly() -> None:
+    """Cron callback: weekly localization / logistics cost report."""
+    import asyncio
+    from services.wb_localization.run_localization import run_service_report
+    from services.wb_localization.report_md import (
+        format_localization_weekly_md,
+        format_localization_tg_summary,
+    )
+    from services.wb_localization.history import History
+
+    date_to = _yesterday_msk()
+    date_from = (datetime.strptime(date_to, "%Y-%m-%d") - timedelta(days=6)).strftime("%Y-%m-%d")
+
+    state = _get_state()
+    if state.is_delivered("localization_weekly", date_to):
+        logger.info("localization_weekly already delivered for %s", date_to)
+        return
+
+    logger.info("Starting localization weekly report for %s — %s", date_from, date_to)
+    history = History()
+
+    # Load average base logistics tariff from WB API (fallback: 80₽)
+    avg_base_logistics = 80.0
+    try:
+        from shared.clients.wb_client import WBClient
+        from services.sheets_sync.config import CABINET_OOO
+        wb = WBClient(api_key=CABINET_OOO.wb_api_key, cabinet_name="ooo")
+        try:
+            tariffs = wb.get_box_tariffs()
+            if tariffs:
+                rates = [t.get("deliveryBase", 0) for t in tariffs if t.get("deliveryBase", 0) > 0]
+                if rates:
+                    avg_base_logistics = sum(rates) / len(rates)
+                    logger.info("Avg base logistics tariff: %.1f₽", avg_base_logistics)
+        finally:
+            wb.close()
+    except Exception as e:
+        logger.warning("Failed to load tariffs, using default %.0f₽: %s", avg_base_logistics, e)
+
+    cabinet_keys = ["ip", "ooo"]
+    results: list[dict] = []
+    caveats: list[str] = []
+
+    for i, cab_key in enumerate(cabinet_keys):
+        try:
+            result = await asyncio.to_thread(
+                run_service_report,
+                cabinet_key=cab_key,
+                days=91,
+                history_store=history,
+            )
+            result["avg_base_logistics"] = avg_base_logistics
+            results.append(result)
+        except Exception as e:
+            logger.error("Localization report failed for %s: %s", cab_key, e)
+            caveats.append(f"Кабинет {cab_key}: ошибка ({e})")
+        if i < len(cabinet_keys) - 1:
+            await asyncio.sleep(60)
+
+    if not results:
+        logger.error("No localization results — skipping delivery")
+        await _send_admin("Еженедельный отчёт по логистике: нет данных ни по одному кабинету")
+        return
+
+    md = format_localization_weekly_md(results, period_days=91)
+    tg = format_localization_tg_summary(results)
+
+    envelope = {
+        "status": "success",
+        "report": {"detailed_report": md, "telegram_summary": tg},
+        "agents_called": 0,
+    }
+
+    await _deliver(envelope, "localization_weekly", date_from, date_to, caveats=caveats or None)
+    state.mark_delivered("localization_weekly", date_to)
+    logger.info("Localization weekly delivered for %s", date_to)
+
+
+# ---------------------------------------------------------------------------
 # Scheduler factory
 # ---------------------------------------------------------------------------
 
@@ -831,6 +913,19 @@ def _setup_legacy_scheduler() -> AsyncIOScheduler:
     else:
         logger.info("finolog_categorization job skipped: disabled or FINOLOG_API_KEY not set")
 
+    # ── 16. Localization weekly (Monday 13:00) ───────────────────────────────
+    if config.LOCALIZATION_WEEKLY_ENABLED:
+        loc_h, loc_m = _parse_hm(config.LOCALIZATION_WEEKLY_REPORT_TIME)
+        scheduler.add_job(
+            _job_localization_weekly,
+            trigger=CronTrigger(
+                day_of_week="mon", hour=loc_h, minute=loc_m,
+                timezone=config.TIMEZONE,
+            ),
+            id="localization_weekly",
+            **job_defaults,
+        )
+
     logger.info(
         "Scheduler configured with %d jobs: %s",
         len(scheduler.get_jobs()),
@@ -978,6 +1073,19 @@ def _setup_conductor_scheduler() -> AsyncIOScheduler:
             _job_finolog_categorization,
             trigger=CronTrigger(hour=cat_h, minute=cat_m, timezone=config.TIMEZONE),
             id="finolog_categorization",
+            **job_defaults,
+        )
+
+    # Localization weekly report (Monday 13:00 MSK)
+    if config.LOCALIZATION_WEEKLY_ENABLED:
+        loc_h, loc_m = _parse_hm(config.LOCALIZATION_WEEKLY_REPORT_TIME)
+        scheduler.add_job(
+            _job_localization_weekly,
+            trigger=CronTrigger(
+                day_of_week="mon", hour=loc_h, minute=loc_m,
+                timezone=config.TIMEZONE,
+            ),
+            id="localization_weekly",
             **job_defaults,
         )
 

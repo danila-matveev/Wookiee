@@ -61,6 +61,10 @@ MARKETING_WEEKLY_REPORT_TIME: str = os.getenv("MARKETING_WEEKLY_REPORT_TIME", "1
 MARKETING_MONTHLY_REPORT_TIME: str = os.getenv("MARKETING_MONTHLY_REPORT_TIME", "11:30")
 FUNNEL_WEEKLY_REPORT_TIME: str = os.getenv("FUNNEL_WEEKLY_REPORT_TIME", "12:00")
 FINOLOG_WEEKLY_REPORT_TIME: str = os.getenv("FINOLOG_WEEKLY_REPORT_TIME", "18:00")
+LOCALIZATION_WEEKLY_REPORT_TIME: str = os.getenv("LOCALIZATION_WEEKLY_REPORT_TIME", "13:00")
+LOCALIZATION_WEEKLY_ENABLED: bool = os.getenv(
+    "LOCALIZATION_WEEKLY_ENABLED", "true"
+).lower() in ("true", "1", "yes")
 
 # ── Finolog (cash flow / ДДС) ─────────────────────────────────────────────────
 FINOLOG_API_KEY: str = os.getenv("FINOLOG_API_KEY", "")
