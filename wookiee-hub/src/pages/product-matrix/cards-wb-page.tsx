@@ -3,6 +3,7 @@ import { matrixApi, type SleykaWB } from "@/lib/matrix-api"
 import { useMatrixStore } from "@/stores/matrix-store"
 import { DataTable, type Column } from "@/components/matrix/data-table"
 import { ViewTabs } from "@/components/matrix/view-tabs"
+import { MatrixTopbar } from "@/components/matrix/matrix-topbar"
 
 const columns: Column<SleykaWB>[] = [
   { key: "nazvanie", label: "Название", width: 240, type: "text" },
@@ -21,7 +22,8 @@ export function CardsWBPage() {
   )
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-0">
+      <MatrixTopbar />
       <ViewTabs />
       <DataTable
         columns={columns}
