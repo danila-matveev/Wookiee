@@ -26,6 +26,21 @@ export interface TableState {
  * `apiParams` returns an object ready to spread into API fetch calls:
  * `{ page, per_page, sort?, order? }` — sort/order only included when active.
  */
+/**
+ * Default fields to hide per entity — only show key business columns initially.
+ * Users can toggle visibility via "Настроить поля" popover.
+ */
+const DEFAULT_HIDDEN: Record<string, string[]> = {
+  models: [
+    "nazvanie", "sezon", "pol", "sostav", "razmer_id", "razmer_min", "razmer_max",
+    "ves_g", "dlina_sm", "shirina_sm", "vysota_sm", "hs_code",
+    "opisanie", "brand", "predmet", "strana_proiz", "zametki", "created_at",
+    "importer_id",
+  ],
+  articles: [],
+  products: [],
+}
+
 export function useTableState(
   entity: string,
   defaultPerPage = 50,
@@ -33,7 +48,9 @@ export function useTableState(
   const [page, setPageRaw] = useState(1)
   const [perPage] = useState(defaultPerPage)
   const [sort, setSort] = useState<TableSortState>({ field: null, order: "asc" })
-  const [hiddenFields, setHiddenFields] = useState<Set<string>>(new Set())
+  const [hiddenFields, setHiddenFields] = useState<Set<string>>(
+    () => new Set(DEFAULT_HIDDEN[entity] ?? []),
+  )
 
   const setPage = useCallback((p: number) => {
     setPageRaw(p)
