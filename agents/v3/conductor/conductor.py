@@ -63,29 +63,46 @@ def _extract_gate_info(gate_result) -> dict:
     """Extract display info from GateCheckResult for Telegram message.
 
     The gate names follow patterns like "ETL ran today (wb)", "Source data loaded (wb)",
-    "Orders volume (wb)", "Revenue vs avg (wb)".
-    GateResult has: name, passed, is_hard, value, threshold, detail, extra (usually empty dict).
+    "Orders volume (wb)", "Revenue vs avg (wb)", "Margin fill (wb)".
+    GateResult has: name, passed, is_hard, value, threshold, detail, extra.
 
-    Since extra dict is usually empty in current implementation, we fall back to parsing
-    the detail string or using value/threshold when available.
+    Returns dict with keys: updated_at, orders, orders_normal, revenue_ratio, margin_pct.
     """
-    info = {"updated_at": "—", "orders": 0, "revenue_ratio": 1.0}
+    info: dict = {"updated_at": "—", "orders": 0, "orders_normal": True,
+                  "revenue_ratio": None, "margin_pct": None}
     for g in gate_result.gates:
         if "ETL" in g.name and g.detail:
-            # Try to extract update time from detail like "Последнее обновление: 2026-03-21"
             if g.extra.get("updated_at"):
                 info["updated_at"] = g.extra["updated_at"]
             elif "обновление" in g.detail:
-                # Fallback: extract date from detail
                 parts = g.detail.split(":")
                 if len(parts) >= 2:
                     info["updated_at"] = parts[-1].strip().split(",")[0].strip()
-        elif "Orders volume" in g.name or "Source data loaded" in g.name:
+        elif "Orders volume" in g.name:
             if g.value is not None:
-                info["orders"] = int(g.value)
+                # value is ratio in %, extract count from detail
+                info["orders_normal"] = g.passed
+                # detail format: "Вчера: 1388, среднее 7д: 1400, ratio: 99.1%"
+                if "Вчера:" in g.detail:
+                    try:
+                        count_str = g.detail.split("Вчера:")[1].split(",")[0].strip()
+                        info["orders"] = int(count_str)
+                    except (ValueError, IndexError):
+                        pass
+        elif "Source data loaded" in g.name:
+            # Also has count in detail — use as fallback if Orders volume didn't set it
+            if info["orders"] == 0 and "Вчера:" in (g.detail or ""):
+                try:
+                    count_str = g.detail.split("Вчера:")[1].split(",")[0].strip()
+                    info["orders"] = int(count_str)
+                except (ValueError, IndexError):
+                    pass
         elif "Revenue vs avg" in g.name:
-            if g.value is not None and g.threshold:
-                info["revenue_ratio"] = g.value / 100.0  # value is already percentage
+            if g.value is not None:
+                info["revenue_ratio"] = g.value  # already percentage
+        elif "Margin fill" in g.name:
+            if g.value is not None:
+                info["margin_pct"] = g.value  # already percentage
     return info
 
 
@@ -142,11 +159,23 @@ async def data_ready_check(
         logger.info("All reports already generated for %s", today)
         return
 
-    # 3. Send "data ready" notification (deduplicated)
+    # 3. Send per-channel + combined "data ready" notifications (deduplicated)
     yesterday = today - timedelta(days=1)
     day_month = f"{yesterday.day} {_month_name(yesterday.month)}"
     report_date = str(today)
 
+    # Per-channel detailed notifications
+    for mp, gates in [("wb", wb_gates), ("ozon", ozon_gates)]:
+        channel_key = f"{report_date}:{mp}"
+        if not conductor_state.already_notified(channel_key):
+            gate_info = _extract_gate_info(gates)
+            report_time = "09:00" if ReportType.DAILY in pending else None
+            await telegram_send(
+                messages.channel_data_ready(day_month, mp, gate_info, report_time)
+            )
+            conductor_state.mark_notified(channel_key)
+
+    # Combined notification with report list
     if not conductor_state.already_notified(report_date):
         pending_names = [rt.human_name for rt in pending]
         await telegram_send(messages.data_ready(day_month, pending_names))
@@ -210,10 +239,10 @@ async def generate_and_validate(
         # Deliver
         try:
             delivery_result = await delivery(
-                report=result,
+                result=result,
                 report_type=report_type.value,
-                start_date=dates["date_from"],
-                end_date=dates["date_to"],
+                date_from=dates["date_from"],
+                date_to=dates["date_to"],
             )
             notion_url = delivery_result.get("notion", {}).get("page_url")
         except Exception as e:
@@ -257,20 +286,17 @@ async def generate_and_validate(
                 logger.exception("Failed to schedule retry: %s", e)
 
     else:
-        # All attempts exhausted or verdict == FAIL
+        # Verdict == FAIL (no retry possible) or all attempts exhausted
         conductor_state.log(report_date, report_type.value, status="failed",
                            attempt=attempt, error=validation.reason)
-        # Отправляем ошибку только на последней попытке (промежуточные ретраи молчат)
-        if attempt >= MAX_ATTEMPTS:
-            alert = messages.report_error(
-                report_date, report_type.human_name,
-                validation.reason, attempt, MAX_ATTEMPTS,
-            )
-            await telegram_send(alert)
-        else:
-            logger.warning("Report %s attempt %d/%d failed: %s", report_type, attempt, MAX_ATTEMPTS, validation.reason)
-        logger.error("Report %s failed after %d attempts: %s",
-                     report_type.value, attempt, validation.reason)
+        # Always notify on FAIL — no retry will happen, user must know
+        alert = messages.report_error(
+            report_date, report_type.human_name,
+            validation.reason, attempt, MAX_ATTEMPTS,
+        )
+        await telegram_send(alert)
+        logger.error("Report %s failed (attempt %d/%d): %s",
+                     report_type.value, attempt, MAX_ATTEMPTS, validation.reason)
 
 
 async def deadline_check(
