@@ -16,7 +16,7 @@ def test_quick_validate_passes_good_report():
     report = {
         "status": "success",
         "report": {
-            "detailed_report": "# Report\n## Секция 1\nТекст" * 20,
+            "detailed_report": "# Report\n## ▶ Секция 1\nТекст подробный с данными\n" * 20,
             "brief_report": "Brief summary text here",
             "telegram_summary": "Сводка за 19 марта 2026:\n• Маржа: 255 тыс\n• Заказы: 1164" + " " * 60,
         },

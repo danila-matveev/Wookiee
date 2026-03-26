@@ -2,7 +2,7 @@
 import pytest
 from unittest.mock import AsyncMock, patch
 
-from agents.v3.delivery.notion import NotionDelivery
+from shared.notion_client import NotionClient as NotionDelivery
 
 
 @pytest.mark.asyncio

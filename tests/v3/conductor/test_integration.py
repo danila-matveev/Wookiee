@@ -30,7 +30,7 @@ def full_setup():
     good_report = {
         "status": "success",
         "report": {
-            "detailed_report": "# Отчёт\n## Секция 1\nТекст анализа " * 50,
+            "detailed_report": "# Отчёт\n\n## ▶ Финансовые показатели\n| Метрика | Значение |\n|---|---|\n| Выручка | 1.2M |\n\n## ▶ Заказы и продажи\nТекст анализа заказов\n\n## ▶ Маржинальность\nТекст анализа маржи\n\n" * 5,
             "brief_report": "Краткая сводка за день",
             "telegram_summary": "📊 Сводка за 19 марта:\n• Маржа: 255 тыс\n• Заказы: 1164 шт (+9.9%)" + " " * 100,
         },
@@ -120,7 +120,7 @@ async def test_deadline_check_alerts_on_missing(full_setup):
         today=date(2026, 3, 19),
     )
 
-    assert any("Дедлайн" in m or "не сформированы" in m for m in s["telegram_messages"])
+    assert any("не все отчёты готовы" in m or "Не готовы" in m for m in s["telegram_messages"])
 
 
 @pytest.mark.asyncio
