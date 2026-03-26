@@ -20,7 +20,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from agents.oleg.services.finolog_service import FinologService
-from agents.oleg.services.notion_service import NotionService
+from shared.notion_client import NotionClient as NotionService
 
 from . import config
 from .scanner import DailyScanner

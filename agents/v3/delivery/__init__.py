@@ -2,6 +2,6 @@
 
 from .router import deliver
 from .telegram import send_report, format_report_message
-from .notion import NotionDelivery
+from shared.notion_client import NotionClient as NotionDelivery
 
 __all__ = ["deliver", "send_report", "format_report_message", "NotionDelivery"]

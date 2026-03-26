@@ -7,7 +7,7 @@ Failures in one channel do not block the others.
 from __future__ import annotations
 import logging
 
-from .notion import NotionDelivery
+from shared.notion_client import NotionClient as NotionDelivery
 from .telegram import send_report as tg_send_report
 
 logger = logging.getLogger(__name__)

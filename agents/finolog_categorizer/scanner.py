@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from datetime import date
 
 from agents.oleg.services.finolog_service import FinologService
-from agents.oleg.services.notion_service import NotionService
+from shared.notion_client import NotionClient as NotionService
 
 from .categorizer import Suggestion, classify
 from .config import HIGH_CONFIDENCE_THRESHOLD

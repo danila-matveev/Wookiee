@@ -1950,7 +1950,7 @@ async def deliver_to_notion(report_md: str, channel: str, start_date: str, end_d
     """Save report to Notion, return page URL."""
     try:
         from agents.v3 import config
-        from agents.v3.delivery.notion import NotionDelivery as NotionService
+        from shared.notion_client import NotionClient as NotionService
         notion = NotionService(
             token=config.NOTION_TOKEN,
             database_id=config.NOTION_DATABASE_ID,
