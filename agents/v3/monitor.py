@@ -257,16 +257,17 @@ class AnomalyMonitor:
             "ВАЖНО: summary_text и top_priority_anomaly — ОБЯЗАТЕЛЬНО на русском языке."
         )
 
-    async def check_and_alert(self) -> None:
-        """Main entry point: run anomaly detection and send alert if needed."""
+    async def check(self) -> dict | None:
+        """Run anomaly detection and return artifact (or None on failure).
+
+        Does NOT send any Telegram messages — caller decides what to do with the data.
+        """
         from agents.v3.runner import run_agent
 
         is_weekend = self._is_weekend()
         task = self._build_task(is_weekend)
 
-        logger.info(
-            "AnomalyMonitor: starting check (weekend=%s)", is_weekend
-        )
+        logger.info("AnomalyMonitor: starting check (weekend=%s)", is_weekend)
 
         result = await run_agent(
             agent_name="anomaly-detector",
@@ -281,31 +282,62 @@ class AnomalyMonitor:
         if status != "success":
             logger.warning(
                 "AnomalyMonitor: agent returned status=%s — %s",
-                status,
-                result.get("raw_output", "")[:200],
+                status, result.get("raw_output", "")[:200],
             )
-            return
+            return None
 
         if not isinstance(artifact, dict):
             logger.warning("AnomalyMonitor: no parseable artifact in agent output")
+            return None
+
+        summary = artifact.get("summary", {})
+        logger.info(
+            "AnomalyMonitor: critical=%d warning=%d info=%d",
+            summary.get("critical_count", 0),
+            summary.get("warning_count", 0),
+            summary.get("info_count", 0),
+        )
+        return artifact
+
+    async def check_and_store(self) -> None:
+        """Cron entry point: run check, store results for reports. No Telegram."""
+        artifact = await self.check()
+        if artifact is None:
             return
+        # Store latest artifact for embedding into reports
+        self._last_artifact = artifact
+        self._last_check_time = time.monotonic()
+        logger.info("AnomalyMonitor: artifact stored for report embedding")
+
+    def get_latest_artifact(self, max_age_hours: float = 24.0) -> dict | None:
+        """Return the most recent anomaly artifact if fresh enough."""
+        if not hasattr(self, "_last_artifact"):
+            return None
+        age_sec = time.monotonic() - getattr(self, "_last_check_time", 0)
+        if age_sec > max_age_hours * 3600:
+            return None
+        return self._last_artifact
+
+    async def check_and_alert(self) -> None:
+        """Legacy entry point: run check and send Telegram alert.
+
+        Kept for backward compatibility but no longer called by the scheduler.
+        """
+        artifact = await self.check()
+        if artifact is None:
+            return
+
+        self._last_artifact = artifact
+        self._last_check_time = time.monotonic()
 
         summary = artifact.get("summary", {})
         critical_count = summary.get("critical_count", 0)
         warning_count = summary.get("warning_count", 0)
-        total_actionable = critical_count + warning_count
 
-        logger.info(
-            "AnomalyMonitor: critical=%d warning=%d info=%d",
-            critical_count,
-            warning_count,
-            summary.get("info_count", 0),
-        )
-
-        if total_actionable > 0:
+        if critical_count + warning_count > 0:
             alert_text = messages.anomaly_report(artifact)
             await _send_admin(alert_text)
-            logger.info("AnomalyMonitor: alert sent (%d actionable anomalies)", total_actionable)
+            logger.info("AnomalyMonitor: alert sent (%d actionable)", critical_count + warning_count)
         else:
             logger.info("AnomalyMonitor: no actionable anomalies found")
 

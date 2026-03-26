@@ -21,6 +21,45 @@ def data_ready(date: str, reports: list[str]) -> str:
     )
 
 
+def channel_data_ready(
+    date: str,
+    marketplace: str,
+    gate_info: dict,
+    report_time: str | None = None,
+) -> str:
+    """Per-channel data readiness notification with details.
+
+    gate_info keys: updated_at, orders, orders_normal, revenue_ratio, margin_pct.
+    """
+    mp = marketplace.upper()
+    lines = [f"✅ Данные за {date} готовы ({mp})"]
+    lines.append("")
+
+    if gate_info.get("updated_at") and gate_info["updated_at"] != "—":
+        lines.append(f"Обновлено в {gate_info['updated_at']} МСК")
+
+    orders = gate_info.get("orders", 0)
+    orders_normal = gate_info.get("orders_normal", True)
+    if orders_normal:
+        lines.append(f"Заказов: {orders} (норма)")
+    else:
+        lines.append(f"⚠️ Заказов: {orders} (ниже нормы)")
+
+    rev = gate_info.get("revenue_ratio")
+    if rev is not None:
+        lines.append(f"Выручка: {rev:.0f}% от нормы")
+
+    margin = gate_info.get("margin_pct")
+    if margin is not None:
+        lines.append(f"Маржа: у {margin:.0f}% артикулов")
+
+    if report_time:
+        lines.append("")
+        lines.append(f"📊 Ежедневный отчёт запланирован на {report_time} МСК")
+
+    return "\n".join(lines)
+
+
 def report_error(
     date: str, report_type: str, error: str, attempt: int, max_attempts: int,
 ) -> str:
