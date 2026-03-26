@@ -40,7 +40,7 @@ async def run(args):
         "Generating %s report: %s — %s (comparison: %s — %s)",
         report_type, date_from, date_to, comp_from, comp_to,
     )
-    logger.info("V2 model: %s, review model: %s", config.MODEL_V2_MAIN, config.MODEL_V2_REVIEW)
+    logger.info("Model: %s, light model: %s", config.MODEL_MAIN, config.MODEL_LIGHT)
 
     start = time.monotonic()
 
