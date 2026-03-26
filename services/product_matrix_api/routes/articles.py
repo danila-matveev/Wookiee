@@ -37,10 +37,11 @@ def list_articles(
     if status_id:
         filters["status_id"] = status_id
 
+    sort_param = f"{params.sort}:{params.order or 'asc'}" if params.sort else None
     items, total = CrudService.get_list(
         db, Artikul,
         page=params.page, per_page=params.per_page,
-        filters=filters, sort=params.sort,
+        filters=filters, sort=sort_param,
     )
     per_page = params.per_page
     pages = (total + per_page - 1) // per_page if per_page > 0 else 1

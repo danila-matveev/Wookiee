@@ -12,6 +12,8 @@ from services.product_matrix_api.config import get_db
 def _fake_db():
     """Yield a mock DB session."""
     db = MagicMock()
+    # db.get() returns None by default (record not found)
+    db.get.return_value = None
     try:
         yield db
     finally:

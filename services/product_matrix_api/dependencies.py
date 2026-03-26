@@ -27,6 +27,7 @@ class CommonQueryParams:
     page: int = 1
     per_page: int = 50
     sort: Optional[str] = None
+    order: Optional[str] = None
     search: Optional[str] = None
 
 
@@ -34,6 +35,10 @@ def common_params(
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=200),
     sort: Optional[str] = Query(None),
+    order: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
 ) -> CommonQueryParams:
-    return CommonQueryParams(page=page, per_page=per_page, sort=sort, search=search)
+    # Validate order — only accept "asc" or "desc", fall back to None
+    if order and order not in ("asc", "desc"):
+        order = None
+    return CommonQueryParams(page=page, per_page=per_page, sort=sort, order=order, search=search)
