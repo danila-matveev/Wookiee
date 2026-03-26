@@ -52,7 +52,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. A column visibility toggle lets the user show or hide any column without losing current data or filters
   5. Clicking "+ Создать" in the topbar opens a creation form with required fields and lookup selects for reference fields; submitting creates the record and it appears in the table
   6. Table shows more than 200 rows (pagination or load-more control is present and functional)
-**Plans**: TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Backend sort/pagination params + useTableState hook + fieldDefsToColumns utility
+- [ ] 03-02-PLAN.md — FieldDef-driven columns, sort indicators, status badges, archive row styling
+- [ ] 03-03-PLAN.md — Pagination controls, column visibility popover, create record dialog
 
 ### Phase 4: Filter System
 **Goal**: Users can filter the table by status, category, or any combination of fields simultaneously, navigate from a parent model to its child articles via a sidebar click, and save and reload their preferred filter+sort configuration
@@ -75,5 +80,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 |-------|----------------|--------|-----------|
 | 1. Foundation | 0/TBD | Not started | - |
 | 2. Detail Panel | 0/TBD | Not started | - |
-| 3. Table View | 0/TBD | Not started | - |
+| 3. Table View | 0/3 | Planning complete | - |
 | 4. Filter System | 0/TBD | Not started | - |
