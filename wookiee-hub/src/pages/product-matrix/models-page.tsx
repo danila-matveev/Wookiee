@@ -9,7 +9,22 @@ import { PaginationControls } from "@/components/matrix/pagination-controls"
 import { CreateRecordDialog } from "@/components/matrix/create-record-dialog"
 import { useTableState } from "@/hooks/use-table-state"
 import { fieldDefsToColumns } from "@/lib/field-def-columns"
-import { ENTITY_BACKEND_MAP } from "@/components/matrix/panel/types"
+import { ENTITY_BACKEND_MAP, LOOKUP_TABLE_MAP } from "@/components/matrix/panel/types"
+
+/** Prefetch all lookup tables needed for reference field resolution */
+function usePrefetchLookups() {
+  const lookupCache = useMatrixStore((s) => s.lookupCache)
+  const setLookupCache = useMatrixStore((s) => s.setLookupCache)
+
+  useEffect(() => {
+    const tables = new Set(Object.values(LOOKUP_TABLE_MAP))
+    for (const table of tables) {
+      if (!lookupCache[table]) {
+        matrixApi.getLookup(table).then((items) => setLookupCache(table, items))
+      }
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+}
 
 export function ModelsPage() {
   const expandedRows = useMatrixStore((s) => s.expandedRows)
@@ -18,6 +33,8 @@ export function ModelsPage() {
   const toggleRowSelected = useMatrixStore((s) => s.toggleRowSelected)
   const openDetailPanel = useMatrixStore((s) => s.openDetailPanel)
   const lookupCache = useMatrixStore((s) => s.lookupCache)
+
+  usePrefetchLookups()
 
   const tableState = useTableState("models")
   const [createOpen, setCreateOpen] = useState(false)
