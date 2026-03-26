@@ -1975,7 +1975,7 @@ async def deliver_to_notion(report_md: str, channel: str, start_date: str, end_d
 async def notify_telegram(message: str):
     """Send notification to Telegram."""
     try:
-        from agents.oleg import config
+        from agents.v3 import config
         if not config.TELEGRAM_BOT_TOKEN or not config.ADMIN_CHAT_ID:
             return
 

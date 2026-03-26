@@ -80,16 +80,19 @@ def test_lifecycle_fields(state: ConductorState):
 
 def test_notification_dedup_initially_false(tmp_path):
     state = ConductorState(str(tmp_path / "test.db"))
+    state.ensure_table()
     assert state.already_notified("2026-03-22") is False
 
 
 def test_notification_dedup_after_mark(tmp_path):
     state = ConductorState(str(tmp_path / "test.db"))
+    state.ensure_table()
     state.mark_notified("2026-03-22")
     assert state.already_notified("2026-03-22") is True
 
 
 def test_notification_dedup_different_dates(tmp_path):
     state = ConductorState(str(tmp_path / "test.db"))
+    state.ensure_table()
     state.mark_notified("2026-03-22")
     assert state.already_notified("2026-03-21") is False

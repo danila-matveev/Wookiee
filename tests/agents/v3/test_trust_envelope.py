@@ -1,5 +1,20 @@
 """Tests for Trust Envelope and Cost Tracking."""
+import sys
 import pytest
+
+# test_orchestrator_pi.py may have injected MagicMock stubs for langchain_core.*
+# into sys.modules. Remove them so real modules are used here.
+_LANGCHAIN_MOCKS = [
+    k for k in sys.modules
+    if k.startswith("langchain_core") or k.startswith("langgraph") or k.startswith("langchain_openai")
+]
+for _k in _LANGCHAIN_MOCKS:
+    mod = sys.modules[_k]
+    if hasattr(mod, "_mock_name") or type(mod).__name__ == "MagicMock":
+        del sys.modules[_k]
+# Also force-reload runner so it picks up real AIMessage
+if "agents.v3.runner" in sys.modules:
+    del sys.modules["agents.v3.runner"]
 
 
 # --- Cost Calculation ---
