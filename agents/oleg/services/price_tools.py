@@ -636,7 +636,7 @@ async def _handle_price_counterfactual(model: str, channel: str, price_change_pc
 
 async def _handle_analyze_promotion(channel: str) -> dict:
     """Обработчик analyze_promotion — реальное сканирование акций через API."""
-    from agents.oleg import config
+    from agents.v3 import config
     from agents.oleg.services.price_analysis.promotion_analyzer import PromotionAnalyzer
 
     now_msk = get_now_msk()

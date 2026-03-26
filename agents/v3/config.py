@@ -133,3 +133,32 @@ PROMPT_TUNER_MAX_INSTRUCTIONS: int = int(os.getenv("PROMPT_TUNER_MAX_INSTRUCTION
 USE_CONDUCTOR: bool = os.getenv("USE_CONDUCTOR", "true").lower() in ("true", "1", "yes")
 CONDUCTOR_DEADLINE_HOUR: int = int(os.getenv("CONDUCTOR_DEADLINE_HOUR", "12"))
 CONDUCTOR_CATCHUP_HOUR: int = int(os.getenv("CONDUCTOR_CATCHUP_HOUR", "15"))
+
+# ── Marketplace API clients ───────────────────────────────────────────────────
+
+def get_wb_clients() -> dict:
+    """Return dict {cabinet_name: WBClient} for all configured cabinets."""
+    from shared.clients.wb_client import WBClient
+    clients = {}
+    wb_ip = os.getenv("WB_API_KEY_IP", "")
+    wb_ooo = os.getenv("WB_API_KEY_OOO", "")
+    if wb_ip:
+        clients["IP"] = WBClient(api_key=wb_ip, cabinet_name="IP")
+    if wb_ooo:
+        clients["OOO"] = WBClient(api_key=wb_ooo, cabinet_name="OOO")
+    return clients
+
+
+def get_ozon_clients() -> dict:
+    """Return dict {cabinet_name: OzonClient} for all configured cabinets."""
+    from shared.clients.ozon_client import OzonClient
+    clients = {}
+    ozon_id_ip = os.getenv("OZON_CLIENT_ID_IP", "")
+    ozon_key_ip = os.getenv("OZON_API_KEY_IP", "")
+    ozon_id_ooo = os.getenv("OZON_CLIENT_ID_OOO", "")
+    ozon_key_ooo = os.getenv("OZON_API_KEY_OOO", "")
+    if ozon_id_ip and ozon_key_ip:
+        clients["IP"] = OzonClient(client_id=ozon_id_ip, api_key=ozon_key_ip, cabinet_name="IP")
+    if ozon_id_ooo and ozon_key_ooo:
+        clients["OOO"] = OzonClient(client_id=ozon_id_ooo, api_key=ozon_key_ooo, cabinet_name="OOO")
+    return clients
