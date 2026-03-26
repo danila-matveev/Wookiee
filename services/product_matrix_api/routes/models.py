@@ -42,10 +42,11 @@ def list_models_osnova(
     if kollekciya_id:
         filters["kollekciya_id"] = kollekciya_id
 
+    sort_param = f"{params.sort}:{params.order or 'asc'}" if params.sort else None
     items, total = CrudService.get_list(
         db, ModelOsnova,
         page=params.page, per_page=params.per_page,
-        filters=filters, sort=params.sort,
+        filters=filters, sort=sort_param,
     )
 
     per_page = params.per_page
