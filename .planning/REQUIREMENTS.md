@@ -15,13 +15,13 @@ Requirements for UX redesign milestone. Each maps to roadmap phases.
 
 ### Table View
 
-- [ ] **TABLE-01**: Все колонки показывают человекочитаемые названия полей (не технические)
-- [ ] **TABLE-02**: Reference fields (категория, фабрика, коллекция) показывают реальные значения, а не "—"
-- [ ] **TABLE-03**: Статус отображается как цветной badge (Активный/Архив)
+- [x] **TABLE-01**: Все колонки показывают человекочитаемые названия полей (не технические)
+- [x] **TABLE-02**: Reference fields (категория, фабрика, коллекция) показывают реальные значения, а не "—"
+- [x] **TABLE-03**: Статус отображается как цветной badge (Активный/Архив)
 - [x] **TABLE-04**: Пользователь может сортировать таблицу кликом на заголовок колонки (asc/desc)
 - [x] **TABLE-05**: Пагинация или "load more" вместо фиксированных 200 строк
 - [ ] **TABLE-06**: Toggle видимости колонок (показать/скрыть без сохранения view)
-- [ ] **TABLE-07**: Архивные строки визуально затемнены (status-based row styling)
+- [x] **TABLE-07**: Архивные строки визуально затемнены (status-based row styling)
 
 ### Detail Panel
 
@@ -88,13 +88,13 @@ Deferred to future milestone. Tracked but not in current roadmap.
 | FOUND-01 | Phase 1 | Pending |
 | FOUND-02 | Phase 1 | Pending |
 | FOUND-03 | Phase 1 | Pending |
-| TABLE-01 | Phase 3 | Pending |
-| TABLE-02 | Phase 3 | Pending |
-| TABLE-03 | Phase 3 | Pending |
+| TABLE-01 | Phase 3 | Complete |
+| TABLE-02 | Phase 3 | Complete |
+| TABLE-03 | Phase 3 | Complete |
 | TABLE-04 | Phase 3 | Complete |
 | TABLE-05 | Phase 3 | Complete |
 | TABLE-06 | Phase 3 | Pending |
-| TABLE-07 | Phase 3 | Pending |
+| TABLE-07 | Phase 3 | Complete |
 | PANEL-01 | Phase 2 | Pending |
 | PANEL-02 | Phase 2 | Pending |
 | PANEL-03 | Phase 2 | Pending |
