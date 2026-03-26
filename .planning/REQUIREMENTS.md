@@ -20,7 +20,7 @@ Requirements for UX redesign milestone. Each maps to roadmap phases.
 - [x] **TABLE-03**: Статус отображается как цветной badge (Активный/Архив)
 - [x] **TABLE-04**: Пользователь может сортировать таблицу кликом на заголовок колонки (asc/desc)
 - [x] **TABLE-05**: Пагинация или "load more" вместо фиксированных 200 строк
-- [ ] **TABLE-06**: Toggle видимости колонок (показать/скрыть без сохранения view)
+- [x] **TABLE-06**: Toggle видимости колонок (показать/скрыть без сохранения view)
 - [x] **TABLE-07**: Архивные строки визуально затемнены (status-based row styling)
 
 ### Detail Panel
@@ -36,8 +36,8 @@ Requirements for UX redesign milestone. Each maps to roadmap phases.
 
 ### CRUD Operations
 
-- [ ] **CRUD-01**: Кнопка "+ Создать" в topbar для создания новой записи текущего типа сущности
-- [ ] **CRUD-02**: Форма создания содержит required-поля и lookup select для reference fields
+- [x] **CRUD-01**: Кнопка "+ Создать" в topbar для создания новой записи текущего типа сущности
+- [x] **CRUD-02**: Форма создания содержит required-поля и lookup select для reference fields
 
 ### Filtering & Navigation
 
@@ -93,7 +93,7 @@ Deferred to future milestone. Tracked but not in current roadmap.
 | TABLE-03 | Phase 3 | Complete |
 | TABLE-04 | Phase 3 | Complete |
 | TABLE-05 | Phase 3 | Complete |
-| TABLE-06 | Phase 3 | Pending |
+| TABLE-06 | Phase 3 | Complete |
 | TABLE-07 | Phase 3 | Complete |
 | PANEL-01 | Phase 2 | Pending |
 | PANEL-02 | Phase 2 | Pending |
@@ -103,8 +103,8 @@ Deferred to future milestone. Tracked but not in current roadmap.
 | PANEL-06 | Phase 2 | Pending |
 | PANEL-07 | Phase 2 | Pending |
 | PANEL-08 | Phase 2 | Pending |
-| CRUD-01 | Phase 3 | Pending |
-| CRUD-02 | Phase 3 | Pending |
+| CRUD-01 | Phase 3 | Complete |
+| CRUD-02 | Phase 3 | Complete |
 | FILT-01 | Phase 4 | Pending |
 | FILT-02 | Phase 4 | Pending |
 | FILT-03 | Phase 4 | Pending |

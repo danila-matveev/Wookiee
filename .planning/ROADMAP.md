@@ -52,7 +52,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. A column visibility toggle lets the user show or hide any column without losing current data or filters
   5. Clicking "+ Создать" in the topbar opens a creation form with required fields and lookup selects for reference fields; submitting creates the record and it appears in the table
   6. Table shows more than 200 rows (pagination or load-more control is present and functional)
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans executed (COMPLETE)
 
 Plans:
 - [ ] 03-01-PLAN.md — Backend sort/pagination params + useTableState hook + fieldDefsToColumns utility
@@ -80,5 +80,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 |-------|----------------|--------|-----------|
 | 1. Foundation | 0/TBD | Not started | - |
 | 2. Detail Panel | 0/TBD | Not started | - |
-| 3. Table View | 2/3 | In Progress|  |
+| 3. Table View | 3/3 | Complete | 2026-03-26 |
 | 4. Filter System | 0/TBD | Not started | - |
