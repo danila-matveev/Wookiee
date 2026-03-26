@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 from datetime import date
 
-from agents.oleg.services.notion_service import NotionService
+from shared.notion_client import NotionClient as NotionService
 from .categorizer import Suggestion
 from .store import CategorizerStore
 

@@ -14,7 +14,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
-from agents.oleg.services.notion_service import NotionService
+from shared.notion_client import NotionClient as NotionService
 from .store import CategorizerStore
 
 logger = logging.getLogger(__name__)

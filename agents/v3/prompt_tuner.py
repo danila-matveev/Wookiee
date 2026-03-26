@@ -39,7 +39,7 @@ def _get_state() -> StateStore:
 def _get_notion():
     global _notion
     if _notion is None:
-        from agents.v3.delivery.notion import NotionDelivery
+        from shared.notion_client import NotionClient as NotionDelivery
         _notion = NotionDelivery(config.NOTION_TOKEN, config.NOTION_DATABASE_ID)
     return _notion
 
