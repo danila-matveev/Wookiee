@@ -424,23 +424,27 @@ class Watchdog:
             logger.info("Watchdog: no state change, suppressing alert")
             return
 
-        # Отправляем восстановление отдельно
-        if recovered and not failed:
+        # Восстановление — только логируем, не спамим в Telegram
+        if recovered:
             check_descriptions = {
                 "llm": "Нейросеть (OpenRouter)",
                 "db": "База данных аналитики",
                 "last_run": "Последний запуск",
             }
             names = ", ".join(check_descriptions.get(n, n) for n in recovered)
-            await _send_admin(f"✅ Восстановлено: {names}")
-            return
+            logger.info("Watchdog: восстановлено: %s", names)
 
         if status == "ok":
             return
 
-        msg = messages.watchdog_alert(status, failed, passed)
-        await _send_admin(msg)
-        logger.warning("Watchdog: alert sent (status=%s, failed=%s)", status, failed)
+        # Отправляем в Telegram только при critical (всё сломалось)
+        if status == "critical":
+            msg = messages.watchdog_alert(status, failed, passed)
+            await _send_admin(msg)
+            logger.warning("Watchdog: CRITICAL alert sent (failed=%s)", failed)
+        else:
+            # warning — только логируем
+            logger.warning("Watchdog: warning (failed=%s), not alerting", failed)
 
     async def on_report_success(self, report_type: str) -> None:
         """Reset failure counter for a report type after successful delivery."""

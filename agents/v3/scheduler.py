@@ -573,14 +573,14 @@ async def _job_etl_daily_sync() -> None:
         # Alert on failures
         if not recon_result.get("passed", True):
             reason = recon_result.get('status', 'UNKNOWN')
-            await _send_admin(messages.report_exception("ETL reconciliation", date_to, date_to, Exception(reason)))
+            await _send_admin(messages.report_exception("Сверка данных маркетплейсов", date_to, date_to, Exception(reason)))
         if not quality_result.get("overall_ok", True):
             await _send_admin(messages.data_quality_issue(date_to))
 
         logger.info("etl_daily_sync for %s completed", date_to)
     except Exception as exc:
         logger.exception("etl_daily_sync failed: %s", exc)
-        await _send_admin(messages.report_exception("ETL sync", date_to, date_to, exc))
+        await _send_admin(messages.report_exception("Синхронизация данных", date_to, date_to, exc))
 
 
 # ---------------------------------------------------------------------------
@@ -612,7 +612,7 @@ async def _job_etl_weekly_analysis() -> None:
         logger.info("etl_weekly_analysis for %s completed", date_to)
     except Exception as exc:
         logger.exception("etl_weekly_analysis failed: %s", exc)
-        await _send_admin(messages.report_exception("ETL weekly analysis", "", "", exc))
+        await _send_admin(messages.report_exception("Еженедельная проверка данных", "", "", exc))
 
 
 # ---------------------------------------------------------------------------
