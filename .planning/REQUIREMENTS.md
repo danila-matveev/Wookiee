@@ -18,8 +18,8 @@ Requirements for UX redesign milestone. Each maps to roadmap phases.
 - [ ] **TABLE-01**: Все колонки показывают человекочитаемые названия полей (не технические)
 - [ ] **TABLE-02**: Reference fields (категория, фабрика, коллекция) показывают реальные значения, а не "—"
 - [ ] **TABLE-03**: Статус отображается как цветной badge (Активный/Архив)
-- [ ] **TABLE-04**: Пользователь может сортировать таблицу кликом на заголовок колонки (asc/desc)
-- [ ] **TABLE-05**: Пагинация или "load more" вместо фиксированных 200 строк
+- [x] **TABLE-04**: Пользователь может сортировать таблицу кликом на заголовок колонки (asc/desc)
+- [x] **TABLE-05**: Пагинация или "load more" вместо фиксированных 200 строк
 - [ ] **TABLE-06**: Toggle видимости колонок (показать/скрыть без сохранения view)
 - [ ] **TABLE-07**: Архивные строки визуально затемнены (status-based row styling)
 
@@ -91,8 +91,8 @@ Deferred to future milestone. Tracked but not in current roadmap.
 | TABLE-01 | Phase 3 | Pending |
 | TABLE-02 | Phase 3 | Pending |
 | TABLE-03 | Phase 3 | Pending |
-| TABLE-04 | Phase 3 | Pending |
-| TABLE-05 | Phase 3 | Pending |
+| TABLE-04 | Phase 3 | Complete |
+| TABLE-05 | Phase 3 | Complete |
 | TABLE-06 | Phase 3 | Pending |
 | TABLE-07 | Phase 3 | Pending |
 | PANEL-01 | Phase 2 | Pending |

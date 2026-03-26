@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: planning
-stopped_at: Phase 3 context gathered
-last_updated: "2026-03-26T21:34:16.029Z"
-last_activity: 2026-03-23 — Roadmap created, requirements mapped to 4 phases
+status: executing
+stopped_at: Completed 03-01-PLAN.md
+last_updated: "2026-03-26T22:17:50Z"
+last_activity: 2026-03-26 — Completed Phase 3 Plan 01 (sort/pagination + table hooks)
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 5
-  completed_plans: 5
-  percent: 0
+  completed_plans: 6
+  percent: 10
 ---
 
 # Project State
@@ -21,33 +21,33 @@ progress:
 See: .planning/REQUIREMENTS.md (updated 2026-03-23)
 
 **Core value:** Централизованное управление товарной матрицей (PIM) для мультиканального fashion-бизнеса — Notion-like интерфейс вместо текущего неработающего редактора
-**Current focus:** Phase 1 — Foundation
+**Current focus:** Phase 3 — Table View
 
 ## Current Position
 
-Phase: 1 of 4 (Foundation)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-03-23 — Roadmap created, requirements mapped to 4 phases
+Phase: 3 of 4 (Table View)
+Plan: 1 of 3 in current phase (completed)
+Status: Executing
+Last activity: 2026-03-26 — Completed Phase 3 Plan 01 (sort/pagination + table hooks)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [#░░░░░░░░░] 10%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0
-- Average duration: —
-- Total execution time: 0 hours
+- Total plans completed: 1
+- Average duration: 6 min
+- Total execution time: 0.1 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 03-table-view | 1 | 6 min | 6 min |
 
 **Recent Trend:**
-- Last 5 plans: —
-- Trend: —
+- Last 5 plans: 03-01 (6 min)
+- Trend: Starting
 
 *Updated after each plan completion*
 
@@ -59,6 +59,8 @@ Progress: [░░░░░░░░░░] 0%
 - [Pre-Phase 1]: Pin zod to 3.25.x — known zodResolver bug with zod 4.x and @hookform/resolvers 5.2.x
 - [Pre-Phase 1]: DetailPanel uses shadcn Sheet overlay (not persistent split pane) for v1; react-resizable-panels deferred
 - [Pre-Phase 1]: Filter state lives in Zustand only — no URL sync for this milestone
+- [Phase 3-01]: Invalid order param falls back to asc rather than 422 — more forgiving API
+- [Phase 3-01]: Order validation in Python dependency, not FastAPI Query regex — enables graceful fallback
 
 ### Pending Todos
 
@@ -72,6 +74,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-26T21:34:16.022Z
-Stopped at: Phase 3 context gathered
-Resume file: .planning/phases/03-table-view/03-CONTEXT.md
+Last session: 2026-03-26T22:17:50Z
+Stopped at: Completed 03-01-PLAN.md
+Resume file: .planning/phases/03-table-view/03-01-SUMMARY.md
