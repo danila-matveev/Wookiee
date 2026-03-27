@@ -32,10 +32,13 @@ export interface TableState {
  */
 const DEFAULT_HIDDEN: Record<string, string[]> = {
   models: [
-    "nazvanie", "sezon", "pol", "sostav", "razmer_id", "razmer_min", "razmer_max",
-    "ves_g", "dlina_sm", "shirina_sm", "vysota_sm", "hs_code",
-    "opisanie", "brand", "predmet", "strana_proiz", "zametki", "created_at",
-    "importer_id",
+    "sku_china", "upakovka", "ves_kg", "dlina_cm", "shirina_cm", "vysota_cm",
+    "kratnost_koroba", "srok_proizvodstva", "komplektaciya",
+    "material", "sostav_syrya", "composition",
+    "tnved", "gruppa_sertifikata",
+    "nazvanie_etiketka", "nazvanie_sayt", "opisanie_sayt",
+    "tegi", "notion_link",
+    "created_at", "updated_at",
   ],
   articles: [],
   products: [],

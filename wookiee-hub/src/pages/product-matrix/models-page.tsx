@@ -1,15 +1,13 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { useApiQuery } from "@/hooks/use-api-query"
-import { matrixApi, type ModelOsnova, type ModelVariation, type FieldDefinition } from "@/lib/matrix-api"
+import { matrixApi, type ModelOsnova, type ModelVariation } from "@/lib/matrix-api"
 import { useMatrixStore } from "@/stores/matrix-store"
 import { DataTable } from "@/components/matrix/data-table"
 import { ViewTabs } from "@/components/matrix/view-tabs"
 import { MatrixTopbar } from "@/components/matrix/matrix-topbar"
 import { PaginationControls } from "@/components/matrix/pagination-controls"
-import { CreateRecordDialog } from "@/components/matrix/create-record-dialog"
-import { useTableState } from "@/hooks/use-table-state"
-import { fieldDefsToColumns } from "@/lib/field-def-columns"
-import { ENTITY_BACKEND_MAP, LOOKUP_TABLE_MAP } from "@/components/matrix/panel/types"
+import { buildModelColumns, MODEL_FIELD_DEFS, MODEL_DEFAULT_HIDDEN } from "@/lib/model-columns"
+import { LOOKUP_TABLE_MAP } from "@/components/matrix/panel/types"
 
 /** Prefetch all lookup tables needed for reference field resolution */
 function usePrefetchLookups() {
@@ -36,28 +34,45 @@ export function ModelsPage() {
 
   usePrefetchLookups()
 
-  const tableState = useTableState("models")
-  const [createOpen, setCreateOpen] = useState(false)
+  // Local state for pagination, sort, column visibility
+  const [page, setPage] = useState(1)
+  const [sort, setSort] = useState<{ field: string | null; order: "asc" | "desc" }>({ field: null, order: "asc" })
+  const [hiddenFields, setHiddenFields] = useState<Set<string>>(() => new Set(MODEL_DEFAULT_HIDDEN))
   const [refreshKey, setRefreshKey] = useState(0)
 
-  // Fetch field definitions for column generation
-  const { data: fieldDefs } = useApiQuery<FieldDefinition[]>(
-    () => matrixApi.listFields(ENTITY_BACKEND_MAP.models),
-    [],
-  )
+  const toggleSort = useCallback((field: string) => {
+    setSort((prev) => {
+      if (prev.field === field) {
+        return { field, order: prev.order === "asc" ? "desc" : "asc" }
+      }
+      return { field, order: "asc" }
+    })
+    setPage(1)
+  }, [])
 
-  const columns = fieldDefs
-    ? fieldDefsToColumns<ModelOsnova>(fieldDefs, lookupCache, tableState.hiddenFields)
-    : []
+  const toggleFieldVisibility = useCallback((field: string) => {
+    setHiddenFields((prev) => {
+      const next = new Set(prev)
+      next.has(field) ? next.delete(field) : next.add(field)
+      return next
+    })
+  }, [])
+
+  const columns = buildModelColumns<ModelOsnova>(lookupCache, hiddenFields)
+
+  const apiParams: Record<string, string | number> = { page, per_page: 50 }
+  if (sort.field) {
+    apiParams.sort = sort.field
+    apiParams.order = sort.order
+  }
 
   const { data, loading } = useApiQuery(
-    () => matrixApi.listModels(tableState.apiParams),
-    [tableState.page, tableState.sort.field, tableState.sort.order, refreshKey],
+    () => matrixApi.listModels(apiParams),
+    [page, sort.field, sort.order, refreshKey],
   )
 
   const [childrenMap, setChildrenMap] = useState<Map<number, ModelVariation[]>>(new Map())
 
-  // Fetch children when a row is expanded
   useEffect(() => {
     for (const id of expandedRows) {
       if (!childrenMap.has(id)) {
@@ -66,10 +81,10 @@ export function ModelsPage() {
         })
       }
     }
-  }, [expandedRows])
+  }, [expandedRows]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleCreated(newId: number) {
-    tableState.setPage(1)
+    setPage(1)
     setRefreshKey((k) => k + 1)
     openDetailPanel(newId)
   }
@@ -77,10 +92,10 @@ export function ModelsPage() {
   return (
     <div className="space-y-0">
       <MatrixTopbar
-        fieldDefs={fieldDefs ?? undefined}
-        hiddenFields={tableState.hiddenFields}
-        onToggleField={tableState.toggleFieldVisibility}
-        onCreateClick={() => setCreateOpen(true)}
+        fieldDefs={MODEL_FIELD_DEFS as any}
+        hiddenFields={hiddenFields}
+        onToggleField={toggleFieldVisibility}
+        onCreateClick={() => {/* TODO: create dialog */}}
       />
       <ViewTabs />
       <DataTable
@@ -94,8 +109,8 @@ export function ModelsPage() {
         onToggleExpand={toggleRowExpanded}
         onToggleSelect={toggleRowSelected}
         onRowClick={openDetailPanel}
-        onSort={tableState.toggleSort}
-        sortState={tableState.sort}
+        onSort={toggleSort}
+        sortState={sort}
       />
       {data && (
         <PaginationControls
@@ -103,17 +118,7 @@ export function ModelsPage() {
           pages={data.pages}
           total={data.total}
           perPage={data.per_page}
-          onPageChange={tableState.setPage}
-        />
-      )}
-      {fieldDefs && (
-        <CreateRecordDialog
-          entityType="models"
-          fieldDefs={fieldDefs}
-          lookupCache={lookupCache}
-          open={createOpen}
-          onOpenChange={setCreateOpen}
-          onCreated={handleCreated}
+          onPageChange={setPage}
         />
       )}
     </div>
