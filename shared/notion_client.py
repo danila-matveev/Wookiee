@@ -181,18 +181,19 @@ class NotionClient:
                     if report_type:
                         properties["Тип анализа"] = {"select": {"name": report_type}}
 
+                    # Create page without children — append all blocks
+                    # separately to ensure nested children (toggle headings)
+                    # are reliably persisted via individual PATCH calls.
                     page_payload = {
                         "parent": {"database_id": self.database_id},
                         "properties": properties,
-                        "children": blocks[:100],
                     }
 
                     result = await self._request("POST", "pages", page_payload)
                     page_id = result["id"]
                     page_url = result["url"]
 
-                    if len(blocks) > 100:
-                        await self._append_blocks(page_id, blocks[100:])
+                    await self._append_blocks(page_id, blocks)
 
                     logger.info(f"Notion: page created \u2014 {page_url}")
                     return page_url
@@ -332,9 +333,47 @@ class NotionClient:
                 break
 
     async def _append_blocks(self, page_id: str, blocks: list) -> None:
-        for i in range(0, len(blocks), 100):
-            batch = blocks[i:i + 100]
-            await self._request("PATCH", f"blocks/{page_id}/children", {"children": batch})
+        """Append blocks to a page, handling nested children separately.
+
+        Notion API doesn't reliably persist nested children (e.g. toggle heading
+        children) when sent inline. We strip children, append the parent blocks,
+        then append children to each parent block individually.
+        """
+        # Separate children from parent blocks
+        blocks_with_children: list[tuple[int, list]] = []  # (index_in_batch, children)
+        flat_blocks: list[dict] = []
+
+        for block in blocks:
+            btype = block.get("type", "")
+            block_data = block.get(btype, {})
+            children = block_data.pop("children", None)
+
+            flat_blocks.append(block)
+
+            if children:
+                blocks_with_children.append((len(flat_blocks) - 1, children))
+
+        # Append parent blocks in batches of 100
+        created_block_ids: list[str] = []
+        for i in range(0, len(flat_blocks), 100):
+            batch = flat_blocks[i:i + 100]
+            result = await self._request(
+                "PATCH", f"blocks/{page_id}/children", {"children": batch}
+            )
+            for r in result.get("results", []):
+                created_block_ids.append(r["id"])
+
+        # Append children to their parent blocks
+        for idx, children in blocks_with_children:
+            if idx < len(created_block_ids):
+                parent_block_id = created_block_ids[idx]
+                for ci in range(0, len(children), 100):
+                    child_batch = children[ci:ci + 100]
+                    await self._request(
+                        "PATCH",
+                        f"blocks/{parent_block_id}/children",
+                        {"children": child_batch},
+                    )
 
 
 # Backward-compatible aliases

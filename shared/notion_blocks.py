@@ -262,7 +262,7 @@ def md_to_notion_blocks(md_text: str) -> list:
                     block_type: {
                         "rich_text": parse_inline(toggle_content[:2000]),
                         "is_toggleable": True,
-                        "children": children[:100] if children else [],
+                        "children": children if children else [],
                     },
                 })
                 # i already points to next section; don't increment
