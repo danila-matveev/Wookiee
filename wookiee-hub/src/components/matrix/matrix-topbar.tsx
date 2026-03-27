@@ -1,23 +1,9 @@
-import { Search, Settings, Plus } from "lucide-react"
+import { Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { useMatrixStore } from "@/stores/matrix-store"
 import { ColumnVisibilityPopover } from "@/components/matrix/column-visibility-popover"
-import type { FieldDefinition } from "@/lib/matrix-api"
-
-const entityLabels: Record<string, string> = {
-  models: "Модели",
-  articles: "Артикулы",
-  products: "Товары / SKU",
-  colors: "Цвета",
-  factories: "Фабрики",
-  importers: "Импортёры",
-  "cards-wb": "Склейки WB",
-  "cards-ozon": "Склейки Ozon",
-  certs: "Сертификаты",
-}
 
 interface MatrixTopbarProps {
-  fieldDefs?: FieldDefinition[]
+  fieldDefs?: Array<{ key?: string; field_name?: string; label?: string; display_name?: string; section?: string }>
   hiddenFields?: Set<string>
   onToggleField?: (fieldName: string) => void
   onCreateClick?: () => void
@@ -29,49 +15,26 @@ export function MatrixTopbar({
   onToggleField,
   onCreateClick,
 }: MatrixTopbarProps) {
-  const activeEntity = useMatrixStore((s) => s.activeEntity)
-  const setSearchOpen = useMatrixStore((s) => s.setSearchOpen)
-
   return (
-    <div className="flex h-12 items-center justify-between border-b border-border px-4">
-      <h2 className="text-lg font-semibold">
-        {entityLabels[activeEntity] ?? activeEntity}
-      </h2>
-      <div className="flex items-center gap-2">
-        {onCreateClick && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onCreateClick}
-            className="gap-1.5 text-muted-foreground"
-          >
-            <Plus className="h-4 w-4" />
-            <span className="text-xs">Создать</span>
-          </Button>
-        )}
-        {fieldDefs && hiddenFields && onToggleField && (
-          <ColumnVisibilityPopover
-            fields={fieldDefs}
-            hiddenFields={hiddenFields}
-            onToggle={onToggleField}
-          />
-        )}
+    <div className="flex h-10 items-center gap-2 border-b border-border px-4">
+      {onCreateClick && (
         <Button
-          variant="ghost"
+          variant="default"
           size="sm"
-          onClick={() => setSearchOpen(true)}
-          className="gap-1.5 text-muted-foreground"
+          onClick={onCreateClick}
+          className="h-7 gap-1.5 text-xs"
         >
-          <Search className="h-4 w-4" />
-          <span className="text-xs">Поиск</span>
-          <kbd className="ml-1 rounded border border-border bg-muted px-1 py-0.5 text-[10px]">
-            ⌘K
-          </kbd>
+          <Plus className="h-3.5 w-3.5" />
+          Создать
         </Button>
-        <Button variant="ghost" size="icon" className="h-8 w-8">
-          <Settings className="h-4 w-4" />
-        </Button>
-      </div>
+      )}
+      {fieldDefs && hiddenFields && onToggleField && (
+        <ColumnVisibilityPopover
+          fields={fieldDefs}
+          hiddenFields={hiddenFields}
+          onToggle={onToggleField}
+        />
+      )}
     </div>
   )
 }

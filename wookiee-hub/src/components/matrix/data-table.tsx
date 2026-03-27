@@ -4,7 +4,10 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { TableCell, type CellType } from "./table-cell"
 import { cn } from "@/lib/utils"
-import type { TableSortState } from "@/hooks/use-table-state"
+export interface TableSortState {
+  field: string | null
+  order: "asc" | "desc"
+}
 import type { FieldDefColumn } from "@/lib/field-def-columns"
 
 export interface Column<T> {
@@ -104,16 +107,15 @@ export function DataTable<T extends { id: number }>({
   }
 
   return (
-    <div className="overflow-auto rounded-md border border-border">
-      <table className="w-full table-fixed border-collapse text-sm">
+    <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-220px)] rounded-md border border-border">
+      <table className="w-full border-collapse text-sm">
         <thead className="sticky top-0 z-10 bg-muted/80 backdrop-blur">
           <tr>
             <th className="w-10 border-b border-border px-2 py-2" />
             <th className="w-8 border-b border-border px-2 py-2" />
             {columns.map((col) => {
-              const hasFieldDef = isFieldDefColumn(col)
-              const sortFieldName = hasFieldDef ? col.fieldDef.field_name : col.key
-              const isSortable = !!(onSort && hasFieldDef)
+              const sortFieldName = isFieldDefColumn(col) ? col.fieldDef.field_name : col.key
+              const isSortable = !!onSort
               return (
                 <th
                   key={col.key}
