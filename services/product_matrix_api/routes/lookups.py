@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from services.product_matrix_api.config import get_db
 from services.product_matrix_api.models.schemas import LookupItem
 from sku_database.database.models import (
-    Kategoriya, Kollekciya, Status, Razmer, Importer, Fabrika,
+    Kategoriya, Kollekciya, Status, Razmer, Importer, Fabrika, Cvet,
 )
 
 router = APIRouter(prefix="/api/matrix/lookups", tags=["lookups"])
@@ -19,6 +19,7 @@ LOOKUP_MAP = {
     "razmery": Razmer,
     "importery": Importer,
     "fabriki": Fabrika,
+    "cveta": Cvet,
 }
 
 
