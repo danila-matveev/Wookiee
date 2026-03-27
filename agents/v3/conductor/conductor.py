@@ -236,6 +236,14 @@ async def generate_and_validate(
     validation = quick_validate(result)
 
     if validation.verdict == ValidationVerdict.PASS:
+        # On retry attempts, only update Notion — don't send duplicate Telegram
+        destinations = None  # default: both
+        if attempt > 1:
+            prev_tg_sent = conductor_state.is_telegram_sent(report_date, report_type.value)
+            if prev_tg_sent:
+                destinations = ["notion"]
+                logger.info("Retry attempt %d: Telegram already sent, updating Notion only", attempt)
+
         # Deliver
         try:
             delivery_result = await delivery(
@@ -243,11 +251,60 @@ async def generate_and_validate(
                 report_type=report_type.value,
                 date_from=dates["date_from"],
                 date_to=dates["date_to"],
+                destinations=destinations,
             )
             notion_url = delivery_result.get("notion", {}).get("page_url")
+            notion_error = delivery_result.get("notion", {}).get("error")
+
+            # Track Telegram send
+            tg_sent = delivery_result.get("telegram", {}).get("sent", False)
+            if tg_sent:
+                conductor_state.mark_telegram_sent(report_date, report_type.value)
         except Exception as e:
             logger.exception("Delivery error: %s", e)
             notion_url = None
+            notion_error = str(e)
+
+        # Post-delivery verification: Notion must have a page_url
+        if notion_error or not notion_url:
+            reason = f"Post-delivery check failed: Notion — {notion_error or 'page_url is None'}"
+            logger.warning("Post-delivery verification failed for %s: %s", report_type.value, reason)
+            if attempt < MAX_ATTEMPTS:
+                conductor_state.log(report_date, report_type.value, status="retrying",
+                                   attempt=attempt, error=reason)
+                if scheduler is not None:
+                    try:
+                        from apscheduler.triggers.date import DateTrigger
+                        from pytz import timezone as pytz_timezone
+                        msk = pytz_timezone("Europe/Moscow")
+                        scheduler.add_job(
+                            generate_and_validate,
+                            trigger=DateTrigger(run_date=datetime.now(msk) + timedelta(minutes=3)),
+                            kwargs={
+                                "report_type": report_type,
+                                "today": today,
+                                "conductor_state": conductor_state,
+                                "telegram_send": telegram_send,
+                                "orchestrator": orchestrator,
+                                "delivery": delivery,
+                                "scheduler": scheduler,
+                                "attempt": attempt + 1,
+                            },
+                            id=f"retry_{report_type.value}_{report_date}_{attempt + 1}",
+                            replace_existing=True,
+                        )
+                    except Exception as e:
+                        logger.exception("Failed to schedule delivery retry: %s", e)
+                return
+            else:
+                conductor_state.log(report_date, report_type.value, status="failed",
+                                   attempt=attempt, error=reason)
+                alert = messages.report_error(
+                    report_date, report_type.human_name,
+                    reason, attempt, MAX_ATTEMPTS,
+                )
+                await telegram_send(alert)
+                return
 
         conductor_state.log(report_date, report_type.value, status="success",
                            attempt=attempt, notion_url=notion_url)
