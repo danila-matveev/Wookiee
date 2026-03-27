@@ -793,31 +793,6 @@ async def run_funnel_report(
     )
 
 
-async def run_finolog_report(
-    date_from: str,
-    date_to: str,
-    trigger: str = "manual",
-) -> dict:
-    """Run Finolog ДДС / cash flow weekly report.
-
-    No comparison period or channel needed for cash flow analysis.
-    """
-    task_context = (
-        f"ДДС / cash flow. Период: {date_from} — {date_to}."
-    )
-    return await _run_report_pipeline(
-        analysis_agents=["finolog-analyst"],
-        task_context=task_context,
-        task_type="finolog_weekly",
-        date_from=date_from,
-        date_to=date_to,
-        comparison_from="",
-        comparison_to="",
-        channel="both",
-        trigger=trigger,
-        compiler_prompt_prefix="Собери отчёт ДДС / cash flow",
-    )
-
 
 async def run_price_analysis(
     date_from: str,
