@@ -215,7 +215,6 @@ async def _handle_get_active_instructions(agent_name: str = "") -> dict:
     known_agents = [
         "margin-analyst", "revenue-decomposer", "ad-efficiency", "report-compiler",
         "campaign-optimizer", "organic-vs-paid", "funnel-digitizer", "keyword-analyst",
-        "finolog-analyst",
     ]
     total = 0
     for name in known_agents:

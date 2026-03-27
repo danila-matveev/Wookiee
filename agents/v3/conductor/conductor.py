@@ -30,7 +30,6 @@ def _compute_dates(report_type: ReportType, today: date) -> dict:
     if report_type in (
         ReportType.WEEKLY, ReportType.MARKETING_WEEKLY,
         ReportType.FUNNEL_WEEKLY, ReportType.PRICE_WEEKLY,
-        ReportType.FINOLOG_WEEKLY,
     ):
         # Last Monday-Sunday
         last_sunday = today - timedelta(days=today.weekday() + 1)

@@ -12,7 +12,6 @@ class ReportType(str, Enum):
     FUNNEL_WEEKLY = "funnel_weekly"
     PRICE_WEEKLY = "price_weekly"
     PRICE_MONTHLY = "price_monthly"
-    FINOLOG_WEEKLY = "finolog_weekly"
 
     @property
     def orchestrator_method(self) -> str:
@@ -26,7 +25,7 @@ class ReportType(str, Enum):
             self.FUNNEL_WEEKLY: "run_funnel_report",
             self.PRICE_WEEKLY: "run_price_analysis",
             self.PRICE_MONTHLY: "run_price_analysis",
-            self.FINOLOG_WEEKLY: "run_finolog_report",
+
         }[self]
 
     @property
@@ -41,7 +40,7 @@ class ReportType(str, Enum):
             self.FUNNEL_WEEKLY: "Воронка WB (сводный)",
             self.PRICE_WEEKLY: "Еженедельный ценовой анализ",
             self.PRICE_MONTHLY: "Ценовой анализ",
-            self.FINOLOG_WEEKLY: "Сводка ДДС",
+
         }[self]
 
     @property
@@ -56,7 +55,7 @@ class ReportType(str, Enum):
             self.FUNNEL_WEEKLY: "Weekly воронка",
             self.PRICE_WEEKLY: "Weekly ценовой",
             self.PRICE_MONTHLY: "Monthly ценовой",
-            self.FINOLOG_WEEKLY: "Weekly ДДС",
+
         }[self]
 
 
@@ -66,7 +65,6 @@ def get_today_reports(d: date) -> list:
     Rules:
     - Every day: DAILY
     - Monday (weekday 0): WEEKLY, MARKETING_WEEKLY, FUNNEL_WEEKLY, PRICE_WEEKLY
-    - Friday (weekday 4): FINOLOG_WEEKLY
     - First Monday of month (day 1-7, weekday 0): MONTHLY, MARKETING_MONTHLY, PRICE_MONTHLY
     """
     reports = [ReportType.DAILY]
@@ -78,9 +76,6 @@ def get_today_reports(d: date) -> list:
             ReportType.FUNNEL_WEEKLY,
             ReportType.PRICE_WEEKLY,
         ]
-
-    if d.weekday() == 4:  # Friday
-        reports.append(ReportType.FINOLOG_WEEKLY)
 
     if d.day <= 7 and d.weekday() == 0:  # First Monday of month
         reports += [
@@ -97,7 +92,7 @@ _WEEKLY_TYPES = {
     ReportType.WEEKLY, ReportType.MARKETING_WEEKLY,
     ReportType.FUNNEL_WEEKLY, ReportType.PRICE_WEEKLY,
 }
-_FRIDAY_TYPES = {ReportType.FINOLOG_WEEKLY}
+
 _MONTHLY_TYPES = {ReportType.MONTHLY, ReportType.MARKETING_MONTHLY, ReportType.PRICE_MONTHLY}
 
 
