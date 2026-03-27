@@ -224,37 +224,6 @@ services:
           cpus: '0.5'
           memory: 256M
 
-  # ── Eggent: AI workspace with Oleg agent ──
-  eggent:
-    build:
-      context: /opt/eggent
-      dockerfile: Dockerfile
-    container_name: eggent
-    restart: unless-stopped
-
-    environment:
-      - NODE_ENV=production
-      - HOSTNAME=0.0.0.0
-      - PORT=3000
-
-    ports:
-      - "127.0.0.1:3100:3000"
-
-    volumes:
-      - eggent-data:/app/data
-
-    networks:
-      - n8n-docker-caddy_default
-
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 512M
-        reservations:
-          cpus: '0.5'
-          memory: 256M
-
   # ── Dashboard API: HTTP-эндпоинт для дашборда аналитики ──
   dashboard-api:
     build:
@@ -328,9 +297,6 @@ services:
         reservations:
           cpus: '0.25'
           memory: 256M
-
-volumes:
-  eggent-data:
 
 networks:
   n8n-docker-caddy_default:
