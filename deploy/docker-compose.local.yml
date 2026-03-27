@@ -1,4 +1,4 @@
-# docker-compose.local.yml — локальный запуск eggent + oleg-mcp для тестирования
+# docker-compose.local.yml — локальный запуск oleg-mcp для тестирования
 # Использование: docker compose -f deploy/docker-compose.local.yml up -d
 
 services:
@@ -32,28 +32,3 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
-
-  # ── Eggent: AI workspace ──
-  eggent:
-    build:
-      context: /tmp/eggent
-      dockerfile: Dockerfile
-    container_name: eggent_local
-    restart: unless-stopped
-
-    environment:
-      - NODE_ENV=production
-      - HOSTNAME=0.0.0.0
-      - PORT=3000
-
-    ports:
-      - "3100:3000"
-
-    volumes:
-      - eggent-data-local:/app/data
-
-    depends_on:
-      - oleg-mcp
-
-volumes:
-  eggent-data-local:

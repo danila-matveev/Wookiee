@@ -16,8 +16,7 @@
 │  ├── wookiee_sheets_sync        │          │  └── pbi_ozon_wookiee    │
 │  ├── vasily-api                 │          │                          │
 │  ├── oleg_mcp                   │          │  Управляется сторонним   │
-│  ├── eggent                     │          │  разработчиком БД.       │
-│  ├── n8n + caddy                │          │  Мы — только читаем.     │
+│  ├── n8n + caddy                │          │  разработчиком БД.       │
 │  └── ...                        │          └──────────────────────────┘
 │                                 │
 │  Деплой: GitHub Actions / SSH   │
