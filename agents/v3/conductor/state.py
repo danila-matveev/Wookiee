@@ -133,3 +133,21 @@ class ConductorState:
                 "VALUES (?, '_notification', 'notified', 0)",
                 (report_date,),
             )
+
+    def mark_telegram_sent(self, report_date: str, report_type: str) -> None:
+        """Mark that Telegram message was sent for this report."""
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO conductor_log (date, report_type, status, attempts) "
+                "VALUES (?, ?, 'telegram_sent', 0)",
+                (f"{report_date}:tg", report_type),
+            )
+
+    def is_telegram_sent(self, report_date: str, report_type: str) -> bool:
+        """Check if Telegram message was already sent for this report."""
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM conductor_log WHERE date = ? AND report_type = ? AND status = 'telegram_sent' LIMIT 1",
+                (f"{report_date}:tg", report_type),
+            ).fetchone()
+        return row is not None

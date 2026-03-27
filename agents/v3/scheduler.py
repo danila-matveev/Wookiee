@@ -15,7 +15,6 @@ All 15 cron jobs:
     12. promotion_scan        — every 12h at :15 (only if PROMOTION_SCAN_ENABLED)
     13. etl_daily_sync        — daily at ETL_DAILY_SYNC_TIME (marketplace sync + reconciliation + quality)
     14. etl_weekly_analysis   — weekly (Sunday) at ETL_WEEKLY_ANALYSIS_TIME (API docs + schema)
-    15. finolog_categorization — daily at FINOLOG_CATEGORIZATION_TIME (transaction classification)
 """
 from __future__ import annotations
 
@@ -109,6 +108,7 @@ async def _deliver(
     date_from: str,
     date_to: str,
     caveats: list[str] | None = None,
+    destinations: list[str] | None = None,
 ) -> dict:
     """Call the delivery router with standard v3 config."""
     from agents.v3.delivery.router import deliver
@@ -124,6 +124,7 @@ async def _deliver(
             "notion_database_id": config.NOTION_DATABASE_ID,
         },
         caveats=caveats,
+        destinations=destinations,
     )
 
 
@@ -615,28 +616,6 @@ async def _job_etl_weekly_analysis() -> None:
         await _send_admin(messages.report_exception("Еженедельная проверка данных", "", "", exc))
 
 
-# ---------------------------------------------------------------------------
-# Job: Finolog categorization (transaction classification)
-# ---------------------------------------------------------------------------
-
-async def _job_finolog_categorization() -> None:
-    """Cron callback: daily Finolog transaction categorization."""
-    date_to = _yesterday_msk()
-    state = _get_state()
-
-    if state.is_delivered("finolog_categorization", date_to):
-        logger.info("finolog_categorization already completed for %s, skipping", date_to)
-        return
-
-    try:
-        from agents.finolog_categorizer.app import run_scan
-        await run_scan()
-        state.mark_delivered("finolog_categorization", date_to)
-        logger.info("finolog_categorization for %s completed", date_to)
-    except Exception as exc:
-        logger.exception("finolog_categorization failed: %s", exc)
-        await _send_admin(messages.report_exception("категоризация Finolog", "", "", exc))
-
 
 # ---------------------------------------------------------------------------
 # Job: localization weekly report (Monday 13:00 MSK)
@@ -898,21 +877,6 @@ def _setup_legacy_scheduler() -> AsyncIOScheduler:
             **job_defaults,
         )
 
-    # ── 15. Finolog categorization (daily) ────────────────────────────────────
-    if config.FINOLOG_CATEGORIZATION_ENABLED and config.FINOLOG_API_KEY:
-        cat_h, cat_m = _parse_hm(config.FINOLOG_CATEGORIZATION_TIME)
-        scheduler.add_job(
-            _job_finolog_categorization,
-            trigger=CronTrigger(
-                hour=cat_h, minute=cat_m,
-                timezone=config.TIMEZONE,
-            ),
-            id="finolog_categorization",
-            **job_defaults,
-        )
-    else:
-        logger.info("finolog_categorization job skipped: disabled or FINOLOG_API_KEY not set")
-
     # ── 16. Localization weekly (Monday 13:00) ───────────────────────────────
     if config.LOCALIZATION_WEEKLY_ENABLED:
         loc_h, loc_m = _parse_hm(config.LOCALIZATION_WEEKLY_REPORT_TIME)
@@ -1064,15 +1028,6 @@ def _setup_conductor_scheduler() -> AsyncIOScheduler:
                 timezone=config.TIMEZONE,
             ),
             id="etl_weekly_analysis",
-            **job_defaults,
-        )
-
-    if config.FINOLOG_CATEGORIZATION_ENABLED and config.FINOLOG_API_KEY:
-        cat_h, cat_m = _parse_hm(config.FINOLOG_CATEGORIZATION_TIME)
-        scheduler.add_job(
-            _job_finolog_categorization,
-            trigger=CronTrigger(hour=cat_h, minute=cat_m, timezone=config.TIMEZONE),
-            id="finolog_categorization",
             **job_defaults,
         )
 

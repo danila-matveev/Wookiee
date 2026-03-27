@@ -26,6 +26,7 @@ _FAILURE_PHRASES = [
 
 MIN_TELEGRAM_SUMMARY_LEN = 100
 MIN_DETAILED_REPORT_LEN = 500
+MIN_TOGGLE_SECTIONS = 6  # At least 6 of 12 sections must be present
 
 
 def quick_validate(report: dict) -> ValidationResult:
@@ -113,6 +114,23 @@ def quick_validate(report: dict) -> ValidationResult:
         return ValidationResult(
             verdict=ValidationVerdict.RETRY,
             reason="detailed_report без toggle-заголовков и таблиц (неправильный формат)",
+        )
+
+    # 6. Section count — must have at least MIN_TOGGLE_SECTIONS toggle sections
+    toggle_count = detailed.count("## ▶")
+    if toggle_count < MIN_TOGGLE_SECTIONS:
+        return ValidationResult(
+            verdict=ValidationVerdict.RETRY,
+            reason=f"Недостаточно секций: {toggle_count} < {MIN_TOGGLE_SECTIONS} (из 12 обязательных)",
+            details={"toggle_count": toggle_count},
+        )
+
+    # 7. Detect raw JSON leak — detailed_report should be markdown, not JSON
+    stripped_detail = detailed.strip()
+    if stripped_detail.startswith(("{", "```json", '"detailed_report"')):
+        return ValidationResult(
+            verdict=ValidationVerdict.RETRY,
+            reason="detailed_report содержит сырой JSON вместо markdown",
         )
 
     # All checks passed
