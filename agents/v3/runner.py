@@ -365,11 +365,36 @@ async def run_agent(
 
         # Try to extract a JSON artifact from the output
         try:
-            json_match = re.search(r"\{[\s\S]*\}", raw_output)
-            if json_match:
-                artifact = json.loads(json_match.group())
+            # Strategy 1: Try parsing the entire output as JSON
+            stripped = raw_output.strip()
+            if stripped.startswith("{"):
+                try:
+                    artifact = json.loads(stripped)
+                except json.JSONDecodeError:
+                    pass
+
+            # Strategy 2: Find JSON block in markdown code fence
+            if artifact is None:
+                code_match = re.search(r"```(?:json)?\s*(\{[\s\S]*?\})\s*```", raw_output)
+                if code_match:
+                    try:
+                        artifact = json.loads(code_match.group(1))
+                    except json.JSONDecodeError:
+                        pass
+
+            # Strategy 3: Greedy regex (original approach, may fail on large outputs)
+            if artifact is None:
+                json_match = re.search(r"\{[\s\S]*\}", raw_output)
+                if json_match:
+                    artifact = json.loads(json_match.group())
         except (json.JSONDecodeError, AttributeError):
             pass
+
+        if artifact is None and raw_output:
+            logger.warning(
+                "run_agent[%s]: could not extract JSON artifact from output (%d chars)",
+                agent_name, len(raw_output),
+            )
 
         # Sanitize _meta if present
         if artifact and isinstance(artifact, dict) and "_meta" in artifact:

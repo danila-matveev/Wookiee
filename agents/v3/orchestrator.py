@@ -586,6 +586,42 @@ async def _run_report_pipeline(
     else:
         report_data = {}
 
+    # Fallback: if artifact is empty but raw_output has content, try to use it
+    if not report_data.get("detailed_report") and compiler_result:
+        raw_output = compiler_result.get("raw_output", "")
+        if raw_output and len(raw_output) > 500:
+            # Try extracting JSON from raw_output (runner regex may have failed
+            # on very large outputs)
+            import re as _re
+            json_match = _re.search(r'("detailed_report"\s*:\s*")', raw_output)
+            if json_match:
+                # Try parsing the full JSON again with a more targeted approach
+                try:
+                    # Find the outermost {} that contains "detailed_report"
+                    start = raw_output.rfind('{', 0, json_match.start())
+                    if start >= 0:
+                        # Try progressively shorter substrings from the end
+                        for end_pos in range(len(raw_output), start, -1):
+                            if raw_output[end_pos - 1] == '}':
+                                try:
+                                    parsed = json.loads(raw_output[start:end_pos])
+                                    if isinstance(parsed, dict) and parsed.get("detailed_report"):
+                                        report_data = parsed
+                                        logger.info(
+                                            "Recovered report from raw_output (%d chars)",
+                                            len(parsed.get("detailed_report", "")),
+                                        )
+                                        break
+                                except json.JSONDecodeError:
+                                    continue
+                except Exception as e:
+                    logger.warning("Failed to recover report from raw_output: %s", e)
+
+            # Last resort: if raw_output looks like markdown (has ## ▶), use it directly
+            if not report_data.get("detailed_report") and "## ▶" in raw_output:
+                report_data = {"detailed_report": raw_output, "telegram_summary": ""}
+                logger.info("Using raw_output as detailed_report (%d chars)", len(raw_output))
+
     # Always run deterministic formatter — it checks quality internally
     report_data = _ensure_report_fields(report_data)
 
