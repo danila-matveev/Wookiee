@@ -6,7 +6,7 @@ All 15 cron jobs:
     3.  monthly_report        — days 1-7 of month, Monday, at MONTHLY_REPORT_TIME
     4.  weekly_marketing_bundle — every Monday: marketing weekly + funnel weekly (parallel)
     5.  marketing_monthly     — days 1-7 of month, Monday, at MARKETING_MONTHLY_REPORT_TIME
-    6.  finolog_weekly        — every Friday at FINOLOG_WEEKLY_REPORT_TIME (if key set)
+    6.  finolog_weekly        — REMOVED from v3 (see scripts/run_finolog_weekly.py)
     7.  monthly_price_analysis — day N of month at MONTHLY_PRICE_ANALYSIS_TIME
     8.  data_ready_check      — hourly 06-12 MSK, notifies when gates pass
     9.  notion_feedback       — every 60 min (polls Notion for new comments)
@@ -445,33 +445,6 @@ async def _job_marketing_monthly() -> None:
         await _send_admin(messages.report_exception("маркетинговый месячный", date_from, date_to, exc))
 
 
-# ---------------------------------------------------------------------------
-# Job: finolog weekly (Friday)
-# ---------------------------------------------------------------------------
-
-async def _job_finolog_weekly() -> None:
-    """Cron callback: Finolog ДДС weekly report (Friday)."""
-    date_from, date_to = _last_week_msk()
-
-    state = _get_state()
-    if state.is_delivered("finolog_weekly", date_to):
-        logger.info("finolog_weekly already delivered for week ending %s", date_to)
-        return
-
-    try:
-        from agents.v3.orchestrator import run_finolog_report
-        result = await run_finolog_report(
-            date_from=date_from,
-            date_to=date_to,
-            trigger="cron",
-        )
-        await _deliver(result, "finolog_weekly", date_from, date_to)
-        state.mark_delivered("finolog_weekly", date_to)
-        logger.info("finolog_weekly for %s–%s delivered", date_from, date_to)
-    except Exception as exc:
-        logger.exception("finolog_weekly failed: %s", exc)
-        await _send_admin(messages.report_exception("ДДС", date_from, date_to, exc))
-
 
 # ---------------------------------------------------------------------------
 # Job: monthly price analysis (day N of month)
@@ -720,7 +693,6 @@ def _setup_legacy_scheduler() -> AsyncIOScheduler:
     mktw_h, mktw_m = _parse_hm(config.MARKETING_WEEKLY_REPORT_TIME)
     mktmo_h, mktmo_m = _parse_hm(config.MARKETING_MONTHLY_REPORT_TIME)
     funnel_h, funnel_m = _parse_hm(config.FUNNEL_WEEKLY_REPORT_TIME)
-    finolog_h, finolog_m = _parse_hm(config.FINOLOG_WEEKLY_REPORT_TIME)
     price_h, price_m = _parse_hm(config.MONTHLY_PRICE_ANALYSIS_TIME)
 
     # ── 1. Daily report ─────────────────────────────────────────────────────
@@ -772,16 +744,7 @@ def _setup_legacy_scheduler() -> AsyncIOScheduler:
         **job_defaults,
     )
 
-    # ── 6. Finolog weekly (Friday) — only if key set ──────────────────────────
-    if config.FINOLOG_API_KEY:
-        scheduler.add_job(
-            _job_finolog_weekly,
-            trigger=CronTrigger(day_of_week="fri", hour=finolog_h, minute=finolog_m, timezone=config.TIMEZONE),
-            id="finolog_weekly",
-            **job_defaults,
-        )
-    else:
-        logger.info("finolog_weekly job skipped: FINOLOG_API_KEY not set")
+    # ── 6. Finolog weekly — removed from v3, runs via scripts/run_finolog_weekly.py
 
     # ── 7. Monthly price analysis (day N of month) ────────────────────────────
     scheduler.add_job(

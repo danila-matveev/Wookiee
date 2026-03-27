@@ -7,7 +7,7 @@ agents/v3/delivery/notion.py (V3) into a single implementation.
 Features:
 - Per-report-type concurrency locks (from V3)
 - Full report type map with 22 entries (from V3)
-- Public get_comments() method (from V2, needed by finolog_categorizer)
+- Public get_comments() method (from V2)
 - Upsert by period + type (shared)
 """
 from __future__ import annotations
@@ -53,7 +53,6 @@ _REPORT_TYPE_MAP: dict[str, tuple[str, str]] = {
     "localization_weekly_report": ("Анализ логистических расходов", "Анализ логистических расходов"),
     "Регрессионный анализ":      ("Регрессионный анализ", "Регрессионный анализ"),
     "Анализ акций":              ("Анализ акций", "Анализ акций"),
-    "finolog_categorization":    ("Категоризация операций", "Категоризация операций"),
 }
 
 
@@ -346,6 +345,12 @@ class NotionClient:
         for block in blocks:
             btype = block.get("type", "")
             block_data = block.get(btype, {})
+
+            # Tables require children (table_rows) inline — don't strip them.
+            if btype == "table":
+                flat_blocks.append(block)
+                continue
+
             children = block_data.pop("children", None)
 
             flat_blocks.append(block)
