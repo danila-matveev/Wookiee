@@ -373,20 +373,29 @@ async def run_agent(
                 except json.JSONDecodeError:
                     pass
 
-            # Strategy 2: Find JSON block in markdown code fence
+            # Strategy 2: Strip code fence wrapper and parse
             if artifact is None:
-                code_match = re.search(r"```(?:json)?\s*(\{[\s\S]*?\})\s*```", raw_output)
-                if code_match:
+                fence_match = re.match(
+                    r"^\s*```(?:json)?\s*\n?([\s\S]*?)\n?\s*```\s*$",
+                    stripped,
+                )
+                if fence_match:
+                    inner = fence_match.group(1).strip()
                     try:
-                        artifact = json.loads(code_match.group(1))
+                        artifact = json.loads(inner)
                     except json.JSONDecodeError:
                         pass
 
-            # Strategy 3: Greedy regex (original approach, may fail on large outputs)
+            # Strategy 3: Find first { and match to last }
             if artifact is None:
-                json_match = re.search(r"\{[\s\S]*\}", raw_output)
-                if json_match:
-                    artifact = json.loads(json_match.group())
+                first_brace = raw_output.find("{")
+                last_brace = raw_output.rfind("}")
+                if first_brace >= 0 and last_brace > first_brace:
+                    candidate = raw_output[first_brace:last_brace + 1]
+                    try:
+                        artifact = json.loads(candidate)
+                    except json.JSONDecodeError:
+                        pass
         except (json.JSONDecodeError, AttributeError):
             pass
 
