@@ -96,3 +96,30 @@ def test_notification_dedup_different_dates(tmp_path):
     state.ensure_table()
     state.mark_notified("2026-03-22")
     assert state.already_notified("2026-03-21") is False
+
+
+def test_already_notified_is_atomic(tmp_path):
+    """mark_notified + already_notified uses only SQLite, no in-memory set."""
+    state = ConductorState(str(tmp_path / "test.db"))
+    state.ensure_table()
+
+    # First call: should mark and return True
+    assert state.already_notified("2026-03-28") is False
+    state.mark_notified("2026-03-28")
+    assert state.already_notified("2026-03-28") is True
+
+    # Simulate process restart: new instance, same DB
+    state2 = ConductorState(str(tmp_path / "test.db"))
+    state2.ensure_table()
+    assert state2.already_notified("2026-03-28") is True
+
+
+def test_already_notified_channel_key(tmp_path):
+    """Channel-specific keys (e.g. '2026-03-28:wb') work independently."""
+    state = ConductorState(str(tmp_path / "test.db"))
+    state.ensure_table()
+
+    state.mark_notified("2026-03-28:wb")
+    assert state.already_notified("2026-03-28:wb") is True
+    assert state.already_notified("2026-03-28:ozon") is False
+    assert state.already_notified("2026-03-28") is False

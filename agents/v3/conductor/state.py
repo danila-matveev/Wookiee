@@ -8,7 +8,6 @@ class ConductorState:
 
     def __init__(self, db_path: str = "agents/v3/data/v3_state.db"):
         self._db_path = db_path
-        self._notified_dates: set[str] = set()
 
     def _conn(self) -> sqlite3.Connection:
         return sqlite3.connect(self._db_path)
@@ -129,19 +128,21 @@ class ConductorState:
     def already_notified(self, report_date: str) -> bool:
         """Check if data_ready notification was already sent for this date.
 
-        Persisted in SQLite to survive container restarts.
+        Uses only SQLite — no in-memory state. Safe across async contexts
+        and container restarts.
         """
         with self._conn() as conn:
             row = conn.execute(
                 "SELECT 1 FROM conductor_log WHERE date = ? AND status = 'notified' LIMIT 1",
                 (report_date,),
             ).fetchone()
-        return row is not None or report_date in self._notified_dates
+        return row is not None
 
     def mark_notified(self, report_date: str) -> None:
-        """Mark that data_ready notification was sent for this date."""
-        self._notified_dates.add(report_date)
-        # Persist to SQLite so it survives restarts
+        """Mark that data_ready notification was sent for this date.
+
+        Atomic INSERT OR IGNORE — safe for concurrent async calls.
+        """
         with self._conn() as conn:
             conn.execute(
                 "INSERT OR IGNORE INTO conductor_log (date, report_type, status, attempts) "
