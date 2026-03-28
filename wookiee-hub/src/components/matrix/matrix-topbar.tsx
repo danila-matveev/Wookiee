@@ -15,6 +15,8 @@ interface MatrixTopbarProps {
   onAddFilter?: (entry: FilterEntry) => void
   onRemoveFilter?: (field: string) => void
   filterableDefs?: FilterableDef[]
+  /** Optional extra action buttons rendered between filter chips and spacer */
+  extraActions?: React.ReactNode
 }
 
 export function MatrixTopbar({
@@ -26,6 +28,7 @@ export function MatrixTopbar({
   onAddFilter,
   onRemoveFilter,
   filterableDefs,
+  extraActions,
 }: MatrixTopbarProps) {
   return (
     <div className="flex min-h-10 flex-wrap items-center gap-2 border-b border-border px-4 py-1.5">
@@ -60,6 +63,9 @@ export function MatrixTopbar({
           ))}
         </div>
       )}
+
+      {/* Extra action buttons (e.g. save/load view) */}
+      {extraActions}
 
       {/* Spacer */}
       <div className="flex-1" />
