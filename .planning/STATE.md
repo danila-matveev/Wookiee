@@ -4,7 +4,7 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Completed 01-01-PLAN.md
-last_updated: "2026-03-28T19:01:30.213Z"
+last_updated: "2026-03-28T19:05:27.918Z"
 last_activity: 2026-03-28 — Completed Phase 4 Plan 03 (Drill-down navigation + saved views with localStorage persist)
 progress:
   total_phases: 6
@@ -21,14 +21,14 @@ progress:
 See: .planning/REQUIREMENTS.md (updated 2026-03-23)
 
 **Core value:** Централизованное управление товарной матрицей (PIM) для мультиканального fashion-бизнеса — Notion-like интерфейс вместо текущего неработающего редактора
-**Current focus:** Phase 4 — Filter System
+**Current focus:** Phase 1 — Foundation
 
 ## Current Position
 
-Phase: 4 of 5 (Filter System) - COMPLETE
-Plan: 3 of 3 in current phase (completed)
+Phase: 1 of 5 (Foundation) - IN PROGRESS
+Plan: 1 of 2 in current phase (completed)
 Status: Executing
-Last activity: 2026-03-28 — Completed Phase 4 Plan 03 (Drill-down navigation + saved views with localStorage persist)
+Last activity: 2026-03-28 — Completed 01-01-PLAN.md (Entity registry + consolidate 3 inline entity maps)
 
 Progress: [██████████] 100%
 
@@ -53,7 +53,7 @@ Progress: [██████████] 100%
 | Phase 04-filter-system P01 | 13 | 2 tasks | 10 files |
 | Phase 04-filter-system P02 | 45 | 4 tasks | 11 files |
 | Phase 04-filter-system P03 | 25 | 2 tasks | 5 files |
-| Phase 01-foundation P01 | 10 | 2 tasks | 10 files |
+| Phase 01-foundation P01 | 7 | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -79,8 +79,8 @@ Progress: [██████████] 100%
 - [Phase 04-filter-system P03]: Saved views use localStorage via Zustand persist (key: matrix-views-storage) — no backend API per CONTEXT.md locked decision
 - [Phase 04-filter-system P03]: loadedViewConfig is a transient signal in views-store, consumed and cleared by useEffect in models-page
 - [Phase 04-filter-system P03]: Save/load view UI scoped to models page only in this phase
-- [Phase 01-foundation]: All backendType values use plural forms (modeli_osnova, artikuly) — manage-fields-dialog previously used singular forms which were inconsistent; normalized to plural across all consumers
-- [Phase 01-foundation]: panel/types.ts re-exports getBackendType from entity-registry to preserve existing import paths for panel-body consumers
+- [Phase 01-foundation]: All backendType values use plural forms (modeli_osnova, artikuly) — manage-fields-dialog singular forms normalized to match API convention
+- [Phase 01-foundation]: panel/types.ts re-exports getBackendType from entity-registry to preserve existing import paths for panel consumers
 
 ### Pending Todos
 
@@ -94,6 +94,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28T19:01:30.210Z
+Last session: 2026-03-28T19:05:27.916Z
 Stopped at: Completed 01-01-PLAN.md
 Resume file: None
