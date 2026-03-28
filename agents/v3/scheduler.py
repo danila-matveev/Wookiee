@@ -13,8 +13,6 @@ All 15 cron jobs:
     10. anomaly_monitor       — every N hours at :30
     11. watchdog_heartbeat    — every 6h at :00
     12. promotion_scan        — every 12h at :15 (only if PROMOTION_SCAN_ENABLED)
-    13. etl_daily_sync        — daily at ETL_DAILY_SYNC_TIME (marketplace sync + reconciliation + quality)
-    14. etl_weekly_analysis   — weekly (Sunday) at ETL_WEEKLY_ANALYSIS_TIME (API docs + schema)
 """
 from __future__ import annotations
 
@@ -520,74 +518,6 @@ async def _job_promotion_scan() -> None:
     logger.debug("promotion_scan: tick (stub)")
 
 
-# ---------------------------------------------------------------------------
-# Job: ETL daily sync (marketplace data)
-# ---------------------------------------------------------------------------
-
-async def _job_etl_daily_sync() -> None:
-    """Cron callback: marketplace ETL sync + reconciliation + data quality check."""
-    date_to = _yesterday_msk()
-    state = _get_state()
-
-    if state.is_delivered("etl_daily_sync", date_to):
-        logger.info("etl_daily_sync already completed for %s, skipping", date_to)
-        return
-
-    try:
-        from services.etl.marketplace_sync import run_marketplace_sync
-        from services.etl.reconciliation_check import run_reconciliation_check
-        from services.etl.data_quality_check import run_data_quality_check
-
-        sync_result = await run_marketplace_sync()
-        recon_result = await run_reconciliation_check(days=1)
-        quality_result = await run_data_quality_check()
-
-        state.mark_delivered("etl_daily_sync", date_to)
-
-        # Alert on failures
-        if not recon_result.get("passed", True):
-            reason = recon_result.get('status', 'UNKNOWN')
-            await _send_admin(messages.report_exception("Сверка данных маркетплейсов", date_to, date_to, Exception(reason)))
-        if not quality_result.get("overall_ok", True):
-            await _send_admin(messages.data_quality_issue(date_to))
-
-        logger.info("etl_daily_sync for %s completed", date_to)
-    except Exception as exc:
-        logger.exception("etl_daily_sync failed: %s", exc)
-        await _send_admin(messages.report_exception("Синхронизация данных", date_to, date_to, exc))
-
-
-# ---------------------------------------------------------------------------
-# Job: ETL weekly analysis (API docs + schema)
-# ---------------------------------------------------------------------------
-
-async def _job_etl_weekly_analysis() -> None:
-    """Cron callback: API documentation + schema analysis (weekly, Sunday)."""
-    date_to = _yesterday_msk()
-    state = _get_state()
-
-    if state.is_delivered("etl_weekly_analysis", date_to):
-        logger.info("etl_weekly_analysis already completed for %s, skipping", date_to)
-        return
-
-    try:
-        from services.etl.api_docs_check import run_api_docs_check
-        from services.etl.schema_check import run_schema_check
-        from shared.clients.openrouter_client import OpenRouterClient
-
-        llm = OpenRouterClient(
-            api_key=config.OPENROUTER_API_KEY,
-            model=config.ETL_LLM_MODEL,
-        )
-        await run_api_docs_check(llm_client=llm)
-        await run_schema_check(llm_client=llm)
-
-        state.mark_delivered("etl_weekly_analysis", date_to)
-        logger.info("etl_weekly_analysis for %s completed", date_to)
-    except Exception as exc:
-        logger.exception("etl_weekly_analysis failed: %s", exc)
-        await _send_admin(messages.report_exception("Еженедельная проверка данных", "", "", exc))
-
 
 
 # ---------------------------------------------------------------------------
@@ -811,34 +741,6 @@ def _setup_legacy_scheduler() -> AsyncIOScheduler:
     else:
         logger.info("promotion_scan job skipped: PROMOTION_SCAN_ENABLED=false")
 
-    # ── 13. ETL daily sync ────────────────────────────────────────────────────
-    if config.ETL_ENABLED:
-        etl_daily_h, etl_daily_m = _parse_hm(config.ETL_DAILY_SYNC_TIME)
-        scheduler.add_job(
-            _job_etl_daily_sync,
-            trigger=CronTrigger(
-                hour=etl_daily_h, minute=etl_daily_m,
-                timezone=config.TIMEZONE,
-            ),
-            id="etl_daily_sync",
-            **job_defaults,
-        )
-    else:
-        logger.info("etl_daily_sync job skipped: ETL_ENABLED=false")
-
-    # ── 14. ETL weekly analysis (Sunday) ──────────────────────────────────────
-    if config.ETL_ENABLED:
-        etl_weekly_h, etl_weekly_m = _parse_hm(config.ETL_WEEKLY_ANALYSIS_TIME)
-        scheduler.add_job(
-            _job_etl_weekly_analysis,
-            trigger=CronTrigger(
-                day_of_week=config.ETL_WEEKLY_ANALYSIS_DAY,
-                hour=etl_weekly_h, minute=etl_weekly_m,
-                timezone=config.TIMEZONE,
-            ),
-            id="etl_weekly_analysis",
-            **job_defaults,
-        )
 
     # ── 16. Localization weekly (Monday 13:00) ───────────────────────────────
     if config.LOCALIZATION_WEEKLY_ENABLED:
@@ -875,7 +777,7 @@ def _setup_conductor_scheduler() -> AsyncIOScheduler:
     4. anomaly_monitor — every N hours
     5. watchdog_heartbeat — every 6h (log-only, no Telegram)
     6. notion_feedback — every 60 min
-    + Non-report jobs (ETL, promotion scan, finolog categorization) unchanged
+    + Non-report jobs (promotion scan, finolog categorization) unchanged
     """
     from agents.v3.conductor.state import ConductorState
     from agents.v3.conductor.conductor import data_ready_check, deadline_check
@@ -974,25 +876,6 @@ def _setup_conductor_scheduler() -> AsyncIOScheduler:
             **job_defaults,
         )
 
-    if config.ETL_ENABLED:
-        etl_daily_h, etl_daily_m = _parse_hm(config.ETL_DAILY_SYNC_TIME)
-        scheduler.add_job(
-            _job_etl_daily_sync,
-            trigger=CronTrigger(hour=etl_daily_h, minute=etl_daily_m, timezone=config.TIMEZONE),
-            id="etl_daily_sync",
-            **job_defaults,
-        )
-        etl_weekly_h, etl_weekly_m = _parse_hm(config.ETL_WEEKLY_ANALYSIS_TIME)
-        scheduler.add_job(
-            _job_etl_weekly_analysis,
-            trigger=CronTrigger(
-                day_of_week=config.ETL_WEEKLY_ANALYSIS_DAY,
-                hour=etl_weekly_h, minute=etl_weekly_m,
-                timezone=config.TIMEZONE,
-            ),
-            id="etl_weekly_analysis",
-            **job_defaults,
-        )
 
     # Localization weekly report (Monday 13:00 MSK)
     if config.LOCALIZATION_WEEKLY_ENABLED:

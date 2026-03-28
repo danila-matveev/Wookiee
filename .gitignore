@@ -61,6 +61,9 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 $RECYCLE.BIN/
+# macOS iCloud/Finder duplicates
+* 2.*
+* 2/
 
 # ============================================================================
 # Agent data and logs
@@ -69,13 +72,6 @@ agents/*/data/*.db
 agents/*/data/*.db-journal
 agents/*/data/reports/
 agents/*/logs/
-services/etl/data/api_docs_cache/
-services/etl/data/schema_proposals/
-
-# ============================================================================
-# Marketplace ETL
-# ============================================================================
-services/marketplace_etl/config/accounts.json
 
 # ============================================================================
 # Reports (generated, synced to Notion)
