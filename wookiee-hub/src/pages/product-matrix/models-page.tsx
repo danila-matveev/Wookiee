@@ -8,6 +8,14 @@ import { MatrixTopbar } from "@/components/matrix/matrix-topbar"
 import { PaginationControls } from "@/components/matrix/pagination-controls"
 import { buildModelColumns, MODEL_FIELD_DEFS, MODEL_DEFAULT_HIDDEN } from "@/lib/model-columns"
 import { LOOKUP_TABLE_MAP } from "@/components/matrix/panel/types"
+import type { FilterableDef } from "@/components/matrix/filter-popover"
+
+const MODELS_FILTERABLE_DEFS: FilterableDef[] = [
+  { field: "kategoriya_id", label: "Категория", lookupTable: "kategorii" },
+  { field: "kollekciya_id", label: "Коллекция", lookupTable: "kollekcii" },
+  { field: "fabrika_id", label: "Фабрика", lookupTable: "fabriki" },
+  { field: "status_id", label: "Статус", lookupTable: "statusy" },
+]
 
 /** Prefetch all lookup tables needed for reference field resolution */
 function usePrefetchLookups() {
@@ -31,6 +39,9 @@ export function ModelsPage() {
   const toggleRowSelected = useMatrixStore((s) => s.toggleRowSelected)
   const openDetailPanel = useMatrixStore((s) => s.openDetailPanel)
   const lookupCache = useMatrixStore((s) => s.lookupCache)
+  const activeFilters = useMatrixStore((s) => s.activeFilters)
+  const addFilter = useMatrixStore((s) => s.addFilter)
+  const removeFilter = useMatrixStore((s) => s.removeFilter)
 
   usePrefetchLookups()
 
@@ -39,6 +50,11 @@ export function ModelsPage() {
   const [sort, setSort] = useState<{ field: string | null; order: "asc" | "desc" }>({ field: null, order: "asc" })
   const [hiddenFields, setHiddenFields] = useState<Set<string>>(() => new Set(MODEL_DEFAULT_HIDDEN))
   const [refreshKey, setRefreshKey] = useState(0)
+
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(1)
+  }, [activeFilters])
 
   const toggleSort = useCallback((field: string) => {
     setSort((prev) => {
@@ -65,10 +81,18 @@ export function ModelsPage() {
     apiParams.sort = sort.field
     apiParams.order = sort.order
   }
+  // Append active filter params
+  for (const f of activeFilters) {
+    if (f.values.length === 1) {
+      apiParams[f.field] = f.values[0]
+    } else if (f.values.length > 1) {
+      apiParams[f.field] = f.values.join(",")
+    }
+  }
 
   const { data, loading } = useApiQuery(
     () => matrixApi.listModels(apiParams),
-    [page, sort.field, sort.order, refreshKey],
+    [page, sort.field, sort.order, refreshKey, activeFilters],
   )
 
   const [childrenMap, setChildrenMap] = useState<Map<number, ModelVariation[]>>(new Map())
@@ -96,6 +120,10 @@ export function ModelsPage() {
         hiddenFields={hiddenFields}
         onToggleField={toggleFieldVisibility}
         onCreateClick={() => {/* TODO: create dialog */}}
+        activeFilters={activeFilters}
+        onAddFilter={addFilter}
+        onRemoveFilter={removeFilter}
+        filterableDefs={MODELS_FILTERABLE_DEFS}
       />
       <ViewTabs />
       <DataTable

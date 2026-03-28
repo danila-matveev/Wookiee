@@ -10,14 +10,23 @@ import { CreateRecordDialog } from "@/components/matrix/create-record-dialog"
 import { useTableState } from "@/hooks/use-table-state"
 import { fieldDefsToColumns } from "@/lib/field-def-columns"
 import { ENTITY_BACKEND_MAP } from "@/components/matrix/panel/types"
+import type { FilterableDef } from "@/components/matrix/filter-popover"
+
+const ARTICLES_FILTERABLE_DEFS: FilterableDef[] = [
+  { field: "status_id", label: "Статус", lookupTable: "statusy" },
+  { field: "cvet_id", label: "Цвет", lookupTable: "cveta" },
+]
 
 export function ArticlesPage() {
   const selectedRows = useMatrixStore((s) => s.selectedRows)
   const toggleRowSelected = useMatrixStore((s) => s.toggleRowSelected)
   const openDetailPanel = useMatrixStore((s) => s.openDetailPanel)
   const lookupCache = useMatrixStore((s) => s.lookupCache)
+  const activeFilters = useMatrixStore((s) => s.activeFilters)
+  const addFilter = useMatrixStore((s) => s.addFilter)
+  const removeFilter = useMatrixStore((s) => s.removeFilter)
 
-  const tableState = useTableState("articles")
+  const tableState = useTableState("articles", 50, activeFilters)
   const [createOpen, setCreateOpen] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
 
@@ -33,7 +42,7 @@ export function ArticlesPage() {
 
   const { data, loading } = useApiQuery(
     () => matrixApi.listArticles(tableState.apiParams),
-    [tableState.page, tableState.sort.field, tableState.sort.order, refreshKey],
+    [tableState.page, tableState.sort.field, tableState.sort.order, refreshKey, activeFilters],
   )
 
   function handleCreated(newId: number) {
@@ -49,6 +58,10 @@ export function ArticlesPage() {
         hiddenFields={tableState.hiddenFields}
         onToggleField={tableState.toggleFieldVisibility}
         onCreateClick={() => setCreateOpen(true)}
+        activeFilters={activeFilters}
+        onAddFilter={addFilter}
+        onRemoveFilter={removeFilter}
+        filterableDefs={ARTICLES_FILTERABLE_DEFS}
       />
       <ViewTabs />
       <DataTable
