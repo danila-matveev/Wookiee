@@ -9,7 +9,7 @@ import { PaginationControls } from "@/components/matrix/pagination-controls"
 import { CreateRecordDialog } from "@/components/matrix/create-record-dialog"
 import { useTableState } from "@/hooks/use-table-state"
 import { fieldDefsToColumns } from "@/lib/field-def-columns"
-import { ENTITY_BACKEND_MAP } from "@/components/matrix/panel/types"
+import { getBackendType } from "@/lib/entity-registry"
 import type { FilterableDef } from "@/components/matrix/filter-popover"
 
 const ARTICLES_FILTERABLE_DEFS: FilterableDef[] = [
@@ -32,7 +32,7 @@ export function ArticlesPage() {
 
   // Fetch field definitions for column generation
   const { data: fieldDefs } = useApiQuery<FieldDefinition[]>(
-    () => matrixApi.listFields(ENTITY_BACKEND_MAP.articles),
+    () => matrixApi.listFields(getBackendType('articles')),
     [],
   )
 
