@@ -30,6 +30,7 @@ interface MatrixState {
   selectedRows: Set<number>
   detailPanelId: number | null
   detailPanelEntityType: MatrixEntity | null
+  entityUpdateStamp: Partial<Record<MatrixEntity, number>>
   lookupCache: Record<string, LookupItem[]>
   searchOpen: boolean
   searchQuery: string
@@ -47,6 +48,7 @@ interface MatrixState {
   clearSelection: () => void
   openDetailPanel: (id: number, entityType?: MatrixEntity) => void
   closeDetailPanel: () => void
+  notifyEntityUpdated: (entity: MatrixEntity) => void
   setLookupCache: (table: string, items: LookupItem[]) => void
   setSearchOpen: (open: boolean) => void
   setSearchQuery: (query: string) => void
@@ -60,6 +62,7 @@ export const useMatrixStore = create<MatrixState>((set) => ({
   selectedRows: new Set(),
   detailPanelId: null,
   detailPanelEntityType: null,
+  entityUpdateStamp: {},
   lookupCache: {},
   searchOpen: false,
   searchQuery: "",
@@ -108,6 +111,13 @@ export const useMatrixStore = create<MatrixState>((set) => ({
   openDetailPanel: (id, entityType) =>
     set({ detailPanelId: id, ...(entityType !== undefined ? { detailPanelEntityType: entityType } : {}) }),
   closeDetailPanel: () => set({ detailPanelId: null, detailPanelEntityType: null }),
+  notifyEntityUpdated: (entity) =>
+    set((s) => ({
+      entityUpdateStamp: {
+        ...s.entityUpdateStamp,
+        [entity]: (s.entityUpdateStamp[entity] ?? 0) + 1,
+      },
+    })),
   setLookupCache: (table, items) =>
     set((s) => ({ lookupCache: { ...s.lookupCache, [table]: items } })),
   setSearchOpen: (open) => set({ searchOpen: open }),
