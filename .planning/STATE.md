@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04-01-PLAN.md
-last_updated: "2026-03-28T14:48:52.469Z"
+stopped_at: Completed 04-02-PLAN.md
+last_updated: "2026-03-28T17:38:33.154Z"
 last_activity: 2026-03-26 — Completed Phase 3 Plan 03 (Pagination, column visibility, create dialog)
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 11
-  completed_plans: 9
+  completed_plans: 10
   percent: 100
 ---
 
@@ -51,6 +51,7 @@ Progress: [██████████] 100%
 
 *Updated after each plan completion*
 | Phase 04-filter-system P01 | 13 | 2 tasks | 10 files |
+| Phase 04-filter-system P02 | 45 | 4 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -70,6 +71,8 @@ Progress: [██████████] 100%
 - [Phase 04-filter-system]: parse_multi_param returns scalar int for single values (not list) to preserve == equality path in _build_filters
 - [Phase 04-filter-system]: model_osnova_id drill-down uses separate subquery helper to keep CrudService generic (no cross-entity JOINs)
 - [Phase 04-filter-system]: Two DB-integration tests skipped until migration 004 (status_id on modeli_osnova) is applied to production Supabase
+- [Phase 04-filter-system]: useTableState stays pure — activeFilters passed as parameter, not read internally from store
+- [Phase 04-filter-system]: setFilters bulk-replace action added for saved view restoration (Plan 04-03 will use this)
 
 ### Pending Todos
 
@@ -83,6 +86,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28T14:48:52.466Z
-Stopped at: Completed 04-01-PLAN.md
+Last session: 2026-03-28T17:38:33.152Z
+Stopped at: Completed 04-02-PLAN.md
 Resume file: None
