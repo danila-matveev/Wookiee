@@ -124,6 +124,10 @@ completed: 2026-03-28
 - `entity-registry.ts` ready for consumption by plan 01-02 (detail panel routing store fields)
 - Wave 0 stubs in `stores/__tests__/` anchor TDD work for FOUND-02 and FOUND-03
 
+## Self-Check: PASSED
+
+All 7 files verified present. Both commits (d285947, d8c9986) confirmed in git log.
+
 ---
 *Phase: 01-foundation*
 *Completed: 2026-03-28*
