@@ -20,7 +20,7 @@ export type MatrixEntity =
   | "cards-ozon"
   | "certs"
 
-export type ViewTab = "spec" | "stock" | "finance" | "rating" | `saved-${number}`
+export type ViewTab = "spec" | "stock" | "finance" | "rating" | `saved-${string}`
 
 interface MatrixState {
   activeEntity: MatrixEntity
@@ -36,6 +36,7 @@ interface MatrixState {
 
   setActiveEntity: (entity: MatrixEntity) => void
   setActiveView: (view: ViewTab) => void
+  drillDown: (entity: MatrixEntity, field: string, value: number, valueLabel: string) => void
   addFilter: (entry: FilterEntry) => void
   removeFilter: (field: string) => void
   clearFilters: () => void
@@ -65,6 +66,17 @@ export const useMatrixStore = create<MatrixState>((set) => ({
 
   setActiveEntity: (entity) => set({ activeEntity: entity, selectedRows: new Set(), activeFilters: [] }),
   setActiveView: (view) => set({ activeView: view }),
+  drillDown: (entity, field, value, valueLabel) =>
+    set({
+      activeEntity: entity,
+      activeFilters: [{
+        field,
+        label: field === "model_osnova_id" ? "Модель" : field,
+        values: [value],
+        valueLabels: [valueLabel],
+      }],
+      selectedRows: new Set(),
+    }),
   addFilter: (entry) =>
     set((s) => {
       const existing = s.activeFilters.findIndex((f) => f.field === entry.field)
