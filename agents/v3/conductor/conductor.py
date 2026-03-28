@@ -146,11 +146,16 @@ async def data_ready_check(
     if not daily_only:
         all_successful = conductor_state.get_all_successful_types(lookback_days=7)
         failed_or_missing = conductor_state.get_failed_types(lookback_days=7)
+        # Skip types already exhausted today — prevents hourly re-queueing of
+        # permanently failing reports and duplicate "3/3 исчерпаны" notifications.
+        exhausted_today = conductor_state.get_exhausted_types(str(today), MAX_ATTEMPTS)
         # Add types that were scheduled but neither succeeded nor are already pending
         missed = get_missed_reports(today, failed_or_missing)
         pending_values = {r.value for r in pending}
         for rt in missed:
-            if rt.value not in all_successful and rt.value not in pending_values:
+            if (rt.value not in all_successful
+                    and rt.value not in pending_values
+                    and rt.value not in exhausted_today):
                 pending.append(rt)
                 logger.info("Recovering missed report: %s", rt.value)
 

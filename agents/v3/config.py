@@ -78,12 +78,6 @@ ETL_WEEKLY_ANALYSIS_DAY: str = os.getenv("ETL_WEEKLY_ANALYSIS_DAY", "sun")
 ETL_ENABLED: bool = os.getenv("ETL_ENABLED", "true").lower() in ("true", "1", "yes")
 ETL_LLM_MODEL: str = os.getenv("ETL_LLM_MODEL", "moonshotai/kimi-k2")
 
-# ── Finolog Categorizer ─────────────────────────────────────────────────────
-FINOLOG_CATEGORIZATION_TIME: str = os.getenv("FINOLOG_CATEGORIZATION_TIME", "05:30")
-FINOLOG_CATEGORIZATION_ENABLED: bool = os.getenv(
-    "FINOLOG_CATEGORIZATION_ENABLED", "true"
-).lower() in ("true", "1", "yes")
-
 # ── Anomaly thresholds ────────────────────────────────────────────────────────
 ANOMALY_MARGIN_THRESHOLD: float = float(os.getenv("ANOMALY_MARGIN_THRESHOLD", "10.0"))
 ANOMALY_DRR_THRESHOLD: float = float(os.getenv("ANOMALY_DRR_THRESHOLD", "30.0"))

@@ -20,12 +20,10 @@ def test_monday_returns_weekly_reports():
     assert ReportType.PRICE_WEEKLY in result
 
 
-def test_friday_returns_finolog():
-    # 2026-03-20 is Friday
+def test_friday_returns_only_daily():
+    # 2026-03-20 is Friday — finolog_weekly was removed from conductor (runs standalone via finolog-cron)
     result = get_today_reports(date(2026, 3, 20))
-    assert ReportType.DAILY in result
-    assert ReportType.FINOLOG_WEEKLY in result
-    assert ReportType.WEEKLY not in result
+    assert result == [ReportType.DAILY]
 
 
 def test_first_monday_of_month_includes_monthly():

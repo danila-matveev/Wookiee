@@ -159,6 +159,43 @@ async def test_retry_schedules_date_trigger(full_setup):
 
 
 @pytest.mark.asyncio
+async def test_exhausted_report_not_retried_same_day(full_setup):
+    """A report that exhausted all attempts today should not be re-queued via get_missed_reports.
+
+    Regression test for the infinite hourly spam bug:
+    - A report fails all MAX_ATTEMPTS → status='failed', attempts=3
+    - get_missed_reports returns it as failed_or_missing
+    - Without the exhausted check, data_ready_check would re-queue it every hour
+    - With the fix, exhausted_today blocks the re-queue for the same date
+    """
+    from agents.v3.conductor.conductor import MAX_ATTEMPTS
+
+    s = full_setup
+
+    # Simulate a report that has already been attempted MAX_ATTEMPTS times and failed today
+    report_date = "2026-03-28"
+    s["state"].log(report_date, "weekly", status="failed", attempt=MAX_ATTEMPTS)
+
+    exhausted = s["state"].get_exhausted_types(report_date, MAX_ATTEMPTS)
+    assert "weekly" in exhausted
+
+    # Confirm that data_ready_check on the same day (Saturday — no weekly scheduled, but missed recovery)
+    # does NOT re-add the exhausted weekly report
+    msgs_before = len(s["telegram_messages"])
+    await data_ready_check(
+        gate_checker=s["gate_checker"],
+        conductor_state=s["state"],
+        telegram_send=s["telegram_send"],
+        orchestrator=s["orchestrator"],
+        delivery=s["delivery"],
+        scheduler=MagicMock(),
+        today=date(2026, 3, 28),  # Saturday — would recover missed weekly from Monday
+    )
+    # The orchestrator's run_weekly_report should NOT have been called
+    s["orchestrator"].run_weekly_report.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_deadline_check_silent_when_all_done(full_setup):
     """deadline_check is silent if all reports generated."""
     s = full_setup
