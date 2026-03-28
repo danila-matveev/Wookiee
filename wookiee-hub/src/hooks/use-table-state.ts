@@ -1,4 +1,5 @@
-import { useState, useMemo, useCallback } from "react"
+import { useState, useMemo, useCallback, useEffect } from "react"
+import type { FilterEntry } from "@/stores/matrix-store"
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -47,6 +48,7 @@ const DEFAULT_HIDDEN: Record<string, string[]> = {
 export function useTableState(
   entity: string,
   defaultPerPage = 50,
+  activeFilters: FilterEntry[] = [],
 ): TableState {
   const [page, setPageRaw] = useState(1)
   const [perPage] = useState(defaultPerPage)
@@ -84,6 +86,11 @@ export function useTableState(
     })
   }, [])
 
+  // Reset page to 1 when filters change
+  useEffect(() => {
+    setPageRaw(1)
+  }, [activeFilters])
+
   const apiParams = useMemo(() => {
     const params: Record<string, string | number> = {
       page,
@@ -93,8 +100,15 @@ export function useTableState(
       params.sort = sort.field
       params.order = sort.order
     }
+    for (const f of activeFilters) {
+      if (f.values.length === 1) {
+        params[f.field] = f.values[0]
+      } else if (f.values.length > 1) {
+        params[f.field] = f.values.join(",")
+      }
+    }
     return params
-  }, [page, perPage, sort])
+  }, [page, perPage, sort, activeFilters])
 
   return {
     page,
