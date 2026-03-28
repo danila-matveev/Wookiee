@@ -60,6 +60,48 @@ def channel_data_ready(
     return "\n".join(lines)
 
 
+def data_ready_combined(
+    date: str,
+    channels: list[dict],
+    reports: list[str],
+) -> str:
+    """Combined data-ready notification: all channels + report list in one message.
+
+    Each channel dict has: marketplace, gate_info (with keys: updated_at, orders,
+    orders_normal, revenue_ratio, margin_pct).
+    """
+    lines = [f"✅ Данные за {date} готовы"]
+    lines.append("")
+
+    for ch in channels:
+        mp = ch["marketplace"].upper()
+        gi = ch["gate_info"]
+        parts = [f"  {mp}:"]
+
+        orders = gi.get("orders", 0)
+        if gi.get("orders_normal", True):
+            parts.append(f"заказов {orders}")
+        else:
+            parts.append(f"⚠️ заказов {orders} (ниже нормы)")
+
+        rev = gi.get("revenue_ratio")
+        if rev is not None:
+            parts.append(f"выручка {rev:.0f}%")
+
+        margin = gi.get("margin_pct")
+        if margin is not None:
+            parts.append(f"маржа {margin:.0f}%")
+
+        lines.append(" | ".join(parts))
+
+    if reports:
+        lines.append("")
+        reports_str = ", ".join(reports)
+        lines.append(f"📊 Запускаю: {reports_str}")
+
+    return "\n".join(lines)
+
+
 def report_error(
     date: str, report_type: str, error: str, attempt: int, max_attempts: int,
 ) -> str:
