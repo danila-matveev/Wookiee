@@ -20,7 +20,7 @@ from agents.reporter.collector.base import (
     TopLevelMetrics,
     TrendData,
 )
-from agents.reporter.collector.financial import _parse_abc_row
+from agents.reporter.collector.financial import _parse_abc_row_wb
 from agents.reporter.types import ReportScope
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ class FunnelCollector(BaseCollector):
         current = TopLevelMetrics()
         previous = TopLevelMetrics()
         for row in wb_abc:
-            parsed = _parse_abc_row(row)
+            parsed = _parse_abc_row_wb(row)
             if row[0] == "current":
                 current = parsed
             else:

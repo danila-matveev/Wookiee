@@ -49,7 +49,7 @@ MAX_PLACEHOLDERS: int = 5
 # ── Pipeline ──────────────────────────────────────────────────────────────────
 MAX_ATTEMPTS: int = 3
 LLM_TIMEOUT: float = 120.0
-LLM_MAX_TOKENS: int = 8000
+LLM_MAX_TOKENS: int = 16000
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
