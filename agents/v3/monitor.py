@@ -29,9 +29,12 @@ async def _send_admin(text: str) -> None:
         logger.debug("_send_admin: no token/chat_id configured, skipping")
         return
 
-    # Rate limit — подавляем дубли одинаковых сообщений
+    # Rate limit — подавляем дубли по категории сообщения.
+    # Для ошибок вида "❌ Ошибка «agent-name»:\ndetails..." хешируем только
+    # первую строку (тип ошибки), чтобы разные детали не обходили rate-limit.
     import hashlib
-    msg_hash = hashlib.md5(text.encode()).hexdigest()[:12]
+    first_line = text.split("\n", 1)[0]
+    msg_hash = hashlib.md5(first_line.encode()).hexdigest()[:12]
     now = time.monotonic()
 
     last_sent = _recent_messages.get(msg_hash, 0)
