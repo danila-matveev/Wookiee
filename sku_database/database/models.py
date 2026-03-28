@@ -184,6 +184,7 @@ class ModelOsnova(Base):
     kategoriya_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey('kategorii.id'), comment='Категория')
     kollekciya_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey('kollekcii.id'), comment='Коллекция')
     fabrika_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey('fabriki.id'), comment='Фабрика')
+    status_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey('statusy.id'), nullable=True, comment='Статус модели основы')
 
     # Размеры и упаковка
     razmery_modeli: Mapped[Optional[str]] = mapped_column(String(50), comment='Размеры модели (S, M, L, XL)')
@@ -241,6 +242,7 @@ class ModelOsnova(Base):
     kategoriya: Mapped[Optional['Kategoriya']] = relationship('Kategoriya', back_populates='modeli_osnova')
     kollekciya: Mapped[Optional['Kollekciya']] = relationship('Kollekciya', back_populates='modeli_osnova')
     fabrika: Mapped[Optional['Fabrika']] = relationship('Fabrika', back_populates='modeli_osnova')
+    status: Mapped[Optional['Status']] = relationship('Status')
     modeli: Mapped[List['Model']] = relationship('Model', back_populates='model_osnova')
 
     def __repr__(self):

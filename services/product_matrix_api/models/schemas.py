@@ -28,6 +28,7 @@ class ModelOsnovaCreate(BaseModel):
     kategoriya_id: Optional[int] = None
     kollekciya_id: Optional[int] = None
     fabrika_id: Optional[int] = None
+    status_id: Optional[int] = None
     razmery_modeli: Optional[str] = None
     sku_china: Optional[str] = None
     upakovka: Optional[str] = None
@@ -56,6 +57,7 @@ class ModelOsnovaUpdate(BaseModel):
     kategoriya_id: Optional[int] = None
     kollekciya_id: Optional[int] = None
     fabrika_id: Optional[int] = None
+    status_id: Optional[int] = None
     razmery_modeli: Optional[str] = None
     sku_china: Optional[str] = None
     upakovka: Optional[str] = None
@@ -87,6 +89,7 @@ class ModelOsnovaRead(BaseModel):
     kategoriya_id: Optional[int] = None
     kollekciya_id: Optional[int] = None
     fabrika_id: Optional[int] = None
+    status_id: Optional[int] = None
     razmery_modeli: Optional[str] = None
     material: Optional[str] = None
     sostav_syrya: Optional[str] = None
