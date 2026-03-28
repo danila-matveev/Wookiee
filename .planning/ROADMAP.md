@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 1: Foundation** - Entity registry, panel routing fix, and entity cache — structural prerequisites for all editing work
 - [ ] **Phase 2: Detail Panel** - All fields visible in read mode, edit mode with correct input types, save/cancel, lookup options cached
 - [ ] **Phase 3: Table View** - Human-readable display names, resolved reference fields, status badges, sort, column toggle, create new record
-- [ ] **Phase 4: Filter System** - Status filter, category filter, multi-field filter builder, hierarchy drill-down, saved views
+- [x] **Phase 4: Filter System** - Status filter, category filter, multi-field filter builder, hierarchy drill-down, saved views (completed 2026-03-28)
 
 ## Phase Details
 
@@ -69,7 +69,7 @@ Plans:
   3. Clicking a model in the sidebar (or a related-entities link in the detail panel) switches the table to Artikuly view showing only that model's articles
   4. A filter builder allows adding multiple simultaneous filters (field + operator + value) with active filter chips displayed and individually removable
   5. A "Сохранить вид" action saves the current filter + sort + column configuration; loading a saved view restores that exact state
-**Plans:** 3 plans
+**Plans:** 3/3 plans complete
 
 Plans:
 - [ ] 04-01-PLAN.md — Backend: migration status_id for modeli_osnova, IN-clause filters, route params, drill-down subquery
@@ -86,4 +86,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | 1. Foundation | 0/TBD | Not started | - |
 | 2. Detail Panel | 0/TBD | Not started | - |
 | 3. Table View | 3/3 | Complete | 2026-03-26 |
-| 4. Filter System | 0/3 | Not started | - |
+| 4. Filter System | 3/3 | Complete   | 2026-03-28 |
