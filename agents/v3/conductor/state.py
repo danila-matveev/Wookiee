@@ -111,6 +111,21 @@ class ConductorState:
             ).fetchall()
         return {r[0] for r in rows}
 
+    def get_exhausted_types(self, date: str, max_attempts: int) -> set:
+        """Return report_types that have already exhausted max_attempts for the given date.
+
+        Used to prevent infinite re-queueing of persistently failing reports via
+        get_missed_reports recovery. A report that has already been attempted
+        max_attempts times for a given date should not be retried again that day.
+        """
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT report_type FROM conductor_log "
+                "WHERE date = ? AND attempts >= ? AND status = 'failed'",
+                (date, max_attempts),
+            ).fetchall()
+        return {r[0] for r in rows}
+
     def already_notified(self, report_date: str) -> bool:
         """Check if data_ready notification was already sent for this date.
 
