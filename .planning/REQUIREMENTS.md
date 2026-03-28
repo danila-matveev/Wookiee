@@ -41,10 +41,10 @@ Requirements for UX redesign milestone. Each maps to roadmap phases.
 
 ### Filtering & Navigation
 
-- [ ] **FILT-01**: Фильтр по статусу (активные/архивные) в виде dropdown над таблицей
-- [ ] **FILT-02**: Фильтр по категории для моделей
-- [ ] **FILT-03**: Hierarchy drill-down — клик по модели → показ её артикулов в отфильтрованном виде
-- [ ] **FILT-04**: Multi-field filter builder с поддержкой нескольких фильтров одновременно
+- [x] **FILT-01**: Фильтр по статусу (активные/архивные) в виде dropdown над таблицей
+- [x] **FILT-02**: Фильтр по категории для моделей
+- [x] **FILT-03**: Hierarchy drill-down — клик по модели → показ её артикулов в отфильтрованном виде
+- [x] **FILT-04**: Multi-field filter builder с поддержкой нескольких фильтров одновременно
 - [ ] **FILT-05**: Saved views UI — сохранение и загрузка конфигурации колонок и фильтров через localStorage (Zustand persist)
 
 ## v2 Requirements
@@ -105,10 +105,10 @@ Deferred to future milestone. Tracked but not in current roadmap.
 | PANEL-08 | Phase 2 | Pending |
 | CRUD-01 | Phase 3 | Complete |
 | CRUD-02 | Phase 3 | Complete |
-| FILT-01 | Phase 4 | Pending |
-| FILT-02 | Phase 4 | Pending |
-| FILT-03 | Phase 4 | Pending |
-| FILT-04 | Phase 4 | Pending |
+| FILT-01 | Phase 4 | Complete |
+| FILT-02 | Phase 4 | Complete |
+| FILT-03 | Phase 4 | Complete |
+| FILT-04 | Phase 4 | Complete |
 | FILT-05 | Phase 4 | Pending |
 
 **Coverage:**
