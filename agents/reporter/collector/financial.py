@@ -39,38 +39,83 @@ def _safe_div(a: float, b: float) -> float:
     return round(a / b * 100, 2) if b else 0.0
 
 
-def _parse_abc_row(row: tuple) -> TopLevelMetrics:
-    """Parse a row from get_wb_finance / get_ozon_finance abc_date result."""
-    # Columns: period, sales_count, revenue_before_spp, spp_amount,
-    # revenue_after_spp, adv_internal, adv_vk, adv_bloggers, adv_creators,
-    # cost_of_goods, logistics, storage, commission, margin, nds,
-    # orders_count, orders_rub
-    (_, sales, rev_before, spp_amount, rev_after,
-     adv_int, adv_vk, adv_blog, adv_creators,
-     cogs, logistics, storage, commission, margin, nds,
-     orders_count, orders_rub) = row
+def _parse_abc_row_wb(row: tuple) -> TopLevelMetrics:
+    """Parse WB abc_date row (19 columns).
 
-    adv_external = float(adv_vk or 0) + float(adv_blog or 0) + float(adv_creators or 0)
-    adv_total = float(adv_int or 0) + adv_external
-    rev_b = float(rev_before or 0)
+    0: period, 1: orders_count, 2: sales_count, 3: revenue_before_spp,
+    4: revenue_after_spp, 5: adv_internal, 6: adv_external,
+    7: cost_of_goods, 8: logistics, 9: storage, 10: commission,
+    11: spp_amount, 12: nds, 13: penalty, 14: retention, 15: deduction,
+    16: margin, 17: returns_revenue, 18: revenue_before_spp_gross
+    """
+    sales = int(row[2] or 0)
+    rev_before = float(row[3] or 0)
+    rev_after = float(row[4] or 0)
+    adv_int = float(row[5] or 0)
+    adv_ext = float(row[6] or 0)
+    cogs = float(row[7] or 0)
+    logistics = float(row[8] or 0)
+    storage = float(row[9] or 0)
+    commission = float(row[10] or 0)
+    spp_amount = float(row[11] or 0)
+    margin = float(row[16] or 0)
 
+    adv_total = adv_int + adv_ext
     return TopLevelMetrics(
-        revenue_before_spp=rev_b,
-        revenue_after_spp=float(rev_after or 0),
-        orders_count=int(orders_count or 0),
-        orders_rub=float(orders_rub or 0),
-        sales_count=int(sales or 0),
-        margin=float(margin or 0),
-        margin_pct=_safe_div(float(margin or 0), rev_b),
-        adv_internal=float(adv_int or 0),
-        adv_external=adv_external,
+        revenue_before_spp=rev_before,
+        revenue_after_spp=rev_after,
+        orders_count=int(row[1] or 0),
+        sales_count=sales,
+        margin=margin,
+        margin_pct=_safe_div(margin, rev_before),
+        adv_internal=adv_int,
+        adv_external=adv_ext,
         adv_total=adv_total,
-        drr_pct=_safe_div(adv_total, rev_b),
-        spp_pct=_safe_div(float(spp_amount or 0), rev_b),
-        logistics=float(logistics or 0),
-        storage=float(storage or 0),
-        cost_of_goods=float(cogs or 0),
-        commission=float(commission or 0),
+        drr_pct=_safe_div(adv_total, rev_before),
+        spp_pct=_safe_div(spp_amount, rev_before),
+        logistics=logistics,
+        storage=storage,
+        cost_of_goods=cogs,
+        commission=commission,
+    )
+
+
+def _parse_abc_row_ozon(row: tuple) -> TopLevelMetrics:
+    """Parse OZON abc_date row (13 columns).
+
+    0: period, 1: sales_count, 2: revenue_before_spp,
+    3: revenue_after_spp, 4: adv_internal, 5: adv_external,
+    6: margin, 7: cost_of_goods, 8: logistics, 9: storage,
+    10: commission, 11: spp_amount, 12: nds
+    """
+    sales = int(row[1] or 0)
+    rev_before = float(row[2] or 0)
+    rev_after = float(row[3] or 0)
+    adv_int = float(row[4] or 0)
+    adv_ext = float(row[5] or 0)
+    margin = float(row[6] or 0)
+    cogs = float(row[7] or 0)
+    logistics = float(row[8] or 0)
+    storage = float(row[9] or 0)
+    commission = float(row[10] or 0)
+    spp_amount = float(row[11] or 0)
+
+    adv_total = adv_int + adv_ext
+    return TopLevelMetrics(
+        revenue_before_spp=rev_before,
+        revenue_after_spp=rev_after,
+        sales_count=sales,
+        margin=margin,
+        margin_pct=_safe_div(margin, rev_before),
+        adv_internal=adv_int,
+        adv_external=adv_ext,
+        adv_total=adv_total,
+        drr_pct=_safe_div(adv_total, rev_before),
+        spp_pct=_safe_div(spp_amount, rev_before),
+        logistics=logistics,
+        storage=storage,
+        cost_of_goods=cogs,
+        commission=commission,
     )
 
 
@@ -136,18 +181,38 @@ class FinancialCollector(BaseCollector):
         ozon_previous = TopLevelMetrics()
 
         for row in wb_abc:
-            parsed = _parse_abc_row(row)
+            parsed = _parse_abc_row_wb(row)
             if row[0] == "current":
                 wb_current = parsed
             else:
                 wb_previous = parsed
 
+        # Fill orders_rub from separate orders query
+        for row in wb_orders:
+            # period, orders_count, orders_rub
+            if row[0] == "current":
+                wb_current.orders_rub = float(row[2] or 0)
+                if wb_current.orders_count == 0:
+                    wb_current.orders_count = int(row[1] or 0)
+            else:
+                wb_previous.orders_rub = float(row[2] or 0)
+                if wb_previous.orders_count == 0:
+                    wb_previous.orders_count = int(row[1] or 0)
+
         for row in ozon_abc:
-            parsed = _parse_abc_row(row)
+            parsed = _parse_abc_row_ozon(row)
             if row[0] == "current":
                 ozon_current = parsed
             else:
                 ozon_previous = parsed
+
+        for row in ozon_orders:
+            if row[0] == "current":
+                ozon_current.orders_count = int(row[1] or 0)
+                ozon_current.orders_rub = float(row[2] or 0)
+            else:
+                ozon_previous.orders_count = int(row[1] or 0)
+                ozon_previous.orders_rub = float(row[2] or 0)
 
         # Merge WB + OZON (weighted averages for percentages)
         for period_label, wb, oz, target in [

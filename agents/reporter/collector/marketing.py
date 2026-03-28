@@ -31,10 +31,36 @@ from agents.reporter.collector.base import (
     TopLevelMetrics,
     TrendData,
 )
-from agents.reporter.collector.financial import _parse_abc_row, _safe_div
+from agents.reporter.collector.financial import _parse_abc_row_wb, _safe_div
 from agents.reporter.types import ReportScope
 
 logger = logging.getLogger(__name__)
+
+def _rows_to_dicts(rows: list, cols: list[str] | None = None) -> list[dict]:
+    """Convert raw psycopg2 tuples to list of dicts. Auto-generates col_N keys if cols not given."""
+    if not rows:
+        return []
+    if isinstance(rows[0], dict):
+        return rows
+    if cols is None:
+        cols = [f"col_{i}" for i in range(len(rows[0]))]
+    result = []
+    for row in rows:
+        d = {}
+        for i, v in enumerate(row):
+            key = cols[i] if i < len(cols) else f"col_{i}"
+            d[key] = str(v) if hasattr(v, 'isoformat') else (float(v) if isinstance(v, __import__('decimal').Decimal) else v)
+        result.append(d)
+    return result
+
+
+_WB_AD_SERIES_COLS = ["date", "views", "clicks", "spend", "to_cart", "orders", "ctr", "cpc"]
+_OZON_AD_SERIES_COLS = ["date", "views", "clicks", "orders", "spend", "avg_bid", "ctr", "cpc"]
+_WB_AD_BREAKDOWN_COLS = ["period", "adv_internal", "adv_bloggers", "adv_vk", "adv_creators", "adv_total"]
+_OZON_AD_BREAKDOWN_COLS = ["period", "adv_internal", "adv_external", "adv_total"]
+_WB_CAMPAIGN_COLS = ["period", "campaign", "views", "clicks", "spend", "to_cart", "orders", "ctr", "cpc"]
+_WB_AD_ROI_COLS = ["period", "model", "revenue", "adv_spend", "margin", "romi", "drr"]
+_OZON_AD_ROI_COLS = ["period", "model", "revenue", "adv_spend", "margin", "romi", "drr"]
 
 
 class MarketingCollector(BaseCollector):
@@ -52,25 +78,27 @@ class MarketingCollector(BaseCollector):
         current = TopLevelMetrics()
         previous = TopLevelMetrics()
         for row in wb_abc:
-            parsed = _parse_abc_row(row)
+            parsed = _parse_abc_row_wb(row)
             if row[0] == "current":
                 current = parsed
             else:
                 previous = parsed
 
         # ── Ad breakdown (internal/external/VK/bloggers) ──────────────
-        wb_ad_breakdown = get_wb_external_ad_breakdown(cs, ps, ce)
-        ozon_ad_breakdown = get_ozon_external_ad_breakdown(cs, ps, ce)
+        wb_ad_breakdown = _rows_to_dicts(get_wb_external_ad_breakdown(cs, ps, ce), _WB_AD_BREAKDOWN_COLS)
+        ozon_ad_breakdown = _rows_to_dicts(get_ozon_external_ad_breakdown(cs, ps, ce), _OZON_AD_BREAKDOWN_COLS)
 
         # ── Campaign stats ─────────────────────────────────────────────
-        campaign_stats = get_wb_campaign_stats(cs, ps, ce)
+        campaign_stats = _rows_to_dicts(get_wb_campaign_stats(cs, ps, ce), _WB_CAMPAIGN_COLS)
 
         # ── Model-level ad ROI ─────────────────────────────────────────
-        wb_roi = get_wb_model_ad_roi(cs, ps, ce)
-        ozon_roi = get_ozon_model_ad_roi(cs, ps, ce)
+        wb_roi_raw = get_wb_model_ad_roi(cs, ps, ce)
+        ozon_roi_raw = get_ozon_model_ad_roi(cs, ps, ce)
+        wb_roi = _rows_to_dicts(wb_roi_raw)
+        ozon_roi = _rows_to_dicts(ozon_roi_raw)
 
         model_breakdown = []
-        for i, row in enumerate(wb_roi[:10]):
+        for i, row in enumerate(wb_roi_raw[:10]):
             model_breakdown.append(ModelMetrics(
                 model=str(row[1]) if len(row) > 1 else f"model_{i}",
                 rank=i + 1,
@@ -86,11 +114,11 @@ class MarketingCollector(BaseCollector):
             organic_funnel, paid_funnel = [], []
 
         # ── Traffic by model ───────────────────────────────────────────
-        traffic_by_model = get_wb_traffic_by_model(cs, ps, ce)
+        traffic_by_model = _rows_to_dicts(get_wb_traffic_by_model(cs, ps, ce))
 
         # ── Ad time series ─────────────────────────────────────────────
-        wb_ad_series = get_wb_ad_daily_series(cs, ps, ce)
-        ozon_ad_series = get_ozon_ad_daily_series(cs, ps, ce)
+        wb_ad_series = _rows_to_dicts(get_wb_ad_daily_series(ps, ce), _WB_AD_SERIES_COLS)
+        ozon_ad_series = _rows_to_dicts(get_ozon_ad_daily_series(ps, ce), _OZON_AD_SERIES_COLS)
 
         return CollectedData(
             scope=scope.to_dict(),

@@ -18,15 +18,22 @@ def _scope():
 
 
 def _mock_wb_finance():
-    """Simulate get_wb_finance return: (abc_rows, orders_rows)."""
+    """Simulate get_wb_finance return: (abc_rows, orders_rows).
+
+    Real WB column order (19 cols):
+    0: period, 1: orders_count, 2: sales_count, 3: revenue_before_spp,
+    4: revenue_after_spp, 5: adv_internal, 6: adv_external,
+    7: cost_of_goods, 8: logistics, 9: storage, 10: commission,
+    11: spp_amount, 12: nds, 13: penalty, 14: retention, 15: deduction,
+    16: margin, 17: returns_revenue, 18: revenue_before_spp_gross
+    """
     abc_rows = [
-        # period, sales_count, revenue_before_spp, spp_amount, revenue_after_spp,
-        # adv_internal, adv_vk, adv_bloggers, adv_creators, cost_of_goods,
-        # logistics, storage, commission, margin, nds, orders_count, orders_rub
-        ("current", 100, 500000, 50000, 450000, 30000, 5000, 3000, 2000,
-         150000, 40000, 10000, 25000, 135000, 0, 120, 600000),
-        ("previous", 90, 450000, 45000, 405000, 25000, 4000, 2000, 1000,
-         135000, 38000, 9000, 22000, 129000, 0, 110, 540000),
+        ("current", 120, 100, 500000, 450000, 30000, 5000,
+         150000, 40000, 10000, 25000, 50000, 0, 0, 0, 0,
+         135000, 0, 500000),
+        ("previous", 110, 90, 450000, 405000, 25000, 4000,
+         135000, 38000, 9000, 22000, 45000, 0, 0, 0, 0,
+         129000, 0, 450000),
     ]
     orders_rows = [
         ("current", 120, 600000),
