@@ -49,6 +49,7 @@ export function ModelsPage() {
   const toggleRowExpanded = useMatrixStore((s) => s.toggleRowExpanded)
   const toggleRowSelected = useMatrixStore((s) => s.toggleRowSelected)
   const openDetailPanel = useMatrixStore((s) => s.openDetailPanel)
+  const entityUpdateStamp = useMatrixStore((s) => s.entityUpdateStamp["models"] ?? 0)
   const lookupCache = useMatrixStore((s) => s.lookupCache)
   const activeFilters = useMatrixStore((s) => s.activeFilters)
   const addFilter = useMatrixStore((s) => s.addFilter)
@@ -151,7 +152,7 @@ export function ModelsPage() {
 
   const { data, loading } = useApiQuery(
     () => matrixApi.listModels(apiParams),
-    [page, sort.field, sort.order, refreshKey, activeFilters],
+    [page, sort.field, sort.order, refreshKey, activeFilters, entityUpdateStamp],
   )
 
   const [childrenMap, setChildrenMap] = useState<Map<number, ModelVariation[]>>(new Map())
@@ -169,7 +170,7 @@ export function ModelsPage() {
   function handleCreated(newId: number) {
     setPage(1)
     setRefreshKey((k) => k + 1)
-    openDetailPanel(newId)
+    openDetailPanel(newId, "models")
   }
 
   // Models-only saved views
@@ -228,7 +229,7 @@ export function ModelsPage() {
         hasChildren={(row) => (row.children_count ?? 0) > 0}
         onToggleExpand={toggleRowExpanded}
         onToggleSelect={toggleRowSelected}
-        onRowClick={openDetailPanel}
+        onRowClick={(id) => openDetailPanel(id, "models")}
         onSort={toggleSort}
         sortState={sort}
       />

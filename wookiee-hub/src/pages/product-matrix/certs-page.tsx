@@ -19,10 +19,11 @@ export function CertsPage() {
   const selectedRows = useMatrixStore((s) => s.selectedRows)
   const toggleRowSelected = useMatrixStore((s) => s.toggleRowSelected)
   const openDetailPanel = useMatrixStore((s) => s.openDetailPanel)
+  const entityUpdateStamp = useMatrixStore((s) => s.entityUpdateStamp["certs"] ?? 0)
 
   const { data, loading } = useApiQuery(
     () => matrixApi.listCerts({ per_page: 200 }),
-    [],
+    [entityUpdateStamp],
   )
 
   return (
@@ -35,7 +36,7 @@ export function CertsPage() {
         loading={loading}
         selectedRows={selectedRows}
         onToggleSelect={toggleRowSelected}
-        onRowClick={openDetailPanel}
+        onRowClick={(id) => openDetailPanel(id, "certs")}
       />
     </div>
   )
