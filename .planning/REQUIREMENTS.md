@@ -45,7 +45,7 @@ Requirements for UX redesign milestone. Each maps to roadmap phases.
 - [ ] **FILT-02**: Фильтр по категории для моделей
 - [ ] **FILT-03**: Hierarchy drill-down — клик по модели → показ её артикулов в отфильтрованном виде
 - [ ] **FILT-04**: Multi-field filter builder с поддержкой нескольких фильтров одновременно
-- [ ] **FILT-05**: Saved views UI — сохранение и загрузка конфигурации колонок и фильтров через backend hub.saved_views
+- [ ] **FILT-05**: Saved views UI — сохранение и загрузка конфигурации колонок и фильтров через localStorage (Zustand persist)
 
 ## v2 Requirements
 
@@ -114,8 +114,8 @@ Deferred to future milestone. Tracked but not in current roadmap.
 **Coverage:**
 - v1 requirements: 25 total
 - Mapped to phases: 25
-- Unmapped: 0 ✓
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-23*
-*Last updated: 2026-03-23 — traceability populated after roadmap creation*
+*Last updated: 2026-03-28 — FILT-05 updated to reflect localStorage decision per CONTEXT.md*
