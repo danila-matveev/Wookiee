@@ -196,6 +196,30 @@ async def test_exhausted_report_not_retried_same_day(full_setup):
 
 
 @pytest.mark.asyncio
+async def test_single_combined_data_ready_message(full_setup):
+    """All data-ready info should arrive as ONE message, not 3 separate ones."""
+    s = full_setup
+    await data_ready_check(
+        gate_checker=s["gate_checker"],
+        conductor_state=s["state"],
+        telegram_send=s["telegram_send"],
+        orchestrator=s["orchestrator"],
+        delivery=s["delivery"],
+        scheduler=MagicMock(),
+        today=date(2026, 3, 19),  # Thursday
+    )
+
+    # Count "data ready" messages (messages containing "готовы")
+    ready_msgs = [m for m in s["telegram_messages"] if "готовы" in m]
+    assert len(ready_msgs) == 1, f"Expected 1 data-ready message, got {len(ready_msgs)}: {ready_msgs}"
+
+    # The single message should contain both WB and OZON
+    msg = ready_msgs[0]
+    assert "WB" in msg
+    assert "OZON" in msg
+
+
+@pytest.mark.asyncio
 async def test_deadline_check_silent_when_all_done(full_setup):
     """deadline_check is silent if all reports generated."""
     s = full_setup

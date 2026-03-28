@@ -163,26 +163,22 @@ async def data_ready_check(
         logger.info("All reports already generated for %s", today)
         return
 
-    # 3. Send per-channel + combined "data ready" notifications (deduplicated)
+    # 3. Send combined "data ready" notification (deduplicated)
     yesterday = today - timedelta(days=1)
     day_month = f"{yesterday.day} {_month_name(yesterday.month)}"
     report_date = str(today)
 
-    # Per-channel detailed notifications
-    for mp, gates in [("wb", wb_gates), ("ozon", ozon_gates)]:
-        channel_key = f"{report_date}:{mp}"
-        if not conductor_state.already_notified(channel_key):
-            gate_info = _extract_gate_info(gates)
-            report_time = "09:00" if ReportType.DAILY in pending else None
-            await telegram_send(
-                messages.channel_data_ready(day_month, mp, gate_info, report_time)
-            )
-            conductor_state.mark_notified(channel_key)
-
-    # Combined notification with report list
     if not conductor_state.already_notified(report_date):
+        channels = []
+        for mp, gates in [("wb", wb_gates), ("ozon", ozon_gates)]:
+            channels.append({
+                "marketplace": mp,
+                "gate_info": _extract_gate_info(gates),
+            })
         pending_names = [rt.human_name for rt in pending]
-        await telegram_send(messages.data_ready(day_month, pending_names))
+        await telegram_send(
+            messages.data_ready_combined(day_month, channels, pending_names)
+        )
         conductor_state.mark_notified(report_date)
     else:
         logger.debug("data_ready: already notified for %s, skipping message", report_date)
