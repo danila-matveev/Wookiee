@@ -83,7 +83,6 @@ Progress: [██████████] 100%
 - [Phase 01-foundation]: All backendType values use plural forms (modeli_osnova, artikuly) — manage-fields-dialog singular forms normalized to match API convention
 - [Phase 01-foundation]: panel/types.ts re-exports getBackendType from entity-registry to preserve existing import paths for panel consumers
 - [Phase 01-foundation]: notifyEntityUpdated called inside try block after setLocalData — stamp increments only on successful save, not on errors
-- [Phase 01-foundation]: entityUpdateStamp called inside try block after setLocalData — stamp only increments on successful saves
 - [Phase 01-foundation]: Secondary entity pages (colors, factories, importers, cards-wb, cards-ozon, certs) use [entityUpdateStamp] as sole useApiQuery dep — no pagination/sort/filter state to track
 
 ### Pending Todos
