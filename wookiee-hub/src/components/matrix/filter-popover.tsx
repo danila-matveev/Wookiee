@@ -53,7 +53,7 @@ export function FilterPopover({ filterableDefs, onAddFilter }: FilterPopoverProp
     if (!selectedDef || selectedIds.length === 0) return
     const items = lookupCache[selectedDef.lookupTable!] ?? []
     const valueLabels = selectedIds
-      .map((id) => items.find((item) => item.id === id)?.name ?? String(id))
+      .map((id) => items.find((item) => item.id === id)?.nazvanie ?? String(id))
     onAddFilter({
       field: selectedDef.field,
       label: selectedDef.label,
@@ -126,7 +126,7 @@ export function FilterPopover({ filterableDefs, onAddFilter }: FilterPopoverProp
                     checked={selectedIds.includes(item.id)}
                     onCheckedChange={() => handleToggleId(item.id)}
                   />
-                  <span className="text-xs">{item.name}</span>
+                  <span className="text-xs">{item.nazvanie}</span>
                 </label>
               ))}
               {lookupItems.length === 0 && (
