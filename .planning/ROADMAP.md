@@ -69,7 +69,12 @@ Plans:
   3. Clicking a model in the sidebar (or a related-entities link in the detail panel) switches the table to Artikuly view showing only that model's articles
   4. A filter builder allows adding multiple simultaneous filters (field + operator + value) with active filter chips displayed and individually removable
   5. A "Сохранить вид" action saves the current filter + sort + column configuration; loading a saved view restores that exact state
-**Plans**: TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 04-01-PLAN.md — Backend: migration status_id for modeli_osnova, IN-clause filters, route params, drill-down subquery
+- [ ] 04-02-PLAN.md — Frontend: FilterEntry state, FilterPopover two-step builder, FilterChip, MatrixTopbar integration
+- [ ] 04-03-PLAN.md — Frontend: Hierarchy drill-down action, saved views with filters+sort round-trip
 
 ## Progress
 
@@ -81,4 +86,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | 1. Foundation | 0/TBD | Not started | - |
 | 2. Detail Panel | 0/TBD | Not started | - |
 | 3. Table View | 3/3 | Complete | 2026-03-26 |
-| 4. Filter System | 0/TBD | Not started | - |
+| 4. Filter System | 0/3 | Not started | - |
