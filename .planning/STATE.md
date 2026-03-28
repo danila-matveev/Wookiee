@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-01-PLAN.md
-last_updated: "2026-03-28T19:05:27.918Z"
-last_activity: 2026-03-28 — Completed Phase 4 Plan 03 (Drill-down navigation + saved views with localStorage persist)
+stopped_at: Completed 01-02-PLAN.md
+last_updated: "2026-03-28T19:11:28.305Z"
+last_activity: 2026-03-28 — Completed 01-01-PLAN.md (Entity registry + consolidate 3 inline entity maps)
 progress:
   total_phases: 6
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 13
-  completed_plans: 12
+  completed_plans: 13
   percent: 100
 ---
 
@@ -25,10 +25,10 @@ See: .planning/REQUIREMENTS.md (updated 2026-03-23)
 
 ## Current Position
 
-Phase: 1 of 5 (Foundation) - IN PROGRESS
-Plan: 1 of 2 in current phase (completed)
-Status: Executing
-Last activity: 2026-03-28 — Completed 01-01-PLAN.md (Entity registry + consolidate 3 inline entity maps)
+Phase: 1 of 5 (Foundation) - COMPLETE
+Plan: 2 of 2 in current phase (completed)
+Status: Phase Complete
+Last activity: 2026-03-28 — Completed 01-02-PLAN.md (Detail panel routing + cache invalidation)
 
 Progress: [██████████] 100%
 
@@ -54,6 +54,7 @@ Progress: [██████████] 100%
 | Phase 04-filter-system P02 | 45 | 4 tasks | 11 files |
 | Phase 04-filter-system P03 | 25 | 2 tasks | 5 files |
 | Phase 01-foundation P01 | 7 | 2 tasks | 10 files |
+| Phase 01-foundation P02 | 3 | 2 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -81,6 +82,9 @@ Progress: [██████████] 100%
 - [Phase 04-filter-system P03]: Save/load view UI scoped to models page only in this phase
 - [Phase 01-foundation]: All backendType values use plural forms (modeli_osnova, artikuly) — manage-fields-dialog singular forms normalized to match API convention
 - [Phase 01-foundation]: panel/types.ts re-exports getBackendType from entity-registry to preserve existing import paths for panel consumers
+- [Phase 01-foundation]: notifyEntityUpdated called inside try block after setLocalData — stamp increments only on successful save, not on errors
+- [Phase 01-foundation]: entityUpdateStamp called inside try block after setLocalData — stamp only increments on successful saves
+- [Phase 01-foundation]: Secondary entity pages (colors, factories, importers, cards-wb, cards-ozon, certs) use [entityUpdateStamp] as sole useApiQuery dep — no pagination/sort/filter state to track
 
 ### Pending Todos
 
@@ -94,6 +98,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28T19:05:27.916Z
-Stopped at: Completed 01-01-PLAN.md
+Last session: 2026-03-28T19:11:28.303Z
+Stopped at: Completed 01-02-PLAN.md
 Resume file: None
