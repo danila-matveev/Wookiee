@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 import signal
 import sys
 
@@ -58,6 +59,25 @@ async def run(dry_run: bool = False) -> None:
     """
     _configure_logging(config.LOG_LEVEL)
     logger.info("Wookiee v3 starting up...")
+
+    # ── Singleton lock — prevent dual-process ────────────────────────────
+    import fcntl
+    lock_path = os.path.join(
+        os.path.dirname(config.STATE_DB_PATH) or "agents/v3/data",
+        "v3.lock",
+    )
+    lock_file = open(lock_path, "w")
+    try:
+        fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        logger.fatal(
+            "Another Wookiee v3 instance is already running (lock: %s). Exiting.",
+            lock_path,
+        )
+        sys.exit(1)
+    lock_file.write(str(os.getpid()))
+    lock_file.flush()
+    logger.info("Startup lock acquired: %s (pid=%d)", lock_path, os.getpid())
 
     # ── Build scheduler ─────────────────────────────────────────────────────
     from agents.v3.scheduler import create_scheduler
