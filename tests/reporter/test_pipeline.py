@@ -32,23 +32,22 @@ def _mock_state():
 
 
 @pytest.mark.asyncio
-@patch("agents.reporter.pipeline.FinancialCollector")
 @patch("agents.reporter.pipeline.analyze")
 @patch("agents.reporter.pipeline.upsert_notion", new_callable=AsyncMock)
 @patch("agents.reporter.pipeline.send_or_edit_telegram", new_callable=AsyncMock)
 @patch("agents.reporter.pipeline.send_error_notification", new_callable=AsyncMock)
-async def test_pipeline_success(mock_err, mock_tg, mock_notion, mock_analyze, mock_collector_cls):
+async def test_pipeline_success(mock_err, mock_tg, mock_notion, mock_analyze):
     from agents.reporter.analyst.schemas import ReportInsights, SectionInsight
     from agents.reporter.collector.base import CollectedData, TopLevelMetrics
 
-    # Setup mocks
+    # Setup mocks — patch _COLLECTORS dict directly so the pipeline uses our mock
     mock_collector = MagicMock()
     mock_collector.collect = AsyncMock(return_value=CollectedData(
         scope=_scope().to_dict(), collected_at="",
         current=TopLevelMetrics(revenue_before_spp=500000),
         previous=TopLevelMetrics(revenue_before_spp=450000),
     ))
-    mock_collector_cls.return_value = mock_collector
+    mock_collector_cls = MagicMock(return_value=mock_collector)
 
     mock_analyze.return_value = (
         ReportInsights(
@@ -62,7 +61,8 @@ async def test_pipeline_success(mock_err, mock_tg, mock_notion, mock_analyze, mo
     mock_tg.return_value = 42
 
     state = _mock_state()
-    result = await run_pipeline(_scope(), state)
+    with patch("agents.reporter.pipeline._COLLECTORS", {"financial": mock_collector_cls}):
+        result = await run_pipeline(_scope(), state)
 
     assert result.success is True
     assert result.notion_url == "https://notion.so/page123"

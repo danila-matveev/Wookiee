@@ -19,7 +19,7 @@ def test_validate_pass():
 
 
 def test_validate_fail_too_few_sections():
-    report = "## ▶ 0. Паспорт\nТестовый текст " * 50
+    report = "## ▶ 0. Паспорт\nТестовый текст " + "Ещё текст " * 50
     result = validate(report, _insights())
     assert result.verdict in ("RETRY", "FAIL")
     assert any("sections" in i.lower() or "section" in i.lower() for i in result.issues)

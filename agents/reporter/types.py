@@ -117,7 +117,7 @@ def compute_scope(report_type: ReportType, today: date) -> ReportScope:
     elif report_type.period_kind == "weekly":
         # Last full week (Mon-Sun)
         days_since_monday = today.weekday()
-        last_sunday = today - timedelta(days=days_since_monday)
+        last_sunday = today - timedelta(days=days_since_monday + 1)
         last_monday = last_sunday - timedelta(days=6)
         prev_sunday = last_monday - timedelta(days=1)
         prev_monday = prev_sunday - timedelta(days=6)
