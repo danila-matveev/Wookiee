@@ -21,6 +21,7 @@ export function ArticlesPage() {
   const selectedRows = useMatrixStore((s) => s.selectedRows)
   const toggleRowSelected = useMatrixStore((s) => s.toggleRowSelected)
   const openDetailPanel = useMatrixStore((s) => s.openDetailPanel)
+  const entityUpdateStamp = useMatrixStore((s) => s.entityUpdateStamp["articles"] ?? 0)
   const lookupCache = useMatrixStore((s) => s.lookupCache)
   const activeFilters = useMatrixStore((s) => s.activeFilters)
   const addFilter = useMatrixStore((s) => s.addFilter)
@@ -42,13 +43,13 @@ export function ArticlesPage() {
 
   const { data, loading } = useApiQuery(
     () => matrixApi.listArticles(tableState.apiParams),
-    [tableState.page, tableState.sort.field, tableState.sort.order, refreshKey, activeFilters],
+    [tableState.page, tableState.sort.field, tableState.sort.order, refreshKey, activeFilters, entityUpdateStamp],
   )
 
   function handleCreated(newId: number) {
     tableState.setPage(1)
     setRefreshKey((k) => k + 1)
-    openDetailPanel(newId)
+    openDetailPanel(newId, "articles")
   }
 
   return (
@@ -70,7 +71,7 @@ export function ArticlesPage() {
         loading={loading}
         selectedRows={selectedRows}
         onToggleSelect={toggleRowSelected}
-        onRowClick={openDetailPanel}
+        onRowClick={(id) => openDetailPanel(id, "articles")}
         onSort={tableState.toggleSort}
         sortState={tableState.sort}
       />

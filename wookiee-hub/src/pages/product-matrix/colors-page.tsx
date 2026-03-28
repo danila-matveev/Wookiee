@@ -18,10 +18,11 @@ export function ColorsPage() {
   const selectedRows = useMatrixStore((s) => s.selectedRows)
   const toggleRowSelected = useMatrixStore((s) => s.toggleRowSelected)
   const openDetailPanel = useMatrixStore((s) => s.openDetailPanel)
+  const entityUpdateStamp = useMatrixStore((s) => s.entityUpdateStamp["colors"] ?? 0)
 
   const { data, loading } = useApiQuery(
     () => matrixApi.listColors({ per_page: 200 }),
-    [],
+    [entityUpdateStamp],
   )
 
   return (
@@ -34,7 +35,7 @@ export function ColorsPage() {
         loading={loading}
         selectedRows={selectedRows}
         onToggleSelect={toggleRowSelected}
-        onRowClick={openDetailPanel}
+        onRowClick={(id) => openDetailPanel(id, "colors")}
       />
     </div>
   )

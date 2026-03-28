@@ -15,10 +15,11 @@ export function FactoriesPage() {
   const selectedRows = useMatrixStore((s) => s.selectedRows)
   const toggleRowSelected = useMatrixStore((s) => s.toggleRowSelected)
   const openDetailPanel = useMatrixStore((s) => s.openDetailPanel)
+  const entityUpdateStamp = useMatrixStore((s) => s.entityUpdateStamp["factories"] ?? 0)
 
   const { data, loading } = useApiQuery(
     () => matrixApi.listFactories({ per_page: 200 }),
-    [],
+    [entityUpdateStamp],
   )
 
   return (
@@ -31,7 +32,7 @@ export function FactoriesPage() {
         loading={loading}
         selectedRows={selectedRows}
         onToggleSelect={toggleRowSelected}
-        onRowClick={openDetailPanel}
+        onRowClick={(id) => openDetailPanel(id, "factories")}
       />
     </div>
   )
