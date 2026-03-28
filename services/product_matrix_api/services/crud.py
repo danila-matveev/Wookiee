@@ -34,7 +34,13 @@ class CrudService:
             return conditions
         col_names = {c.key for c in mapper.column_attrs}
         for field, value in filters.items():
-            if field in col_names and value is not None:
+            if field not in col_names or value is None:
+                continue
+            if isinstance(value, list):
+                if value:  # non-empty list -> IN clause
+                    conditions.append(getattr(model, field).in_(value))
+                # empty list -> skip (no condition = return everything)
+            else:
                 conditions.append(getattr(model, field) == value)
         return conditions
 

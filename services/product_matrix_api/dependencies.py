@@ -31,6 +31,22 @@ class CommonQueryParams:
     search: Optional[str] = None
 
 
+def parse_multi_param(value: Optional[str]):
+    """Parse a comma-joined filter param into scalar or list.
+
+    Examples:
+        '1'   -> 1       (scalar int — equality filter)
+        '1,5' -> [1, 5]  (list of ints — IN-clause filter)
+        None  -> None    (no filter)
+    """
+    if value is None:
+        return None
+    value = value.strip()
+    if "," in value:
+        return [int(x.strip()) for x in value.split(",") if x.strip()]
+    return int(value)
+
+
 def common_params(
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=200),

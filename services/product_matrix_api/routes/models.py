@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from services.product_matrix_api.config import get_db
 from services.product_matrix_api.dependencies import (
     CurrentUser, get_current_user, common_params, CommonQueryParams,
+    parse_multi_param,
 )
 from services.product_matrix_api.models.schemas import (
     ModelOsnovaCreate, ModelOsnovaUpdate, ModelOsnovaRead,
@@ -32,15 +33,25 @@ router = APIRouter(prefix="/api/matrix/models", tags=["models"])
 @router.get("", response_model=PaginatedResponse)
 def list_models_osnova(
     params: CommonQueryParams = Depends(common_params),
-    kategoriya_id: Optional[int] = Query(None),
-    kollekciya_id: Optional[int] = Query(None),
+    kategoriya_id: Optional[str] = Query(None),
+    kollekciya_id: Optional[str] = Query(None),
+    status_id: Optional[str] = Query(None),
+    fabrika_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
     filters = {}
-    if kategoriya_id:
-        filters["kategoriya_id"] = kategoriya_id
-    if kollekciya_id:
-        filters["kollekciya_id"] = kollekciya_id
+    parsed_kategoriya = parse_multi_param(kategoriya_id)
+    if parsed_kategoriya is not None:
+        filters["kategoriya_id"] = parsed_kategoriya
+    parsed_kollekciya = parse_multi_param(kollekciya_id)
+    if parsed_kollekciya is not None:
+        filters["kollekciya_id"] = parsed_kollekciya
+    parsed_status = parse_multi_param(status_id)
+    if parsed_status is not None:
+        filters["status_id"] = parsed_status
+    parsed_fabrika = parse_multi_param(fabrika_id)
+    if parsed_fabrika is not None:
+        filters["fabrika_id"] = parsed_fabrika
 
     sort_param = f"{params.sort}:{params.order or 'asc'}" if params.sort else None
     items, total = CrudService.get_list(
