@@ -27,7 +27,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   1. Opening the detail panel for an Artikul or Tovar row fetches from the correct endpoint (not /api/matrix/models/)
   2. All 4 existing entity maps (ManageFieldsDialog, MassEditBar, InfoTab, views-store) read from a single entity-registry.ts — changing one entry updates all consumers
   3. After saving a field change in the detail panel, the corresponding table row reflects the updated value without a full page reload
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 - [ ] 01-01-PLAN.md — Entity registry module + consolidate 3 inline entity maps + Wave 0 test stubs
@@ -87,7 +87,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 0/2 | Not started | - |
+| 1. Foundation | 1/2 | In Progress|  |
 | 2. Detail Panel | 0/TBD | Not started | - |
 | 3. Table View | 3/3 | Complete | 2026-03-26 |
 | 4. Filter System | 3/3 | Complete   | 2026-03-28 |

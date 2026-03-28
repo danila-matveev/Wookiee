@@ -9,7 +9,7 @@ Requirements for UX redesign milestone. Each maps to roadmap phases.
 
 ### Foundation
 
-- [ ] **FOUND-01**: Entity registry — единый источник истины для маппинга entity keys (консолидация 4 параллельных entity maps)
+- [x] **FOUND-01**: Entity registry — единый источник истины для маппинга entity keys (консолидация 4 параллельных entity maps)
 - [ ] **FOUND-02**: DetailPanel корректно роутит запросы для всех типов сущностей (не только models)
 - [ ] **FOUND-03**: Entity cache с update propagation — после PATCH в panel таблица автоматически обновляется
 
@@ -85,7 +85,7 @@ Deferred to future milestone. Tracked but not in current roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FOUND-01 | Phase 1 | Pending |
+| FOUND-01 | Phase 1 | Complete |
 | FOUND-02 | Phase 1 | Pending |
 | FOUND-03 | Phase 1 | Pending |
 | TABLE-01 | Phase 3 | Complete |
