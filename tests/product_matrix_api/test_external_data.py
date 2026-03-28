@@ -140,9 +140,10 @@ client = TestClient(app)
 
 class TestStockEndpoint:
     @patch("services.product_matrix_api.routes.external_data.get_db")
+    @patch("services.product_matrix_api.services.external_data._get_entity_name", return_value="vuki")
     @patch("services.product_matrix_api.services.external_data._get_cached_bulk")
     @patch("services.product_matrix_api.services.external_data.resolve_marketplace_key")
-    def test_stock_model_level(self, mock_resolve, mock_bulk, mock_db):
+    def test_stock_model_level(self, mock_resolve, mock_bulk, mock_entity_name, mock_db):
         """GET /api/matrix/models_osnova/1/stock returns stock data."""
         mock_session = MagicMock()
         mock_db.return_value = iter([mock_session])
@@ -261,10 +262,11 @@ class TestStockEndpoint:
 
 class TestFinanceEndpoint:
     @patch("services.product_matrix_api.routes.external_data.get_db")
+    @patch("services.product_matrix_api.services.external_data._get_entity_name", return_value="vuki")
     @patch("services.product_matrix_api.services.external_data._get_full_wb_finance")
     @patch("services.product_matrix_api.services.external_data._get_full_ozon_finance")
     @patch("services.product_matrix_api.services.external_data.resolve_marketplace_key")
-    def test_finance_model_level(self, mock_resolve, mock_ozon_fin, mock_wb_fin, mock_db):
+    def test_finance_model_level(self, mock_resolve, mock_ozon_fin, mock_wb_fin, mock_entity_name, mock_db):
         """GET /api/matrix/models_osnova/1/finance returns finance data."""
         mock_session = MagicMock()
         mock_db.return_value = iter([mock_session])
