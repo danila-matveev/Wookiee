@@ -10,14 +10,22 @@ import { CreateRecordDialog } from "@/components/matrix/create-record-dialog"
 import { useTableState } from "@/hooks/use-table-state"
 import { fieldDefsToColumns } from "@/lib/field-def-columns"
 import { ENTITY_BACKEND_MAP } from "@/components/matrix/panel/types"
+import type { FilterableDef } from "@/components/matrix/filter-popover"
+
+const PRODUCTS_FILTERABLE_DEFS: FilterableDef[] = [
+  { field: "status_id", label: "Статус", lookupTable: "statusy" },
+]
 
 export function ProductsPage() {
   const selectedRows = useMatrixStore((s) => s.selectedRows)
   const toggleRowSelected = useMatrixStore((s) => s.toggleRowSelected)
   const openDetailPanel = useMatrixStore((s) => s.openDetailPanel)
   const lookupCache = useMatrixStore((s) => s.lookupCache)
+  const activeFilters = useMatrixStore((s) => s.activeFilters)
+  const addFilter = useMatrixStore((s) => s.addFilter)
+  const removeFilter = useMatrixStore((s) => s.removeFilter)
 
-  const tableState = useTableState("products")
+  const tableState = useTableState("products", 50, activeFilters)
   const [createOpen, setCreateOpen] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
 
@@ -33,7 +41,7 @@ export function ProductsPage() {
 
   const { data, loading } = useApiQuery(
     () => matrixApi.listProducts(tableState.apiParams),
-    [tableState.page, tableState.sort.field, tableState.sort.order, refreshKey],
+    [tableState.page, tableState.sort.field, tableState.sort.order, refreshKey, activeFilters],
   )
 
   function handleCreated(newId: number) {
@@ -49,6 +57,10 @@ export function ProductsPage() {
         hiddenFields={tableState.hiddenFields}
         onToggleField={tableState.toggleFieldVisibility}
         onCreateClick={() => setCreateOpen(true)}
+        activeFilters={activeFilters}
+        onAddFilter={addFilter}
+        onRemoveFilter={removeFilter}
+        filterableDefs={PRODUCTS_FILTERABLE_DEFS}
       />
       <ViewTabs />
       <DataTable
