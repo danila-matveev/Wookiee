@@ -9,9 +9,9 @@ from datetime import datetime
 from typing import Optional, List
 from sqlalchemy import (
     Column, Integer, String, Text, Boolean, Numeric, DateTime,
-    ForeignKey, Table, BigInteger, CheckConstraint
+    ForeignKey, Table, BigInteger, CheckConstraint, select
 )
-from sqlalchemy.orm import DeclarativeBase, relationship, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, relationship, Mapped, mapped_column, column_property
 from sqlalchemy.sql import func
 
 
@@ -288,6 +288,16 @@ class Model(Base):
 
     def __repr__(self):
         return f"<Model(id={self.id}, kod='{self.kod}', nazvanie='{self.nazvanie}')>"
+
+
+# children_count: correlated subquery counting child modeli per model_osnova.
+# Defined after Model class so Model.__table__ is available for the subquery.
+ModelOsnova.children_count = column_property(
+    select(func.count(Model.id))
+    .where(Model.model_osnova_id == ModelOsnova.id)
+    .correlate_except(Model)
+    .scalar_subquery()
+)
 
 
 # ============================================
