@@ -3,19 +3,21 @@ let activeSpreadsheet = SpreadsheetApp.getActiveSpreadsheet();
 
 
 // Глобальные переменные кабинетов WB //
-const apiKeyOOO = "eyJhbGciOiJFUzI1NiIsImtpZCI6IjIwMjUwOTA0djEiLCJ0eXAiOiJKV1QifQ.eyJhY2MiOjEsImVudCI6MSwiZXhwIjoxNzgyMjQ2MjU0LCJpZCI6IjAxOWI0YTRmLTEwYTctN2RlMS04YjA5LTFiNjYyMGIwNjE0YiIsImlpZCI6MTMyNTYzMTAsIm9pZCI6OTQ3Mzg4LCJzIjoxNjEyNiwic2lkIjoiNzM0YzEyMzAtYTUwYy00YzFjLThlZGUtYmMxMjRmMGY4YzcyIiwidCI6ZmFsc2UsInVpZCI6MTMyNTYzMTB9.AzefUj-4vs683KEcMOYPIZghmC19dsAvEIUEuNDnttqSi-QonNt5SU-_jYjgaWMFIHxfndJUJyW903dJAJVZdg";
-
-const apiKeyIP = "eyJhbGciOiJFUzI1NiIsImtpZCI6IjIwMjUwOTA0djEiLCJ0eXAiOiJKV1QifQ.eyJhY2MiOjEsImVudCI6MSwiZXhwIjoxNzgyMjQ2MjAwLCJpZCI6IjAxOWI0YTRlLTQwMGYtNzFjYS04YzBlLTQzMTZiOTM3YzBhYSIsImlpZCI6MTMyNTYzMTAsIm9pZCI6MTA1NzU3LCJzIjoxNjEyNiwic2lkIjoiNjZhNzgyMWQtMDhkMS01MGE2LWE2ODUtNmJlMDg4ODA4MGI0IiwidCI6ZmFsc2UsInVpZCI6MTMyNTYzMTB9.r45yyFsKamZJP_nD55Eqmhsd_R1-z2HoR6Bl0_u-w7Sm_rTdk8asl83ExFv04TnNIzmSs-44KR_jhlm9qU1ZRA";
+// Ключи хранятся в Script Properties (File → Project properties → Script properties)
+// Необходимые ключи: WB_API_KEY_OOO, WB_API_KEY_IP, OZON_CLIENT_ID_IP, OZON_API_KEY_IP, OZON_CLIENT_ID_OOO, OZON_API_KEY_OOO
+const scriptProps = PropertiesService.getScriptProperties();
+const apiKeyOOO = scriptProps.getProperty("WB_API_KEY_OOO");
+const apiKeyIP = scriptProps.getProperty("WB_API_KEY_IP");
 
 // Глобальные переменные для кабинетов Ozon //
 const cabinetCredentials = {
   "ИП": {
-    clientId: "1410333",
-    apiKey: "2ac7b0ea-1be8-4fef-ab91-f3dd3a30ea17"
+    clientId: scriptProps.getProperty("OZON_CLIENT_ID_IP"),
+    apiKey: scriptProps.getProperty("OZON_API_KEY_IP")
   },
   "ООО": {
-    clientId: "1540263", 
-    apiKey: "5eff950a-6ed0-42c4-bdcc-4a3091aa9226"
+    clientId: scriptProps.getProperty("OZON_CLIENT_ID_OOO"),
+    apiKey: scriptProps.getProperty("OZON_API_KEY_OOO")
   }
 };
 
