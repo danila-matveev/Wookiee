@@ -1,12 +1,12 @@
 services:
-  # ── Oleg v3: micro-agent system (bot + scheduler + watchdog) ──
+  # ── Oleg v2: reporting orchestrator ──
   wookiee-oleg:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
     container_name: wookiee_oleg
     restart: unless-stopped
-    command: ["python", "-m", "agents.v3"]
+    command: ["python", "-m", "agents.oleg"]
 
     env_file:
       - ../.env
@@ -16,7 +16,6 @@ services:
       - TZ=Europe/Moscow
 
     volumes:
-      - ../agents/v3/data:/app/agents/v3/data
       - ../agents/oleg/data:/app/agents/oleg/data
       - ../services/etl/data:/app/services/etl/data
       - ../reports:/app/reports
@@ -34,8 +33,9 @@ services:
           cpus: '0.5'
           memory: 512M
 
-  # ── Finolog ДДС: еженедельная сводка cash flow (понедельник 09:00 MSK) ──
+  # ── Finolog: еженедельная сводка cash flow (DISABLED — V3 dependency, fix in Phase 3/4) ──
   finolog-cron:
+    profiles: ["disabled"]
     build:
       context: ..
       dockerfile: deploy/Dockerfile
