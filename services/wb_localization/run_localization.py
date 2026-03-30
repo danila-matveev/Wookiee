@@ -631,7 +631,6 @@ def run_for_cabinet(
         output_file=output_file,
         own_stock=own_stock,
         max_turnover_days=args.max_turnover_days,
-        prices=prices_dict,
     )
 
     report_path = analysis['report_path']
