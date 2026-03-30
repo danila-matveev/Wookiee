@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Упрощение системы отчётов
-status: planning
-stopped_at: Phase 1 context gathered
-last_updated: "2026-03-30T20:52:21.862Z"
-last_activity: 2026-03-30 — Roadmap created for v2.0
+status: executing
+stopped_at: Completed 01-cleanup-01-PLAN.md
+last_updated: "2026-03-30T21:32:51.353Z"
+last_activity: 2026-03-30
 progress:
   total_phases: 6
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 2
+  completed_plans: 1
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-30)
 
 **Core value:** Одна простая рабочая система аналитических отчётов — V2 оркестратор, стабильная генерация каждый день
-**Current focus:** Milestone v2.0 — Phase 1 ready to plan
+**Current focus:** Phase 01 — cleanup
 
 ## Current Position
 
-Phase: 1 of 5 (Очистка)
-Plan: 0 of ? in current phase
-Status: Ready to plan
-Last activity: 2026-03-30 — Roadmap created for v2.0
+Phase: 01 (cleanup) — EXECUTING
+Plan: 2 of 2
+Status: Ready to execute
+Last activity: 2026-03-30
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -48,6 +48,8 @@ Progress: [░░░░░░░░░░] 0%
 
 ## Accumulated Context
 
+| Phase 01-cleanup P01 | 10 | 2 tasks | 68 files |
+
 ### Decisions
 
 - [v2.0 pre-planning]: V2 оркестратор (agents/oleg/) = единственная система, V3 (agents/v3/) удаляется целиком
@@ -55,6 +57,8 @@ Progress: [░░░░░░░░░░] 0%
 - [v2.0 pre-planning]: Telegram бот с командами -> только уведомления
 - [v2.0 pre-planning]: Плейбук разбивается на модули (core + templates + rules) без потери контента
 - [v2.0 pre-planning]: Глубина анализа по периоду: daily=компактный, weekly=глубокий, monthly=максимальный
+- [Phase 01-cleanup]: Copied get_wb_clients/get_ozon_clients locally into price_tools.py as private helpers (minimal footprint — single caller)
+- [Phase 01-cleanup]: scripts/run_finolog_weekly.py preserved with known-broken V3 import (deferred to Phase 3/4)
 
 ### Pending Todos
 
@@ -71,6 +75,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-30T20:52:21.855Z
-Stopped at: Phase 1 context gathered
-Resume file: .planning/phases/01-cleanup/01-CONTEXT.md
+Last session: 2026-03-30T21:32:51.350Z
+Stopped at: Completed 01-cleanup-01-PLAN.md
+Resume file: None

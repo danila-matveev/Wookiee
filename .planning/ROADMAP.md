@@ -57,7 +57,7 @@
 **Plans**: 2 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Patch V3 cross-reference, delete agents/v3/ and V3 scripts
+- [x] 01-01-PLAN.md — Patch V3 cross-reference, delete agents/v3/ and V3 scripts
 - [ ] 01-02-PLAN.md — Delete V3 docs, update docker-compose
 
 ### Phase 2: Настройка агента
@@ -140,7 +140,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Очистка | 0/? | Not started | - |
+| 1. Очистка | 1/2 | In Progress|  |
 | 2. Настройка агента | 0/? | Not started | - |
 | 3. Надёжность | 0/? | Not started | - |
 | 4. Запуск и доставка | 0/? | Not started | - |
