@@ -1,14 +1,10 @@
 """
 Unified Notion client for Wookiee.
 
-Merges agents/oleg/services/notion_service.py (V2) and
-agents/v3/delivery/notion.py (V3) into a single implementation.
-
 Features:
-- Per-report-type concurrency locks (from V3)
-- Full report type map with 22 entries (from V3)
-- Public get_comments() method (from V2)
-- Upsert by period + type (shared)
+- Per-report-type concurrency locks
+- Full report type map with 22 entries
+- Public get_comments() method
 """
 from __future__ import annotations
 import asyncio
