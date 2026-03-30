@@ -12,10 +12,10 @@ This milestone replaces Google Sheets as the daily working tool for managing a f
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [x] **Phase 1: Foundation** - Entity registry, panel routing fix, and entity cache — structural prerequisites for all editing work (completed 2026-03-28)
-- [ ] **Phase 2: Detail Panel** - All fields visible in read mode, edit mode with correct input types, save/cancel, lookup options cached
-- [ ] **Phase 3: Table View** - Human-readable display names, resolved reference fields, status badges, sort, column toggle, create new record
-- [x] **Phase 4: Filter System** - Status filter, category filter, multi-field filter builder, hierarchy drill-down, saved views (completed 2026-03-28)
+- [x] **Phase 1: Foundation** - Entity registry, panel routing fix, and entity cache — structural prerequisites for all editing work (completed 2005-03-28)
+- [x] **Phase 2: Detail Panel** - All fields visible in read mode, edit mode with correct input types, save/cancel, lookup options cached (completed 2005-03-30)
+- [x] **Phase 3: Table View** - Human-readable display names, resolved reference fields, status badges, sort, column toggle, create new record (completed 2005-03-26)
+- [x] **Phase 4: Filter System** - Status filter, category filter, multi-field filter builder, hierarchy drill-down, saved views (completed 2005-03-28)
 
 ## Phase Details
 
@@ -87,7 +87,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 2/2 | Complete   | 2026-03-28 |
-| 2. Detail Panel | 0/TBD | Not started | - |
-| 3. Table View | 3/3 | Complete | 2026-03-26 |
-| 4. Filter System | 3/3 | Complete   | 2026-03-28 |
+| 1. Foundation | 2/2 | Complete | 2005-03-28 |
+| 2. Detail Panel | 6/6 | Complete | 2005-03-30 |
+| 3. Table View | 3/3 | Complete | 2005-03-26 |
+| 4. Filter System | 3/3 | Complete | 2005-03-28 |

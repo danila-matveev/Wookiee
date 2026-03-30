@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
+status: verifying
 stopped_at: Completed 02-05-PLAN.md
-last_updated: "2026-03-30T16:12:15.026Z"
+last_updated: "2026-03-30T19:01:07.918Z"
 last_activity: 2026-03-30
 progress:
   total_phases: 4
@@ -21,13 +21,12 @@ progress:
 See: .planning/REQUIREMENTS.md (updated 2026-03-23)
 
 **Core value:** Централизованное управление товарной матрицей (PIM) для мультиканального fashion-бизнеса — Notion-like интерфейс вместо текущего неработающего редактора
-**Current focus:** Phase 02 — detail-panel
+**Current focus:** Milestone v1.0 COMPLETE
 
 ## Current Position
 
-Phase: 02 (detail-panel) — EXECUTING
-Plan: 2 of 6
-Status: Ready to execute
+Phase: ALL COMPLETE
+Status: Milestone closed after UAT verification
 Last activity: 2026-03-30
 
 Progress: [██████████] 100%
@@ -93,6 +92,10 @@ Progress: [██████████] 100%
 ### Pending Todos
 
 None yet.
+
+### Roadmap Evolution
+
+- Phase 5 added: Rollback to V2 — delete agents/v3/, cleanup langchain deps, enhance V2 with best V3 ideas (pre-flight check, retry, section validation, graceful degradation)
 
 ### Blockers/Concerns
 
