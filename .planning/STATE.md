@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-02-PLAN.md
-last_updated: "2026-03-28T19:11:28.305Z"
-last_activity: 2026-03-28 — Completed 01-01-PLAN.md (Entity registry + consolidate 3 inline entity maps)
+stopped_at: Completed 02-05-PLAN.md
+last_updated: "2026-03-30T16:12:15.026Z"
+last_activity: 2026-03-30
 progress:
-  total_phases: 6
+  total_phases: 4
   completed_phases: 4
-  total_plans: 13
-  completed_plans: 13
+  total_plans: 14
+  completed_plans: 14
   percent: 100
 ---
 
@@ -21,20 +21,21 @@ progress:
 See: .planning/REQUIREMENTS.md (updated 2026-03-23)
 
 **Core value:** Централизованное управление товарной матрицей (PIM) для мультиканального fashion-бизнеса — Notion-like интерфейс вместо текущего неработающего редактора
-**Current focus:** Phase 1 — Foundation
+**Current focus:** Phase 02 — detail-panel
 
 ## Current Position
 
-Phase: 1 of 5 (Foundation) - COMPLETE
-Plan: 2 of 2 in current phase (completed)
-Status: Phase Complete
-Last activity: 2026-03-28 — Completed 01-02-PLAN.md (Detail panel routing + cache invalidation)
+Phase: 02 (detail-panel) — EXECUTING
+Plan: 2 of 6
+Status: Ready to execute
+Last activity: 2026-03-30
 
 Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
+
 - Total plans completed: 3
 - Average duration: 9 min
 - Total execution time: 0.43 hours
@@ -46,6 +47,7 @@ Progress: [██████████] 100%
 | 03-table-view | 3 | 26 min | 9 min |
 
 **Recent Trend:**
+
 - Last 5 plans: 03-01 (6 min), 03-02 (8 min), 03-03 (12 min)
 - Trend: Stable
 
@@ -55,6 +57,7 @@ Progress: [██████████] 100%
 | Phase 04-filter-system P03 | 25 | 2 tasks | 5 files |
 | Phase 01-foundation P01 | 7 | 2 tasks | 10 files |
 | Phase 01-foundation P02 | 3 | 2 tasks | 12 files |
+| Phase 02-05 P05 | 2 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -84,6 +87,8 @@ Progress: [██████████] 100%
 - [Phase 01-foundation]: panel/types.ts re-exports getBackendType from entity-registry to preserve existing import paths for panel consumers
 - [Phase 01-foundation]: notifyEntityUpdated called inside try block after setLocalData — stamp increments only on successful save, not on errors
 - [Phase 01-foundation]: Secondary entity pages (colors, factories, importers, cards-wb, cards-ozon, certs) use [entityUpdateStamp] as sole useApiQuery dep — no pagination/sort/filter state to track
+- [Phase 02-05]: Used field_name+entity_type WHERE clauses instead of hardcoded IDs for migration safety
+- [Phase 02-05]: column_property over hybrid_property for children_count to avoid N+1 on list endpoints
 
 ### Pending Todos
 
@@ -97,6 +102,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28T19:11:28.303Z
-Stopped at: Completed 01-02-PLAN.md
+Last session: 2026-03-30T16:12:15.023Z
+Stopped at: Completed 02-05-PLAN.md
 Resume file: None
