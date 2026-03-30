@@ -46,6 +46,12 @@
 - [ ] **SCHED-03**: Telegram-уведомление отправляется после публикации (без бота с командами)
 - [ ] **SCHED-04**: Русские названия типов отчётов в Notion и Telegram
 
+### Документация и зачистка (DOC)
+
+- [ ] **DOC-01**: Полная документация системы — архитектура, компоненты, типы отчётов, расписания, доставка
+- [ ] **DOC-02**: На сервере удалены все лишние контейнеры, запущена только одна рабочая система
+- [ ] **DOC-03**: В репозитории удалён весь мёртвый код, неиспользуемые скрипты, устаревшие docs/plans/specs
+
 ### Верификация (VER)
 
 - [ ] **VER-01**: Все 8 типов отчётов сгенерированы и проверены на реальных данных
@@ -82,13 +88,44 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TBD | TBD | TBD |
+| CLEAN-01 | Phase 1 | Pending |
+| CLEAN-02 | Phase 1 | Pending |
+| CLEAN-03 | Phase 1 | Pending |
+| CLEAN-04 | Phase 1 | Pending |
+| PLAY-01 | Phase 2 | Pending |
+| PLAY-02 | Phase 2 | Pending |
+| PLAY-03 | Phase 2 | Pending |
+| VER-03 | Phase 2 | Pending |
+| REL-01 | Phase 3 | Pending |
+| REL-02 | Phase 3 | Pending |
+| REL-03 | Phase 3 | Pending |
+| REL-04 | Phase 3 | Pending |
+| REL-05 | Phase 3 | Pending |
+| REL-06 | Phase 3 | Pending |
+| REL-07 | Phase 3 | Pending |
+| SCHED-01 | Phase 4 | Pending |
+| SCHED-02 | Phase 4 | Pending |
+| SCHED-03 | Phase 4 | Pending |
+| SCHED-04 | Phase 4 | Pending |
+| RPT-01 | Phase 5 | Pending |
+| RPT-02 | Phase 5 | Pending |
+| RPT-03 | Phase 5 | Pending |
+| RPT-04 | Phase 5 | Pending |
+| RPT-05 | Phase 5 | Pending |
+| RPT-06 | Phase 5 | Pending |
+| RPT-07 | Phase 5 | Pending |
+| RPT-08 | Phase 5 | Pending |
+| VER-01 | Phase 5 | Pending |
+| VER-02 | Phase 5 | Pending |
+| DOC-01 | Phase 6 | Pending |
+| DOC-02 | Phase 6 | Pending |
+| DOC-03 | Phase 6 | Pending |
 
 **Coverage:**
-- v2.0 requirements: 24 total
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 22
+- v2.0 requirements: 32 total
+- Mapped to phases: 32
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-30*
-*Last updated: 2026-03-30 after initial definition*
+*Last updated: 2026-03-30 after roadmap creation*
