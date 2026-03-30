@@ -1,121 +1,94 @@
-# Requirements: Product Matrix UX Redesign
+# Requirements: Wookiee Reports v2.0
 
-**Defined:** 2026-03-23
-**Core Value:** Централизованное управление товарной матрицей (PIM) для мультиканального fashion-бизнеса — Notion-like интерфейс вместо текущего неработающего редактора.
+**Defined:** 2026-03-30
+**Core Value:** Одна простая рабочая система аналитических отчётов — стабильная генерация каждый день
 
-## v1.0 Requirements
+## v2.0 Requirements
 
-Requirements for UX redesign milestone. Each maps to roadmap phases.
+### Очистка (CLEAN)
 
-### Foundation
+- [ ] **CLEAN-01**: agents/v3/ полностью удалён (все файлы, директории, зависимости)
+- [ ] **CLEAN-02**: Зависимости langchain/langgraph/langchain-openai удалены из requirements
+- [ ] **CLEAN-03**: V3-related docs, plans, specs удалены из docs/
+- [ ] **CLEAN-04**: Docker-compose обновлён — контейнер запускает V2 систему напрямую, без V3
 
-- [x] **FOUND-01**: Entity registry — единый источник истины для маппинга entity keys (консолидация 4 параллельных entity maps)
-- [x] **FOUND-02**: DetailPanel корректно роутит запросы для всех типов сущностей (не только models)
-- [x] **FOUND-03**: Entity cache с update propagation — после PATCH в panel таблица автоматически обновляется
+### Отчёты (RPT)
 
-### Table View
+- [ ] **RPT-01**: Финансовый ежедневный отчёт генерируется корректно с полными данными
+- [ ] **RPT-02**: Финансовый еженедельный отчёт генерируется с глубоким анализом (тренды, модели, гипотезы)
+- [ ] **RPT-03**: Финансовый ежемесячный отчёт генерируется с максимальной глубиной (P&L, юнит-экономика, стратегия)
+- [ ] **RPT-04**: Маркетинговый еженедельный отчёт генерируется корректно
+- [ ] **RPT-05**: Маркетинговый ежемесячный отчёт генерируется корректно
+- [ ] **RPT-06**: Воронка продаж еженедельный отчёт генерируется корректно
+- [ ] **RPT-07**: ДДС (finolog) еженедельный отчёт генерируется корректно
+- [ ] **RPT-08**: Локализация еженедельный отчёт генерируется корректно
 
-- [x] **TABLE-01**: Все колонки показывают человекочитаемые названия полей (не технические)
-- [x] **TABLE-02**: Reference fields (категория, фабрика, коллекция) показывают реальные значения, а не "—"
-- [x] **TABLE-03**: Статус отображается как цветной badge (Активный/Архив)
-- [x] **TABLE-04**: Пользователь может сортировать таблицу кликом на заголовок колонки (asc/desc)
-- [x] **TABLE-05**: Пагинация или "load more" вместо фиксированных 200 строк
-- [x] **TABLE-06**: Toggle видимости колонок (показать/скрыть без сохранения view)
-- [x] **TABLE-07**: Архивные строки визуально затемнены (status-based row styling)
+### Надёжность (REL)
 
-### Detail Panel
+- [ ] **REL-01**: Pre-flight проверка данных перед запуском — если данных нет, отчёт не запускается
+- [ ] **REL-02**: Retry при пустом/неполном ответе LLM (до 2 повторов)
+- [ ] **REL-03**: Валидация полноты секций перед публикацией — пустой отчёт не публикуется в Notion
+- [ ] **REL-04**: Graceful degradation — если секция не может быть заполнена, пишется причина
+- [ ] **REL-05**: Каждый опубликованный отчёт содержит все обязательные секции для своего типа
+- [ ] **REL-06**: Один отчёт = одна страница в Notion (upsert по период+тип, без дублей)
+- [ ] **REL-07**: Telegram-уведомление отправляется ТОЛЬКО после успешной валидации и публикации в Notion
 
-- [ ] **PANEL-01**: Все поля ModelOsnova (~22 поля) видны в read mode, сгруппированы по секциям (Основные, Размеры, Логистика, Контент)
-- [ ] **PANEL-02**: Все поля Artikul видны в read mode
-- [ ] **PANEL-03**: Все поля Tovar видны в read mode с read-only маркировкой для marketplace IDs
-- [ ] **PANEL-04**: Edit mode — клик по полю открывает редактор с правильным типом input (text, number, select, textarea)
-- [ ] **PANEL-05**: Select-поля (категория, коллекция, фабрика, статус, цвет, размер) используют загруженные lookup options из /api/matrix/lookups/*
-- [ ] **PANEL-06**: Save/Cancel кнопки с валидацией и оптимистичным обновлением
-- [ ] **PANEL-07**: Read-only защита для системных полей (barkod, nomenklatura_wb, ozon_product_id, gs1, gs2)
-- [ ] **PANEL-08**: Связанные сущности отображаются как кликабельные ссылки с количеством ("4 артикула" → переход к filtered view)
+### Плейбуки (PLAY)
 
-### CRUD Operations
+- [ ] **PLAY-01**: playbook.md разбит на модули (core + templates + rules) без потери бизнес-правил
+- [ ] **PLAY-02**: Каждый тип отчёта загружает только релевантные модули плейбука
+- [ ] **PLAY-03**: Глубина анализа настроена по периоду: daily=компактный, weekly=глубокий, monthly=максимальный
 
-- [x] **CRUD-01**: Кнопка "+ Создать" в topbar для создания новой записи текущего типа сущности
-- [x] **CRUD-02**: Форма создания содержит required-поля и lookup select для reference fields
+### Запуск и доставка (SCHED)
 
-### Filtering & Navigation
+- [ ] **SCHED-01**: Простые cron-задачи для запуска всех 8 типов отчётов
+- [ ] **SCHED-02**: Отчёт публикуется в Notion с правильными properties (период, тип, статус)
+- [ ] **SCHED-03**: Telegram-уведомление отправляется после публикации (без бота с командами)
+- [ ] **SCHED-04**: Русские названия типов отчётов в Notion и Telegram
 
-- [x] **FILT-01**: Фильтр по статусу (активные/архивные) в виде dropdown над таблицей
-- [x] **FILT-02**: Фильтр по категории для моделей
-- [x] **FILT-03**: Hierarchy drill-down — клик по модели → показ её артикулов в отфильтрованном виде
-- [x] **FILT-04**: Multi-field filter builder с поддержкой нескольких фильтров одновременно
-- [x] **FILT-05**: Saved views UI — сохранение и загрузка конфигурации колонок и фильтров через localStorage (Zustand persist)
+### Верификация (VER)
 
-## v2 Requirements
+- [ ] **VER-01**: Все 8 типов отчётов сгенерированы и проверены на реальных данных
+- [ ] **VER-02**: Лучшие отчёты из Notion найдены и используются как эталон качества
+- [ ] **VER-03**: Структура отчётов единообразна с toggle-заголовками
 
-Deferred to future milestone. Tracked but not in current roadmap.
+## Отложено (v3.0)
 
-### Performance
+### Алерты и мониторинг
 
-- **PERF-01**: Virtual scrolling для 1000+ строк с TanStack Virtual
-- **PERF-02**: Stock/finance данные в колонках таблицы через batch fetch
+- **ALERT-01**: Автоматические алерты при резких изменениях метрик (маржа, ДРР, выручка)
+- **ALERT-02**: Watchdog мониторинг здоровья системы
 
-### Advanced UX
+### Самообучение
 
-- **ADV-01**: Inherited field display — поля родительской сущности в detail panel потомка
-- **ADV-02**: Keyboard navigation (Tab/Enter/Escape) в DetailPanel
-- **ADV-03**: Quick-edit hover на ячейке таблицы для простых полей
-- **ADV-04**: Breadcrumb trail в topbar (Модели > Vuki > Артикулы)
+- **LEARN-01**: Persistent Instructions из Notion feedback
+- **LEARN-02**: Prompt Tuner — автоматическая настройка промптов
 
-### Bulk Operations
+### Telegram бот
 
-- **BULK-01**: Bulk arbitrary field update через MassEditBar
-- **BULK-02**: Bulk archive для выбранных строк
+- **BOT-01**: Telegram бот с командами (/report_daily, /report_weekly и т.д.)
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| Real-time collaborative editing | Явный non-goal — single-brand tool, нет multi-user |
-| Undo/redo в таблице | Archive/restore + audit log покрывают "oops" case |
-| Drag-and-drop row reordering | Нет user-defined sort order; business logic определяет порядок |
-| Bulk CSV import | One-time migration task, не recurring UX |
-| Gallery/Kanban view | Не маппится на product status lifecycle; table view достаточен |
-| Formula fields | Finance data из external service — дублирование создаёт расхождения |
-| Notifications/activity feed | Нет user identity system (auth — будущий milestone) |
-| Inline table editing для всех полей | Явно отвергнуто в UX-фидбеке — DetailPanel вместо Excel-стиля |
+| Ценовой анализ (отдельный отчёт) | Не работал, не приоритет |
+| LangGraph микроагенты | Сложно, ненадёжно, дорого — удаляем |
+| Confidence scoring per agent | Overcomplicated для V2 архитектуры |
+| 24 параллельных микроагента | 1 Reporter надёжнее чем 7 параллельных агентов |
+| APScheduler в Python | Cron проще и надёжнее |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FOUND-01 | Phase 1 | Complete |
-| FOUND-02 | Phase 1 | Complete |
-| FOUND-03 | Phase 1 | Complete |
-| TABLE-01 | Phase 3 | Complete |
-| TABLE-02 | Phase 3 | Complete |
-| TABLE-03 | Phase 3 | Complete |
-| TABLE-04 | Phase 3 | Complete |
-| TABLE-05 | Phase 3 | Complete |
-| TABLE-06 | Phase 3 | Complete |
-| TABLE-07 | Phase 3 | Complete |
-| PANEL-01 | Phase 2 | Pending |
-| PANEL-02 | Phase 2 | Pending |
-| PANEL-03 | Phase 2 | Pending |
-| PANEL-04 | Phase 2 | Pending |
-| PANEL-05 | Phase 2 | Pending |
-| PANEL-06 | Phase 2 | Pending |
-| PANEL-07 | Phase 2 | Pending |
-| PANEL-08 | Phase 2 | Pending |
-| CRUD-01 | Phase 3 | Complete |
-| CRUD-02 | Phase 3 | Complete |
-| FILT-01 | Phase 4 | Complete |
-| FILT-02 | Phase 4 | Complete |
-| FILT-03 | Phase 4 | Complete |
-| FILT-04 | Phase 4 | Complete |
-| FILT-05 | Phase 4 | Complete |
+| TBD | TBD | TBD |
 
 **Coverage:**
-- v1 requirements: 25 total
-- Mapped to phases: 25
-- Unmapped: 0
+- v2.0 requirements: 24 total
+- Mapped to phases: 0 (roadmap pending)
+- Unmapped: 22
 
 ---
-*Requirements defined: 2026-03-23*
-*Last updated: 2026-03-28 — FILT-05 updated to reflect localStorage decision per CONTEXT.md*
+*Requirements defined: 2026-03-30*
+*Last updated: 2026-03-30 after initial definition*
