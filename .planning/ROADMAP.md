@@ -36,7 +36,7 @@
 
 **Milestone Goal:** Одна простая рабочая система аналитических отчётов — V2 оркестратор (agents/oleg/), без V3/LangGraph, стабильная генерация каждый день.
 
-- [ ] **Phase 1: Очистка** - Удаление V3, зависимостей, docs, обновление Docker
+- [x] **Phase 1: Очистка** - Удаление V3, зависимостей, docs, обновление Docker (completed 2026-03-30)
 - [ ] **Phase 2: Настройка агента** - База знаний, иерархия данных, структура отчётов по типам и периодам
 - [ ] **Phase 3: Надёжность** - Pre-flight, retry, валидация полноты, graceful degradation, защита от дублей
 - [ ] **Phase 4: Запуск и доставка** - Cron-задачи, Notion upsert, Telegram-уведомления, русские названия
@@ -58,7 +58,7 @@
 
 Plans:
 - [x] 01-01-PLAN.md — Patch V3 cross-reference, delete agents/v3/ and V3 scripts
-- [ ] 01-02-PLAN.md — Delete V3 docs, update docker-compose
+- [x] 01-02-PLAN.md — Delete V3 docs, update docker-compose
 
 ### Phase 2: Настройка агента
 **Goal**: Агент имеет полную базу знаний, понимает иерархию данных, и для каждого типа/периода отчёта знает точную структуру и глубину анализа
@@ -140,7 +140,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Очистка | 1/2 | In Progress|  |
+| 1. Очистка | 2/2 | Complete   | 2026-03-30 |
 | 2. Настройка агента | 0/? | Not started | - |
 | 3. Надёжность | 0/? | Not started | - |
 | 4. Запуск и доставка | 0/? | Not started | - |
