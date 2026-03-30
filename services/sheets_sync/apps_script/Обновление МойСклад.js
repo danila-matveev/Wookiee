@@ -2,7 +2,7 @@
 
 // Глобальные переменные
 const sheetMoySklad = activeSpreadsheet.getSheetByName("МойСклад_АПИ");
-const ACCESS_TOKEN = "671d35802ee92193e39d1654455822d111bc3e93";
+const ACCESS_TOKEN = PropertiesService.getScriptProperties().getProperty("MOYSKLAD_TOKEN");
 
 
 
