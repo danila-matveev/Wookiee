@@ -634,9 +634,38 @@ async def _handle_price_counterfactual(model: str, channel: str, price_change_pc
     return counterfactual_analysis(data, price_change_pct, start_date, end_date, model, channel)
 
 
+def _get_wb_clients() -> dict:
+    """Return dict {cabinet_name: WBClient} for all configured cabinets."""
+    import os
+    from shared.clients.wb_client import WBClient
+    clients = {}
+    wb_ip = os.getenv("WB_API_KEY_IP", "")
+    wb_ooo = os.getenv("WB_API_KEY_OOO", "")
+    if wb_ip:
+        clients["IP"] = WBClient(api_key=wb_ip, cabinet_name="IP")
+    if wb_ooo:
+        clients["OOO"] = WBClient(api_key=wb_ooo, cabinet_name="OOO")
+    return clients
+
+
+def _get_ozon_clients() -> dict:
+    """Return dict {cabinet_name: OzonClient} for all configured cabinets."""
+    import os
+    from shared.clients.ozon_client import OzonClient
+    clients = {}
+    ozon_id_ip = os.getenv("OZON_CLIENT_ID_IP", "")
+    ozon_key_ip = os.getenv("OZON_API_KEY_IP", "")
+    ozon_id_ooo = os.getenv("OZON_CLIENT_ID_OOO", "")
+    ozon_key_ooo = os.getenv("OZON_API_KEY_OOO", "")
+    if ozon_id_ip and ozon_key_ip:
+        clients["IP"] = OzonClient(client_id=ozon_id_ip, api_key=ozon_key_ip, cabinet_name="IP")
+    if ozon_id_ooo and ozon_key_ooo:
+        clients["OOO"] = OzonClient(client_id=ozon_id_ooo, api_key=ozon_key_ooo, cabinet_name="OOO")
+    return clients
+
+
 async def _handle_analyze_promotion(channel: str) -> dict:
     """Обработчик analyze_promotion — реальное сканирование акций через API."""
-    from agents.v3 import config
     from agents.oleg.services.price_analysis.promotion_analyzer import PromotionAnalyzer
 
     now_msk = get_now_msk()
@@ -646,11 +675,11 @@ async def _handle_analyze_promotion(channel: str) -> dict:
     # Текущие метрики по моделям
     if channel == 'wb':
         models = get_wb_price_margin_by_model_period(start_date, end_date)
-        clients = config.get_wb_clients()
+        clients = _get_wb_clients()
         analyzer = PromotionAnalyzer(wb_clients=clients)
     else:
         models = get_ozon_price_margin_by_model_period(start_date, end_date)
-        clients = config.get_ozon_clients()
+        clients = _get_ozon_clients()
         analyzer = PromotionAnalyzer(ozon_clients=clients)
 
     if not models:
