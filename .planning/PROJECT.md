@@ -35,24 +35,47 @@
 - Missing ~70% of fields from the specification
 - Not usable as a daily work tool
 
-## Current Milestone: v1.0 — UX Redesign
+## Completed Milestones
 
-**Goal:** Переделать Product Matrix Editor в рабочую PIM-систему по образу Notion database — с правильной навигацией, detail panel, всеми полями из спецификации, фильтрацией и CRUD.
+### v1.0 — UX Redesign (completed 2026-03-30)
+Product Matrix Editor → рабочая PIM-система: Notion-like table view, detail panel, фильтрация, CRUD, все поля из спецификации.
+
+## Current Milestone: v2.0 — Упрощение системы отчётов
+
+**Goal:** Одна простая рабочая система аналитических отчётов — V2 оркестратор (agents/oleg/), без V3/LangGraph, стабильная генерация каждый день.
 
 **Target features:**
-- Notion-like table view with proper column headers
-- Right-side detail panel instead of inline editing
-- All fields from Google Sheets spec viewable/editable at correct hierarchy level
-- Left catalog navigation (ModelOsnova → Model → Artikul → Tovar)
-- CRUD operations (create, edit, archive)
-- Filtering and sorting
-- Read-only fields protection (barcode, marketplace IDs)
-- Proper reference field resolution (category, collection, factory names)
+- Удаление agents/v3/ целиком (LangGraph, 24 микроагента, conductor, APScheduler)
+- 8 типов отчётов: финансовый (daily/weekly/monthly), маркетинговый (weekly/monthly), воронка продаж, ДДС, локализация
+- Pre-flight проверка данных перед запуском агентов
+- Retry при пустом/неполном ответе LLM
+- Валидация полноты секций перед публикацией в Notion
+- Разбивка playbook.md на модули (core + templates + rules) без потери качества
+- Глубина анализа по периоду: daily=компактный, weekly=глубокий, monthly=максимальный
+- Простые toggle-заголовки в структуре отчётов
+- Простые cron-задачи вместо APScheduler
+- Русские названия типов отчётов
 
-**Data source reference:** Google Sheets `19Nbr0kD8JJlwd7OCIMbM9qxucYNjmXnWtwJUgXv0vlg`
-- "Все модели" — 90+ columns
-- "Все артикулы" — 23 columns
-- "Все товары" — 86 columns
+**Принцип качества отчёта:** полнота данных, точность, единообразный формат, глубина анализа соответствует периоду, обоснованные гипотезы на базе данных.
+
+**Детальный анализ V2 vs V3:** см. `~/.claude/plans/glimmering-forging-babbage.md`
+
+## Evolution
+
+This document evolves at phase transitions and milestone boundaries.
+
+**After each phase transition** (via `/gsd:transition`):
+1. Requirements invalidated? → Move to Out of Scope with reason
+2. Requirements validated? → Move to Validated with phase reference
+3. New requirements emerged? → Add to Active
+4. Decisions to log? → Add to Key Decisions
+5. "What This Is" still accurate? → Update if drifted
+
+**After each milestone** (via `/gsd:complete-milestone`):
+1. Full review of all sections
+2. Core Value check — still the right priority?
+3. Audit Out of Scope — reasons still valid?
+4. Update Context with current state
 
 ---
-*Last updated: 2026-03-22*
+*Last updated: 2026-03-30*
