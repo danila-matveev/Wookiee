@@ -1,93 +1,147 @@
-# Roadmap: Product Matrix UX Redesign (v1.0)
+# Roadmap: Wookiee
 
-## Overview
+## Milestones
 
-This milestone replaces Google Sheets as the daily working tool for managing a fashion brand's product catalog. The shell already exists — the job is completing and hardening what was started. Work proceeds in strict dependency order: structural rot fixed first (entity registry, panel routing, cache), then the detail panel made fully usable, then the table view polished, then the full filter system wired. Every phase delivers a coherent, independently verifiable capability.
+- v1.0 **Product Matrix UX Redesign** - Phases 1-4 (shipped 2026-03-30)
+- v2.0 **Упрощение системы отчётов** - Phases 1-5 (in progress)
 
 ## Phases
 
-**Phase Numbering:**
-- Integer phases (1, 2, 3): Planned milestone work
-- Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
+<details>
+<summary>v1.0 Product Matrix UX Redesign (Phases 1-4) - SHIPPED 2026-03-30</summary>
 
-Decimal phases appear between their surrounding integers in numeric order.
+### Phase 1: Foundation
+**Goal**: Single source of truth for entity routing; detail panel dispatches to correct API; table rows reflect panel saves
+**Requirements**: FOUND-01, FOUND-02, FOUND-03
+**Plans:** 2/2 complete
 
-- [x] **Phase 1: Foundation** - Entity registry, panel routing fix, and entity cache — structural prerequisites for all editing work (completed 2005-03-28)
-- [x] **Phase 2: Detail Panel** - All fields visible in read mode, edit mode with correct input types, save/cancel, lookup options cached (completed 2005-03-30)
-- [x] **Phase 3: Table View** - Human-readable display names, resolved reference fields, status badges, sort, column toggle, create new record (completed 2005-03-26)
-- [x] **Phase 4: Filter System** - Status filter, category filter, multi-field filter builder, hierarchy drill-down, saved views (completed 2005-03-28)
+### Phase 2: Detail Panel
+**Goal**: All fields visible in read mode, edit mode with correct input types, save/cancel
+**Requirements**: PANEL-01..08
+**Plans:** 6/6 complete
+
+### Phase 3: Table View
+**Goal**: Human-readable display names, resolved references, sort, column toggle, create record
+**Requirements**: TABLE-01..07, CRUD-01, CRUD-02
+**Plans:** 3/3 complete
+
+### Phase 4: Filter System
+**Goal**: Status/category filters, multi-field filter builder, hierarchy drill-down, saved views
+**Requirements**: FILT-01..05
+**Plans:** 3/3 complete
+
+</details>
+
+## v2.0 Упрощение системы отчётов
+
+**Milestone Goal:** Одна простая рабочая система аналитических отчётов — V2 оркестратор (agents/oleg/), без V3/LangGraph, стабильная генерация каждый день.
+
+- [ ] **Phase 1: Очистка** - Удаление V3, зависимостей, docs, обновление Docker
+- [ ] **Phase 2: Настройка агента** - База знаний, иерархия данных, структура отчётов по типам и периодам
+- [ ] **Phase 3: Надёжность** - Pre-flight, retry, валидация полноты, graceful degradation, защита от дублей
+- [ ] **Phase 4: Запуск и доставка** - Cron-задачи, Notion upsert, Telegram-уведомления, русские названия
+- [ ] **Phase 5: Верификация** - Генерация всех 8 типов, сравнение с эталонами, проверка на реальных данных
+- [ ] **Phase 6: Документация и зачистка** - Полная документация системы, удаление всех лишних контейнеров и мёртвого кода
 
 ## Phase Details
 
-### Phase 1: Foundation
-**Goal**: The codebase has a single, correct source of truth for entity routing; the detail panel dispatches to the right API endpoint for every entity type; and table rows automatically reflect panel saves
+### Phase 1: Очистка
+**Goal**: Кодовая база содержит только одну систему отчётов (V2), без мёртвого кода V3
 **Depends on**: Nothing (first phase)
-**Requirements**: FOUND-01, FOUND-02, FOUND-03
+**Requirements**: CLEAN-01, CLEAN-02, CLEAN-03, CLEAN-04
 **Success Criteria** (what must be TRUE):
-  1. Opening the detail panel for an Artikul or Tovar row fetches from the correct endpoint (not /api/matrix/models/)
-  2. All 4 existing entity maps (ManageFieldsDialog, MassEditBar, InfoTab, views-store) read from a single entity-registry.ts — changing one entry updates all consumers
-  3. After saving a field change in the detail panel, the corresponding table row reflects the updated value without a full page reload
-**Plans:** 2/2 plans complete
-
-Plans:
-- [ ] 01-01-PLAN.md — Entity registry module + consolidate 3 inline entity maps + Wave 0 test stubs
-- [ ] 01-02-PLAN.md — Fix detail panel routing at all call sites + entityUpdateStamp cache propagation
-
-### Phase 2: Detail Panel
-**Goal**: Users can read all fields for any entity type in a section-grouped panel, edit any editable field with the correct input type, and save or cancel changes safely
-**Depends on**: Phase 1
-**Requirements**: PANEL-01, PANEL-02, PANEL-03, PANEL-04, PANEL-05, PANEL-06, PANEL-07, PANEL-08
-**Success Criteria** (what must be TRUE):
-  1. All ~22 ModelOsnova fields appear in read mode, grouped under sections (Основные, Размеры, Логистика, Контент); same for Artikul and Tovar fields
-  2. Clicking a text/number field opens an inline text or number input; clicking a reference field (категория, фабрика, коллекция, статус) opens a select populated with lookup options
-  3. System IDs (barkod, nomenklatura_wb, ozon_product_id, gs1, gs2) are displayed but cannot be edited — no input appears on click
-  4. Save button persists changes via PATCH and closes edit mode; Cancel discards all changes; form does not submit with invalid data
-  5. Related entity counts ("4 артикула") are clickable and navigate to a filtered list showing only those children
+  1. Директория agents/v3/ не существует, все файлы удалены
+  2. В requirements*.txt нет зависимостей langchain/langgraph/langchain-openai
+  3. В docs/ нет V3-related планов и спецификаций
+  4. Docker-compose запускает V2 систему напрямую без упоминаний V3
 **Plans**: TBD
 
-### Phase 3: Table View
-**Goal**: The table displays correct human-readable data for all column types, supports sorting by any column, lets users show/hide columns, and allows creating new records of the current entity type
+Plans:
+- [ ] 01-01: TBD
+
+### Phase 2: Настройка агента
+**Goal**: Агент имеет полную базу знаний, понимает иерархию данных, и для каждого типа/периода отчёта знает точную структуру и глубину анализа
+**Depends on**: Phase 1
+**Requirements**: PLAY-01, PLAY-02, PLAY-03, VER-03
+**Success Criteria** (what must be TRUE):
+  1. Плейбук разбит на модули: core (бизнес-контекст, формулы, глоссарий), templates (структура каждого типа отчёта), rules (стратегии, антипаттерны, диагностика)
+  2. Иерархия данных и отчётов задокументирована: какие tools → какие данные → какие секции отчёта
+  3. Для каждого из 8 типов отчёта определена точная структура с обязательными секциями и toggle-заголовками
+  4. Глубина анализа настроена: daily=компактный (ключевые метрики), weekly=глубокий (тренды, модели, гипотезы), monthly=максимальный (P&L, юнит-экономика, стратегия)
+  5. Маркетинговый и funnel плейбуки обновлены в том же формате
+**Plans**: TBD
+
+Plans:
+- [ ] 02-01: TBD
+
+### Phase 3: Надёжность
+**Goal**: Система не публикует пустые/неполные отчёты и корректно обрабатывает ошибки на каждом этапе
 **Depends on**: Phase 2
-**Requirements**: TABLE-01, TABLE-02, TABLE-03, TABLE-04, TABLE-05, TABLE-06, TABLE-07, CRUD-01, CRUD-02
+**Requirements**: REL-01, REL-02, REL-03, REL-04, REL-05, REL-06, REL-07
 **Success Criteria** (what must be TRUE):
-  1. Every column header shows a human-readable label (e.g., "Категория" not "kategoriya_id"); reference fields show resolved names (e.g., "Верхняя одежда" not "—")
-  2. Status column shows a colored badge (green for Активный, gray for Архив); archived rows are visually dimmed
-  3. Clicking any column header sorts the table ascending; clicking again reverses to descending; a sort indicator is visible on the active column
-  4. A column visibility toggle lets the user show or hide any column without losing current data or filters
-  5. Clicking "+ Создать" in the topbar opens a creation form with required fields and lookup selects for reference fields; submitting creates the record and it appears in the table
-  6. Table shows more than 200 rows (pagination or load-more control is present and functional)
-**Plans:** 3/3 plans executed (COMPLETE)
+  1. При отсутствии данных в источнике отчёт не запускается, в логе указана причина
+  2. При пустом ответе LLM система делает retry (до 2 раз) и в итоге получает непустой результат
+  3. Отчёт с пропущенными секциями не публикуется в Notion; вместо пропуска пишется причина (graceful degradation)
+  4. В Notion для каждой комбинации период+тип существует ровно одна страница (upsert, без дублей)
+  5. Telegram-уведомление отправляется только после успешной публикации в Notion
+**Plans**: TBD
 
 Plans:
-- [ ] 03-01-PLAN.md — Backend sort/pagination params + useTableState hook + fieldDefsToColumns utility
-- [ ] 03-02-PLAN.md — FieldDef-driven columns, sort indicators, status badges, archive row styling
-- [ ] 03-03-PLAN.md — Pagination controls, column visibility popover, create record dialog
+- [ ] 03-01: TBD
 
-### Phase 4: Filter System
-**Goal**: Users can filter the table by status, category, or any combination of fields simultaneously, navigate from a parent model to its child articles via a sidebar click, and save and reload their preferred filter+sort configuration
+### Phase 4: Запуск и доставка
+**Goal**: Все 8 типов отчётов запускаются автоматически по расписанию и доставляются в Notion + Telegram
 **Depends on**: Phase 3
-**Requirements**: FILT-01, FILT-02, FILT-03, FILT-04, FILT-05
+**Requirements**: SCHED-01, SCHED-02, SCHED-03, SCHED-04
 **Success Criteria** (what must be TRUE):
-  1. A status dropdown above the table shows Активные / Архивные / Все — selecting a value filters the table immediately
-  2. A category dropdown above the table filters models to only the selected category
-  3. Clicking a model in the sidebar (or a related-entities link in the detail panel) switches the table to Artikuly view showing only that model's articles
-  4. A filter builder allows adding multiple simultaneous filters (field + operator + value) with active filter chips displayed and individually removable
-  5. A "Сохранить вид" action saves the current filter + sort + column configuration; loading a saved view restores that exact state
-**Plans:** 3/3 plans complete
+  1. Crontab содержит задачи для всех 8 типов отчётов с правильными расписаниями (daily/weekly/monthly)
+  2. Опубликованный отчёт в Notion имеет properties: период, тип, статус — заполнены корректно
+  3. После публикации в Notion приходит Telegram-уведомление с ссылкой на отчёт
+  4. Типы отчётов в Notion и Telegram отображаются на русском языке
+**Plans**: TBD
 
 Plans:
-- [ ] 04-01-PLAN.md — Backend: migration status_id for modeli_osnova, IN-clause filters, route params, drill-down subquery
-- [ ] 04-02-PLAN.md — Frontend: FilterEntry state, FilterPopover two-step builder, FilterChip, MatrixTopbar integration
-- [ ] 04-03-PLAN.md — Frontend: Hierarchy drill-down action, saved views with filters+sort round-trip
+- [ ] 04-01: TBD
+
+### Phase 5: Верификация
+**Goal**: Все 8 типов отчётов проверены на реальных данных и соответствуют эталонам качества
+**Depends on**: Phase 4
+**Requirements**: RPT-01, RPT-02, RPT-03, RPT-04, RPT-05, RPT-06, RPT-07, RPT-08, VER-01, VER-02
+**Success Criteria** (what must be TRUE):
+  1. Каждый из 8 типов отчётов сгенерирован на реальных данных без ошибок
+  2. Финансовый monthly содержит P&L, юнит-экономику, стратегию; weekly — тренды и гипотезы; daily — компактную сводку
+  3. Маркетинговые отчёты содержат данные по кампаниям, ДРР, CTR; воронка — конверсии по этапам
+  4. Для каждого типа отчёта определён эталон из лучших существующих отчётов в Notion
+  5. Качество новых отчётов не хуже эталонов (полнота данных, точность, глубина анализа)
+**Plans**: TBD
+
+Plans:
+- [ ] 05-01: TBD
+
+### Phase 6: Документация и зачистка
+**Goal**: Полная документация работающей системы + удаление всего лишнего с сервера (контейнеры, мёртвый код, старые скрипты)
+**Depends on**: Phase 5
+**Requirements**: DOC-01, DOC-02, DOC-03
+**Success Criteria** (what must be TRUE):
+  1. Документация описывает всю систему: архитектура, компоненты, типы отчётов, расписания, доставка, troubleshooting
+  2. На сервере запущены ТОЛЬКО нужные контейнеры (всё лишнее удалено)
+  3. В репозитории нет мёртвого кода, неиспользуемых скриптов, устаревших docs/plans/specs
+  4. Один документ (README или docs/system.md) — точка входа для понимания всей системы
+**Plans**: TBD
+
+Plans:
+- [ ] 06-01: TBD
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 2/2 | Complete | 2005-03-28 |
-| 2. Detail Panel | 6/6 | Complete | 2005-03-30 |
-| 3. Table View | 3/3 | Complete | 2005-03-26 |
-| 4. Filter System | 3/3 | Complete | 2005-03-28 |
+| 1. Очистка | 0/? | Not started | - |
+| 2. Настройка агента | 0/? | Not started | - |
+| 3. Надёжность | 0/? | Not started | - |
+| 4. Запуск и доставка | 0/? | Not started | - |
+| 5. Верификация | 0/? | Not started | - |
+| 6. Документация и зачистка | 0/? | Not started | - |
