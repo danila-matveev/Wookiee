@@ -9,8 +9,8 @@
 
 - [x] **CLEAN-01**: agents/v3/ полностью удалён (все файлы, директории, зависимости)
 - [x] **CLEAN-02**: Зависимости langchain/langgraph/langchain-openai удалены из requirements
-- [ ] **CLEAN-03**: V3-related docs, plans, specs удалены из docs/
-- [ ] **CLEAN-04**: Docker-compose обновлён — контейнер запускает V2 систему напрямую, без V3
+- [x] **CLEAN-03**: V3-related docs, plans, specs удалены из docs/
+- [x] **CLEAN-04**: Docker-compose обновлён — контейнер запускает V2 систему напрямую, без V3
 
 ### Отчёты (RPT)
 
@@ -90,8 +90,8 @@
 |-------------|-------|--------|
 | CLEAN-01 | Phase 1 | Complete |
 | CLEAN-02 | Phase 1 | Complete |
-| CLEAN-03 | Phase 1 | Pending |
-| CLEAN-04 | Phase 1 | Pending |
+| CLEAN-03 | Phase 1 | Complete |
+| CLEAN-04 | Phase 1 | Complete |
 | PLAY-01 | Phase 2 | Pending |
 | PLAY-02 | Phase 2 | Pending |
 | PLAY-03 | Phase 2 | Pending |
