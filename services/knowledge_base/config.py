@@ -17,11 +17,8 @@ GOOGLE_API_KEY: str = os.getenv('GOOGLE_API_KEY', '')
 EMBEDDING_MODEL: str = os.getenv('EMBEDDING_MODEL', 'gemini-embedding-2-preview')
 EMBEDDING_DIMENSIONS: int = int(os.getenv('EMBEDDING_DIMENSIONS', '768'))
 
-# Knowledge source
-KB_SOURCE_DIR: str = os.getenv(
-    'KB_SOURCE_DIR',
-    str(PROJECT_ROOT / 'Знания по Wildberries'),
-)
+# Knowledge source (ingested into pgvector; originals on Google Drive)
+KB_SOURCE_DIR: str = os.getenv('KB_SOURCE_DIR', '')
 
 # Supabase connection (reuse sku_database env vars)
 POSTGRES_HOST: str = os.getenv('POSTGRES_HOST', os.getenv('SUPABASE_HOST', 'localhost'))
