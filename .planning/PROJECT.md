@@ -44,15 +44,17 @@ Product Matrix Editor → рабочая PIM-система: Notion-like table v
 
 **Goal:** Одна простая рабочая система аналитических отчётов — V2 оркестратор (agents/oleg/), без V3/LangGraph, стабильная генерация каждый день.
 
+**Current state:** Phase 1 (очистка V3) complete, Phase 2 (настройка агента) complete — playbook modularized into core/rules/data-map + 8 templates with depth markers, PlaybookLoader wired into agents, 76 tests passing.
+
 **Target features:**
-- Удаление agents/v3/ целиком (LangGraph, 24 микроагента, conductor, APScheduler)
+- ~~Удаление agents/v3/ целиком (LangGraph, 24 микроагента, conductor, APScheduler)~~ ✓ Phase 1
+- ~~Разбивка playbook.md на модули (core + templates + rules) без потери качества~~ ✓ Phase 2
+- ~~Глубина анализа по периоду: daily=компактный, weekly=глубокий, monthly=максимальный~~ ✓ Phase 2
+- ~~Простые toggle-заголовки в структуре отчётов~~ ✓ Phase 2
 - 8 типов отчётов: финансовый (daily/weekly/monthly), маркетинговый (weekly/monthly), воронка продаж, ДДС, локализация
 - Pre-flight проверка данных перед запуском агентов
 - Retry при пустом/неполном ответе LLM
 - Валидация полноты секций перед публикацией в Notion
-- Разбивка playbook.md на модули (core + templates + rules) без потери качества
-- Глубина анализа по периоду: daily=компактный, weekly=глубокий, monthly=максимальный
-- Простые toggle-заголовки в структуре отчётов
 - Простые cron-задачи вместо APScheduler
 - Русские названия типов отчётов
 
@@ -78,4 +80,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-30*
+*Last updated: 2026-03-31*
