@@ -38,10 +38,10 @@ created: 2026-03-30
 
 | Task ID | Plan | Wave | Requirement | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|-----------|-------------------|-------------|--------|
-| 02-01-01 | 01 | 1 | PLAY-01 | unit | `python -m pytest tests/agents/oleg/test_playbook_modules.py -k core` | ❌ W0 | ⬜ pending |
-| 02-01-02 | 01 | 1 | PLAY-02 | unit | `python -m pytest tests/agents/oleg/test_playbook_modules.py -k template` | ❌ W0 | ⬜ pending |
-| 02-01-03 | 01 | 1 | PLAY-03 | unit | `python -m pytest tests/agents/oleg/test_playbook_modules.py -k rules` | ❌ W0 | ⬜ pending |
-| 02-02-01 | 02 | 2 | VER-03 | integration | `python -m pytest tests/agents/oleg/test_playbook_loader.py` | ❌ W0 | ⬜ pending |
+| 02-01-01 | 01 | 1 | PLAY-01 | unit | `python -m pytest tests/agents/oleg/playbooks/test_module_coverage.py -k core` | ❌ W0 | ⬜ pending |
+| 02-01-02 | 01 | 1 | PLAY-02 | unit | `python -m pytest tests/agents/oleg/playbooks/test_module_coverage.py -k template` | ❌ W0 | ⬜ pending |
+| 02-01-03 | 01 | 1 | PLAY-03 | unit | `python -m pytest tests/agents/oleg/playbooks/test_module_coverage.py -k rules` | ❌ W0 | ⬜ pending |
+| 02-02-01 | 02 | 2 | VER-03 | integration | `python -m pytest tests/agents/oleg/playbooks/test_loader.py` | ❌ W0 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -49,9 +49,9 @@ created: 2026-03-30
 
 ## Wave 0 Requirements
 
-- [ ] `tests/agents/oleg/test_playbook_modules.py` — stubs for PLAY-01, PLAY-02, PLAY-03
-- [ ] `tests/agents/oleg/test_playbook_loader.py` — stubs for VER-03
-- [ ] `tests/agents/oleg/conftest.py` — shared fixtures for playbook paths
+- [ ] `tests/agents/oleg/playbooks/test_module_coverage.py` — stubs for PLAY-01, PLAY-02, PLAY-03
+- [ ] `tests/agents/oleg/playbooks/test_loader.py` — stubs for VER-03
+- [ ] `tests/agents/oleg/playbooks/conftest.py` — shared fixtures for playbook paths
 
 *Existing pytest infrastructure covers framework installation.*
 
