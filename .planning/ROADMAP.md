@@ -73,7 +73,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 02-01: TBD
+- [ ] 02-01-PLAN.md — Create playbook modules: core.md, rules.md, data-map.md, 8 templates with depth markers, archive originals
+- [ ] 02-02-PLAN.md — Wire PlaybookLoader into agents, update orchestrator prompt assembly, add tests
 
 ### Phase 3: Надёжность
 **Goal**: Система не публикует пустые/неполные отчёты и корректно обрабатывает ошибки на каждом этапе
@@ -142,7 +143,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Очистка | 2/2 | Complete   | 2026-03-30 |
-| 2. Настройка агента | 0/? | Not started | - |
+| 2. Настройка агента | 0/2 | Not started | - |
 | 3. Надёжность | 0/2 | Not started | - |
 | 4. Запуск и доставка | 0/? | Not started | - |
 | 5. Верификация | 0/? | Not started | - |
