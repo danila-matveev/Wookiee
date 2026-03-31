@@ -3,13 +3,13 @@
 > **Audit trail only.** Do not use as input to planning, research, or execution agents.
 > Decisions are captured in CONTEXT.md — this log preserves the alternatives considered.
 
-**Date:** 2026-03-30
+**Date:** 2026-03-30 (updated 2026-03-31)
 **Phase:** 04-scheduling-delivery
-**Areas discussed:** Cron-архитектура, Расписание отчётов, Telegram-уведомления, Русские названия типов
+**Areas discussed:** Cron-архитектура, Расписание отчётов, Telegram-уведомления, Русские названия типов, Runner-скрипт (update), Cron + polling (update), Docker интеграция (update)
 
 ---
 
-## Cron-архитектура
+## [2026-03-30] Cron-архитектура
 
 ### Как запускать cron задачи
 
@@ -46,7 +46,7 @@
 
 ---
 
-## Расписание отчётов
+## [2026-03-30] Расписание отчётов
 
 ### Schedule approach
 
@@ -82,7 +82,7 @@
 
 ---
 
-## Telegram-уведомления
+## [2026-03-30] Telegram-уведомления
 
 ### Message format
 
@@ -105,7 +105,7 @@
 
 ---
 
-## Русские названия типов
+## [2026-03-30] Русские названия типов
 
 | Option | Description | Selected |
 |--------|-------------|----------|
@@ -116,6 +116,43 @@
 
 ---
 
+## [2026-03-31 UPDATE] Runner-скрипт (уточнение после Phase 3)
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Один скрипт + --type | scripts/run_report.py --type daily — инициализирует клиенты, вызывает pipeline | |
+| Один скрипт + логика дня | scripts/run_report.py --mode cron — сам определяет типы по дню | |
+| Два режима | --type для ручного + --schedule для автоматического | ✓ |
+
+**User's choice:** Пользователь попросил объяснить разницу между подходами. Claude объяснил текущую ситуацию (два устаревших скрипта без pipeline). Предложил подход с двумя режимами + удаление старых скриптов. Пользователь согласился.
+
+**Notes:** Удаляются: run_oleg_v2_reports.py, run_oleg_v2_single.py, run_finolog_weekly.py
+
+---
+
+## [2026-03-31 UPDATE] Cron + polling (уточнение)
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Cron каждые 30мин | Cron запускает run_report.py --schedule каждые 30 мин (7:00-18:00). Lock-файл. | ✓ |
+| Python scheduler | Один cron в 7:00, Python polling loop внутри. | |
+| Claude's discretion | Оставить выбор Claude | |
+
+**User's choice:** Cron каждые 30мин (Recommended)
+
+---
+
+## [2026-03-31 UPDATE] Docker интеграция
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Cron в wookiee-oleg | Добавить cron в контейнер wookiee-oleg. finolog-cron удаляется. | ✓ |
+| Отдельный контейнер | Новый wookiee-scheduler. wookiee-oleg без изменений. | |
+
+**User's choice:** Cron в wookiee-oleg (Recommended)
+
+---
+
 ## Claude's Discretion
 
 - Crontab file implementation details
@@ -123,10 +160,11 @@
 - Runner script internal structure
 - How to extract key metrics for Telegram summary
 - Retry logic for failed Notion publishes
+- Lock-file implementation for preventing duplicate runs
 
 ## Deferred Ideas
 
-- finolog-cron script fix — already deferred from Phase 1
-- Alerts on metric changes — v3.0
-- Telegram bot with commands — v3.0
-- Watchdog monitoring — v3.0
+- Alerts on metric changes — v3.0 (ALERT-01)
+- Telegram bot with commands — v3.0 (BOT-01)
+- Watchdog monitoring — v3.0 (ALERT-02)
+- Workflow logs DB — separate task
