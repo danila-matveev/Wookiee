@@ -36,7 +36,7 @@
 ### Плейбуки (PLAY)
 
 - [x] **PLAY-01**: playbook.md разбит на модули (core + templates + rules) без потери бизнес-правил
-- [ ] **PLAY-02**: Каждый тип отчёта загружает только релевантные модули плейбука
+- [x] **PLAY-02**: Каждый тип отчёта загружает только релевантные модули плейбука
 - [x] **PLAY-03**: Глубина анализа настроена по периоду: daily=компактный, weekly=глубокий, monthly=максимальный
 
 ### Запуск и доставка (SCHED)
@@ -93,7 +93,7 @@
 | CLEAN-03 | Phase 1 | Complete |
 | CLEAN-04 | Phase 1 | Complete |
 | PLAY-01 | Phase 2 | Complete |
-| PLAY-02 | Phase 2 | Pending |
+| PLAY-02 | Phase 2 | Complete |
 | PLAY-03 | Phase 2 | Complete |
 | VER-03 | Phase 2 | Complete |
 | REL-01 | Phase 3 | Pending |

@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Упрощение системы отчётов
-status: executing
-stopped_at: Completed 02-01-PLAN.md (playbook modularization)
-last_updated: "2026-03-31T11:24:05.048Z"
+status: verifying
+stopped_at: Completed 02-02-PLAN.md (PlaybookLoader wiring and tests)
+last_updated: "2026-03-31T11:32:00.341Z"
 last_activity: 2026-03-31
 progress:
   total_phases: 6
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 6
-  completed_plans: 3
+  completed_plans: 4
   percent: 0
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-03-30)
 
 Phase: 02 (agent-setup) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-03-31
 
 Progress: [░░░░░░░░░░] 0%
@@ -51,6 +51,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01-cleanup P01 | 10 | 2 tasks | 68 files |
 | Phase 01-cleanup P02 | 8 | 2 tasks | 9 files |
 | Phase 02 P01 | 45 | 2 tasks | 14 files |
+| Phase 02 P02 | 321 | 2 tasks | 14 files |
 
 ### Decisions
 
@@ -67,6 +68,9 @@ Progress: [░░░░░░░░░░] 0%
 - [Phase 02]: Original playbooks archived as *_ARCHIVE.md, not deleted (D-05)
 - [Phase 02]: dds.md and localization.md are data-driven — no LLM depth markers (D-09)
 - [Phase 02]: data-map.md maps all 37+ tools for Phase 3 pre-flight dependency checks (D-13/14/15)
+- [Phase 02]: PlaybookLoader.load(task_type) assembles core + template + rules per report type (PLAY-02 complete)
+- [Phase 02]: Reporter and Marketer agents accept task_type= parameter and use PlaybookLoader when set, falling back to legacy playbook_path for backward compat
+- [Phase 02]: run_oleg_v2_reports.py creates per-chain reporter/marketer agents with correct task_type, shared agents created once
 
 ### Pending Todos
 
@@ -83,6 +87,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-31T11:24:05.046Z
-Stopped at: Completed 02-01-PLAN.md (playbook modularization)
+Last session: 2026-03-31T11:32:00.338Z
+Stopped at: Completed 02-02-PLAN.md (PlaybookLoader wiring and tests)
 Resume file: None
