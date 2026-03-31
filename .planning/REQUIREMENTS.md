@@ -26,12 +26,12 @@
 ### Надёжность (REL)
 
 - [x] **REL-01**: Pre-flight проверка данных перед запуском — если данных нет, отчёт не запускается
-- [ ] **REL-02**: Retry при пустом/неполном ответе LLM (до 2 повторов)
-- [ ] **REL-03**: Валидация полноты секций перед публикацией — пустой отчёт не публикуется в Notion
-- [ ] **REL-04**: Graceful degradation — если секция не может быть заполнена, пишется причина
-- [ ] **REL-05**: Каждый опубликованный отчёт содержит все обязательные секции для своего типа
+- [x] **REL-02**: Retry при пустом/неполном ответе LLM (до 2 повторов)
+- [x] **REL-03**: Валидация полноты секций перед публикацией — пустой отчёт не публикуется в Notion
+- [x] **REL-04**: Graceful degradation — если секция не может быть заполнена, пишется причина
+- [x] **REL-05**: Каждый опубликованный отчёт содержит все обязательные секции для своего типа
 - [x] **REL-06**: Один отчёт = одна страница в Notion (upsert по период+тип, без дублей)
-- [ ] **REL-07**: Telegram-уведомление отправляется ТОЛЬКО после успешной валидации и публикации в Notion
+- [x] **REL-07**: Telegram-уведомление отправляется ТОЛЬКО после успешной валидации и публикации в Notion
 
 ### Плейбуки (PLAY)
 
@@ -97,12 +97,12 @@
 | PLAY-03 | Phase 2 | Complete |
 | VER-03 | Phase 2 | Complete |
 | REL-01 | Phase 3 | Complete |
-| REL-02 | Phase 3 | Pending |
-| REL-03 | Phase 3 | Pending |
-| REL-04 | Phase 3 | Pending |
-| REL-05 | Phase 3 | Pending |
+| REL-02 | Phase 3 | Complete |
+| REL-03 | Phase 3 | Complete |
+| REL-04 | Phase 3 | Complete |
+| REL-05 | Phase 3 | Complete |
 | REL-06 | Phase 3 | Complete |
-| REL-07 | Phase 3 | Pending |
+| REL-07 | Phase 3 | Complete |
 | SCHED-01 | Phase 4 | Pending |
 | SCHED-02 | Phase 4 | Pending |
 | SCHED-03 | Phase 4 | Pending |
