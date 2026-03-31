@@ -13,7 +13,7 @@ import argparse
 import logging
 import time
 
-from shared.clients.sheets_client import get_client, get_moscow_now
+from services.sheets_sync.clients.sheets_client import get_client, get_moscow_now
 from services.sheets_sync.config import GOOGLE_SA_FILE, LOG_LEVEL, SPREADSHEET_IDS, get_sheet_name
 from services.sheets_sync.runner import run_all, run_sync
 from services.sheets_sync.status import update_status
@@ -32,7 +32,7 @@ CHECKBOX_CHECK_INTERVAL = 4  # check data-sheet checkboxes every N poll cycles (
 SHEET_TO_SYNC = {
     "МойСклад_АПИ": "moysklad",
     "WB остатки": "wb_stocks",
-    "WB Цены": "wb_prices",
+    "WB цены": "wb_prices",
     "Ozon остатки и цены": "ozon",
     "Отзывы ООО": {"sync": "wb_feedbacks", "date_cells": ("A5", "B5")},
     "Отзывы ИП": {"sync": "wb_feedbacks", "date_cells": ("A5", "B5")},
@@ -102,7 +102,7 @@ def check_data_sheet_checkboxes() -> list:
             # Read dates from configured cells (fin_data: B1/C1, feedbacks: A5/B5)
             start_date = None
             end_date = None
-            if sync_name == "fin_data":
+            if sync_name in ("fin_data", "fin_data_new"):
                 try:
                     b1 = (ws.acell("B1").value or "").strip()
                     c1 = (ws.acell("C1").value or "").strip()
