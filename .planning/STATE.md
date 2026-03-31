@@ -4,7 +4,7 @@ milestone: v2.0
 milestone_name: Упрощение системы отчётов
 status: verifying
 stopped_at: Completed 02-02-PLAN.md (PlaybookLoader wiring and tests)
-last_updated: "2026-03-31T11:32:00.341Z"
+last_updated: "2026-03-31T11:37:01.272Z"
 last_activity: 2026-03-31
 progress:
   total_phases: 6
@@ -25,8 +25,8 @@ See: .planning/PROJECT.md (updated 2026-03-30)
 
 ## Current Position
 
-Phase: 02 (agent-setup) — EXECUTING
-Plan: 2 of 2
+Phase: 03
+Plan: Not started
 Status: Phase complete — ready for verification
 Last activity: 2026-03-31
 
