@@ -44,19 +44,19 @@ Product Matrix Editor → рабочая PIM-система: Notion-like table v
 
 **Goal:** Одна простая рабочая система аналитических отчётов — V2 оркестратор (agents/oleg/), без V3/LangGraph, стабильная генерация каждый день.
 
-**Current state:** Phase 1 (очистка V3) complete, Phase 2 (настройка агента) complete — playbook modularized into core/rules/data-map + 8 templates with depth markers, PlaybookLoader wired into agents, 76 tests passing.
+**Current state:** Phase 1 (очистка V3) complete, Phase 2 (настройка агента) complete, Phase 3 (reliability pipeline) complete — GateChecker (3 hard + 3 soft gates), ReportType registry (8 types), report_pipeline with retry/degradation/validation, 61 oleg tests passing.
 
 **Target features:**
 - ~~Удаление agents/v3/ целиком (LangGraph, 24 микроагента, conductor, APScheduler)~~ ✓ Phase 1
 - ~~Разбивка playbook.md на модули (core + templates + rules) без потери качества~~ ✓ Phase 2
 - ~~Глубина анализа по периоду: daily=компактный, weekly=глубокий, monthly=максимальный~~ ✓ Phase 2
 - ~~Простые toggle-заголовки в структуре отчётов~~ ✓ Phase 2
-- 8 типов отчётов: финансовый (daily/weekly/monthly), маркетинговый (weekly/monthly), воронка продаж, ДДС, локализация
-- Pre-flight проверка данных перед запуском агентов
-- Retry при пустом/неполном ответе LLM
-- Валидация полноты секций перед публикацией в Notion
+- ~~8 типов отчётов: финансовый (daily/weekly/monthly), маркетинговый (weekly/monthly), воронка продаж, ДДС, локализация~~ ✓ Phase 3
+- ~~Pre-flight проверка данных перед запуском агентов~~ ✓ Phase 3
+- ~~Retry при пустом/неполном ответе LLM~~ ✓ Phase 3
+- ~~Валидация полноты секций перед публикацией в Notion~~ ✓ Phase 3
+- ~~Русские названия типов отчётов~~ ✓ Phase 3
 - Простые cron-задачи вместо APScheduler
-- Русские названия типов отчётов
 
 **Принцип качества отчёта:** полнота данных, точность, единообразный формат, глубина анализа соответствует периоду, обоснованные гипотезы на базе данных.
 
