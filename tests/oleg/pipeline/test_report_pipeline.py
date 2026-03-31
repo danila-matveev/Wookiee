@@ -44,15 +44,26 @@ def _make_chain_result(detailed: str = "", summary: str = "", telegram_summary: 
 
 
 def _good_chain_result() -> ChainResult:
-    """A chain result that passes _is_substantial check."""
+    """A chain result that passes _is_substantial check and has_substantial_content check.
+
+    Must be > 200 chars with ## headings (_is_substantial), and > 500 chars total
+    (has_substantial_content fallback when no template file is found in test env).
+    """
     detailed = (
         "## Финансовые результаты\n\n"
         "Выручка выросла на 15% по сравнению с предыдущим периодом. "
-        "Маржа составила 32%, что соответствует плановым показателям.\n\n"
+        "Маржа составила 32%, что соответствует плановым показателям. "
+        "Общая выручка WB составила 1 200 000 руб, OZON — 480 000 руб. "
+        "Итого за период: 1 680 000 руб. Рост к предыдущему периоду: +12%.\n\n"
         "## Рекламные расходы\n\n"
-        "ДРР внутренний снизился до 8%. Эффективность рекламы улучшилась.\n\n"
+        "ДРР внутренний снизился до 8%. Эффективность рекламы улучшилась. "
+        "Внешняя реклама (блогеры, ВК) составила 3% ДРР. "
+        "Итого рекламных расходов: 134 400 руб. Заказов через рекламу: +18%.\n\n"
         "## Прогноз\n\n"
-        "Ожидается сохранение текущей тенденции в следующем периоде.\n"
+        "Ожидается сохранение текущей тенденции в следующем периоде. "
+        "Рекомендуется сохранить текущий бюджет внутренней рекламы и "
+        "пересмотреть эффективность внешних каналов. "
+        "Цель на следующий период: выручка 1 800 000 руб, маржа 30%.\n"
     )
     return _make_chain_result(detailed=detailed, telegram_summary="Краткая сводка")
 
@@ -284,6 +295,12 @@ class TestHasSubstantialContent:
 # ---------------------------------------------------------------------------
 
 class TestPublishNotifyOrder:
+    """Tests for REL-07: Notion published before Telegram; Telegram failure is non-fatal.
+
+    These integration tests of run_report patch _load_required_sections to return []
+    so test behavior doesn't depend on actual template files being present.
+    """
+
     @pytest.mark.asyncio
     async def test_notion_called_before_telegram(self):
         """sync_report must be called BEFORE send_alert (call order verification)."""
@@ -314,14 +331,15 @@ class TestPublishNotifyOrder:
         alerter = MagicMock()
         alerter.send_alert = mock_send_alert
 
-        result = await run_report(
-            report_type=ReportType.DAILY,
-            target_date=date(2026, 3, 31),
-            orchestrator=orchestrator,
-            notion_client=notion_client,
-            alerter=alerter,
-            gate_checker=gate_checker,
-        )
+        with patch("agents.oleg.pipeline.report_pipeline._load_required_sections", return_value=[]):
+            result = await run_report(
+                report_type=ReportType.DAILY,
+                target_date=date(2026, 3, 31),
+                orchestrator=orchestrator,
+                notion_client=notion_client,
+                alerter=alerter,
+                gate_checker=gate_checker,
+            )
 
         # Find last notion and first post-pipeline telegram call
         notion_idx = next((i for i, c in enumerate(call_order) if c == "notion"), None)
@@ -351,14 +369,15 @@ class TestPublishNotifyOrder:
         alerter = MagicMock()
         alerter.send_alert = AsyncMock(return_value=True)
 
-        result = await run_report(
-            report_type=ReportType.DAILY,
-            target_date=date(2026, 3, 31),
-            orchestrator=orchestrator,
-            notion_client=notion_client,
-            alerter=alerter,
-            gate_checker=gate_checker,
-        )
+        with patch("agents.oleg.pipeline.report_pipeline._load_required_sections", return_value=[]):
+            result = await run_report(
+                report_type=ReportType.DAILY,
+                target_date=date(2026, 3, 31),
+                orchestrator=orchestrator,
+                notion_client=notion_client,
+                alerter=alerter,
+                gate_checker=gate_checker,
+            )
 
         assert result.failed is True
         assert result.success is False
@@ -391,14 +410,15 @@ class TestPublishNotifyOrder:
         # Pre-flight send succeeds but final notification fails
         alerter.send_alert = AsyncMock(side_effect=[True, Exception("Telegram unavailable")])
 
-        result = await run_report(
-            report_type=ReportType.DAILY,
-            target_date=date(2026, 3, 31),
-            orchestrator=orchestrator,
-            notion_client=notion_client,
-            alerter=alerter,
-            gate_checker=gate_checker,
-        )
+        with patch("agents.oleg.pipeline.report_pipeline._load_required_sections", return_value=[]):
+            result = await run_report(
+                report_type=ReportType.DAILY,
+                target_date=date(2026, 3, 31),
+                orchestrator=orchestrator,
+                notion_client=notion_client,
+                alerter=alerter,
+                gate_checker=gate_checker,
+            )
 
         assert result.success is True
         assert result.notion_url == notion_url
@@ -433,14 +453,15 @@ class TestPublishNotifyOrder:
         alerter = MagicMock()
         alerter.send_alert = capture_send
 
-        result = await run_report(
-            report_type=ReportType.DAILY,
-            target_date=date(2026, 3, 31),
-            orchestrator=orchestrator,
-            notion_client=notion_client,
-            alerter=alerter,
-            gate_checker=gate_checker,
-        )
+        with patch("agents.oleg.pipeline.report_pipeline._load_required_sections", return_value=[]):
+            result = await run_report(
+                report_type=ReportType.DAILY,
+                target_date=date(2026, 3, 31),
+                orchestrator=orchestrator,
+                notion_client=notion_client,
+                alerter=alerter,
+                gate_checker=gate_checker,
+            )
 
         # Find the final notification message (should contain Notion URL)
         url_messages = [m for m in sent_messages if notion_url in m]
@@ -522,12 +543,21 @@ class TestRunReportGateCheck:
 
         assert result.failed is True
         assert result.success is False
-        assert "retry" in result.reason.lower() or "пуст" in result.reason.lower()
+        assert (
+            "retry" in result.reason.lower()
+            or "retries" in result.reason.lower()
+            or "пуст" in result.reason.lower()
+            or "empty" in result.reason.lower()
+        )
         notion_client.sync_report.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_empty_report_not_published(self):
-        """Report with all placeholder sections -> not published to Notion."""
+        """Report with all placeholder sections -> not published to Notion.
+
+        Patches _load_required_sections to return known sections that match
+        the all-placeholder content we provide.
+        """
         gate_result = MagicMock()
         gate_result.can_run = True
         gate_result.hard_failed = []
@@ -536,8 +566,8 @@ class TestRunReportGateCheck:
         gate_checker = MagicMock()
         gate_checker.check_all = MagicMock(return_value=gate_result)
 
-        # Return a report that, after degradation, will be all placeholders
-        # We simulate this by returning a chain result with no real section content
+        # Return a report where all sections are placeholders
+        sections = ["## Финансовые результаты", "## Рекламные расходы"]
         all_placeholder_md = (
             f"## Финансовые результаты\n\n{DEGRADATION_PLACEHOLDER}\n\n"
             f"## Рекламные расходы\n\n{DEGRADATION_PLACEHOLDER}\n"
@@ -556,14 +586,15 @@ class TestRunReportGateCheck:
         alerter = MagicMock()
         alerter.send_alert = AsyncMock(return_value=True)
 
-        result = await run_report(
-            report_type=ReportType.DAILY,
-            target_date=date(2026, 3, 31),
-            orchestrator=orchestrator,
-            notion_client=notion_client,
-            alerter=alerter,
-            gate_checker=gate_checker,
-        )
+        with patch("agents.oleg.pipeline.report_pipeline._load_required_sections", return_value=sections):
+            result = await run_report(
+                report_type=ReportType.DAILY,
+                target_date=date(2026, 3, 31),
+                orchestrator=orchestrator,
+                notion_client=notion_client,
+                alerter=alerter,
+                gate_checker=gate_checker,
+            )
 
         assert result.failed is True
         assert result.success is False
@@ -571,7 +602,11 @@ class TestRunReportGateCheck:
 
     @pytest.mark.asyncio
     async def test_partial_content_is_published(self):
-        """Report with mixed real+placeholder sections -> IS published."""
+        """Report with mixed real+placeholder sections -> IS published.
+
+        Patches _load_required_sections to return known sections that match
+        the mixed content we provide.
+        """
         gate_result = MagicMock()
         gate_result.can_run = True
         gate_result.hard_failed = []
@@ -581,6 +616,7 @@ class TestRunReportGateCheck:
         gate_checker.check_all = MagicMock(return_value=gate_result)
 
         # Has at least one real section
+        sections = ["## Финансовые результаты", "## Рекламные расходы"]
         mixed_md = (
             "## Финансовые результаты\n\n"
             "Выручка 1.5M руб, маржа 28%. Хороший результат квартала.\n\n"
@@ -602,14 +638,15 @@ class TestRunReportGateCheck:
         alerter = MagicMock()
         alerter.send_alert = AsyncMock(return_value=True)
 
-        result = await run_report(
-            report_type=ReportType.DAILY,
-            target_date=date(2026, 3, 31),
-            orchestrator=orchestrator,
-            notion_client=notion_client,
-            alerter=alerter,
-            gate_checker=gate_checker,
-        )
+        with patch("agents.oleg.pipeline.report_pipeline._load_required_sections", return_value=sections):
+            result = await run_report(
+                report_type=ReportType.DAILY,
+                target_date=date(2026, 3, 31),
+                orchestrator=orchestrator,
+                notion_client=notion_client,
+                alerter=alerter,
+                gate_checker=gate_checker,
+            )
 
         assert result.success is True
         assert result.notion_url == notion_url
