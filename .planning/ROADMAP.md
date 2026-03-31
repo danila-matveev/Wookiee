@@ -89,7 +89,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 03-01-PLAN.md — Gate checker (pre-flight data quality gates) + report types registry + fix funnel_weekly Notion label
+- [x] 03-01-PLAN.md — Gate checker (pre-flight data quality gates) + report types registry + fix funnel_weekly Notion label
 - [ ] 03-02-PLAN.md — Report pipeline (retry, section validation, graceful degradation, publish+notify ordering)
 
 ### Phase 4: Запуск и доставка
@@ -144,7 +144,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 |-------|----------------|--------|-----------|
 | 1. Очистка | 2/2 | Complete   | 2026-03-30 |
 | 2. Настройка агента | 1/2 | In Progress|  |
-| 3. Надёжность | 0/2 | Not started | - |
+| 3. Надёжность | 1/2 | In Progress|  |
 | 4. Запуск и доставка | 0/? | Not started | - |
 | 5. Верификация | 0/? | Not started | - |
 | 6. Документация и зачистка | 0/? | Not started | - |

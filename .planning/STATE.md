@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Упрощение системы отчётов
-status: verifying
-stopped_at: Phase 3 context updated
-last_updated: "2026-03-31T16:29:10.203Z"
+status: executing
+stopped_at: Completed 03-reliability-01-PLAN.md
+last_updated: "2026-03-31T17:32:54.156Z"
 last_activity: 2026-03-31
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 6
-  completed_plans: 4
+  completed_plans: 5
   percent: 0
 ---
 
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-30)
 
 **Core value:** Одна простая рабочая система аналитических отчётов — V2 оркестратор, стабильная генерация каждый день
-**Current focus:** Phase 02 — agent-setup
+**Current focus:** Phase 03 — reliability
 
 ## Current Position
 
-Phase: 03
-Plan: Not started
-Status: Phase complete — ready for verification
+Phase: 03 (reliability) — EXECUTING
+Plan: 2 of 2
+Status: Ready to execute
 Last activity: 2026-03-31
 
 Progress: [░░░░░░░░░░] 0%
@@ -52,6 +52,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01-cleanup P02 | 8 | 2 tasks | 9 files |
 | Phase 02 P01 | 45 | 2 tasks | 14 files |
 | Phase 02 P02 | 321 | 2 tasks | 14 files |
+| Phase 03-reliability P01 | 15 | 2 tasks | 6 files |
 
 ### Decisions
 
@@ -71,6 +72,9 @@ Progress: [░░░░░░░░░░] 0%
 - [Phase 02]: PlaybookLoader.load(task_type) assembles core + template + rules per report type (PLAY-02 complete)
 - [Phase 02]: Reporter and Marketer agents accept task_type= parameter and use PlaybookLoader when set, falling back to legacy playbook_path for backward compat
 - [Phase 02]: run_oleg_v2_reports.py creates per-chain reporter/marketer agents with correct task_type, shared agents created once
+- [Phase 03-reliability]: GateChecker uses _db_cursor from shared.data_layer._connection — no direct psycopg2 per AGENTS.md
+- [Phase 03-reliability]: Hard gates (3) block run; soft gates (3) warn only — separates blocking freshness checks from informational anomalies
+- [Phase 03-reliability]: funnel_weekly Notion label changed from Latin to Russian 'Воронка продаж' per REL-06
 
 ### Pending Todos
 
@@ -87,6 +91,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-31T16:29:10.195Z
-Stopped at: Phase 3 context updated
-Resume file: .planning/phases/03-reliability/03-CONTEXT.md
+Last session: 2026-03-31T17:32:54.153Z
+Stopped at: Completed 03-reliability-01-PLAN.md
+Resume file: None
