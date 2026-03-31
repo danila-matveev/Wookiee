@@ -13,6 +13,7 @@ from agents.oleg.agents.reporter.tools import (
     execute_reporter_tool,
 )
 from agents.oleg.agents.reporter.prompts import get_reporter_system_prompt
+from agents.oleg.playbooks.loader import load as load_playbook
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ class ReporterAgent(BaseAgent):
         llm_client,
         model: str,
         playbook_path: str = None,
+        task_type: str = None,
         pricing: Optional[dict] = None,
         max_iterations: int = 10,
         tool_timeout_sec: float = 30.0,
@@ -39,12 +41,16 @@ class ReporterAgent(BaseAgent):
             total_timeout_sec=total_timeout_sec,
         )
         self._playbook_path = playbook_path
+        self._task_type = task_type
 
     @property
     def agent_name(self) -> str:
         return "reporter"
 
     def get_system_prompt(self) -> str:
+        if self._task_type:
+            assembled = load_playbook(self._task_type)
+            return get_reporter_system_prompt(assembled_playbook=assembled)
         return get_reporter_system_prompt(self._playbook_path)
 
     def get_tool_definitions(self) -> List[Dict[str, Any]]:

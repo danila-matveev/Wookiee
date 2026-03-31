@@ -15,6 +15,9 @@
 ### Agents
 
 - `agents/oleg/` — финансовый AI-агент (Telegram runtime + price analytics)
+  - `agents/oleg/playbooks/` — модульная система плейбуков: `core.md` + `rules.md` + `templates/` (8 типов отчётов)
+  - `PlaybookLoader.load(task_type)` собирает промпт: core + шаблон по типу отчёта + rules
+  - `scripts/run_oleg_v2_single.py` и `run_oleg_v2_reports.py` принимают `task_type=` и передают его агентам
 - `agents/ibrahim/` — data-engineering модуль (ETL/reconciliation/DB)
 
 ### Services

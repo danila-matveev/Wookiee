@@ -203,9 +203,19 @@ search_knowledge_base — экспертная база по WB (курс, пл�
 """
 
 
-def get_reporter_system_prompt(playbook_path: str = None) -> str:
-    """Load the full system prompt: preamble + playbook."""
-    # Try v2 playbook first, then v1
+def get_reporter_system_prompt(
+    playbook_path: str = None,
+    assembled_playbook: str = None,
+) -> str:
+    """Load the full system prompt: preamble + playbook.
+
+    If assembled_playbook is provided (from PlaybookLoader), use it directly.
+    Otherwise fall back to loading from playbook_path (backward compat).
+    """
+    if assembled_playbook:
+        return f"{REPORTER_PREAMBLE}\n\n---\n\n{assembled_playbook}"
+
+    # Legacy path — keep existing logic unchanged
     playbook_file = Path(playbook_path) if playbook_path else _DEFAULT_PLAYBOOK
     if not playbook_file.exists():
         playbook_file = _V1_PLAYBOOK
