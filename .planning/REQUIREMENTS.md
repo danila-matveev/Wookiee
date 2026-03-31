@@ -35,9 +35,9 @@
 
 ### Плейбуки (PLAY)
 
-- [ ] **PLAY-01**: playbook.md разбит на модули (core + templates + rules) без потери бизнес-правил
+- [x] **PLAY-01**: playbook.md разбит на модули (core + templates + rules) без потери бизнес-правил
 - [ ] **PLAY-02**: Каждый тип отчёта загружает только релевантные модули плейбука
-- [ ] **PLAY-03**: Глубина анализа настроена по периоду: daily=компактный, weekly=глубокий, monthly=максимальный
+- [x] **PLAY-03**: Глубина анализа настроена по периоду: daily=компактный, weekly=глубокий, monthly=максимальный
 
 ### Запуск и доставка (SCHED)
 
@@ -56,7 +56,7 @@
 
 - [ ] **VER-01**: Все 8 типов отчётов сгенерированы и проверены на реальных данных
 - [ ] **VER-02**: Лучшие отчёты из Notion найдены и используются как эталон качества
-- [ ] **VER-03**: Структура отчётов единообразна с toggle-заголовками
+- [x] **VER-03**: Структура отчётов единообразна с toggle-заголовками
 
 ## Отложено (v3.0)
 
@@ -92,10 +92,10 @@
 | CLEAN-02 | Phase 1 | Complete |
 | CLEAN-03 | Phase 1 | Complete |
 | CLEAN-04 | Phase 1 | Complete |
-| PLAY-01 | Phase 2 | Pending |
+| PLAY-01 | Phase 2 | Complete |
 | PLAY-02 | Phase 2 | Pending |
-| PLAY-03 | Phase 2 | Pending |
-| VER-03 | Phase 2 | Pending |
+| PLAY-03 | Phase 2 | Complete |
+| VER-03 | Phase 2 | Complete |
 | REL-01 | Phase 3 | Pending |
 | REL-02 | Phase 3 | Pending |
 | REL-03 | Phase 3 | Pending |
