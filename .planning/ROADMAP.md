@@ -74,7 +74,7 @@ Plans:
 
 Plans:
 - [x] 02-01-PLAN.md — Create playbook modules: core.md, rules.md, data-map.md, 8 templates with depth markers, archive originals
-- [ ] 02-02-PLAN.md — Wire PlaybookLoader into agents, update orchestrator prompt assembly, add tests
+- [x] 02-02-PLAN.md — Wire PlaybookLoader into agents, update orchestrator prompt assembly, add tests
 
 ### Phase 3: Надёжность
 **Goal**: Система не публикует пустые/неполные отчёты и корректно обрабатывает ошибки на каждом этапе
