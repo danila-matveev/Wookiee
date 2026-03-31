@@ -38,7 +38,7 @@
 
 - [x] **Phase 1: Очистка** - Удаление V3, зависимостей, docs, обновление Docker (completed 2026-03-30)
 - [ ] **Phase 2: Настройка агента** - База знаний, иерархия данных, структура отчётов по типам и периодам
-- [ ] **Phase 3: Надёжность** - Pre-flight, retry, валидация полноты, graceful degradation, защита от дублей
+- [x] **Phase 3: Надёжность** - Pre-flight, retry, валидация полноты, graceful degradation, защита от дублей (completed 2026-03-31)
 - [ ] **Phase 4: Запуск и доставка** - Cron-задачи, Notion upsert, Telegram-уведомления, русские названия
 - [ ] **Phase 5: Верификация** - Генерация всех 8 типов, сравнение с эталонами, проверка на реальных данных
 - [ ] **Phase 6: Документация и зачистка** - Полная документация системы, удаление всех лишних контейнеров и мёртвого кода
@@ -90,7 +90,7 @@ Plans:
 
 Plans:
 - [x] 03-01-PLAN.md — Gate checker (pre-flight data quality gates) + report types registry + fix funnel_weekly Notion label
-- [ ] 03-02-PLAN.md — Report pipeline (retry, section validation, graceful degradation, publish+notify ordering)
+- [x] 03-02-PLAN.md — Report pipeline (retry, section validation, graceful degradation, publish+notify ordering)
 
 ### Phase 4: Запуск и доставка
 **Goal**: Все 8 типов отчётов запускаются автоматически по расписанию и доставляются в Notion + Telegram
@@ -144,7 +144,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 |-------|----------------|--------|-----------|
 | 1. Очистка | 2/2 | Complete   | 2026-03-30 |
 | 2. Настройка агента | 1/2 | In Progress|  |
-| 3. Надёжность | 1/2 | In Progress|  |
+| 3. Надёжность | 2/2 | Complete   | 2026-03-31 |
 | 4. Запуск и доставка | 0/? | Not started | - |
 | 5. Верификация | 0/? | Not started | - |
 | 6. Документация и зачистка | 0/? | Not started | - |

@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Упрощение системы отчётов
-status: executing
-stopped_at: Completed 03-reliability-01-PLAN.md
-last_updated: "2026-03-31T17:32:54.156Z"
+status: verifying
+stopped_at: Completed 03-reliability-02-PLAN.md
+last_updated: "2026-03-31T17:41:16.211Z"
 last_activity: 2026-03-31
 progress:
   total_phases: 6
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 6
-  completed_plans: 5
+  completed_plans: 6
   percent: 0
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-03-30)
 
 Phase: 03 (reliability) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-03-31
 
 Progress: [░░░░░░░░░░] 0%
@@ -53,6 +53,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 02 P01 | 45 | 2 tasks | 14 files |
 | Phase 02 P02 | 321 | 2 tasks | 14 files |
 | Phase 03-reliability P01 | 15 | 2 tasks | 6 files |
+| Phase 03 P02 | 352 | 1 tasks | 2 files |
 
 ### Decisions
 
@@ -75,6 +76,9 @@ Progress: [░░░░░░░░░░] 0%
 - [Phase 03-reliability]: GateChecker uses _db_cursor from shared.data_layer._connection — no direct psycopg2 per AGENTS.md
 - [Phase 03-reliability]: Hard gates (3) block run; soft gates (3) warn only — separates blocking freshness checks from informational anomalies
 - [Phase 03-reliability]: funnel_weekly Notion label changed from Latin to Russian 'Воронка продаж' per REL-06
+- [Phase 03]: _is_substantial checks len>=200 AND ## heading presence — short reports without structure are not considered real
+- [Phase 03]: Integration tests patch _load_required_sections to [] to isolate from real template files in test environment
+- [Phase 03]: Telegram failure after Notion success recorded as warning not error — Notion is primary artifact (D-13/REL-07)
 
 ### Pending Todos
 
@@ -91,6 +95,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-31T17:32:54.153Z
-Stopped at: Completed 03-reliability-01-PLAN.md
+Last session: 2026-03-31T17:41:16.208Z
+Stopped at: Completed 03-reliability-02-PLAN.md
 Resume file: None
