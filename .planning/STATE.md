@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Упрощение системы отчётов
-status: verifying
-stopped_at: Phase 4 context gathered
-last_updated: "2026-03-31T00:14:06.583Z"
-last_activity: 2026-03-30
+status: executing
+stopped_at: Completed 02-01-PLAN.md (playbook modularization)
+last_updated: "2026-03-31T11:24:05.048Z"
+last_activity: 2026-03-31
 progress:
   total_phases: 6
   completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
+  total_plans: 6
+  completed_plans: 3
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-30)
 
 **Core value:** Одна простая рабочая система аналитических отчётов — V2 оркестратор, стабильная генерация каждый день
-**Current focus:** Phase 01 — cleanup
+**Current focus:** Phase 02 — agent-setup
 
 ## Current Position
 
-Phase: 02
-Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-03-30
+Phase: 02 (agent-setup) — EXECUTING
+Plan: 2 of 2
+Status: Ready to execute
+Last activity: 2026-03-31
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -50,6 +50,7 @@ Progress: [░░░░░░░░░░] 0%
 
 | Phase 01-cleanup P01 | 10 | 2 tasks | 68 files |
 | Phase 01-cleanup P02 | 8 | 2 tasks | 9 files |
+| Phase 02 P01 | 45 | 2 tasks | 14 files |
 
 ### Decisions
 
@@ -62,6 +63,10 @@ Progress: [░░░░░░░░░░] 0%
 - [Phase 01-cleanup]: scripts/run_finolog_weekly.py preserved with known-broken V3 import (deferred to Phase 3/4)
 - [Phase 01-cleanup]: finolog-cron disabled with Docker Compose profiles instead of deletion — preserves container for Phase 3/4 V2 scheduling fix
 - [Phase 01-cleanup]: V3 data volume removed from wookiee-oleg — no longer needed after agents.v3 deleted
+- [Phase 02]: Orchestrator assembles core.md + template/{type}.md + rules.md per task_type (D-04)
+- [Phase 02]: Original playbooks archived as *_ARCHIVE.md, not deleted (D-05)
+- [Phase 02]: dds.md and localization.md are data-driven — no LLM depth markers (D-09)
+- [Phase 02]: data-map.md maps all 37+ tools for Phase 3 pre-flight dependency checks (D-13/14/15)
 
 ### Pending Todos
 
@@ -78,6 +83,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-31T00:14:06.580Z
-Stopped at: Phase 4 context gathered
-Resume file: .planning/phases/04-scheduling-delivery/04-CONTEXT.md
+Last session: 2026-03-31T11:24:05.046Z
+Stopped at: Completed 02-01-PLAN.md (playbook modularization)
+Resume file: None
