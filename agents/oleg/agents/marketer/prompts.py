@@ -161,8 +161,19 @@ Cut: ROMI отрицательный → отключить)
 """
 
 
-def get_marketer_system_prompt(playbook_path: str = None) -> str:
-    """Load the full system prompt: preamble + marketing playbook."""
+def get_marketer_system_prompt(
+    playbook_path: str = None,
+    assembled_playbook: str = None,
+) -> str:
+    """Load the full system prompt: preamble + marketing playbook.
+
+    If assembled_playbook is provided (from PlaybookLoader), use it directly.
+    Otherwise fall back to loading from playbook_path (backward compat).
+    """
+    if assembled_playbook:
+        return f"{MARKETER_PREAMBLE}\n\n---\n\n{assembled_playbook}"
+
+    # Legacy path — keep existing logic unchanged
     playbook_file = Path(playbook_path) if playbook_path else _DEFAULT_PLAYBOOK
 
     playbook_content = ""
