@@ -3,123 +3,125 @@
 > **Audit trail only.** Do not use as input to planning, research, or execution agents.
 > Decisions are captured in CONTEXT.md — this log preserves the alternatives considered.
 
-**Date:** 2026-03-30
+**Date:** 2026-03-31
 **Phase:** 03-reliability
-**Areas discussed:** Pre-flight проверки, Retry и обработка пустого LLM, Валидация полноты отчёта, Порядок publish+notify
+**Areas discussed:** Pre-flight gates, Pipeline architecture, Error UX
 
 ---
 
-## Pre-flight проверки
+## Pre-flight gates
+
+### Partial data handling
 
 | Option | Description | Selected |
 |--------|-------------|----------|
-| Быстрый пинг источников | Каждый tool проверяет наличие данных за период | |
-| Полная проверка по типу | Минимальный набор данных для каждого типа отчёта | |
-| Ты решаешь | Claude выбирает | |
+| Запускать то что готово | Если WB ready — запускаем WB-отчёты. Ozon ждёт. | ✓ |
+| Ждать полной готовности | Отчёты только когда ВСЕ источники обновились | |
 
-**User's choice:** Custom — описал существующий механизм проверки через `dateupdate` поле в БД
-**Notes:** Данные берутся из Supabase PostgreSQL, не из Google Sheets. Поле `dateupdate` в каждой таблице показывает свежесть. Ранее был скрипт, отправлявший в Telegram "✅ Данные за X готовы" с метриками (заказы, выручка%, маржа%) по WB и Ozon.
+**User's choice:** Запускать то что готово
+**Notes:** —
 
-### Follow-up: Источник данных
-
-| Option | Description | Selected |
-|--------|-------------|----------|
-| Через sheets_sync статус | Смотреть в Google Sheets последнюю синхронизацию | |
-| Напрямую через data tools | Минимальный запрос через tools агента | |
-| Не помню / Claude найдёт | Claude поищет в кодовой базе | ✓ |
-
-**User's choice:** Claude найдёт
-**Notes:** Найден gate_checker interface в watchdog/diagnostic.py, pipeline/ директория описана в SYSTEM.md но не создана
-
-### Follow-up: Telegram + метрики
+### Volume checks
 
 | Option | Description | Selected |
 |--------|-------------|----------|
-| Telegram + логи | Как раньше: сообщение в Telegram + логи | ✓ |
-| Только логи | Тихо в логах | |
+| Да, базовые sanity checks | dateupdate + минимум записей (orders > 0) | ✓ |
+| Только свежесть | dateupdate = сегодня — достаточно | |
 
-**User's choice:** Telegram + логи
+**User's choice:** Да, базовые sanity checks
+**Notes:** —
+
+### Gate types
 
 | Option | Description | Selected |
 |--------|-------------|----------|
-| Заказы + выручка + маржа | Как в примере | |
-| Только заказы > 0 | Простая проверка | |
-| Ты решаешь | | |
+| Hard: свежесть + volume. Soft: аномалии | Hard block, soft = предупреждение | ✓ |
+| Hard: только свежесть. Soft: volume + anomalies | Минимальные блокировки | |
 
-**User's choice:** Custom — проверять все необходимые источники (финансовые, рекламные, заказы), ориентироваться на `dateupdate` поле
+**User's choice:** Hard: свежесть + volume. Soft: аномалии
+**Notes:** —
 
 ---
 
-## Retry и обработка пустого LLM
+## Pipeline architecture
+
+### Pipeline location
 
 | Option | Description | Selected |
 |--------|-------------|----------|
-| Пустой/короткий ответ | Пустая строка или <500 символов | |
-| Пустой + нет секций | Пустая строка или нет markdown-заголовков | |
-| Ты решаешь | Claude выберет критерии | ✓ |
+| Wrapper снаружи | pipeline.run() → gate → orchestrator → validate → publish → notify | ✓ |
+| Внутри orchestrator | Всё в orchestrator.run_chain | |
+| Claude decides | — | |
 
-**User's choice:** Ты решаешь
+**User's choice:** Wrapper снаружи
+**Notes:** —
+
+### Retry level
 
 | Option | Description | Selected |
 |--------|-------------|----------|
-| Только LLM-вызов | Повторяем тот же промпт | |
-| Весь chain | Перезапускаем с начала | |
-| Ты решаешь | Claude выберет | ✓ |
+| Chain-level | Перезапуск всего orchestrator.run_chain | ✓ |
+| LLM-call level | Повтор конкретного LLM-вызова | |
+| Claude decides | — | |
 
-**User's choice:** Ты решаешь
-**Notes:** Пользователь не знаком с деталями LLM-пайплайна. Был дан контекст объяснения. Решение полностью делегировано Claude.
+**User's choice:** Chain-level
+**Notes:** —
 
 ---
 
-## Валидация полноты отчёта
+## Error UX
+
+### Pre-flight block message
 
 | Option | Description | Selected |
 |--------|-------------|----------|
-| Из шаблонов Phase 2 | Шаблоны playbook определяют секции | ✓ |
-| Минимальные правила | Не пустой, 3+ заголовка, длина > порога | |
-| Ты решаешь | | |
+| Краткое сообщение | 1-2 строки с причиной | |
+| Подробное сообщение | Полный статус каждого gate | |
+| Без Telegram при блоке | Только в лог | |
 
-**User's choice:** Из шаблонов Phase 2
+**User's choice:** Other (free text)
+**Notes:** Пользователь описал детальный паттерн: проверка данных с 6 утра каждые 30 мин. Telegram апдейт каждые 2 часа если данные не готовы. Если готовы — пишем сразу. Формат: на русском, с процентами по категориям (финансовые, рекламные, заказы), без техжаргона. Расписание polling = Phase 4, но gate_checker должен поддерживать формат с процентами.
 
-| Option | Description | Selected |
-|--------|-------------|----------|
-| Писать причину в секцию | Graceful degradation с объяснением | ✓ |
-| Не публиковать вообще | Если хоть одна секция пуста | |
-| Ты решаешь | | |
-
-**User's choice:** Custom — если данных нет совсем, отчёт не формируется. Если формируется, но часть недоступна — писать объяснение человеческим языком с предложением решения.
-
----
-
-## Порядок publish+notify
+### Retry visibility
 
 | Option | Description | Selected |
 |--------|-------------|----------|
-| Да, достаточно | sync_report upsert покрывает REL-06 | |
-| Нужны доработки | | |
-| Ты решаешь | Claude проверит | ✓ |
+| Нет, пользователь не знает | Retry только в логах | ✓ |
+| Да, пометка в Telegram | "Отчёт со 2-й попытки" | |
 
-**User's choice:** Ты решаешь
+**User's choice:** Retry только в логах
+**Notes:** Пользователь хочет в будущем создать БД для workflow логов (не в этой фазе).
+
+### Full failure action
 
 | Option | Description | Selected |
 |--------|-------------|----------|
-| Лог + отчёт успешен | Telegram некритичен | |
-| Retry Telegram | 1-2 повтора | |
-| Ты решаешь | | ✓ |
+| Лог + Telegram alert | "❌ Отчёт не сгенерирован после 3 попыток" | ✓ |
+| Только лог | Не спамить ошибками | |
 
-**User's choice:** Ты решаешь
+**User's choice:** Лог + Telegram alert
+**Notes:** —
+
+### Scope split (Phase 3 vs Phase 4)
+
+| Option | Description | Selected |
+|--------|-------------|----------|
+| Разделить: Phase 3 = механизм, Phase 4 = расписание | gate_checker + pipeline в Phase 3, cron + polling в Phase 4 | |
+
+**User's choice:** Other (free text)
+**Notes:** Уточнил: проверка каждые 30 мин, Telegram апдейт каждые 2 часа. Зафиксировано как Phase 4 scope, но gate_checker интерфейс (процент готовности по категориям) — Phase 3.
 
 ---
 
 ## Claude's Discretion
 
-- Критерии "пустого" LLM-ответа
-- Уровень retry (LLM-вызов vs chain)
-- Поведение при Telegram failure
-- Конкретные hard/soft gates для gate_checker
-- Формат Telegram-сообщения
-- Проверка корректности sync_report для всех типов
+- Конкретные пороги для "пустого" LLM-ответа
+- Конкретные hard/soft gates (таблицы, поля)
+- Формат pipeline.run
+- Структура report_types registry
 
 ## Deferred Ideas
 
-None
+- Расписание polling (6:00-18:00, 30мин/2ч) — Phase 4
+- БД для workflow логов — post Phase 3
+- LLM аналитика для ДДС/Локализация — backlog
