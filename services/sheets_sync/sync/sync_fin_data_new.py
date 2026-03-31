@@ -9,13 +9,13 @@ from __future__ import annotations
 
 import logging
 
-from shared.clients.sheets_client import (
+from services.sheets_sync.clients.sheets_client import (
     get_client,
     get_moscow_datetime,
     get_or_create_worksheet,
     set_checkbox,
 )
-from shared.data_layer import (
+from services.sheets_sync.data_layer import (
     get_wb_fin_data_by_barcode,
     get_wb_orders_by_barcode,
     get_ozon_fin_data_by_barcode,
@@ -65,14 +65,33 @@ def _frac0(val):
 
 # ---- Sheet readers ----
 
-def _read_barcodes_from_sheet(ws) -> list[str]:
-    """Read barcodes from column A, rows 3+. Preserves row alignment."""
-    col_a = ws.col_values(1)  # 1-indexed column
-    barcodes = []
-    for val in col_a[2:]:     # Skip rows 1 (meta) and 2 (headers)
-        bc = str(val).strip()
-        barcodes.append(bc)   # Keep even empty to preserve row alignment
-    return barcodes
+def _read_barcodes_from_sheet(ws) -> tuple[list[str], list[list[str]]]:
+    """Read barcodes from columns A, B, C (rows 3+). Preserves row alignment.
+
+    Returns (primary_barcodes, all_barcodes_per_row) where all_barcodes_per_row[i]
+    is a list of up to 3 non-empty barcodes for row i (A, B, C columns).
+    """
+    col_a = ws.col_values(1)  # БАРКОД
+    col_b = ws.col_values(2)  # БАРКОД GS1
+    col_c = ws.col_values(3)  # БАРКОД GS2
+
+    # Pad shorter columns to match length
+    max_len = max(len(col_a), len(col_b), len(col_c))
+    col_a += [''] * (max_len - len(col_a))
+    col_b += [''] * (max_len - len(col_b))
+    col_c += [''] * (max_len - len(col_c))
+
+    primary = []
+    all_per_row = []
+    for a, b, c in zip(col_a[2:], col_b[2:], col_c[2:]):
+        bc_a = str(a).strip()
+        primary.append(bc_a)
+        row_barcodes = []
+        for v in (bc_a, str(b).strip(), str(c).strip()):
+            if v:
+                row_barcodes.append(v)
+        all_per_row.append(row_barcodes)
+    return primary, all_per_row
 
 
 # ---- Row building ----
@@ -202,12 +221,12 @@ def sync(start_date: str | None = None, end_date: str | None = None) -> int:
     ).days, 1)
     logger.info("Period: %s — %s (%d days)", display_start, display_end, days_in_period)
 
-    # 3. Read barcodes from column A (rows 3+)
-    sheet_barcodes = _read_barcodes_from_sheet(ws)
+    # 3. Read barcodes from columns A, B, C (rows 3+)
+    sheet_barcodes, all_barcodes_per_row = _read_barcodes_from_sheet(ws)
     if not sheet_barcodes:
         logger.warning("No barcodes found in column A (rows 3+)")
         return 0
-    logger.info("Sheet barcodes: %d rows in column A", len(sheet_barcodes))
+    logger.info("Sheet barcodes: %d rows in columns A/B/C", len(sheet_barcodes))
 
     # 4. Fetch WB data
     logger.info("Fetching WB financial data...")
@@ -232,17 +251,21 @@ def sync(start_date: str | None = None, end_date: str | None = None) -> int:
         _calculate_derived_metrics(item, days_in_period)
 
     # 8. Build financial rows aligned to sheet barcodes
-    #    Sheet may have GS1/GS2 barcodes (463..., 468...) while combined
-    #    is keyed by marketplace barcodes (20...) after gs2_mapping remap.
-    #    Fall back to gs2_mapping lookup when direct match fails.
+    #    Try all barcodes from columns A/B/C for each row.
+    #    Also fall back to gs2_mapping lookup when direct match fails.
     fin_rows = []
     matched = 0
-    for bc in sheet_barcodes:
-        item = combined.get(bc)
-        if not item:
+    for row_barcodes in all_barcodes_per_row:
+        item = None
+        for bc in row_barcodes:
+            item = combined.get(bc)
+            if item:
+                break
             mkt_bc = gs2_mapping.get(bc)
             if mkt_bc:
                 item = combined.get(mkt_bc)
+                if item:
+                    break
         if item:
             fin_rows.append(_build_fin_row(item))
             matched += 1
