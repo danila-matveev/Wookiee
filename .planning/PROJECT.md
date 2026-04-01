@@ -44,7 +44,7 @@ Product Matrix Editor → рабочая PIM-система: Notion-like table v
 
 **Goal:** Одна простая рабочая система аналитических отчётов — V2 оркестратор (agents/oleg/), без V3/LangGraph, стабильная генерация каждый день.
 
-**Current state:** Phase 1 (очистка V3) complete, Phase 2 (настройка агента) complete, Phase 3 (reliability pipeline) complete — GateChecker (3 hard + 3 soft gates), ReportType registry (8 types), report_pipeline with retry/degradation/validation, 61 oleg tests passing.
+**Current state:** Phase 1 (очистка V3) complete, Phase 2 (настройка агента) complete, Phase 3 (reliability pipeline) complete, Phase 4 (запуск и доставка) complete — GateChecker (3 hard + 3 soft gates), ReportType registry (8 types), report_pipeline with retry/degradation/validation, unified runner `scripts/run_report.py` with cron scheduling every 30 min (07:00-18:00 MSK), lock-files, stub notifications. 85+ tests passing.
 
 **Target features:**
 - ~~Удаление agents/v3/ целиком (LangGraph, 24 микроагента, conductor, APScheduler)~~ ✓ Phase 1
@@ -56,7 +56,7 @@ Product Matrix Editor → рабочая PIM-система: Notion-like table v
 - ~~Retry при пустом/неполном ответе LLM~~ ✓ Phase 3
 - ~~Валидация полноты секций перед публикацией в Notion~~ ✓ Phase 3
 - ~~Русские названия типов отчётов~~ ✓ Phase 3
-- Простые cron-задачи вместо APScheduler
+- ~~Простые cron-задачи вместо APScheduler~~ ✓ Phase 4
 
 **Принцип качества отчёта:** полнота данных, точность, единообразный формат, глубина анализа соответствует периоду, обоснованные гипотезы на базе данных.
 
@@ -80,4 +80,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-31*
+*Last updated: 2026-04-01*
