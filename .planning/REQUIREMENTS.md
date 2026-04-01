@@ -41,10 +41,10 @@
 
 ### Запуск и доставка (SCHED)
 
-- [ ] **SCHED-01**: Простые cron-задачи для запуска всех 8 типов отчётов
-- [ ] **SCHED-02**: Отчёт публикуется в Notion с правильными properties (период, тип, статус)
-- [ ] **SCHED-03**: Telegram-уведомление отправляется после публикации (без бота с командами)
-- [ ] **SCHED-04**: Русские названия типов отчётов в Notion и Telegram
+- [x] **SCHED-01**: Простые cron-задачи для запуска всех 8 типов отчётов
+- [x] **SCHED-02**: Отчёт публикуется в Notion с правильными properties (период, тип, статус)
+- [x] **SCHED-03**: Telegram-уведомление отправляется после публикации (без бота с командами)
+- [x] **SCHED-04**: Русские названия типов отчётов в Notion и Telegram
 
 ### Документация и зачистка (DOC)
 
@@ -103,10 +103,10 @@
 | REL-05 | Phase 3 | Complete |
 | REL-06 | Phase 3 | Complete |
 | REL-07 | Phase 3 | Complete |
-| SCHED-01 | Phase 4 | Pending |
-| SCHED-02 | Phase 4 | Pending |
-| SCHED-03 | Phase 4 | Pending |
-| SCHED-04 | Phase 4 | Pending |
+| SCHED-01 | Phase 4 | Complete |
+| SCHED-02 | Phase 4 | Complete |
+| SCHED-03 | Phase 4 | Complete |
+| SCHED-04 | Phase 4 | Complete |
 | RPT-01 | Phase 5 | Pending |
 | RPT-02 | Phase 5 | Pending |
 | RPT-03 | Phase 5 | Pending |

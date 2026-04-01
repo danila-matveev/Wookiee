@@ -104,7 +104,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 04-01-PLAN.md — Runner script with --type/--schedule modes, schedule logic, lock-files, polling stubs, tests
+- [x] 04-01-PLAN.md — Runner script with --type/--schedule modes, schedule logic, lock-files, polling stubs, tests
 - [ ] 04-02-PLAN.md — Docker cron entrypoint, Dockerfile v3 cleanup, delete old scripts and finolog-cron
 
 ### Phase 5: Верификация
@@ -146,6 +146,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | 1. Очистка | 2/2 | Complete   | 2026-03-30 |
 | 2. Настройка агента | 1/2 | In Progress|  |
 | 3. Надёжность | 2/2 | Complete   | 2026-03-31 |
-| 4. Запуск и доставка | 0/2 | Not started | - |
+| 4. Запуск и доставка | 1/2 | In Progress|  |
 | 5. Верификация | 0/? | Not started | - |
 | 6. Документация и зачистка | 0/? | Not started | - |
