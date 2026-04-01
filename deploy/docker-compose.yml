@@ -6,7 +6,12 @@ services:
       dockerfile: deploy/Dockerfile
     container_name: wookiee_oleg
     restart: unless-stopped
-    command: ["python", "-m", "agents.oleg"]
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        echo "*/30 7-18 * * * cd /app && python scripts/run_report.py --schedule >> /proc/1/fd/1 2>&1" | crontab -
+        echo "Wookiee report cron installed: every 30 min, 07:00-18:00 MSK"
+        cron -f
 
     env_file:
       - ../.env
@@ -32,41 +37,6 @@ services:
         reservations:
           cpus: '0.5'
           memory: 512M
-
-  # ── Finolog: еженедельная сводка cash flow (DISABLED — V3 dependency, fix in Phase 3/4) ──
-  finolog-cron:
-    profiles: ["disabled"]
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile
-    container_name: wookiee_finolog_cron
-    restart: unless-stopped
-    entrypoint: ["/bin/bash", "-c"]
-    command:
-      - |
-        apt-get update -qq && apt-get install -y -qq cron > /dev/null 2>&1
-        echo "0 9 * * 1 cd /app && python -m scripts.run_finolog_weekly --deliver >> /proc/1/fd/1 2>&1" | crontab -
-        echo "Finolog cron installed: Monday 09:00 MSK"
-        cron -f
-
-    env_file:
-      - ../.env
-
-    environment:
-      - PYTHONUNBUFFERED=1
-      - TZ=Europe/Moscow
-
-    networks:
-      - n8n-docker-caddy_default
-
-    deploy:
-      resources:
-        limits:
-          cpus: '0.25'
-          memory: 256M
-        reservations:
-          cpus: '0.1'
-          memory: 64M
 
   # ── Sheets Sync: ежедневная синхронизация данных в Google Sheets ──
   sheets-sync:
