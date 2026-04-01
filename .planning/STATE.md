@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Упрощение системы отчётов
-status: executing
-stopped_at: Completed 04-01-PLAN.md
-last_updated: "2026-04-01T13:20:06.803Z"
+status: verifying
+stopped_at: Completed 04-02-PLAN.md
+last_updated: "2026-04-01T13:23:36.643Z"
 last_activity: 2026-04-01
 progress:
   total_phases: 6
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 8
-  completed_plans: 7
+  completed_plans: 8
   percent: 0
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-03-30)
 
 Phase: 04 (scheduling-delivery) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-04-01
 
 Progress: [░░░░░░░░░░] 0%
@@ -55,6 +55,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 03-reliability P01 | 15 | 2 tasks | 6 files |
 | Phase 03 P02 | 352 | 1 tasks | 2 files |
 | Phase 04-scheduling-delivery P01 | 2 | 2 tasks | 3 files |
+| Phase 04-scheduling-delivery P02 | 1min | 2 tasks | 5 files |
 
 ### Decisions
 
@@ -83,6 +84,9 @@ Progress: [░░░░░░░░░░] 0%
 - [Phase 04-01]: D-14 Telegram delivery stays entirely in pipeline Step 7 (chain_result.telegram_summary + notion_url) — runner does not duplicate
 - [Phase 04-01]: Lock-file per report_type per date uses locks_dir param for testability; FINOLOG_WEEKLY always last in REPORT_ORDER (D-09)
 - [Phase 04-01]: is_final_window triggers at hour>=17 AND minute>=55 matching D-05/D-08 18:00 cron boundary
+- [Phase 04-02]: CMD in Dockerfile is python --version (neutral fallback) — each service overrides via compose command/entrypoint
+- [Phase 04-02]: finolog-cron service removed entirely — FINOLOG_WEEKLY now runs inside wookiee-oleg cron via run_report.py --schedule
+- [Phase 04-02]: cron pre-installed in Dockerfile (not entrypoint apt-get) — clean container startup, no runtime package install
 
 ### Pending Todos
 
@@ -99,6 +103,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-01T13:20:06.800Z
-Stopped at: Completed 04-01-PLAN.md
+Last session: 2026-04-01T13:23:36.640Z
+Stopped at: Completed 04-02-PLAN.md
 Resume file: None

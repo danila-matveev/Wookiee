@@ -39,7 +39,7 @@
 - [x] **Phase 1: Очистка** - Удаление V3, зависимостей, docs, обновление Docker (completed 2026-03-30)
 - [ ] **Phase 2: Настройка агента** - База знаний, иерархия данных, структура отчётов по типам и периодам
 - [x] **Phase 3: Надёжность** - Pre-flight, retry, валидация полноты, graceful degradation, защита от дублей (completed 2026-03-31)
-- [ ] **Phase 4: Запуск и доставка** - Cron-задачи, Notion upsert, Telegram-уведомления, русские названия
+- [x] **Phase 4: Запуск и доставка** - Cron-задачи, Notion upsert, Telegram-уведомления, русские названия (completed 2026-04-01)
 - [ ] **Phase 5: Верификация** - Генерация всех 8 типов, сравнение с эталонами, проверка на реальных данных
 - [ ] **Phase 6: Документация и зачистка** - Полная документация системы, удаление всех лишних контейнеров и мёртвого кода
 
@@ -105,7 +105,7 @@ Plans:
 
 Plans:
 - [x] 04-01-PLAN.md — Runner script with --type/--schedule modes, schedule logic, lock-files, polling stubs, tests
-- [ ] 04-02-PLAN.md — Docker cron entrypoint, Dockerfile v3 cleanup, delete old scripts and finolog-cron
+- [x] 04-02-PLAN.md — Docker cron entrypoint, Dockerfile v3 cleanup, delete old scripts and finolog-cron
 
 ### Phase 5: Верификация
 **Goal**: Все 8 типов отчётов проверены на реальных данных и соответствуют эталонам качества
@@ -146,6 +146,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | 1. Очистка | 2/2 | Complete   | 2026-03-30 |
 | 2. Настройка агента | 1/2 | In Progress|  |
 | 3. Надёжность | 2/2 | Complete   | 2026-03-31 |
-| 4. Запуск и доставка | 1/2 | In Progress|  |
+| 4. Запуск и доставка | 2/2 | Complete   | 2026-04-01 |
 | 5. Верификация | 0/? | Not started | - |
 | 6. Документация и зачистка | 0/? | Not started | - |
