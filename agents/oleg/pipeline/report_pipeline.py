@@ -23,6 +23,7 @@ publish does NOT mark the pipeline as failed — it is recorded as a warning.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import date
 from typing import List, Optional
@@ -97,6 +98,44 @@ async def _run_chain_with_retry(
         f"Chain returned empty result after {max_retries + 1} total attempts for task_type={task_type}"
     )
     return None
+
+
+# ---------------------------------------------------------------------------
+# Post-processing: strip LLM formatting artifacts
+# ---------------------------------------------------------------------------
+
+def _clean_report_text(report_md: str) -> str:
+    """Remove LLM formatting artifacts from the detailed report.
+
+    Fixes that prompt instructions alone cannot reliably prevent:
+    - "(Reconciliation)" appended to "Сведение ΔМаржи"
+    - "(Top/Bottom)" appended to "Юнит-экономика артикулов"
+    - telegram_summary / brief_summary sections bleeding into Notion report
+    """
+    # Strip English qualifiers from known section names
+    report_md = re.sub(
+        r'(## (?:▶ )?Сведение ΔМаржи)\s*\(Reconciliation\)',
+        r'\1',
+        report_md,
+    )
+    report_md = re.sub(
+        r'(## (?:▶ )?Юнит-экономика артикулов)\s*\(Top/Bottom\)',
+        r'\1',
+        report_md,
+    )
+
+    # Remove telegram_summary / brief_summary bleed sections (always at end).
+    # Also strip the --- separator that precedes them if present.
+    for marker in ('\n## telegram_summary', '\n## brief_summary'):
+        idx = report_md.find(marker)
+        if idx >= 0:
+            trimmed = report_md[:idx].rstrip()
+            if trimmed.endswith('---'):
+                trimmed = trimmed[:-3].rstrip()
+            report_md = trimmed
+            logger.debug(f"Stripped bleeding section '{marker.strip()}' from detailed_report")
+
+    return report_md
 
 
 # ---------------------------------------------------------------------------
@@ -322,7 +361,7 @@ async def run_report(
             logger.warning(f"Failed to send failure alert: {e}")
         return ReportPipelineResult(failed=True, reason=reason)
 
-    report_md = chain_result.detailed or ""
+    report_md = _clean_report_text(chain_result.detailed or "")
 
     # ------------------------------------------------------------------
     # Step 4: Section validation + graceful degradation (D-09, D-10, D-11, REL-04, REL-05)
