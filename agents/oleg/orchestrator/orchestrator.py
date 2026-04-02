@@ -173,7 +173,8 @@ class OlegOrchestrator:
                         report_type=report_type,
                         chain_history=chain_history,
                     )
-                    if advisor_result.get("recommendations"):
+                    # Add advisor step if recommendations OR raw_advisor text exists
+                    if advisor_result.get("recommendations") or advisor_result.get("raw_advisor"):
                         chain_history.append(AgentStep(
                             agent="advisor_chain",
                             instruction="Signal Detection → Advisor → Validator",
@@ -186,7 +187,7 @@ class OlegOrchestrator:
                     logger.warning(f"Advisor chain failed: {e}")
 
         # Synthesize final answer
-        synthesis = await self._synthesize(task, chain_history)
+        synthesis = await self._synthesize(task, chain_history, context=context)
 
         # Multi-model review (optional, per task_type)
         review_issues = 0
@@ -409,8 +410,10 @@ class OlegOrchestrator:
 
     async def _synthesize(
         self, task: str, chain_history: list[AgentStep],
+        context: dict = None,
     ) -> dict:
         """Synthesize final answer from chain results."""
+        context = context or {}
 
         # If only one step and it's reporter or marketer — use its output directly
         if len(chain_history) == 1 and chain_history[0].agent in ("reporter", "marketer", "funnel"):
@@ -418,10 +421,15 @@ class OlegOrchestrator:
 
         chain_results_text = self._format_chain_history(chain_history)
 
+        date_from = context.get("date_from", "не указан")
+        date_to = context.get("date_to", "не указан")
+
         prompt = SYNTHESIZE_PROMPT.format(
             task=task,
             chain_results=chain_results_text,
             caveats_section="",
+            date_from=date_from,
+            date_to=date_to,
         )
 
         try:
@@ -575,13 +583,17 @@ class OlegOrchestrator:
                 context="",
             )
 
-            # Parse advisor output
+            # Parse advisor output (robust: strip markdown code blocks)
+            raw_text = advisor_result.content or ""
+            # Strip ```json ... ``` wrapper if present
+            json_match = re.search(r'```(?:json)?\s*\n?(.*?)\n?\s*```', raw_text, re.DOTALL)
+            json_text = json_match.group(1).strip() if json_match else raw_text.strip()
             try:
-                advisor_output = json.loads(advisor_result.content)
+                advisor_output = json.loads(json_text)
                 recommendations = advisor_output.get("recommendations", [])
             except (json.JSONDecodeError, AttributeError):
-                logger.warning("Advisor output is not valid JSON, skipping validation")
-                result = {"recommendations": [], "signals": signals, "raw_advisor": advisor_result.content}
+                logger.warning("Advisor output is not valid JSON, passing raw text to synthesizer")
+                result = {"recommendations": [], "signals": signals, "raw_advisor": raw_text}
                 return result
 
             # Extract and save proposed patterns (Phase 3: Self-Learning)
