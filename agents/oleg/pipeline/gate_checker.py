@@ -193,11 +193,15 @@ class GateChecker:
             return GateResult(name=name, passed=False, detail=f"Ошибка проверки: {e}")
 
     def _check_fin_data_freshness(self, target_date: date) -> GateResult:
-        """Hard gate: Financial data dateupdate must be >= target_date."""
+        """Hard gate: Financial data (abc_date) dateupdate must be >= target_date.
+
+        Note: The project uses abc_date for all financial data (margin, revenue, etc.).
+        There is no separate fin_data table — financial data is computed from abc_date.
+        """
         name = "fin_data_freshness"
         try:
             with _db_cursor(_get_wb_connection) as (conn, cur):
-                cur.execute("SELECT MAX(dateupdate) FROM fin_data")
+                cur.execute("SELECT MAX(dateupdate) FROM abc_date")
                 row = cur.fetchone()
                 last_update = row[0] if row else None
 
@@ -205,7 +209,7 @@ class GateChecker:
                 return GateResult(
                     name=name,
                     passed=False,
-                    detail="Нет данных в fin_data. ETL не запускался.",
+                    detail="Нет данных в abc_date (WB финансы). ETL не запускался.",
                 )
 
             update_date = self._normalize_date(last_update)
@@ -213,7 +217,7 @@ class GateChecker:
                 return GateResult(
                     name=name,
                     passed=False,
-                    detail=f"Последнее обновление fin_data: {update_date}, ожидается: {target_date}",
+                    detail=f"Последнее обновление abc_date (финансы): {update_date}, ожидается: {target_date}",
                 )
 
             return GateResult(name=name, passed=True, detail=f"Обновлено: {update_date}")
@@ -227,12 +231,16 @@ class GateChecker:
     # ------------------------------------------------------------------
 
     def _check_advertising_data(self, target_date: date) -> GateResult:
-        """Soft gate: advertising costs for target_date > 0."""
+        """Soft gate: advertising costs (reclama column in abc_date) for target_date > 0.
+
+        Note: Advertising costs are stored in abc_date.reclama (internal МП advertising).
+        External advertising (bloggers, VK) is in reclama_vn.
+        """
         name = "advertising_data"
         try:
             with _db_cursor(_get_wb_connection) as (conn, cur):
                 cur.execute(
-                    "SELECT COALESCE(SUM(cost), 0) FROM advertising WHERE date = %s",
+                    "SELECT COALESCE(SUM(reclama), 0) FROM abc_date WHERE date = %s",
                     (target_date,),
                 )
                 row = cur.fetchone()
@@ -263,15 +271,20 @@ class GateChecker:
             )
 
     def _check_margin_fill_rate(self) -> GateResult:
-        """Soft gate: fraction of articles with margin > 0 must exceed 50%."""
+        """Soft gate: fraction of articles with margin > 0 must exceed 50%.
+
+        Note: Margin is stored in abc_date.marga (not a separate fin_data table).
+        Checks recent 30 days to avoid false negatives from historical data gaps.
+        """
         name = "margin_fill_rate"
         try:
             with _db_cursor(_get_wb_connection) as (conn, cur):
                 cur.execute(
                     "SELECT "
-                    "  COUNT(*) FILTER (WHERE margin > 0) AS with_margin, "
+                    "  COUNT(*) FILTER (WHERE marga > 0) AS with_margin, "
                     "  COUNT(*) AS total "
-                    "FROM fin_data"
+                    "FROM abc_date "
+                    "WHERE date >= CURRENT_DATE - INTERVAL '30 days'"
                 )
                 row = cur.fetchone()
                 with_margin = row[0] if row and row[0] is not None else 0
@@ -314,12 +327,15 @@ class GateChecker:
             )
 
     def _check_logistics_data(self, target_date: date) -> GateResult:
-        """Soft gate: logistics delivery costs for target_date > 0."""
+        """Soft gate: logistics costs (logist column in abc_date) for target_date > 0.
+
+        Note: Logistics costs are stored in abc_date.logist (not a separate logistics table).
+        """
         name = "logistics_data"
         try:
             with _db_cursor(_get_wb_connection) as (conn, cur):
                 cur.execute(
-                    "SELECT COALESCE(SUM(delivery_rub), 0) FROM logistics WHERE date = %s",
+                    "SELECT COALESCE(SUM(logist), 0) FROM abc_date WHERE date = %s",
                     (target_date,),
                 )
                 row = cur.fetchone()
