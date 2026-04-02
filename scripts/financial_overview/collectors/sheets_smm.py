@@ -15,10 +15,12 @@ def _gws_read(sheet_id: str, range_str: str) -> list[list[str]]:
     """Read a range from Google Sheets via gws CLI."""
     cmd = ["gws", "sheets", "+read", "--spreadsheet", sheet_id, "--range", range_str]
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-    if result.returncode != 0:
-        raise RuntimeError(f"gws read failed: {result.stderr}")
+    stdout = result.stdout.strip()
+    if result.returncode != 0 or '"error"' in stdout:
+        err = result.stderr.replace("Using keyring backend: keyring", "").strip()
+        raise RuntimeError(f"gws read failed (exit {result.returncode}): {err or stdout[:200]}")
     rows = []
-    for line in result.stdout.strip().split("\n"):
+    for line in stdout.split("\n"):
         if line.strip():
             rows.append(line.split("\t"))
     return rows
