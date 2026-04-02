@@ -317,7 +317,7 @@ class OlegOrchestrator:
                 ],
                 model=self.model,
                 temperature=0.2,
-                max_tokens=1000,
+                max_tokens=2000,
                 response_format={"type": "json_object"},
             )
 
