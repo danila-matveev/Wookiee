@@ -120,7 +120,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 05-01: TBD
+- [ ] 05-01-PLAN.md — Reference standards from Notion + verify financial reports (daily, weekly, monthly)
+- [ ] 05-02-PLAN.md — Verify specialist reports (marketing x2, funnel, DDS, localization) + confirm VER-01
 
 ### Phase 6: Документация и зачистка
 **Goal**: Полная документация работающей системы + удаление всего лишнего с сервера (контейнеры, мёртвый код, старые скрипты)
@@ -147,5 +148,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | 2. Настройка агента | 1/2 | In Progress|  |
 | 3. Надёжность | 2/2 | Complete   | 2026-03-31 |
 | 4. Запуск и доставка | 2/2 | Complete   | 2026-04-01 |
-| 5. Верификация | 0/? | Not started | - |
+| 5. Верификация | 0/2 | Planned | - |
 | 6. Документация и зачистка | 0/? | Not started | - |
