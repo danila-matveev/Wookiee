@@ -56,7 +56,7 @@ class AnomalyMonitor:
         state_store,
         alerter,
         llm_client=None,
-        classify_model: str = "z-ai/glm-4.7-flash",
+        classify_model: str = "google/gemini-3-flash-preview",
         thresholds: Optional[Dict] = None,
         weekend_multiplier: float = 1.5,
         gate_checker=None,
