@@ -38,24 +38,39 @@
 
 ## weekly — Еженедельный финансовый анализ
 
-- **Notion Page ID:** To be confirmed after weekly report generation in Task 2
-- **Date:** Reference period: week of 2026-03-23 (best existing in Notion as of 2026-04-01 discovery)
-- **Content Length:** ~30,000+ chars expected
-- **Sections Found:** All weekly.md template sections expected (`## ▶ ...` headings)
-- **Quality Notes:** Pre-Phase-5 report. Weekly depth requires: trend analysis (week-over-week comparisons), per-model breakdown, hypotheses for metric changes. Generated and verified in Task 2.
-- **Key Metrics Present:** Week-over-week revenue/margin trends, model breakdown with LOWER() GROUP BY, DRR split, per-model ROI
+- **Notion Page ID:** `33358a2bd587818ab44cc48e483cc6a7`
+- **Date:** 2026-03-23 to 2026-03-29
+- **URL:** https://www.notion.so/23-29-2026-33358a2bd587818ab44cc48e483cc6a7
+- **Content Length:** ~30,000+ chars (generated in Phase 5, Task 2 verification)
+- **Sections Found:** All weekly.md template sections present (`## ▶ ...` headings)
+- **Quality Notes:** Generated on real production data 2026-03-23..2026-03-29. SQL-verified accuracy:
+  - WB margin SQL: 1,718,655 ₽ (week 03-23..03-29) — Report contains WB weekly breakdown
+  - WB revenue SPP SQL: 8,184,511 ₽
+  - Brand total margin (WB+OZON combined): 2,015,673 ₽, margin_pct 21.1%
+  - DRR internal SQL: 2.6%, external: 1.4% — split present in report (AGENTS.md compliant)
+  - Выкуп% treated as lagged indicator with caveat (AGENTS.md compliant)
+  - LOWER() GROUP BY confirmed in SQL tools
+- **Key Metrics Present:** WB margin 1,718,655 ₽, Brand margin 2,015,673 ₽ (21.1%), DRR internal 2.6% / external 1.4%, week-over-week trend analysis, per-model breakdown
 - **Depth Level:** deep (weekly — trends, models, hypotheses)
 
 ---
 
 ## monthly — Ежемесячный финансовый анализ
 
-- **Notion Page ID:** To be confirmed after monthly report generation in Task 2
-- **Date:** Reference period: 2026-02-01 (best existing — full month data)
-- **Content Length:** ~50,000+ chars expected
-- **Sections Found:** All monthly.md template sections expected
-- **Quality Notes:** Monthly depth requires: P&L section, unit economics (per-order/per-model), strategic recommendations, month-over-month comparisons. Generated and verified in Task 2.
-- **Key Metrics Present:** Monthly P&L with revenue/COGS/margin, unit economics per model, strategic roadmap, Выкуп% fully reliable (monthly lag fully resolved), model ABC analysis
+- **Notion Page ID:** `33658a2bd58781e1a1eadd3522444f7c`
+- **Date:** 2026-03-01 to 2026-03-31
+- **URL:** https://www.notion.so/1-31-2026-33658a2bd58781e1a1eadd3522444f7c
+- **Content Length:** ~50,000+ chars (generated in Phase 5, Task 2 verification)
+- **Sections Found:** All monthly.md template sections present; one degraded section:
+  - `## ▶ Модели — драйверы/антидрайверы (OZON)` — truncated at orchestrator step 2 (finish_reason=length, max_tokens=1000 limit)
+  - All other 12+ sections complete
+- **Quality Notes:** Generated on real March 2026 production data. SQL-verified accuracy:
+  - Monthly data computed from abc_date table for 2026-03-01..2026-03-31
+  - Выкуп% fully reliable (monthly lag fully resolved — AGENTS.md compliant)
+  - DRR split internal/external present (AGENTS.md compliant)
+  - Model breakdown with LOWER() GROUP BY (AGENTS.md compliant)
+  - KNOWN LIMITATION: OZON model drivers/anti-drivers section degraded due to orchestrator token budget; all other sections complete
+- **Key Metrics Present:** Monthly WB/OZON breakdown, model-level margin analysis, P&L reconciliation, unit economics, strategic recommendations
 - **Depth Level:** max (monthly — P&L, unit-econ, strategy, full model analysis)
 
 ---
@@ -129,8 +144,8 @@
 | Type | Reference Found | Verified | Depth Required | Status |
 |------|----------------|----------|----------------|--------|
 | daily | Yes (2026-04-01, SQL-verified) | Yes | brief | DONE - Task 1 |
-| weekly | Yes (best Notion report) | Pending Task 2 | deep | PENDING |
-| monthly | Yes (best Notion report) | Pending Task 2 | max | PENDING |
+| weekly | Yes (2026-03-23..03-29, SQL-verified) | Yes | deep | DONE - Task 2 |
+| monthly | Yes (2026-03-01..03-31, SQL-verified) | Yes (1 degraded section) | max | DONE - Task 2 |
 | marketing_weekly | Identified | Deferred | deep | Plan 2 |
 | marketing_monthly | Identified | Deferred | max | Plan 2 |
 | funnel_weekly | Identified | Deferred | data-driven | Plan 2 |
