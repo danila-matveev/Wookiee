@@ -65,9 +65,9 @@ SUPABASE_ENV_PATH: str = os.getenv(
 OPENROUTER_API_KEY: str = os.getenv('OPENROUTER_API_KEY', '')
 
 # Model tiers (все через OpenRouter)
-MODEL_LIGHT: str = os.getenv('MODEL_LIGHT', 'z-ai/glm-4.7-flash')
-MODEL_MAIN: str = os.getenv('MODEL_MAIN', 'z-ai/glm-4.7')
-MODEL_HEAVY: str = os.getenv('MODEL_HEAVY', 'google/gemini-3-flash-preview')
+MODEL_LIGHT: str = os.getenv('MODEL_LIGHT', 'google/gemini-3-flash-preview')
+MODEL_MAIN: str = os.getenv('MODEL_MAIN', 'google/gemini-3-flash-preview')
+MODEL_HEAVY: str = os.getenv('MODEL_HEAVY', 'anthropic/claude-sonnet-4-6')
 MODEL_FREE: str = os.getenv('MODEL_FREE', 'openrouter/free')
 
 # Backward-compatible alias for Ibrahim
@@ -78,9 +78,8 @@ SYNC_SCHEDULE: str = os.getenv('SYNC_SCHEDULE', '05:00')
 
 # Pricing per 1K tokens (USD) — OpenRouter pricing
 PRICING: dict = {
-    'z-ai/glm-4.7-flash': {'input': 0.00007, 'output': 0.0003},
-    'z-ai/glm-4.7': {'input': 0.00006, 'output': 0.0004},
     'google/gemini-3-flash-preview': {'input': 0.0005, 'output': 0.003},
+    'anthropic/claude-sonnet-4-6': {'input': 0.003, 'output': 0.015},
     'openrouter/free': {'input': 0.0, 'output': 0.0},
 }
 

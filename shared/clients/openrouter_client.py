@@ -3,9 +3,9 @@ OpenRouter API Client — единый LLM-клиент для всех аген
 
 Использует OpenAI Python SDK с base_url = https://openrouter.ai/api/v1.
 Модельные тиры:
-- LIGHT: z-ai/glm-4.7-flash — классификация, intent detection
-- MAIN: z-ai/glm-4.7 — аналитика, tool-use, отчёты
-- HEAVY: google/gemini-3-flash-preview — сложный reasoning
+- LIGHT: google/gemini-3-flash-preview — классификация, intent detection
+- MAIN: google/gemini-3-flash-preview — аналитика, tool-use, отчёты
+- HEAVY: anthropic/claude-sonnet-4-6 — сложный reasoning, fallback
 - FREE: openrouter/free — last-resort fallback
 """
 import json
@@ -15,7 +15,7 @@ from typing import Dict, Any, Optional, List
 logger = logging.getLogger(__name__)
 
 # Default models
-DEFAULT_MODEL = "z-ai/glm-4.7"
+DEFAULT_MODEL = "google/gemini-3-flash-preview"
 DEFAULT_FALLBACK = "openrouter/free"
 
 
