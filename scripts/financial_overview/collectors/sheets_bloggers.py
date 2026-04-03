@@ -1,6 +1,7 @@
 """Blogger campaigns collector — reads from Google Sheets via gws CLI."""
 from __future__ import annotations
 
+import json as json_mod
 import os
 import subprocess
 import sys
@@ -17,59 +18,83 @@ MONTHS_RU = [
 
 
 def _gws_read(sheet_id: str, range_str: str) -> list[list[str]]:
-    """Read a range from Google Sheets via gws CLI."""
+    """Read a range from Google Sheets via gws CLI. Returns list of rows."""
     cmd = ["gws", "sheets", "+read", "--spreadsheet", sheet_id, "--range", range_str]
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
     stdout = result.stdout.strip()
     if result.returncode != 0 or '"error"' in stdout:
         err = result.stderr.replace("Using keyring backend: keyring", "").strip()
         raise RuntimeError(f"gws read failed (exit {result.returncode}): {err or stdout[:200]}")
-    rows = []
-    for line in stdout.split("\n"):
-        if line.strip():
-            rows.append(line.split("\t"))
-    return rows
+    data = json_mod.loads(stdout)
+    return data.get("values", [])
 
 
 def _safe_float(val) -> float:
     if not val:
         return 0.0
     try:
-        return float(str(val).replace(",", ".").replace(" ", "").replace("\xa0", ""))
+        cleaned = (str(val)
+                   .replace(",", ".")
+                   .replace(" ", "")
+                   .replace("\xa0", "")
+                   .replace("₽", "")
+                   .replace("р.", "")
+                   .replace("%", "")
+                   .strip())
+        return float(cleaned)
     except (ValueError, TypeError):
         return 0.0
+
+
+def _clean_month_name(raw: str) -> str:
+    """Strip quotes, commas, and normalize month header."""
+    return raw.strip().strip('"').strip("'").rstrip(",").strip()
+
+
+def _is_month_header(cell: str) -> bool:
+    """Check if cell looks like a month header (e.g. 'Январь 2026', '"МАРТ 2025"')."""
+    cleaned = _clean_month_name(cell).lower()
+    return (any(m in cleaned for m in MONTHS_RU) and
+            any(y in cleaned for y in ["2024", "2025", "2026"]))
 
 
 def collect_bloggers(a_start: str, a_end: str, b_start: str, b_end: str) -> dict:
     """Collect blogger campaign data from Google Sheets.
 
-    Reads 'Блогеры' sheet and aggregates by month.
-    Monthly aggregates: budget, placements, CPM, CPC, clicks, carts, orders, CR.
+    Sheet structure ('Блогеры'):
+    - Row 0: header (Никнейм, Маркетолог, Ссылка, неделя, месяц, Дата публикации,
+                      Артикул, Вид рекламы, Магазин, Канал, Стоимость размещения[10],
+                      Стоимость доставки[11], Себестоймость комплектов[12],
+                      Итоговая цена[13], ..., Просмотры ФАКТ[23], CPM ФАКТ[24],
+                      Клики[25], CTR[26], CPC[27], Корзин[28], CR в корзину[29],
+                      Заказы[30], CR в заказ[31])
+    - Rows: data interleaved with month headers in column A
     """
     rows = _gws_read(SHEET_ID, "'Блогеры'!A1:AF800")
 
     monthly = {}
     current_month = None
 
-    for row in rows[2:]:  # Skip header rows
+    for row in rows[1:]:  # Skip header row
         if not row or not row[0]:
             continue
 
         first_cell = row[0].strip()
-        # Detect month headers like "Октябрь 2025", "Январь 2026"
-        if any(m in first_cell.lower() for m in MONTHS_RU) and \
-                any(y in first_cell for y in ["2024", "2025", "2026"]):
-            current_month = first_cell
+
+        # Detect month headers
+        if _is_month_header(first_cell):
+            current_month = _clean_month_name(first_cell)
             monthly[current_month] = {
                 "placements": 0, "budget": 0, "views": 0,
                 "clicks": 0, "carts": 0, "orders": 0,
             }
             continue
 
-        if current_month and len(row) >= 6:
-            spend = _safe_float(row[13]) if len(row) > 13 else 0  # Column N = итоговая цена
+        if current_month and len(row) >= 11:
+            # Primary spend: col 13 (Итоговая цена), fallback: col 10 (Стоимость размещения)
+            spend = _safe_float(row[13]) if len(row) > 13 else 0
             if spend <= 0:
-                spend = _safe_float(row[10]) if len(row) > 10 else 0  # Column K = стоимость
+                spend = _safe_float(row[10]) if len(row) > 10 else 0
 
             if spend > 0:
                 monthly[current_month]["placements"] += 1
