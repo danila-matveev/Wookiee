@@ -26,28 +26,32 @@ You have access to Bash. Use it to fetch additional data from `shared.data_layer
 
 ### Section A: P&L Brand Total
 
-Build a full P&L funnel table (see format below) for WB, OZON, and combined:
-- Both M-1 (base month) and M-2 (previous month) columns
+Build a full P&L funnel table for WB, OZON, and combined:
+- M-1 (base month) fact column
+- 1 recommended plan column for the target month
 - Absolute values and Δ% change
-- All metrics: revenue, SPP, cost_of_goods, logistics, storage, commission, NDS, adv_internal, adv_external, margin1, margin2, returns, penalties, deductions
+- All metrics: revenue, SPP, cost_of_goods, logistics, storage, commission, NDS, adv_internal, adv_external, **margin** (single, includes ALL ads)
 - DRR table with internal/external split
-- Two plan scenarios for the target month (Сц.A optimal, Сц.B aggressive)
 
 **Critical rules:**
 - SPP % when combining channels = weighted average: sum(spp_amount) / sum(revenue_before_spp) * 100
 - DRR always with internal/external split
-- M-1 AND M-2 must both be present (not dashes)
+- **Single margin** = revenue − all costs − all ads (internal + external). Do NOT split into M-1/M-2.
 - Buyout % is a lagged metric (3-21 day lag) — do NOT use as a reason for daily margin changes
+- Produce 1 recommended plan scenario (not A/B). Base it on realistic projections.
 
 ### Section B: Active Models
 
-Build model-level P&L table with:
-- WB Rev, OZON Rev, Total Rev
-- Internal ads, external ads, total ads
-- M-1 (₽ and %), M-2 (₽ and %), DRR, ROAS (WB)
-- m/m comparison for key metrics
+Build model-level plan table with:
+- Plan Revenue, M-1 Fact Revenue, Δ%
+- Total ads (internal + external)
+- **Margin** (single, ₽ and %)
+- DRR %
+- "Key Change" column: CFO decision summary per model (1 line)
 
-**Critical rule:** GROUP BY model always uses LOWER(). If you see duplicate models with different case (e.g., "wendy" and "Wendy"), they are the SAME model — merge them.
+**Critical rule:** GROUP BY model always uses LOWER().
+
+**Output columns:** Модель | Выручка план,К | Выручка M-1,К | Δ% | Реклама,К | Маржа,К | Маржа% | Ключевое изменение
 
 ### Section C: Exiting Models
 
@@ -68,6 +72,9 @@ for r in rows: print(r)
 
 ## Output Format
 
-Produce structured markdown for sections A, B, C with all required tables. Follow the table format from the April 2026 pilot (columns: Модель | WB Rev,К | OZ Rev,К | Σ Rev,К | Рекл вн,К | Рекл вш,К | Σ Рекл,К | М-1,К | М-1% | М-2,К | М-2% | DRR | ROAS WB).
+Produce structured markdown for sections A, B, C with all required tables.
+- Table headers: human-readable Russian, no abbreviations
+- Single margin throughout (no M-1/M-2 distinction)
+- 1 plan scenario (not A/B)
 
 End with a summary of key anomalies found for other agents to note.
