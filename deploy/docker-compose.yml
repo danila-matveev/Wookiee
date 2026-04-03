@@ -195,12 +195,14 @@ services:
           memory: 256M
 
   # ── Dashboard API: HTTP-эндпоинт для дашборда аналитики ──
+  # НЕ деплоится на прод — запуск через: docker compose --profile optional up -d
   dashboard-api:
     build:
       context: ..
       dockerfile: deploy/Dockerfile.dashboard_api
     container_name: wookiee_dashboard_api
     restart: unless-stopped
+    profiles: [optional]
 
     env_file:
       - ../.env
@@ -232,12 +234,14 @@ services:
           memory: 256M
 
   # ── Knowledge Base API: векторный поиск по базе знаний ──
+  # НЕ деплоится на прод — запуск через: docker compose --profile optional up -d
   knowledge-base:
     build:
       context: ..
       dockerfile: deploy/Dockerfile.knowledge_base
     container_name: wookiee_knowledge_base
     restart: unless-stopped
+    profiles: [optional]
 
     env_file:
       - ../.env
