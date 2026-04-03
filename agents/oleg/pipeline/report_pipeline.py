@@ -156,17 +156,40 @@ def _load_required_sections(report_type: ReportType) -> List[str]:
     If template_path is not configured or file not found, returns empty list.
     Empty list means validate_and_degrade is a no-op and has_substantial_content
     falls back to overall length check.
+
+    Filters out documentation headings (## ВАЖНО:, ## Ожидаемая структура, etc.)
+    that describe how the template works rather than expected report sections.
+    For Python-generated report types (funnel_weekly) where the template is purely
+    instructional, returns empty list — validation falls back to length check.
     """
+    # These report types have instructional/data-driven templates where ## headings
+    # describe structure guidance, not expected output sections. The LLM generates
+    # its own headings. Validation falls back to overall length check (> 500 chars).
+    _SKIP_SECTION_VALIDATION = {
+        ReportType.FUNNEL_WEEKLY,    # Python-generated (build_funnel_report)
+        ReportType.FINOLOG_WEEKLY,   # data-driven, no LLM depth markers
+        ReportType.LOCALIZATION_WEEKLY,  # data-driven, no LLM depth markers
+    }
+    if report_type in _SKIP_SECTION_VALIDATION:
+        return []
+
     config = REPORT_CONFIGS.get(report_type)
     if not config or not config.template_path:
         return []
     try:
         with open(config.template_path) as f:
             content = f.read()
+
+        # Documentation heading prefixes to exclude from required sections
+        _DOC_PREFIXES = ("## ВАЖНО:", "## Ожидаемая структура", "## Бенчмарки",
+                         "## Маркетинговая воронка", "## Анализ аномалий",
+                         "## Связь с финансовым")
+
         return [
             line.strip()
             for line in content.splitlines()
             if line.strip().startswith("## ")
+            and not any(line.strip().startswith(p) for p in _DOC_PREFIXES)
         ]
     except FileNotFoundError:
         logger.warning(f"Template not found for {report_type.value}: {config.template_path}")
