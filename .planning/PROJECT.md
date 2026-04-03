@@ -40,27 +40,19 @@
 ### v1.0 — UX Redesign (completed 2026-03-30)
 Product Matrix Editor → рабочая PIM-система: Notion-like table view, detail panel, фильтрация, CRUD, все поля из спецификации.
 
-## Current Milestone: v2.0 — Упрощение системы отчётов
+## Completed Milestones
 
-**Goal:** Одна простая рабочая система аналитических отчётов — V2 оркестратор (agents/oleg/), без V3/LangGraph, стабильная генерация каждый день.
+### v2.0 — Упрощение системы отчётов (shipped 2026-04-03)
+Одна рабочая система (V2 оркестратор), 8 типов отчётов, reliability pipeline, cron scheduling, полная документация. V3 удалена.
 
-**Current state:** Phase 1 (очистка V3) complete, Phase 2 (настройка агента) complete, Phase 3 (reliability pipeline) complete, Phase 4 (запуск и доставка) complete — GateChecker (3 hard + 3 soft gates), ReportType registry (8 types), report_pipeline with retry/degradation/validation, unified runner `scripts/run_report.py` with cron scheduling every 30 min (07:00-18:00 MSK), lock-files, stub notifications. 85+ tests passing.
+## Current State
 
-**Target features:**
-- ~~Удаление agents/v3/ целиком (LangGraph, 24 микроагента, conductor, APScheduler)~~ ✓ Phase 1
-- ~~Разбивка playbook.md на модули (core + templates + rules) без потери качества~~ ✓ Phase 2
-- ~~Глубина анализа по периоду: daily=компактный, weekly=глубокий, monthly=максимальный~~ ✓ Phase 2
-- ~~Простые toggle-заголовки в структуре отчётов~~ ✓ Phase 2
-- ~~8 типов отчётов: финансовый (daily/weekly/monthly), маркетинговый (weekly/monthly), воронка продаж, ДДС, локализация~~ ✓ Phase 3
-- ~~Pre-flight проверка данных перед запуском агентов~~ ✓ Phase 3
-- ~~Retry при пустом/неполном ответе LLM~~ ✓ Phase 3
-- ~~Валидация полноты секций перед публикацией в Notion~~ ✓ Phase 3
-- ~~Русские названия типов отчётов~~ ✓ Phase 3
-- ~~Простые cron-задачи вместо APScheduler~~ ✓ Phase 4
+Оба milestone (v1.0 PIM + v2.0 Reports) завершены. Следующий milestone не начат.
 
-**Принцип качества отчёта:** полнота данных, точность, единообразный формат, глубина анализа соответствует периоду, обоснованные гипотезы на базе данных.
-
-**Детальный анализ V2 vs V3:** см. `~/.claude/plans/glimmering-forging-babbage.md`
+**Работающие системы:**
+- Product Matrix (wookiee-hub) — PIM с Notion-like UX
+- Oleg V2 (agents/oleg/) — 8 типов аналитических отчётов, cron каждые 30 мин
+- 6 Docker-контейнеров на сервере + n8n + Caddy
 
 ## Evolution
 
@@ -80,4 +72,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-01*
+*Last updated: 2026-04-03 after v2.0 milestone*
