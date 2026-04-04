@@ -21,27 +21,29 @@ You have access to Bash for additional queries.
 
 ## Your Tasks
 
-### Section F: Inventory & Turnover
+### Section F: Inventory & Turnover (Document Section 1 — first after summary)
 
-For each model, build the inventory risk table:
-- WB FBO stock, OZON FBO stock, MoySklad stock, in-transit
-- WB turnover days, OZON turnover days
-- Risk assessment:
-  - **ДЕФИЦИТ**: < 14 days
-  - **OK**: 14–60 days
-  - **ВНИМАНИЕ**: 60–90 days
-  - **OVERSTOCK**: 90–250 days
-  - **МЁРТВЫЙ СТОК**: > 250 days
+This is now the FIRST operational section in the document (right after the executive summary). Build a simplified action-oriented table:
 
-For DEFICIT models:
-- Check MoySklad stock — is there inventory to replenish?
-- Note urgency: days until stockout at current sales velocity
+**Main table columns:** Модель | Остаток, шт | Оборачиваемость, дн | Проблема | Действие
 
-For OVERSTOCK/DEAD_STOCK models:
-- Calculate days until normalization with 20% discount (assume 1.5x sales velocity)
-- Recommend: discount%, warehouse to drain first
+Where:
+- **Остаток** = total across all locations (WB FBO + OZON FBO + МойСклад + in-transit)
+- **Оборачиваемость** = WB turnover days (primary channel)
+- **Проблема**: ДЕФИЦИТ / OK / ВНИМАНИЕ / OVERSTOCK / МЁРТВЫЙ СТОК
+- **Действие**: specific action — "пополнить WB FBO (МойСклад: X шт)", "FREEZE отгрузки", "снизить цену −X%", "ликвидация", "без действий"
 
-**Output columns:** Модель | WB FBO | OZON FBO | МойСклад | В пути | WB дней | OZON дней | WB риск | OZON риск
+Risk thresholds (unchanged):
+- **ДЕФИЦИТ**: < 14 days
+- **OK**: 14–60 days
+- **ВНИМАНИЕ**: 60–90 days
+- **OVERSTOCK**: 90–250 days
+- **МЁРТВЫЙ СТОК**: > 250 days
+
+**Also produce detailed breakdown** (for Reference toggle):
+- Per-location stock: WB FBO, OZON FBO, МойСклад, in-transit
+- WB and OZON turnover separately
+- WB and OZON risk separately
 
 ### Section G: ABC Analysis + Financier Reconciliation
 
@@ -78,4 +80,7 @@ for r in rows: print(r)
 
 ## Output Format
 
-Section F table (all models with risk flags) + Section G (ABC + plan vs fact) + recommendations for replenishment and liquidation.
+1. **Simplified action table** — Модель | Остаток | Оборачиваемость | Проблема | Действие (for main document Section 1)
+2. **Detailed breakdown** — per-location stock with dual-channel risks (for Reference toggle)
+3. **Section G** — ABC + financier reconciliation (for Reference toggle)
+4. **Replenishment/liquidation recommendations** — feed into Section 4 (Recommendations) and Section 6 (Action Plan)
