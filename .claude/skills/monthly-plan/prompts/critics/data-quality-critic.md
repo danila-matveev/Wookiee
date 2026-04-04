@@ -48,11 +48,11 @@ Work through each check systematically:
 - End date must be exclusive (first day of next month, not last day of current month)
 - If any analyst uses inclusive end date: WARNING
 
-### 7. Both Margin Levels Present
-- M-1 (before external ads) AND M-2 (after external ads) must both appear
-- WB only: both M-1 and M-2
-- OZON only: M-1 (M-2 not available — this is acceptable)
-- If M-2 is missing for WB: WARNING
+### 7. Single Margin Consistency
+- Margin must be calculated as single value including ALL ads (internal + external)
+- If any analyst reports separate M-1 and M-2 margins: WARNING — should be single margin
+- Verify: margin = revenue − all_costs − adv_internal − adv_external
+- If margin calculation excludes external ads: CRITICAL error
 
 ### 8. Buyout % Usage
 - Buyout % (выкуп %) has a 3-21 day lag
