@@ -12,6 +12,10 @@ from services.logistics_audit.api.wb_penalties import (
     fetch_measurement_penalties, fetch_deductions,
 )
 from services.logistics_audit.calculators.tariff_periods import get_base_tariffs
+from services.logistics_audit.calculators.warehouse_coef_resolver import (
+    resolve_warehouse_coef,
+    load_supabase_tariffs,
+)
 from services.logistics_audit.calculators.logistics_overpayment import (
     calculate_row_overpayment,
     OverpaymentResult,
@@ -99,6 +103,10 @@ def run_audit(config: AuditConfig, output_dir: str = ".") -> str:
 
     wb_client.close()
 
+    # === Step 2d: Load Supabase historical tariffs for coefficient resolution ===
+    logger.info("Loading Supabase historical tariffs...")
+    supabase_tariffs = load_supabase_tariffs(config.date_from, config.date_to)
+
     # === Step 3: Calculate overpayments (per-row tariffs) ===
     results: list[OverpaymentResult | None] = []
     coefs: list[float] = []
@@ -106,11 +114,16 @@ def run_audit(config: AuditConfig, output_dir: str = ".") -> str:
     for row in logistics_rows:
         vol = card_dims.get(row.nm_id, {}).get("volume", 0)
 
-        # Determine coefficient
-        if row.dlv_prc > 0:
-            coef = row.dlv_prc
-        else:
-            coef = 0.0
+        # Resolve coefficient with 3-tier priority
+        coef_result = resolve_warehouse_coef(
+            dlv_prc=row.dlv_prc,
+            fixed_coef=row.dlv_prc,  # dlv_prc is the fixed coef when fixation active
+            fixation_end=row.fix_tariff_date_to,
+            order_date=row.order_dt,
+            warehouse_name=row.office_name,
+            supabase_tariffs=supabase_tariffs,
+        )
+        coef = coef_result.value
 
         coefs.append(coef)
 
