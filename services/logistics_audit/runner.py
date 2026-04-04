@@ -72,7 +72,15 @@ def run_audit(config: AuditConfig, output_dir: str = ".") -> str:
     orders = wb_client.get_supplier_orders(date_from=orders_from)
     logger.info(f"Orders fetched: {len(orders)}")
 
-    week_to_il, il_data = calculate_weekly_il(orders, config.date_from, config.date_to)
+    # Load IL overrides
+    from services.logistics_audit.config import load_il_overrides
+    il_overrides = load_il_overrides()
+    if il_overrides:
+        logger.info(f"IL overrides loaded: {len(il_overrides)} weeks")
+
+    week_to_il, il_data = calculate_weekly_il(
+        orders, config.date_from, config.date_to, il_overrides=il_overrides,
+    )
     il_values = sorted(week_to_il.items())
     for mon, il in il_values:
         logger.info(f"  Week {mon}: IL={il:.2f}")
@@ -198,13 +206,29 @@ def run_audit(config: AuditConfig, output_dir: str = ".") -> str:
 if __name__ == "__main__":
     import sys
     logging.basicConfig(level=logging.INFO)
-    from services.logistics_audit.config import load_config
+    from services.logistics_audit.config import load_config, load_il_overrides
+    from services.logistics_audit.calculators.weekly_il_calculator import print_calibration_table
 
-    cabinet = sys.argv[1] if len(sys.argv) > 1 else "OOO"
-    date_from = sys.argv[2] if len(sys.argv) > 2 else None
-    date_to = sys.argv[3] if len(sys.argv) > 3 else None
-    ktr = float(sys.argv[4]) if len(sys.argv) > 4 else 1.0
+    # Parse args
+    args = sys.argv[1:]
+    calibrate_mode = "--calibrate" in args
+    args = [a for a in args if a != "--calibrate"]
+
+    cabinet = args[0] if len(args) > 0 else "OOO"
+    date_from = args[1] if len(args) > 1 else None
+    date_to = args[2] if len(args) > 2 else None
+    ktr = float(args[3]) if len(args) > 3 else 1.0
 
     cfg = load_config(cabinet, date_from, date_to, ktr)
-    output = run_audit(cfg)
-    print(f"Done: {output}")
+
+    if calibrate_mode:
+        from shared.clients.wb_client import WBClient
+        wb_client = WBClient(api_key=cfg.api_key, cabinet_name="audit")
+        orders_from = (cfg.date_from - timedelta(days=7)).isoformat()
+        orders = wb_client.get_supplier_orders(date_from=orders_from)
+        wb_client.close()
+        il_overrides = load_il_overrides()
+        print_calibration_table(orders, cfg.date_from, cfg.date_to, il_overrides)
+    else:
+        output = run_audit(cfg)
+        print(f"Done: {output}")

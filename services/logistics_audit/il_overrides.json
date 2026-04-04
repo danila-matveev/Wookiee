@@ -1,0 +1,4 @@
+{
+    "_comment": "Manual IL overrides by week start date (Monday). Values from WB dashboard.",
+    "_usage": "Compare --calibrate output with WB dashboard, add overrides for mismatches."
+}
