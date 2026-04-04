@@ -56,10 +56,10 @@ def generate_workbook(
     for name in SHEET_NAMES:
         sheets[name] = wb.create_sheet(name)
 
-    # Aggregate overpayment by report
+    # Aggregate overpayment by report (exclude negative differences)
     overpay_by_report: dict[int, float] = {}
     for row, res in zip(logistics_rows, overpayment_results):
-        if res is not None:
+        if res is not None and res.overpayment >= 0:
             rid = row.realizationreport_id
             overpay_by_report[rid] = overpay_by_report.get(rid, 0) + res.overpayment
 
