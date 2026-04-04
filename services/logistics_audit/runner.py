@@ -11,7 +11,7 @@ from services.logistics_audit.api.wb_warehouse_remains import fetch_warehouse_re
 from services.logistics_audit.api.wb_penalties import (
     fetch_measurement_penalties, fetch_deductions,
 )
-from services.logistics_audit.calculators.tariff_calibrator import calibrate_base_tariff
+from services.logistics_audit.calculators.tariff_periods import get_base_tariffs
 from services.logistics_audit.calculators.logistics_overpayment import (
     calculate_row_overpayment,
     OverpaymentResult,
@@ -99,36 +99,10 @@ def run_audit(config: AuditConfig, output_dir: str = ".") -> str:
 
     wb_client.close()
 
-    # === Step 3: Calibrate base tariff ===
-    calib_rows = []
-    for row in logistics_rows:
-        vol = card_dims.get(row.nm_id, {}).get("volume", 0)
-        if vol > 0:
-            calib_rows.append({
-                "delivery_rub": row.delivery_rub,
-                "dlv_prc": row.dlv_prc,
-                "volume": vol,
-            })
-
-    calibrated = calibrate_base_tariff(calib_rows)
-    # Use median IL to reverse-calculate base tariff
-    if il_values:
-        median_il = sorted([il for _, il in il_values])[len(il_values) // 2]
-    else:
-        median_il = config.ktr if config.ktr > 0 else 1.0
-
-    if calibrated and median_il > 0:
-        estimated_base = calibrated / median_il
-        logger.info(f"Calibrated base (≤1L): {estimated_base:.2f}₽ "
-                     f"(median base*IL={calibrated:.2f}, median IL={median_il:.2f})")
-    else:
-        estimated_base = config.base_tariff_1l
-        logger.info(f"Using default base: {estimated_base}₽")
-
-    # === Step 4: Calculate overpayments ===
+    # === Step 3: Calculate overpayments (per-row tariffs) ===
     results: list[OverpaymentResult | None] = []
     coefs: list[float] = []
-    row_ils: list[float] = []  # actual IL used per row
+    row_ils: list[float] = []
     for row in logistics_rows:
         vol = card_dims.get(row.nm_id, {}).get("volume", 0)
 
@@ -140,11 +114,13 @@ def run_audit(config: AuditConfig, output_dir: str = ".") -> str:
 
         coefs.append(coef)
 
-        # Determine base tariff for this row
-        if vol <= 1:
-            base = estimated_base
-        else:
-            base = config.base_tariff_1l
+        # Per-row tariffs based on period + sub-liter tiers
+        base_1l, extra_l = get_base_tariffs(
+            order_date=row.order_dt,
+            fixation_start=row.fix_tariff_date_from,
+            fixation_end=row.fix_tariff_date_to,
+            volume=vol,
+        )
 
         # Per-row IL from weekly calculation
         row_il = get_il_for_date(week_to_il, row.order_dt)
@@ -156,8 +132,8 @@ def run_audit(config: AuditConfig, output_dir: str = ".") -> str:
             delivery_rub=row.delivery_rub,
             volume=vol,
             coef=coef,
-            base_1l=base,
-            extra_l=config.base_tariff_extra_l,
+            base_1l=base_1l,
+            extra_l=extra_l,
             order_dt=row.order_dt,
             ktr_manual=row_il,
             is_fixed_rate=row.is_fixed_rate,
