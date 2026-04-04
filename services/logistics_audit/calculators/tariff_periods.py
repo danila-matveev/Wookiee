@@ -58,8 +58,6 @@ def get_base_tariffs(
         for max_vol, first_l, extra_l in SUB_LITER_TIERS:
             if volume <= max_vol:
                 return first_l, extra_l
-        # volume between 0.8 and 1.0 → last tier
-        return SUB_LITER_TIERS[-1][1], SUB_LITER_TIERS[-1][2]
 
     # Standard period lookup
     for period_start, first_l, extra_l in TARIFF_PERIODS:

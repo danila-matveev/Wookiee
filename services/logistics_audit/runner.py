@@ -125,7 +125,7 @@ def run_audit(config: AuditConfig, output_dir: str = ".") -> str:
         # Resolve coefficient with 3-tier priority
         coef_result = resolve_warehouse_coef(
             dlv_prc=row.dlv_prc,
-            fixed_coef=row.dlv_prc,  # dlv_prc is the fixed coef when fixation active
+            fixed_coef=row.dlv_prc,  # WB API: dlv_prc contains fixation coef when fixation is active
             fixation_end=row.fix_tariff_date_to,
             order_date=row.order_dt,
             warehouse_name=row.office_name,
