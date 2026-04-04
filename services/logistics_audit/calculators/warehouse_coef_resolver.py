@@ -62,12 +62,13 @@ def load_supabase_tariffs(date_from: date, date_to: date) -> dict[str, dict[date
         logger.warning("psycopg2 not installed, skipping Supabase tariff lookup")
         return {}
 
+    # Same env vars as etl/tariff_collector.py (Supabase connection)
     config = {
-        "host": os.getenv("POSTGRES_HOST_SUPABASE", os.getenv("POSTGRES_HOST", "localhost")),
-        "port": int(os.getenv("POSTGRES_PORT_SUPABASE", os.getenv("POSTGRES_PORT", "5432"))),
-        "database": os.getenv("POSTGRES_DB_SUPABASE", os.getenv("POSTGRES_DB", "postgres")),
-        "user": os.getenv("POSTGRES_USER_SUPABASE", os.getenv("POSTGRES_USER", "postgres")),
-        "password": os.getenv("POSTGRES_PASSWORD_SUPABASE", os.getenv("POSTGRES_PASSWORD", "")),
+        "host": os.getenv("POSTGRES_HOST", "localhost"),
+        "port": int(os.getenv("POSTGRES_PORT", "5432")),
+        "database": os.getenv("POSTGRES_DB", "postgres"),
+        "user": os.getenv("POSTGRES_USER", "postgres"),
+        "password": os.getenv("POSTGRES_PASSWORD", ""),
         "sslmode": "require",
     }
 
