@@ -8,7 +8,7 @@ HEADERS = [
     "№ отчёта", "Номер поставки", "Код номенклатуры", "Дата заказа",
     "Услуги по доставке", "Склад", "ШК", "Srid", "Фикс. коэф.",
     "Коэф. для расчёта", "Объём", "КТР", "Расчётная стоимость",
-    "Разница (переплата)", "Включено в итог",
+    "Разница (переплата)",
 ]
 
 
@@ -20,39 +20,44 @@ def write_overpayment_values(
     coefs: list[float],
     row_ils: list[float] | None = None,
 ) -> None:
-    """Write Sheet 2 with pre-calculated overpayment values."""
+    """Write Sheet 2 with pre-calculated overpayment values.
+
+    Per lawyer recommendation: negative differences are completely excluded
+    from this sheet (not just marked).
+    """
     for col, h in enumerate(HEADERS, 1):
         ws.cell(1, col, h)
 
     total_overpayment = 0.0
-    for i, (row, res, coef) in enumerate(zip(rows, results, coefs), 2):
+    excel_row = 2
+    for i, (row, res, coef) in enumerate(zip(rows, results, coefs)):
         if res is None:
             continue
-        idx = i - 2
-        included = res.overpayment >= 0
-        ws.cell(i, 1, row.realizationreport_id)
-        ws.cell(i, 2, row.gi_id)
-        ws.cell(i, 3, row.nm_id)
-        ws.cell(i, 4, str(row.order_dt) if row.order_dt else "")
-        ws.cell(i, 5, row.delivery_rub)
-        ws.cell(i, 6, row.office_name)
-        ws.cell(i, 7, row.shk_id)
-        ws.cell(i, 8, row.srid)
-        ws.cell(i, 9, row.dlv_prc)
-        ws.cell(i, 10, coef)
-        ws.cell(i, 11, volumes.get(row.nm_id, 0))
-        if row_ils is not None and idx < len(row_ils):
-            ws.cell(i, 12, row_ils[idx])
+        # Exclude negative differences entirely (lawyer recommendation №5)
+        if res.overpayment < 0:
+            continue
+
+        ws.cell(excel_row, 1, row.realizationreport_id)
+        ws.cell(excel_row, 2, row.gi_id)
+        ws.cell(excel_row, 3, row.nm_id)
+        ws.cell(excel_row, 4, str(row.order_dt) if row.order_dt else "")
+        ws.cell(excel_row, 5, row.delivery_rub)
+        ws.cell(excel_row, 6, row.office_name)
+        ws.cell(excel_row, 7, row.shk_id)
+        ws.cell(excel_row, 8, row.srid)
+        ws.cell(excel_row, 9, row.dlv_prc)
+        ws.cell(excel_row, 10, coef)
+        ws.cell(excel_row, 11, volumes.get(row.nm_id, 0))
+        if row_ils is not None and i < len(row_ils):
+            ws.cell(excel_row, 12, row_ils[i])
         else:
-            ws.cell(i, 12, res.calculated_cost)
-        ws.cell(i, 13, res.calculated_cost)
-        ws.cell(i, 14, res.overpayment)
-        ws.cell(i, 15, "Да" if included else "Нет")
-        if included:
-            total_overpayment += res.overpayment
+            ws.cell(excel_row, 12, res.calculated_cost)
+        ws.cell(excel_row, 13, res.calculated_cost)
+        ws.cell(excel_row, 14, res.overpayment)
+        total_overpayment += res.overpayment
+        excel_row += 1
 
     # Summary row at top
     ws.insert_rows(1)
     ws.cell(1, 1, "ИТОГО переплата:")
     ws.cell(1, 14, round(total_overpayment, 2))
-    ws.cell(1, 15, "(только положительные)")
