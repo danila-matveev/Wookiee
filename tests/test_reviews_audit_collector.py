@@ -40,16 +40,15 @@ class TestGetWbBuyoutsReturnsByModel:
             assert result[0][1] == "wendy"
 
 
-class TestCollectData:
-    """Tests for the data collection script."""
+class TestCollectDataV2:
+    """Tests for v2 data collection script."""
 
     def test_script_importable(self):
-        """Collector module should be importable."""
         from scripts.reviews_audit.collect_data import collect_reviews_data
         assert callable(collect_reviews_data)
 
-    def test_output_structure(self):
-        """Output JSON should have expected top-level keys."""
+    def test_output_structure_v2(self):
+        """Output JSON should have v2 keys."""
         from scripts.reviews_audit.collect_data import collect_reviews_data
 
         with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
@@ -63,7 +62,8 @@ class TestCollectData:
                     "productValuation": 5,
                     "createdDate": "2026-03-15T10:00:00Z",
                     "answer": {"text": "Спасибо!"},
-                    "productDetails": {"nmId": 12345},
+                    "productDetails": {"nmId": 12345, "supplierArticle": "ruby/розовый"},
+                    "color": "розовый",
                 }
             ]
             mock_questions = [
@@ -72,22 +72,28 @@ class TestCollectData:
                     "text": "Какой размер выбрать?",
                     "createdDate": "2026-03-16T10:00:00Z",
                     "answer": {"text": "Рекомендуем M"},
-                    "productDetails": {"nmId": 12345},
+                    "productDetails": {"nmId": 12345, "supplierArticle": "ruby/розовый"},
                 }
             ]
-            mock_chats = []
-            mock_orders = [("current", "wendy", 100, 85, 15)]
+            mock_orders_model = [("current", "ruby", 100, 85, 15)]
+            mock_orders_artikul = [("ruby", "ruby/розовый", 60, 50, 10)]
+            mock_orders_monthly = [("2026-03-01", "ruby", 100, 85, 15)]
 
             with patch(
                 "scripts.reviews_audit.collect_data.WBClient"
             ) as MockClient, patch(
                 "scripts.reviews_audit.collect_data.get_wb_buyouts_returns_by_model",
-                return_value=mock_orders,
+                return_value=mock_orders_model,
+            ), patch(
+                "scripts.reviews_audit.collect_data.get_wb_buyouts_returns_by_artikul",
+                return_value=mock_orders_artikul,
+            ), patch(
+                "scripts.reviews_audit.collect_data.get_wb_buyouts_returns_monthly",
+                return_value=mock_orders_monthly,
             ):
                 instance = MockClient.return_value
                 instance.get_all_feedbacks.return_value = mock_feedbacks
                 instance.get_all_questions.return_value = mock_questions
-                instance.get_seller_chats.return_value = mock_chats
 
                 collect_reviews_data(
                     date_from="2026-03-01",
@@ -100,15 +106,44 @@ class TestCollectData:
 
             assert "feedbacks" in data
             assert "questions" in data
-            assert "chats" in data
-            assert "orders_stats" in data
+            assert "orders_by_model" in data
+            assert "orders_by_artikul" in data
+            assert "orders_monthly" in data
             assert "metadata" in data
             assert data["metadata"]["date_from"] == "2026-03-01"
             assert data["metadata"]["date_to"] == "2026-04-01"
+            assert data["metadata"]["cabinet"] == "both"
             assert len(data["feedbacks"]) == 1
             assert len(data["questions"]) == 1
+            assert len(data["orders_by_artikul"]) == 1
+            assert len(data["orders_monthly"]) == 1
         finally:
             os.unlink(output_path)
+
+
+class TestDeduplicate:
+    """Tests for _deduplicate helper."""
+
+    def test_removes_duplicates(self):
+        from scripts.reviews_audit.collect_data import _deduplicate
+        items = [
+            {"id": "a", "text": "first"},
+            {"id": "a", "text": "dup"},
+            {"id": "b", "text": "second"},
+        ]
+        result = _deduplicate(items, key="id")
+        assert len(result) == 2
+        assert result[0]["text"] == "first"
+
+    def test_keeps_items_without_key(self):
+        from scripts.reviews_audit.collect_data import _deduplicate
+        items = [{"text": "no id"}, {"text": "also no id"}]
+        result = _deduplicate(items, key="id")
+        assert len(result) == 2
+
+    def test_empty_list(self):
+        from scripts.reviews_audit.collect_data import _deduplicate
+        assert _deduplicate([], key="id") == []
 
 
 class TestGetWbBuyoutsReturnsByArtikul:
