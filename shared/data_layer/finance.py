@@ -15,6 +15,7 @@ __all__ = [
     "get_ozon_finance",
     "get_ozon_by_model",
     "get_ozon_orders_by_model",
+    "get_wb_buyouts_returns_by_model",
 ]
 
 
@@ -121,6 +122,47 @@ def get_wb_orders_by_model(current_start, prev_start, current_end):
     ORDER BY 1, 4 DESC;
     """
     cur.execute(query, (current_start, prev_start, current_end))
+    results = cur.fetchall()
+
+    cur.close()
+    conn.close()
+    return results
+
+
+def get_wb_buyouts_returns_by_model(
+    current_start: str, prev_start: str, current_end: str
+) -> list[tuple]:
+    """Get buyout and return counts by model for WB.
+
+    Uses the orders table to compute:
+    - orders_count: total orders
+    - buyout_count: orders where isCancel == 0 (not cancelled/returned)
+    - return_count: orders where isCancel == 1 (cancelled/returned)
+
+    Args:
+        current_start: Start of current period (YYYY-MM-DD)
+        prev_start: Start of previous period (YYYY-MM-DD)
+        current_end: End of analysis window (YYYY-MM-DD)
+
+    Returns:
+        List of (period, model, orders_count, buyout_count, return_count)
+    """
+    conn = _get_wb_connection()
+    cur = conn.cursor()
+
+    sql = f"""
+        SELECT
+            CASE WHEN date >= %s THEN 'current' ELSE 'previous' END as period,
+            {get_osnova_sql("SPLIT_PART(supplierarticle, '/', 1)")} as model,
+            COUNT(*) as orders_count,
+            SUM(CASE WHEN iscancel = 0 THEN 1 ELSE 0 END) as buyout_count,
+            SUM(CASE WHEN iscancel = 1 THEN 1 ELSE 0 END) as return_count
+        FROM orders
+        WHERE date >= %s AND date < %s
+        GROUP BY 1, 2
+        ORDER BY 1, 3 DESC;
+    """
+    cur.execute(sql, (current_start, prev_start, current_end))
     results = cur.fetchall()
 
     cur.close()
