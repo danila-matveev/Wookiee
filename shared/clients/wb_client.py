@@ -208,6 +208,48 @@ class WBClient:
 
         return result
 
+    # ---- Seller Chats ----
+
+    def get_seller_chats(self, date_from: str | None = None) -> list[dict]:
+        """Fetch seller chats from WB API with pagination.
+
+        Args:
+            date_from: ISO date string to filter chats from (e.g. "2026-01-01").
+                       If None, fetches all available chats.
+
+        Returns:
+            List of chat dicts with messages.
+        """
+        all_chats: list[dict] = []
+        offset = 0
+        limit = 1000
+
+        while True:
+            url = f"{self.FEEDBACKS_BASE}/api/v1/seller/chats?offset={offset}&limit={limit}"
+            if date_from:
+                url += f"&dateFrom={date_from}"
+
+            resp = self._request("GET", url)
+
+            if not resp or not resp.get("chats"):
+                break
+
+            chats = resp["chats"]
+            all_chats.extend(chats)
+            logger.info(
+                "[%s] Fetched %d chats (total: %d)",
+                self.cabinet_name, len(chats), len(all_chats),
+            )
+
+            if len(chats) < limit:
+                break
+
+            offset += limit
+            time.sleep(0.35)
+
+        logger.info("[%s] Total seller chats fetched: %d", self.cabinet_name, len(all_chats))
+        return all_chats
+
     # ---- Answer feedbacks / questions ----
 
     def answer_feedback(self, feedback_id: str, text: str) -> bool:
