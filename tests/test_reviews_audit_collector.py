@@ -1,4 +1,9 @@
 """Tests for reviews audit data collection."""
+import json
+import os
+import tempfile
+from datetime import datetime, timedelta
+
 import pytest
 from unittest.mock import patch, MagicMock
 
@@ -33,3 +38,74 @@ class TestGetWbBuyoutsReturnsByModel:
             assert len(result) == 2
             assert result[0][0] == "current"
             assert result[0][1] == "wendy"
+
+
+class TestCollectData:
+    """Tests for the data collection script."""
+
+    def test_script_importable(self):
+        """Collector module should be importable."""
+        from scripts.reviews_audit.collect_data import collect_reviews_data
+        assert callable(collect_reviews_data)
+
+    def test_output_structure(self):
+        """Output JSON should have expected top-level keys."""
+        from scripts.reviews_audit.collect_data import collect_reviews_data
+
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+            output_path = f.name
+
+        try:
+            mock_feedbacks = [
+                {
+                    "id": "fb1",
+                    "text": "Отличное белье!",
+                    "productValuation": 5,
+                    "createdDate": "2026-03-15T10:00:00Z",
+                    "answer": {"text": "Спасибо!"},
+                    "productDetails": {"nmId": 12345},
+                }
+            ]
+            mock_questions = [
+                {
+                    "id": "q1",
+                    "text": "Какой размер выбрать?",
+                    "createdDate": "2026-03-16T10:00:00Z",
+                    "answer": {"text": "Рекомендуем M"},
+                    "productDetails": {"nmId": 12345},
+                }
+            ]
+            mock_chats = []
+            mock_orders = [("current", "wendy", 100, 85, 15)]
+
+            with patch(
+                "scripts.reviews_audit.collect_data.WBClient"
+            ) as MockClient, patch(
+                "scripts.reviews_audit.collect_data.get_wb_buyouts_returns_by_model",
+                return_value=mock_orders,
+            ):
+                instance = MockClient.return_value
+                instance.get_all_feedbacks.return_value = mock_feedbacks
+                instance.get_all_questions.return_value = mock_questions
+                instance.get_seller_chats.return_value = mock_chats
+
+                collect_reviews_data(
+                    date_from="2026-03-01",
+                    date_to="2026-04-01",
+                    output_path=output_path,
+                )
+
+            with open(output_path) as f:
+                data = json.load(f)
+
+            assert "feedbacks" in data
+            assert "questions" in data
+            assert "chats" in data
+            assert "orders_stats" in data
+            assert "metadata" in data
+            assert data["metadata"]["date_from"] == "2026-03-01"
+            assert data["metadata"]["date_to"] == "2026-04-01"
+            assert len(data["feedbacks"]) == 1
+            assert len(data["questions"]) == 1
+        finally:
+            os.unlink(output_path)
