@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse
 load_dotenv()
 
 API_KEY = os.getenv("VASILY_API_KEY", "")
+VASILY_SPREADSHEET_ID = os.getenv("VASILY_SPREADSHEET_ID", "")
 
 app = FastAPI(title="Vasily API", version="1.0.0")
 logger = logging.getLogger("vasily_api")
@@ -45,6 +46,23 @@ def _verify_key(x_api_key: str = Header(...)) -> None:
         raise HTTPException(500, "VASILY_API_KEY not configured on server")
     if x_api_key != API_KEY:
         raise HTTPException(403, "Invalid API key")
+
+
+# ── Sheets status indicator ──────────────────────────────────────────────────
+def _write_sheets_status(status: str) -> None:
+    """Write calculation status to the «Обновление» sheet (cell F3)."""
+    if not VASILY_SPREADSHEET_ID:
+        return
+    try:
+        from shared.clients.sheets_client import get_client, get_moscow_datetime
+        from services.wb_localization.config import GOOGLE_SA_FILE
+
+        gc = get_client(GOOGLE_SA_FILE)
+        spreadsheet = gc.open_by_key(VASILY_SPREADSHEET_ID)
+        ws = spreadsheet.worksheet("Обновление")
+        ws.update_acell("F3", status)
+    except Exception as e:
+        logger.warning("Не удалось обновить статус в Sheets: %s", e)
 
 
 # ── Background worker ────────────────────────────────────────────────────────
@@ -102,6 +120,7 @@ def _run_reports() -> None:
 
 def _worker() -> None:
     """Thread target: run reports and update state."""
+    _write_sheets_status("⏳ Идёт расчёт...")
     try:
         results = _run_reports()
         with _lock:
@@ -111,6 +130,7 @@ def _worker() -> None:
             _state["error"] = None
     except Exception as exc:
         logger.exception("Ошибка расчёта: %s", exc)
+        _write_sheets_status("❌ Ошибка расчёта")
         with _lock:
             _state["status"] = "error"
             _state["finished_at"] = datetime.now().isoformat(timespec="seconds")
