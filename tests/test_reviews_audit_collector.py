@@ -111,6 +111,37 @@ class TestCollectData:
             os.unlink(output_path)
 
 
+class TestGetWbBuyoutsReturnsByArtikul:
+    """Tests for get_wb_buyouts_returns_by_artikul function."""
+
+    def test_function_exists(self):
+        from shared.data_layer import get_wb_buyouts_returns_by_artikul
+        assert callable(get_wb_buyouts_returns_by_artikul)
+
+    def test_returns_list(self):
+        from shared.data_layer import get_wb_buyouts_returns_by_artikul
+
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = [
+            ("wendy", "wendy/розовый", 50, 40, 10),
+            ("wendy", "wendy/чёрный", 30, 25, 5),
+        ]
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+
+        with patch(
+            "shared.data_layer.finance._get_wb_connection", return_value=mock_conn
+        ):
+            result = get_wb_buyouts_returns_by_artikul("2025-04-07", "2026-04-07")
+            assert isinstance(result, list)
+            assert len(result) == 2
+            assert result[0][0] == "wendy"
+            assert result[0][1] == "wendy/розовый"
+            assert result[0][2] == 50
+            assert result[0][3] == 40
+            assert result[0][4] == 10
+
+
 class TestFilterByDate:
     """Tests for _filter_by_date helper."""
 
