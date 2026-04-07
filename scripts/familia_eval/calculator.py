@@ -11,9 +11,9 @@ def calculate_scenarios(articles: list) -> list:
     """
     results = []
     for art in articles:
-        cogs = art["cogs_per_unit"]
-        rrc = art["rrc"]
-        stock = art["stock_moysklad"]
+        cogs = float(art["cogs_per_unit"])
+        rrc = float(art["rrc"])
+        stock = float(art["stock_moysklad"])
 
         if rrc <= 0:
             continue
