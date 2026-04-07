@@ -109,3 +109,46 @@ class TestCollectData:
             assert len(data["questions"]) == 1
         finally:
             os.unlink(output_path)
+
+
+class TestFilterByDate:
+    """Tests for _filter_by_date helper."""
+
+    def test_filters_within_range(self):
+        from scripts.reviews_audit.collect_data import _filter_by_date
+
+        items = [
+            {"createdDate": "2026-01-15T10:00:00Z"},
+            {"createdDate": "2026-02-15T10:00:00Z"},
+            {"createdDate": "2026-03-15T10:00:00Z"},
+            {"createdDate": "2026-04-15T10:00:00Z"},
+        ]
+        result = _filter_by_date(items, "2026-02-01", "2026-04-01")
+        assert len(result) == 2
+        assert result[0]["createdDate"].startswith("2026-02")
+        assert result[1]["createdDate"].startswith("2026-03")
+
+    def test_empty_input(self):
+        from scripts.reviews_audit.collect_data import _filter_by_date
+        assert _filter_by_date([], "2026-01-01", "2026-12-31") == []
+
+    def test_no_matches(self):
+        from scripts.reviews_audit.collect_data import _filter_by_date
+
+        items = [{"createdDate": "2025-01-01T10:00:00Z"}]
+        result = _filter_by_date(items, "2026-01-01", "2026-12-31")
+        assert result == []
+
+    def test_custom_date_field(self):
+        from scripts.reviews_audit.collect_data import _filter_by_date
+
+        items = [{"createdAt": "2026-03-15T10:00:00Z"}]
+        result = _filter_by_date(items, "2026-03-01", "2026-04-01", date_field="createdAt")
+        assert len(result) == 1
+
+    def test_missing_date_field_skipped(self):
+        from scripts.reviews_audit.collect_data import _filter_by_date
+
+        items = [{"text": "no date here"}]
+        result = _filter_by_date(items, "2026-01-01", "2026-12-31")
+        assert result == []
