@@ -59,6 +59,8 @@ async def run_llm_agents(scenarios: list) -> str:
     mp_report, expert_report = await asyncio.gather(mp_task, expert_task)
 
     # Save intermediate reports
+    mp_report = mp_report or "[MP Comparator returned empty response]"
+    expert_report = expert_report or "[Familia Expert returned empty response]"
     _save_output("mp_comparator.md", mp_report)
     _save_output("familia_expert.md", expert_report)
     log.info("Wave 3 complete. Reports saved.")
