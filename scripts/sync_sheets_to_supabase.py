@@ -796,11 +796,46 @@ def sync_tovary(
     inserted, updated, soft_deleted = 0, 0, 0
     archive_id = get_archive_status_id(conn)
 
+    # Pre-cache razmery and statusy to avoid N+1 queries
+    razmer_cache = {}
+    for r in query_all(conn, "SELECT id, nazvanie FROM razmery"):
+        razmer_cache[r["nazvanie"]] = r["id"]
+    status_cache = {}
+    for r in query_all(conn, "SELECT id, nazvanie FROM statusy"):
+        status_cache[r["nazvanie"]] = r["id"]
+
+    MODEL_STATUS_MAP = {
+        "В продаже": "Продается",
+        "Планирование": "План",
+        "Закуп": "Подготовка",
+        "В разработке": "Подготовка",
+        "Делаем образец": "Новый",
+    }
+
+    def _get_razmer_id(name):
+        if not name:
+            return None
+        if name in razmer_cache:
+            return razmer_cache[name]
+        rid = ensure_reference(conn, "razmery", "nazvanie", name)
+        razmer_cache[name] = rid
+        return rid
+
+    def _get_status_id_cached(name):
+        if not name or not name.strip():
+            return None
+        mapped = MODEL_STATUS_MAP.get(name.strip(), name.strip())
+        if mapped in status_cache:
+            return status_cache[mapped]
+        sid = ensure_reference(conn, "statusy", "nazvanie", mapped)
+        status_cache[mapped] = sid
+        return sid
+
     for barkod, data in tovar_data.items():
         artikul_id = art_map.get(data["art_key"])
-        razmer_id = ensure_reference(conn, "razmery", "nazvanie", data["razmer"]) if data["razmer"] else None
-        status_id = get_status_id(conn, data["status"])
-        status_ozon_id = get_status_id(conn, data["status_ozon"])
+        razmer_id = _get_razmer_id(data["razmer"])
+        status_id = _get_status_id_cached(data["status"])
+        status_ozon_id = _get_status_id_cached(data["status_ozon"])
 
         if barkod in existing_by_barkod:
             ex = existing_by_barkod[barkod]
