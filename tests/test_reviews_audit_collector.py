@@ -142,6 +142,35 @@ class TestGetWbBuyoutsReturnsByArtikul:
             assert result[0][4] == 10
 
 
+class TestGetWbBuyoutsReturnsMonthly:
+    """Tests for get_wb_buyouts_returns_monthly function."""
+
+    def test_function_exists(self):
+        from shared.data_layer import get_wb_buyouts_returns_monthly
+        assert callable(get_wb_buyouts_returns_monthly)
+
+    def test_returns_list(self):
+        from shared.data_layer import get_wb_buyouts_returns_monthly
+
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = [
+            ("2025-04-01", "wendy", 5000, 3500, 1500),
+            ("2025-05-01", "wendy", 5200, 3600, 1600),
+        ]
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+
+        with patch(
+            "shared.data_layer.finance._get_wb_connection", return_value=mock_conn
+        ):
+            result = get_wb_buyouts_returns_monthly("2025-04-07", "2026-04-07")
+            assert isinstance(result, list)
+            assert len(result) == 2
+            assert result[0][0] == "2025-04-01"
+            assert result[0][1] == "wendy"
+            assert result[0][2] == 5000
+
+
 class TestFilterByDate:
     """Tests for _filter_by_date helper."""
 

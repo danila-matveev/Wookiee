@@ -17,6 +17,7 @@ __all__ = [
     "get_ozon_orders_by_model",
     "get_wb_buyouts_returns_by_model",
     "get_wb_buyouts_returns_by_artikul",
+    "get_wb_buyouts_returns_monthly",
 ]
 
 
@@ -197,6 +198,41 @@ def get_wb_buyouts_returns_by_artikul(
         WHERE date >= %s AND date < %s
         GROUP BY 1, 2
         ORDER BY 1, 3 DESC;
+    """
+    cur.execute(sql, (date_from, date_to))
+    results = cur.fetchall()
+
+    cur.close()
+    conn.close()
+    return results
+
+
+def get_wb_buyouts_returns_monthly(
+    date_from: str, date_to: str
+) -> list[tuple]:
+    """Get buyout and return counts by month and model for WB.
+
+    Args:
+        date_from: Start date (YYYY-MM-DD)
+        date_to: End date (YYYY-MM-DD)
+
+    Returns:
+        List of (month, model, orders_count, buyout_count, return_count)
+    """
+    conn = _get_wb_connection()
+    cur = conn.cursor()
+
+    sql = f"""
+        SELECT
+            DATE_TRUNC('month', date)::date as month,
+            {get_osnova_sql("SPLIT_PART(supplierarticle, '/', 1)")} as model,
+            COUNT(*) as orders_count,
+            SUM(CASE WHEN iscancel::text IN ('0', 'false') OR iscancel IS NULL THEN 1 ELSE 0 END) as buyout_count,
+            SUM(CASE WHEN iscancel::text IN ('1', 'true') THEN 1 ELSE 0 END) as return_count
+        FROM orders
+        WHERE date >= %s AND date < %s
+        GROUP BY 1, 2
+        ORDER BY 1, 2;
     """
     cur.execute(sql, (date_from, date_to))
     results = cur.fetchall()
