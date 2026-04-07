@@ -335,15 +335,22 @@ def sync_modeli_osnova(conn, sheets_modeli: list[dict], log: dict, dry_run: bool
 
     Returns mapping: normalize_key(kod) → id.
     """
-    # Parse sheets records
+    # Parse sheets records — deduplicate by "Модель основа" (col H)
+    # "Модель основа" = Vuki, Moon, Ruby (modeli_osnova.kod)
+    # "Артикул модели" = компбел-ж-бесшов/ (modeli.artikul_modeli, NOT osnova key)
+    seen_keys = set()
     sheets_records = []
     for row in sheets_modeli:
-        kod = clean_string(row.get("Артикул модели", ""))
+        kod = clean_string(row.get("Модель основа", ""))
         if not kod:
             continue
+        key = normalize_key(kod)
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
         sheets_records.append({
-            "kod": normalize_key(kod),
-            "kod_raw": kod.strip().rstrip("/"),
+            "kod": key,
+            "kod_raw": kod.strip(),
             "kategoriya": clean_string(row.get("Категория", "")),
             "kollekciya": clean_string(row.get("Коллекция", "")),
             "fabrika": clean_string(row.get("Фабрика", "")),
@@ -493,20 +500,23 @@ def sync_modeli(
     Returns mapping: normalize_key(kod) → id.
     """
     # Build model records from 'Все модели'
+    # modeli.kod = "Название модели" (Vuki, VukiN, Moon...)
+    # modeli.artikul_modeli = "Артикул модели" (компбел-ж-бесшов/, Vuki/...)
     model_data = {}
     for row in sheets_modeli:
         nazvanie = clean_string(row.get("Название модели", ""))
         if not nazvanie:
             continue
-        kod_raw = clean_string(row.get("Артикул модели", ""))
-        if not kod_raw:
+        kod = normalize_key(nazvanie)
+        if kod in model_data:
             continue
-        kod = normalize_key(kod_raw)
+        artikul_modeli = clean_string(row.get("Артикул модели", ""))
         osnova_raw = clean_string(row.get("Модель основа", ""))
         osnova_key = normalize_key(osnova_raw) if osnova_raw else None
         model_data[kod] = {
-            "kod_raw": kod_raw.strip().rstrip("/"),
+            "kod_raw": nazvanie.strip(),
             "nazvanie": nazvanie,
+            "artikul_modeli": artikul_modeli.strip().rstrip("/") if artikul_modeli else None,
             "model_osnova_key": osnova_key,
             "status": clean_string(row.get("Статус", "")),
             "importer": clean_string(row.get("Импортер", "")),
@@ -582,10 +592,12 @@ def sync_modeli(
                 imp_id = ensure_reference(conn, "importery", "nazvanie", data["importer"]) if data["importer"] else None
                 with conn.cursor() as cur:
                     cur.execute(
-                        """INSERT INTO modeli (kod, nazvanie, model_osnova_id, importer_id, status_id, nabor, rossiyskiy_razmer)
-                           VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id""",
-                        (data["kod_raw"], data["nazvanie"], osnova_id, imp_id, status_id,
-                         data["nabor"], data["rossiyskiy_razmer"]),
+                        """INSERT INTO modeli (kod, nazvanie, artikul_modeli, model_osnova_id, importer_id, status_id, nabor, rossiyskiy_razmer)
+                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+                        (data["kod_raw"][:50], data["nazvanie"][:100],
+                         (data.get("artikul_modeli") or "")[:100] or None,
+                         osnova_id, imp_id, status_id,
+                         data["nabor"], (data["rossiyskiy_razmer"] or "")[:50] or None),
                     )
                     model_map[key] = cur.fetchone()[0]
                 conn.commit()
