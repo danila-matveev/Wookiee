@@ -17,7 +17,7 @@ CONFIG = {
     "status_filter": ["Выводим", "Архив"],
 
     # --- LLM модели (OpenRouter) ---
-    "model_main": "google/gemini-2.5-flash-preview",
+    "model_main": "google/gemini-3-flash-preview",
     "model_heavy": "anthropic/claude-sonnet-4-6",
 
     # --- Период для расчёта метрик МП (последние N дней) ---
