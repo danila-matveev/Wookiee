@@ -45,6 +45,7 @@ from services.wb_localization.generate_localization_report_v3 import (
     RUSSIAN_REGIONS,
     DEFAULT_SAFETY_DAYS,
     DEFAULT_MIN_DONOR_LOC,
+    TARGET_LOCALIZATION_INDEX,
 )
 from services.wb_localization.wb_localization_mappings import (
     WAREHOUSE_TO_FD,
@@ -352,7 +353,7 @@ def _print_summary(report_path: Path) -> None:
                 region = row.get('Регион', '?')
                 loc_pct = row.get('% локальных', 0)
                 rec = row.get('Рекомендация', '')
-                mark = '  ' if loc_pct >= 75 else ' !'
+                mark = '  ' if loc_pct >= TARGET_LOCALIZATION_INDEX else ' !'
                 print(f"  {mark} {region}: {loc_pct:.0f}%  {rec}")
 
         # Перемещения
@@ -395,9 +396,9 @@ def _print_summary(report_path: Path) -> None:
             df_sku = pd.read_excel(xls, sheet_name='Анализ_SKU')
             if 'Индекс, %' in df_sku.columns and 'Всего заказов' in df_sku.columns:
                 problem = df_sku[
-                    (df_sku['Индекс, %'] < 75) & (df_sku['Всего заказов'] > 0)
+                    (df_sku['Индекс, %'] < TARGET_LOCALIZATION_INDEX) & (df_sku['Всего заказов'] > 0)
                 ].copy()
-                problem['impact'] = problem['Всего заказов'] * (75 - problem['Индекс, %'])
+                problem['impact'] = problem['Всего заказов'] * (TARGET_LOCALIZATION_INDEX - problem['Индекс, %'])
                 top5 = problem.nlargest(5, 'impact')
                 if not top5.empty:
                     print("\n   --- Топ-5 критичных SKU (ИЛ-зона) ---")
@@ -477,7 +478,7 @@ def _build_result_payload(cabinet_name: str, analysis: dict[str, Any]) -> dict[s
     top_problems: list[dict[str, Any]] = []
     if 'Индекс, %' in sku_stats.columns and 'Всего заказов' in sku_stats.columns:
         problem = sku_stats[
-            (sku_stats['Индекс, %'] < 75) & (sku_stats['Всего заказов'] > 0)
+            (sku_stats['Индекс, %'] < TARGET_LOCALIZATION_INDEX) & (sku_stats['Всего заказов'] > 0)
         ].copy()
         if not problem.empty:
             # Сортировка: ИРП-нагрузка (₽/мес) если есть, иначе старый impact
@@ -486,9 +487,9 @@ def _build_result_payload(cabinet_name: str, analysis: dict[str, Any]) -> dict[s
                 problem['impact'] = problem['ИРП-нагрузка ₽/мес'].fillna(0)
                 # Для артикулов без ИРП-нагрузки — старая формула
                 no_irp = problem['impact'] <= 0
-                problem.loc[no_irp, 'impact'] = problem.loc[no_irp, 'Всего заказов'] * (75 - problem.loc[no_irp, 'Индекс, %'])
+                problem.loc[no_irp, 'impact'] = problem.loc[no_irp, 'Всего заказов'] * (TARGET_LOCALIZATION_INDEX - problem.loc[no_irp, 'Индекс, %'])
             else:
-                problem['impact'] = problem['Всего заказов'] * (75 - problem['Индекс, %'])
+                problem['impact'] = problem['Всего заказов'] * (TARGET_LOCALIZATION_INDEX - problem['Индекс, %'])
             top10 = problem.nlargest(10, 'impact')
             for _, row in top10.iterrows():
                 entry: dict[str, Any] = {
