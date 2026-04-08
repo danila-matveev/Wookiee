@@ -56,12 +56,12 @@ def collect_inventory(start: str, end: str) -> dict:
     wb_stocks = _aggregate_stocks_by_model(get_wb_avg_stock(start, end))
     ozon_stocks = _aggregate_stocks_by_model(get_ozon_avg_stock(start, end))
 
-    # Model-level data
-    ms_stocks = get_moysklad_stock_by_model()
-    wb_turnover = get_wb_turnover_by_model(start, end)
-    ozon_turnover = get_ozon_turnover_by_model(start, end)
-    wb_trend = get_wb_sales_trend_by_model(start, end)
-    ozon_trend = get_ozon_sales_trend_by_model(start, end)
+    # Model-level data — normalize all keys to lowercase to match stock aggregation
+    ms_stocks = {k.lower(): v for k, v in get_moysklad_stock_by_model().items()}
+    wb_turnover = {k.lower(): v for k, v in get_wb_turnover_by_model(start, end).items()}
+    ozon_turnover = {k.lower(): v for k, v in get_ozon_turnover_by_model(start, end).items()}
+    wb_trend = {k.lower(): v for k, v in get_wb_sales_trend_by_model(start, end).items()}
+    ozon_trend = {k.lower(): v for k, v in get_ozon_sales_trend_by_model(start, end).items()}
 
     # Build unified model inventory
     all_models = (
