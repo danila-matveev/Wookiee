@@ -304,12 +304,17 @@ All 13 sections from report-structure.md are mandatory. Skipping a section = err
 
 ### Notion Formatting
 
-The Notion version must follow notion-formatting-guide.md:
-- `<table>` with `fit-page-width`, `header-row`, `header-column`
-- Colored headers (`blue_bg`), totals (`gray_bg`), positive (`green_bg`), negative (`red_bg`), warning (`yellow_bg`)
-- `<callout>` blocks after key sections
-- **Toggle headings at ALL levels** (H1, H2, H3, H4 — everything collapsible)
-- Human-readable table headers in Russian (no abbreviations)
+The Notion version must follow notion-formatting-guide.md EXACTLY:
+- **HTML-таблицы** `<table fit-page-width="true" header-row="true" header-column="true">` — markdown таблицы ЗАПРЕЩЕНЫ
+- Цвета строк: `blue_bg` заголовки, `gray_bg` итоги, `green_bg` позитив, `red_bg` негатив, `yellow_bg` warning
+- Цвета ячеек: `<td color="green_bg">` / `<td color="red_bg">` для Δ значений
+- **Callout-блоки** после ключевых секций: `<callout icon="📊" color="blue_bg">`
+- **Римские номера** секций: I. Резюме, II. Ключевые изменения, III. Декомпозиция...
+- Компактный текст: 1-2 строки между таблицами, без длинных абзацев
+- Итоги через callout-блоки с иконками (📊🔴🟢⚠️💡)
+- Эталонный формат: страница "Wookiee: Q4 2025 vs Q1 2026" в Notion
+
+**КРИТИЧНО:** Публиковать ПОЛНУЮ версию — ВСЕ секции с ПОЛНЫМИ таблицами. Никогда не сокращать для Notion.
 
 ---
 
@@ -334,7 +339,7 @@ Use the Notion MCP tool to create a new page in the analytics reports database:
 - **CRITICAL: Publish the FULL `final_document_notion` content** — all 13 sections with all tables and data. Do NOT publish a summary or abbreviated version.
 - Properties:
   - Тип анализа = depth-based title (see below)
-  - Источник = "Analytics Skill v1"
+  - Источник = "Claude Code"
   - Статус = "Актуальный"
   - Период начала = START
   - Период конца = END
@@ -379,7 +384,7 @@ Notion: {notion_url}
 | `.claude/skills/analytics-report/templates/report-structure.md` | 13-section report skeleton |
 | `.claude/skills/analytics-report/templates/notion-formatting-guide.md` | Notion formatting rules |
 | `.claude/skills/analytics-report/references/data-sources.md` | Data source documentation |
-| `.claude/skills/analytics-report/references/analytics-rules.md` | Analytics business rules |
+| `.claude/skills/analytics-report/references/analytics-kb.md` | Analytics business rules |
 
 ---
 
