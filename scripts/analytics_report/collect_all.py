@@ -7,9 +7,14 @@ Usage:
 """
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+# Ensure project root is in sys.path for direct execution
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
 import argparse
 import json
-import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timedelta
