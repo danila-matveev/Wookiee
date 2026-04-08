@@ -60,6 +60,7 @@ class TestGetReturnClaims:
             call_url = mock_req.call_args[0][1]
             assert "returns-api.wildberries.ru" in call_url
             assert "/api/v1/claims" in call_url
+            assert "is_archive=false" in call_url
 
     def test_returns_base_constant(self):
         assert hasattr(WBClient, "RETURNS_BASE")

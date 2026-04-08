@@ -51,25 +51,41 @@ class TestMapClaimsToModels:
 
 
 class TestBuildNmIdToArticle:
-    def test_extracts_supplier_article(self):
+    @patch("scripts.returns_audit.collect_data.get_nm_to_article_mapping", return_value={})
+    def test_extracts_supplier_article(self, mock_mapping):
         claims = [{"nm_id": 1, "supplierArticle": "wendy/black/m"}]
         result = _build_nm_id_to_article(claims)
         assert result == {1: "wendy/black/m"}
 
-    def test_falls_back_to_sa_name(self):
+    @patch("scripts.returns_audit.collect_data.get_nm_to_article_mapping", return_value={})
+    def test_falls_back_to_sa_name(self, mock_mapping):
         claims = [{"nm_id": 1, "sa_name": "telma/red/s"}]
         result = _build_nm_id_to_article(claims)
         assert result == {1: "telma/red/s"}
 
-    def test_empty_when_no_article_fields(self):
+    @patch("scripts.returns_audit.collect_data.get_nm_to_article_mapping", return_value={})
+    def test_empty_when_no_article_fields(self, mock_mapping):
         claims = [{"nm_id": 1, "imt_name": "Some Product"}]
         result = _build_nm_id_to_article(claims)
         assert result == {}
 
-    def test_skips_claims_without_nm_id(self):
+    @patch("scripts.returns_audit.collect_data.get_nm_to_article_mapping", return_value={})
+    def test_skips_claims_without_nm_id(self, mock_mapping):
         claims = [{"id": "a", "supplierArticle": "wendy/black/m"}]
         result = _build_nm_id_to_article(claims)
         assert result == {}
+
+    @patch("scripts.returns_audit.collect_data.get_nm_to_article_mapping", return_value={1: "wendy/black/m"})
+    def test_uses_supabase_mapping(self, mock_mapping):
+        claims = [{"nm_id": 1}]
+        result = _build_nm_id_to_article(claims)
+        assert result == {1: "wendy/black/m"}
+
+    @patch("scripts.returns_audit.collect_data.get_nm_to_article_mapping", return_value={1: "wendy/black/m"})
+    def test_supabase_takes_priority(self, mock_mapping):
+        claims = [{"nm_id": 1, "supplierArticle": "wrong/article"}]
+        result = _build_nm_id_to_article(claims)
+        assert result[1] == "wendy/black/m"
 
 
 class TestBuildSummary:
