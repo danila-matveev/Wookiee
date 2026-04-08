@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class WBClient:
-    """Client for Wildberries APIs (Statistics, Prices, Feedbacks)."""
+    """Client for Wildberries APIs (Statistics, Prices, Feedbacks, Returns)."""
 
     ANALYTICS_BASE = "https://seller-analytics-api.wildberries.ru"
     STATISTICS_BASE = "https://statistics-api.wildberries.ru"
@@ -349,6 +349,9 @@ class WBClient:
     def get_return_claims(self) -> list[dict]:
         """Fetch customer return claims (last 14 days, API limit).
 
+        WB Returns API returns all claims in a single response — no pagination.
+        Exact response schema based on indirect sources; verify with real API call.
+
         Returns:
             List of claim dicts with keys: id, nm_id, dt, order_dt,
             status, status_ex, claim_type, user_comment, wb_comment,
@@ -360,7 +363,10 @@ class WBClient:
             return []
         if isinstance(resp, list):
             return resp
-        return resp.get("claims", resp.get("data", []))
+        claims = resp.get("claims", [])
+        if not claims and resp.keys() - {"error", "errorText", "additionalErrors"}:
+            logger.warning("[%s] Unexpected response keys: %s", self.cabinet_name, list(resp.keys()))
+        return claims
 
     # ---- Common request handler ----
 
