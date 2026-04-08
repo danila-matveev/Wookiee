@@ -346,18 +346,16 @@ class WBClient:
 
     # ---- Returns (customer return claims) ----
 
-    def get_return_claims(self) -> list[dict]:
+    def get_return_claims(self, is_archive: bool = False) -> list[dict]:
         """Fetch customer return claims (last 14 days, API limit).
 
-        WB Returns API returns all claims in a single response — no pagination.
-        Exact response schema based on indirect sources; verify with real API call.
+        Args:
+            is_archive: If True, fetch archived claims. Default False (active claims).
 
         Returns:
-            List of claim dicts with keys: id, nm_id, dt, order_dt,
-            status, status_ex, claim_type, user_comment, wb_comment,
-            imt_name, photos, dt_update.
+            List of claim dicts.
         """
-        url = f"{self.RETURNS_BASE}/api/v1/claims"
+        url = f"{self.RETURNS_BASE}/api/v1/claims?is_archive={'true' if is_archive else 'false'}"
         resp = self._request("GET", url)
         if not resp:
             return []

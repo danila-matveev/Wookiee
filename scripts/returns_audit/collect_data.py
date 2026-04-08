@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from shared.clients.wb_client import WBClient
 from shared.data_layer import get_wb_buyouts_returns_by_model
+from shared.data_layer.sku_mapping import get_nm_to_article_mapping
 from shared.model_mapping import map_to_osnova
 
 logger = logging.getLogger(__name__)
@@ -122,15 +123,28 @@ def _fetch_orders_for_period(date_from: str, date_to: str) -> dict[str, dict]:
 
 
 def _build_nm_id_to_article(claims: list[dict]) -> dict[int, str]:
-    """Build nm_id -> article mapping from claim data."""
-    mapping = {}
+    """Build nm_id → article mapping.
+
+    Primary source: Supabase artikuly table (nm_id → artikul).
+    Fallback: supplierArticle/sa_name from claim data (if present).
+    """
+    # Primary: Supabase mapping covers all known SKUs
+    try:
+        mapping = get_nm_to_article_mapping()
+        logger.info("Loaded %d nm_id→article mappings from Supabase", len(mapping))
+    except Exception as e:
+        logger.warning("Failed to load Supabase mapping: %s", e)
+        mapping = {}
+
+    # Fallback: extract from claim fields (may not be present in WB Returns API)
     for claim in claims:
         nm_id = claim.get("nm_id")
-        if not nm_id:
+        if not nm_id or nm_id in mapping:
             continue
         article = claim.get("supplierArticle") or claim.get("sa_name") or ""
         if article:
             mapping[nm_id] = article
+
     return mapping
 
 
