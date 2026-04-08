@@ -51,6 +51,63 @@ def resolve_warehouse_coef(
     return CoefResult(value=0.0, source="dlv_prc", verified=False)
 
 
+def load_tariff_file_coefs(
+    tariff_file: str | None = None,
+) -> dict[str, dict[date, float]]:
+    """Load warehouse coefficients from local tariff Excel file.
+
+    File: Тарифы на логискику.xlsx → sheet 'Тарифы короб'
+    Returns: {warehouse_name: {date: delivery_coef_decimal}}
+    """
+    from pathlib import Path
+
+    if tariff_file is None:
+        tariff_file = str(Path(__file__).parent.parent / "Тарифы на логискику.xlsx")
+
+    path = Path(tariff_file)
+    if not path.exists():
+        logger.warning(f"Tariff file not found: {tariff_file}")
+        return {}
+
+    try:
+        import openpyxl
+    except ImportError:
+        logger.warning("openpyxl not installed, skipping tariff file loading")
+        return {}
+
+    try:
+        wb = openpyxl.load_workbook(str(path), read_only=True, data_only=True)
+        ws = wb["Тарифы короб"]
+
+        result: dict[str, dict[date, float]] = {}
+        for i, row in enumerate(ws.iter_rows(values_only=True)):
+            if i == 0:  # header
+                continue
+            dt_raw, warehouse, coef_pct, *_ = row
+            if dt_raw is None or warehouse is None or coef_pct is None:
+                continue
+            # Parse date
+            from datetime import datetime
+            if isinstance(dt_raw, datetime):
+                dt = dt_raw.date()
+            elif isinstance(dt_raw, date):
+                dt = dt_raw
+            else:
+                continue
+            wh_name = str(warehouse).strip()
+            if wh_name not in result:
+                result[wh_name] = {}
+            result[wh_name][dt] = float(coef_pct) / 100.0
+
+        wb.close()
+        logger.info(f"Loaded tariff file: {len(result)} warehouses, "
+                     f"{sum(len(v) for v in result.values())} data points")
+        return result
+    except Exception as e:
+        logger.warning(f"Failed to load tariff file: {e}")
+        return {}
+
+
 def load_supabase_tariffs(date_from: date, date_to: date) -> dict[str, dict[date, float]]:
     """Load warehouse coefficients from Supabase wb_tariffs table.
 

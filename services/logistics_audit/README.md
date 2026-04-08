@@ -13,6 +13,12 @@ python -m services.logistics_audit.runner OOO 2026-01-01 2026-03-23 --calibrate
 
 # Валидация на эталонных данных Фисанова
 python -m services.logistics_audit.validate_fisanov
+
+# Перерасчёт ООО из локальных Excel-файлов (без WB API)
+python -m services.logistics_audit.recalculate_ooo
+
+# Перерасчёт: валидация на данных Фисанова
+python -m services.logistics_audit.recalculate_ooo --fisanov
 ```
 
 Аргументы `runner.py`:
@@ -61,8 +67,9 @@ services/logistics_audit/
 ├── etl/
 │   └── tariff_collector.py    # Daily ETL: WB tariffs → Supabase
 ├── validate_fisanov.py        # Валидация на эталоне ИП Фисанова
+├── recalculate_ooo.py         # Перерасчёт ООО из локальных файлов (без API)
 ├── generate_fisanov_report.py # Генерация отчёта сравнения с Фисановым
-└── CHANGELOG-v2-fixes.md      # Описание 5 исправлений v2
+└── CHANGELOG-v2-fixes.md      # Описание 5 исправлений v2 + результаты ООО
 ```
 
 ## Формула расчёта
@@ -100,3 +107,22 @@ python -m services.logistics_audit.etl.tariff_collector --backfill 30
 ```
 
 Данные сохраняются в Supabase таблицу `wb_tariffs` (RLS включён).
+
+## Перерасчёт ООО из локальных файлов
+
+`recalculate_ooo.py` пересчитывает аудит ООО из Excel-файлов без обращения к WB API. Показывает декомпозицию по 5 фиксам.
+
+```bash
+# Перерасчёт ООО (генерирует Excel + декомпозиция в консоль)
+python -m services.logistics_audit.recalculate_ooo
+
+# Валидация алгоритма на данных Фисанова (target: остаток < 1 руб)
+python -m services.logistics_audit.recalculate_ooo --fisanov
+```
+
+**Входные файлы** (в `services/logistics_audit/`):
+- `Аудит логистики 2026-01-01 — 2026-03-23.xlsx` — исходный аудит ООО
+- `Тарифы на логискику.xlsx` — коэффициенты складов по датам
+- `ИП Фисанов. Проверка логистики ...xlsx` — эталон для валидации
+
+**Выход:** `ООО Wookiee — Перерасчёт логистики (v2).xlsx` (4 листа: Переплата, Сравнение, Декомпозиция, ИЛ).

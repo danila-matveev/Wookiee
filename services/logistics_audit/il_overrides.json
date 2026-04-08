@@ -1,4 +1,24 @@
 {
     "_comment": "Manual IL overrides by week start date (Monday). Values from WB dashboard.",
-    "_usage": "Compare --calibrate output with WB dashboard, add overrides for mismatches."
+    "_usage": "Compare --calibrate output with WB dashboard, add overrides for mismatches.",
+    "_source": "WB Partners → Поставки и заказы → Тарифы → Тарифы складов → Индекс локализации → История. Verified against financiers' file (ООО_Вуки_проверка_логистики).",
+    "2025-11-24": 1.04,
+    "2025-12-01": 1.04,
+    "2025-12-08": 1.04,
+    "2025-12-15": 1.04,
+    "2025-12-22": 1.11,
+    "2025-12-29": 1.10,
+    "2026-01-05": 1.09,
+    "2026-01-12": 1.09,
+    "2026-01-19": 1.08,
+    "2026-01-26": 1.07,
+    "2026-02-02": 1.06,
+    "2026-02-09": 1.06,
+    "2026-02-16": 1.05,
+    "2026-02-23": 1.04,
+    "2026-03-02": 1.01,
+    "2026-03-09": 0.99,
+    "2026-03-16": 1.01,
+    "2026-03-23": 0.98,
+    "2026-03-30": 0.98
 }
