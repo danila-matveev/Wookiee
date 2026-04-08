@@ -17,6 +17,7 @@ class WBClient:
     STATISTICS_BASE = "https://statistics-api.wildberries.ru"
     PRICES_BASE = "https://discounts-prices-api.wildberries.ru"
     FEEDBACKS_BASE = "https://feedbacks-api.wildberries.ru"
+    RETURNS_BASE = "https://returns-api.wildberries.ru"
 
     def __init__(self, api_key: str, cabinet_name: str):
         self.cabinet_name = cabinet_name
@@ -342,6 +343,24 @@ class WBClient:
         if isinstance(resp, list):
             return resp
         return []
+
+    # ---- Returns (customer return claims) ----
+
+    def get_return_claims(self) -> list[dict]:
+        """Fetch customer return claims (last 14 days, API limit).
+
+        Returns:
+            List of claim dicts with keys: id, nm_id, dt, order_dt,
+            status, status_ex, claim_type, user_comment, wb_comment,
+            imt_name, photos, dt_update.
+        """
+        url = f"{self.RETURNS_BASE}/api/v1/claims"
+        resp = self._request("GET", url)
+        if not resp:
+            return []
+        if isinstance(resp, list):
+            return resp
+        return resp.get("claims", resp.get("data", []))
 
     # ---- Common request handler ----
 
