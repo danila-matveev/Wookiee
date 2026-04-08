@@ -52,7 +52,7 @@ def compute_date_params(start_str: str, end_str: str | None = None) -> dict:
         "depth": depth,
         "period_label": _format_period_label(start, end),
         "prev_period_label": _format_period_label(prev_start, prev_end),
-        "month_start": start.replace(day=1).isoformat(),
+        "month_start": end.replace(day=1).isoformat(),
         "days_in_period": days_in_period,
     }
 

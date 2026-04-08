@@ -77,9 +77,21 @@ class TestCrossMonthBoundary:
         assert p["prev_start"] == "2026-03-21"
         assert p["prev_end"] == "2026-03-27"
 
-    def test_month_start_is_first_of_start_month(self):
+    def test_month_start_is_first_of_end_month(self):
         p = compute_date_params("2026-03-28", "2026-04-03")
-        assert p["month_start"] == "2026-03-01"
+        assert p["month_start"] == "2026-04-01"
+
+
+class TestMonthStartCrossMonth:
+    def test_cross_month_uses_end_date(self):
+        """month_start should be first day of END date's month."""
+        p = compute_date_params("2026-03-30", "2026-04-05")
+        assert p["month_start"] == "2026-04-01"
+
+    def test_same_month_unchanged(self):
+        """When start and end in same month, month_start = first of that month."""
+        p = compute_date_params("2026-04-01", "2026-04-07")
+        assert p["month_start"] == "2026-04-01"
 
 
 # ---------- _format_period_label ----------
