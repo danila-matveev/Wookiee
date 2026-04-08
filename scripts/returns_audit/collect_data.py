@@ -27,7 +27,10 @@ logger = logging.getLogger(__name__)
 
 
 def _deduplicate_claims(claims: list[dict]) -> list[dict]:
-    """Remove duplicate claims by id, keeping first occurrence."""
+    """Remove duplicate claims by id, keeping first occurrence.
+
+    Note: similar to scripts/reviews_audit/collect_data._deduplicate.
+    """
     seen = set()
     result = []
     for claim in claims:
@@ -98,6 +101,8 @@ def _fetch_claims_from_cabinet(api_key: str, cabinet_name: str) -> list[dict]:
 def _fetch_orders_for_period(date_from: str, date_to: str) -> dict[str, dict]:
     """Fetch orders from DB grouped by model for return rate calc."""
     try:
+        # prev_start=date_from makes "previous" period empty; we only use "current".
+        # Same pattern as reviews_audit collector.
         raw = get_wb_buyouts_returns_by_model(
             current_start=date_from, prev_start=date_from, current_end=date_to
         )
@@ -132,9 +137,12 @@ def _build_nm_id_to_article(claims: list[dict]) -> dict[int, str]:
 def collect_returns_data(output_path: str) -> dict:
     """Collect all data for returns audit.
 
-    Fetches claims from both WB cabinets (IP + OOO),
+    Fetches claims from both WB cabinets (ИП + ООО),
     deduplicates, maps to models, fetches orders from DB,
     builds summary.
+
+    Period is fixed to last 14 days — WB Returns API does not support
+    custom date ranges.
     """
     key_ip = os.getenv("WB_API_KEY_IP", "")
     key_ooo = os.getenv("WB_API_KEY_OOO", "")
