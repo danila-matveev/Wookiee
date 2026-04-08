@@ -13,6 +13,7 @@ with patch.dict(os.environ, {
         _deduplicate_claims,
         _map_claims_to_models,
         _build_summary,
+        _build_nm_id_to_article,
     )
 
 
@@ -47,6 +48,28 @@ class TestMapClaimsToModels:
         claims = [{"id": "a", "nm_id": 999, "imt_name": "Unknown"}]
         result = _map_claims_to_models(claims, nm_id_to_article={})
         assert result[0]["model"] == "unknown"
+
+
+class TestBuildNmIdToArticle:
+    def test_extracts_supplier_article(self):
+        claims = [{"nm_id": 1, "supplierArticle": "wendy/black/m"}]
+        result = _build_nm_id_to_article(claims)
+        assert result == {1: "wendy/black/m"}
+
+    def test_falls_back_to_sa_name(self):
+        claims = [{"nm_id": 1, "sa_name": "telma/red/s"}]
+        result = _build_nm_id_to_article(claims)
+        assert result == {1: "telma/red/s"}
+
+    def test_empty_when_no_article_fields(self):
+        claims = [{"nm_id": 1, "imt_name": "Some Product"}]
+        result = _build_nm_id_to_article(claims)
+        assert result == {}
+
+    def test_skips_claims_without_nm_id(self):
+        claims = [{"id": "a", "supplierArticle": "wendy/black/m"}]
+        result = _build_nm_id_to_article(claims)
+        assert result == {}
 
 
 class TestBuildSummary:
