@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 
 import pandas as pd
 
@@ -13,7 +12,6 @@ from shared.clients.sheets_client import (
     write_range,
     get_moscow_datetime,
     to_number,
-    _cell_ref,
 )
 from services.wb_localization.config import GOOGLE_SA_FILE, VASILY_SPREADSHEET_ID, REPORT_PERIOD_DAYS
 

@@ -1,14 +1,12 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
 import pandas as pd
-import numpy as np
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any
 
 from shared.data_layer import (
     _get_wb_connection,
     _get_ozon_connection,
-    get_artikuly_statuses,
-    to_float
+    get_artikuly_statuses
 )
 from agents.oleg.services.time_utils import get_now_msk
 from agents.oleg.services.price_analysis.regression_engine import estimate_price_elasticity

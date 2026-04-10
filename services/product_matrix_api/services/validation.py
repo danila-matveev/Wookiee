@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import random
-from typing import Any, Optional
+from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session

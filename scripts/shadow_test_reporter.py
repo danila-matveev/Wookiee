@@ -13,8 +13,7 @@ import asyncio
 import json
 import logging
 import sys
-import os
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 
 # Ensure project root is on path
@@ -25,7 +24,7 @@ from dotenv import load_dotenv
 load_dotenv(PROJECT_ROOT / ".env")
 
 from agents.reporter.config import SUPABASE_URL, SUPABASE_SERVICE_KEY
-from agents.reporter.types import ReportType, ReportScope, compute_scope
+from agents.reporter.types import ReportType, compute_scope
 from agents.reporter.collector.financial import FinancialCollector
 from agents.reporter.collector.marketing import MarketingCollector
 from agents.reporter.collector.funnel import FunnelCollector

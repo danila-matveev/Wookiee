@@ -1,6 +1,5 @@
 """Sheet 1: 'Переплата по логистике (короб)' — with live Excel formulas."""
 from __future__ import annotations
-import openpyxl
 from openpyxl.worksheet.worksheet import Worksheet
 from services.logistics_audit.models.report_row import ReportRow
 

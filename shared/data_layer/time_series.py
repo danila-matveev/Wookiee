@@ -6,7 +6,6 @@ from datetime import datetime, timedelta
 
 from shared.data_layer._connection import _get_wb_connection, _get_ozon_connection, to_float
 from shared.data_layer._sql_fragments import WB_MARGIN_SQL
-from shared.model_mapping import get_osnova_sql, map_to_osnova
 
 __all__ = [
     'get_wb_daily_series',

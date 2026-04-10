@@ -6,7 +6,6 @@ stores suggestions for user approval.
 """
 from __future__ import annotations
 
-import calendar
 import logging
 import re
 from dataclasses import dataclass, field

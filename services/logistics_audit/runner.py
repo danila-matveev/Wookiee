@@ -1,7 +1,7 @@
 """Entry point: fetch → calculate → generate Excel."""
 from __future__ import annotations
 import logging
-from datetime import date, timedelta
+from datetime import timedelta
 from pathlib import Path
 from services.logistics_audit.models.audit_config import AuditConfig
 from services.logistics_audit.api.wb_reports import fetch_report

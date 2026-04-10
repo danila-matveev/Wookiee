@@ -8,7 +8,6 @@
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 import threading
@@ -54,7 +53,7 @@ def _write_sheets_status(status: str) -> None:
     if not VASILY_SPREADSHEET_ID:
         return
     try:
-        from shared.clients.sheets_client import get_client, get_moscow_datetime
+        from shared.clients.sheets_client import get_client
         from services.wb_localization.config import GOOGLE_SA_FILE
 
         gc = get_client(GOOGLE_SA_FILE)

@@ -10,8 +10,8 @@ SQLite таблицы в agents/oleg/data/reports.db:
 import json
 import logging
 import sqlite3
-from datetime import datetime, timedelta
-from agents.oleg.services.time_utils import get_now_msk, get_today_msk
+from datetime import timedelta
+from agents.oleg.services.time_utils import get_now_msk
 from pathlib import Path
 from typing import Optional
 

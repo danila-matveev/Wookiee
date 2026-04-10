@@ -9,15 +9,12 @@ Recommendation Engine — генерация ценовых рекомендац
 5. Ранжировать по прогнозу маржинальной прибыли (₽)
 """
 import logging
-from datetime import datetime
 from agents.oleg.services.time_utils import get_now_msk
 
-import numpy as np
 import pandas as pd
 
 from agents.oleg.services.price_analysis.regression_engine import (
     estimate_price_elasticity,
-    run_full_analysis,
 )
 from agents.oleg.services.price_analysis.roi_optimizer import compute_annual_roi
 
@@ -93,9 +90,9 @@ def generate_recommendations(
     if selection_status and selection_status not in allowed_statuses:
         gate_status = selection_status
         reason_map = {
-            'insufficient_data': f"INSUFFICIENT_DATA. Слишком мало наблюдений или низкое покрытие дат.",
-            'low_price_variation': f"FAIL. Недостаточная вариация цены (мало уникальных цен / изменений / диапазон).",
-            'low_predictive_power': f"FAIL. Модель не превосходит Naive Baseline на ≥10% WAPE или переобучена.",
+            'insufficient_data': "INSUFFICIENT_DATA. Слишком мало наблюдений или низкое покрытие дат.",
+            'low_price_variation': "FAIL. Недостаточная вариация цены (мало уникальных цен / изменений / диапазон).",
+            'low_predictive_power': "FAIL. Модель не превосходит Naive Baseline на ≥10% WAPE или переобучена.",
             'positive_elasticity': f"CONFOUNDED. Положительная эластичность ({elasticity}). Модель не идентифицирована.",
         }
         gate_reason = reason_map.get(reason_code, f"{gate_status}: {reason_code}")

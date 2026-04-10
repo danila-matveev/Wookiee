@@ -4,7 +4,6 @@ Text chunker — splits parsed sections into embedding-sized chunks.
 Recursive character splitting with context headers for retrieval quality.
 """
 
-import re
 from dataclasses import dataclass
 from typing import Optional
 

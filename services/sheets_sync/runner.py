@@ -166,7 +166,7 @@ def main():
             suffix = "_TEST" if TEST_MODE else ""
             print(f"  {name:<20} -> {info['sheet']}{suffix}")
             print(f"  {'':20}    {info['description']}")
-        print(f"\nUsage: python -m services.sheets_sync.runner <name|all>")
+        print("\nUsage: python -m services.sheets_sync.runner <name|all>")
         return
 
     if not args.sync_name:
@@ -196,7 +196,7 @@ def main():
     else:
         if args.sync_name not in SYNC_REGISTRY:
             print(f"Unknown sync: {args.sync_name}")
-            print(f"Use --list to see available syncs")
+            print("Use --list to see available syncs")
             sys.exit(1)
 
         result = run_sync(args.sync_name, start_date=args.start, end_date=args.end)

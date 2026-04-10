@@ -1,7 +1,7 @@
 """Traffic-related queries for WB and OZON (funnel, ads, clicks)."""
 
-from shared.data_layer._connection import _get_wb_connection, _get_ozon_connection, to_float
-from shared.model_mapping import get_osnova_sql, map_to_osnova
+from shared.data_layer._connection import _get_wb_connection, _get_ozon_connection
+from shared.model_mapping import get_osnova_sql
 
 __all__ = [
     "get_wb_traffic",

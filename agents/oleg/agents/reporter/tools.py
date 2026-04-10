@@ -12,10 +12,6 @@ from agents.oleg.services.agent_tools import (
     TOOL_HANDLERS as FINANCIAL_TOOL_HANDLERS,
     execute_tool as _v1_execute_tool,
 )
-from agents.oleg.services.price_tools import (
-    PRICE_TOOL_DEFINITIONS,
-    PRICE_TOOL_HANDLERS,
-)
 
 logger = logging.getLogger(__name__)
 

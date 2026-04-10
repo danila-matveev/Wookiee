@@ -3,11 +3,10 @@ Search module — embeds query and searches pgvector store.
 """
 
 import logging
-from dataclasses import asdict
 from typing import Optional
 
 from .embedder import GeminiEmbedder
-from .store import KnowledgeStore, SearchResult
+from .store import KnowledgeStore
 
 logger = logging.getLogger(__name__)
 

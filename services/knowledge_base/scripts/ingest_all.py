@@ -51,14 +51,14 @@ def main():
         force=args.force,
     ))
 
-    print(f"\nResults:")
+    print("\nResults:")
     print(f"  Files processed: {stats['files_processed']}")
     print(f"  Files skipped:   {stats['files_skipped']}")
     print(f"  Files errored:   {stats['files_errored']}")
     print(f"  Total chunks:    {stats['chunks_total']}")
 
     if stats["errors"]:
-        print(f"\nErrors:")
+        print("\nErrors:")
         for err in stats["errors"]:
             print(f"  - {err}")
 
