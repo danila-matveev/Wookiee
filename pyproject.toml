@@ -1,3 +1,44 @@
 [tool.pytest.ini_options]
 testpaths = ["tests", "services/marketplace_etl/tests"]
 asyncio_mode = "auto"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+src = ["agents", "shared", "scripts", "services"]
+exclude = [".venv", "*.egg-info"]
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "F",      # pyflakes
+    "B",      # flake8-bugbear (real bugs)
+    "S",      # flake8-bandit (security)
+]
+ignore = [
+    "E402",   # module-import-not-at-top — 130 existing, fix later
+    "E501",   # line too long
+    "E741",   # ambiguous variable name
+    "S101",   # assert — ok in tests
+    "S603",   # subprocess — false positives
+    "S607",   # partial executable path
+    "S311",   # non-crypto random — ok for non-security use
+    "S108",   # hardcoded temp file
+    "S104",   # bind all interfaces
+    "S310",   # suspicious URL open
+    "S608",   # SQL string concat — data_layer uses f-strings with sanitized dates, not user input
+    "B008",   # mutable default arg — 110 existing, many are intentional (dict/list defaults in tools)
+    "B905",   # zip strict — 28 existing, low priority
+    "F841",   # unused variable — 29 existing, fix incrementally
+    "B007",   # unused loop variable — 10 existing, fix incrementally
+    "E701",   # multiple statements on one line — 2 existing, cosmetic
+    "E731",   # lambda assignment — 1 existing, cosmetic
+    "B023",   # loop variable not used — 2 existing, low risk
+    "B904",   # raise without from — 9 existing, fix incrementally
+    "S110",   # try-except-pass — 18 existing silent failures, tracked for fix
+    "S112",   # try-except-continue — 4 existing, tracked for fix
+    "S113",   # requests without timeout — 2 existing, tracked for fix
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "B"]
