@@ -26,7 +26,6 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import pandas as pd
 
 # Путь к корню проекта
@@ -48,7 +47,6 @@ from services.wb_localization.generate_localization_report_v3 import (
     TARGET_LOCALIZATION_INDEX,
 )
 from services.wb_localization.wb_localization_mappings import (
-    WAREHOUSE_TO_FD,
     SKIP_WAREHOUSES,
     get_warehouse_fd,
     get_delivery_fd,
@@ -377,7 +375,7 @@ def _print_summary(report_path: Path) -> None:
             if not df_irp.empty:
                 irp_count = len(df_irp)
                 irp_total = df_irp['ИРП-нагрузка ₽/мес'].sum() if 'ИРП-нагрузка ₽/мес' in df_irp.columns else 0
-                print(f"\n   --- ИРП-зона ---")
+                print("\n   --- ИРП-зона ---")
                 print(f"   Артикулов в ИРП-зоне (< 60%): {irp_count}")
                 print(f"   Общая ИРП-нагрузка: {irp_total:,.0f} ₽/мес")
                 # Топ-5 по ИРП-нагрузке

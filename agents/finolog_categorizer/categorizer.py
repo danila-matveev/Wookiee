@@ -11,7 +11,6 @@ Priority order:
 """
 from __future__ import annotations
 
-import calendar
 import logging
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -19,7 +18,7 @@ from typing import Optional
 
 from .rules.description_rules import (
     DESCRIPTION_RULES, FOT_CATEGORIES,
-    CAT_CONTENT_CREATORS, CAT_FOT_MGMT, CAT_UNCLASSIFIED_IN, CAT_UNCLASSIFIED_OUT,
+    CAT_CONTENT_CREATORS, CAT_FOT_MGMT,
 )
 from .rules.regex_rules import REGEX_RULES, PAYROLL_PERSON_MAP
 from .rules.terminal_rules import match_terminal

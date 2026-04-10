@@ -7,7 +7,6 @@ Usage:
 """
 from __future__ import annotations
 import logging
-from datetime import date, datetime, timedelta
 from pathlib import Path
 import openpyxl
 
@@ -126,7 +125,7 @@ def level2_svod_by_report() -> bool:
         logger.info(f"  {marker} {report_id:<15} {our_val:>12,.2f} {fin_val:>12,.2f} {delta:>10,.2f}")
 
     logger.info(f"\n  Max delta: {max_delta:,.2f} rub")
-    logger.info(f"  Result: INFO — old audit used different methodology, differences expected")
+    logger.info("  Result: INFO — old audit used different methodology, differences expected")
     return True
 
 

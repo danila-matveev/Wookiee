@@ -9,7 +9,6 @@ from fastapi import APIRouter, Depends
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from services.dashboard_api.cache import cached
 from services.dashboard_api.dependencies import CommonParams
 from services.dashboard_api.schemas import (
     ActualSpendRow,

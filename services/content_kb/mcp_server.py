@@ -7,7 +7,6 @@ for integration with the v3 multi-agent system.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 

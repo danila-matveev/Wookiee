@@ -19,7 +19,6 @@ import re
 import json
 import urllib.request
 import urllib.error
-from datetime import datetime
 
 # Добавляем корень проекта
 import sys
@@ -92,7 +91,6 @@ def _append_blocks(page_id, blocks):
 # MARKDOWN → NOTION BLOCKS (shared implementation)
 # =============================================================================
 
-from shared.notion_blocks import parse_inline as _parse_inline  # noqa: E402
 from shared.notion_blocks import md_to_notion_blocks  # noqa: E402
 
 
@@ -129,7 +127,7 @@ def sync_report_to_notion(start_date, end_date, report_md, source="Скрипт"
     if existing:
         page_id = existing["id"]
         page_url = existing["url"]
-        print(f"[Notion] Найдена существующая страница, обновляем...")
+        print("[Notion] Найдена существующая страница, обновляем...")
 
         # Удаляем старый контент
         _delete_page_content(page_id)
@@ -150,7 +148,7 @@ def sync_report_to_notion(start_date, end_date, report_md, source="Скрипт"
         print(f"[Notion] Страница обновлена: {page_url}")
         return page_url
     else:
-        print(f"[Notion] Создаём новую страницу...")
+        print("[Notion] Создаём новую страницу...")
 
         properties = {
             "Name": {"title": [{"text": {"content": title}}]},

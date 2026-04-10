@@ -288,7 +288,7 @@ def print_results(result: dict, top_n: int = 15):
 def print_region_results(region_stats: dict, total_orders: int):
     """Выводит разбивку локализации по регионам."""
     print(f"\n  {'─' * 86}")
-    print(f"  ЛОКАЛИЗАЦИЯ ПО РЕГИОНАМ (как на WB Partners)")
+    print("  ЛОКАЛИЗАЦИЯ ПО РЕГИОНАМ (как на WB Partners)")
     print(f"  {'─' * 86}")
     print(f"  {'Регион':<35} {'Лок,%':>8} {'Доля,%':>8} {'Заказов':>8} {'Лок-ых':>8} {'КТР':>6} {'КРП,%':>7}")
     print(f"  {'─' * 86}")
@@ -312,7 +312,7 @@ def print_region_results(region_stats: dict, total_orders: int):
 def print_comparison(result: dict, wb_il: float = 0.98, wb_irp: float = 0.42):
     """Сравнение расчётных значений с данными WB Partners."""
     print(f"\n  {'=' * 60}")
-    print(f"  СРАВНЕНИЕ С WB PARTNERS")
+    print("  СРАВНЕНИЕ С WB PARTNERS")
     print(f"  {'=' * 60}")
     print(f"  {'Показатель':<25} {'Наш расчёт':>12} {'WB Partners':>12} {'Δ':>10}")
     print(f"  {'─' * 60}")
@@ -399,7 +399,7 @@ def main():
         date_to = (today - timedelta(days=1)).strftime("%Y-%m-%d")
 
     print(f"╔{'═' * 68}╗")
-    print(f"║  Калькулятор ИЛ и ИРП Wildberries                                  ║")
+    print("║  Калькулятор ИЛ и ИРП Wildberries                                  ║")
     print(f"╠{'═' * 68}╣")
     print(f"║  Кабинет: {cabinet.name:<57}║")
     print(f"║  Период:  {date_from[:10]} — {date_to:<44}║")

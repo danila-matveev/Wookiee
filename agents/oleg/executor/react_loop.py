@@ -13,7 +13,7 @@ import json
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional, Callable, Awaitable
+from typing import List, Dict, Optional, Callable, Awaitable
 
 from agents.oleg.executor.circuit_breaker import CircuitBreaker
 
@@ -406,7 +406,7 @@ class ReactLoop:
                 if len(result_str) > self.max_tool_result_length:
                     result_str = (
                         result_str[:self.max_tool_result_length]
-                        + f"\n... (truncated)"
+                        + "\n... (truncated)"
                     )
                 tool_duration = int((time.time() - tool_start) * 1000)
                 steps.append(AgentStep(

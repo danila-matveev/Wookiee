@@ -6,7 +6,7 @@ to marketplace keys and querying the contractor database.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Dict, List, Optional
 
@@ -315,7 +315,7 @@ def _get_article_ozon_finance(current_start: str, prev_start: str, current_end: 
     conn = _get_ozon_connection()
     cur = conn.cursor()
     try:
-        cur.execute(f"""
+        cur.execute("""
         SELECT
             CASE WHEN date >= %s THEN 'current' ELSE 'previous' END as period,
             SUM(count_end) as sales_count,

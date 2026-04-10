@@ -6,7 +6,7 @@ marketplaces, required hard gates, and template paths (for Phase 3 validation).
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import List, Optional
 

@@ -206,7 +206,6 @@ def init_clients():
         NOTION_DATABASE_ID,
         NOTION_TOKEN,
         OPENROUTER_API_KEY,
-        PRICING,
     )
     from shared.clients.openrouter_client import OpenRouterClient
     from shared.notion_client import NotionClient

@@ -657,7 +657,7 @@ def print_decomposition(results: dict[str, dict], reference: float | None = None
     # Coef sources
     if "coef_sources" in results.get("fix3", {}):
         cs = results["fix3"]["coef_sources"]
-        logger.info(f"\nCoefficient sources (Fix 3):")
+        logger.info("\nCoefficient sources (Fix 3):")
         for src, cnt in cs.items():
             logger.info(f"  {src}: {cnt:,}")
 

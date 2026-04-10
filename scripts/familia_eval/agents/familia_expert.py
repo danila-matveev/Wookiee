@@ -1,7 +1,6 @@
 # scripts/familia_eval/agents/familia_expert.py
 """Familia Expert agent: analyzes hidden costs and contract risks."""
 
-import json
 import logging
 import os
 

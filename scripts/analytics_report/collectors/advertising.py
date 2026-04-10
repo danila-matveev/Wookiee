@@ -13,7 +13,6 @@ from shared.data_layer.advertising import (
     get_wb_ad_totals_check,
     get_ozon_ad_by_sku,
 )
-from scripts.analytics_report.utils import tuples_to_dicts, safe_float
 
 
 def collect_advertising(start: str, prev_start: str, end: str) -> dict:

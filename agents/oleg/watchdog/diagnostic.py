@@ -6,7 +6,7 @@ Produces a human-readable diagnostic report with fix instructions.
 """
 import logging
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date
 from typing import List, Optional
 
 logger = logging.getLogger(__name__)
@@ -203,9 +203,9 @@ class DiagnosticRunner:
                     status="FAIL",
                     detail=f"Последнее обновление: {update_date}",
                     fix=(
-                        f"ETL не запускался сегодня. Проверить контейнер:\n"
-                        f"1. docker logs wookiee-etl\n"
-                        f"2. docker restart wookiee-etl"
+                        "ETL не запускался сегодня. Проверить контейнер:\n"
+                        "1. docker logs wookiee-etl\n"
+                        "2. docker restart wookiee-etl"
                     ),
                 )
 

@@ -148,7 +148,7 @@ def main():
     print(f"\n{'='*60}")
     print(report[:500] + "..." if len(report) > 500 else report)
     print(f"{'='*60}")
-    print(f"\nFull report: scripts/familia_eval/output/familia_eval_report.md")
+    print("\nFull report: scripts/familia_eval/output/familia_eval_report.md")
 
 
 def _save_output(filename: str, content: str):

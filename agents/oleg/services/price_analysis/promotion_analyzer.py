@@ -11,7 +11,6 @@ Promotion Analyzer — анализ акций WB/OZON и рекомендаци
 import logging
 from datetime import datetime, timedelta
 from agents.oleg.services.time_utils import get_now_msk
-from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -426,7 +425,7 @@ class PromotionAnalyzer:
             else:
                 skip.append({
                     'model': model_name,
-                    'reason': f'Недостаточно данных для обоснования участия',
+                    'reason': 'Недостаточно данных для обоснования участия',
                     'stock_status': stock_status,
                 })
 

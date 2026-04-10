@@ -15,7 +15,6 @@ import openpyxl
 
 from services.logistics_audit.calculators.logistics_overpayment import (
     calculate_row_overpayment,
-    OverpaymentResult,
 )
 from services.logistics_audit.calculators.tariff_periods import get_base_tariffs
 
@@ -142,14 +141,14 @@ def run_validation():
             baseline_overpay += res.overpayment
             baseline_count += 1
 
-    logger.info(f"\n--- Baseline (old logic: tariff=46, KTR=1.0) ---")
+    logger.info("\n--- Baseline (old logic: tariff=46, KTR=1.0) ---")
     logger.info(f"  Rows calculated: {baseline_count}")
     logger.info(f"  Overpayment:     {baseline_overpay:>12,.2f} rub")
     logger.info(f"  Discrepancy vs Fisanov: {baseline_overpay - ref_total_overpay:>+12,.2f} rub")
 
     # === Fix 1: Forward delivery filter (all Fisanov rows ARE forward, so no change expected) ===
     fix1_overpay = baseline_overpay  # All Fisanov rows are forward deliveries
-    logger.info(f"\n--- + Fix 1: Forward delivery filter ---")
+    logger.info("\n--- + Fix 1: Forward delivery filter ---")
     logger.info(f"  Delta: {fix1_overpay - baseline_overpay:>+12,.2f} rub (all rows are forward)")
 
     # === Fix 2: Period-based tariffs ===
@@ -177,7 +176,7 @@ def run_validation():
             fix2_overpay += res.overpayment
             fix2_count += 1
 
-    logger.info(f"\n--- + Fix 2: Period-based tariffs ---")
+    logger.info("\n--- + Fix 2: Period-based tariffs ---")
     logger.info(f"  Delta: {fix2_overpay - fix1_overpay:>+12,.2f} rub")
     logger.info(f"  Overpayment: {fix2_overpay:>12,.2f} rub")
 
@@ -209,7 +208,7 @@ def run_validation():
         if res:
             fix3_overpay += res.overpayment
 
-    logger.info(f"\n--- + Fix 3: Warehouse coefficient resolution ---")
+    logger.info("\n--- + Fix 3: Warehouse coefficient resolution ---")
     logger.info(f"  Delta: {fix3_overpay - fix2_overpay:>+12,.2f} rub")
     logger.info(f"  Overpayment: {fix3_overpay:>12,.2f} rub")
 
@@ -246,7 +245,7 @@ def run_validation():
         if res:
             fix4_overpay += res.overpayment
 
-    logger.info(f"\n--- + Fix 4: IL calibration (Fisanov values) ---")
+    logger.info("\n--- + Fix 4: IL calibration (Fisanov values) ---")
     logger.info(f"  Delta: {fix4_overpay - fix3_overpay:>+12,.2f} rub")
     logger.info(f"  Overpayment: {fix4_overpay:>12,.2f} rub")
 
@@ -288,14 +287,14 @@ def run_validation():
                 negative_total += res.overpayment
                 negative_count += 1
 
-    logger.info(f"\n--- + Fix 5: Exclude negative differences ---")
+    logger.info("\n--- + Fix 5: Exclude negative differences ---")
     logger.info(f"  Negative rows excluded: {negative_count} ({negative_total:,.2f} rub)")
     logger.info(f"  Delta: {fix5_overpay - fix4_overpay:>+12,.2f} rub")
     logger.info(f"  Overpayment: {fix5_overpay:>12,.2f} rub")
 
     # === Summary ===
     logger.info(f"\n{'='*60}")
-    logger.info(f"DISCREPANCY DECOMPOSITION REPORT")
+    logger.info("DISCREPANCY DECOMPOSITION REPORT")
     logger.info(f"{'='*60}")
     logger.info(f"{'Error source':<40} {'Delta (rub)':>12} {'Rows':>8}")
     logger.info(f"{'-'*60}")
