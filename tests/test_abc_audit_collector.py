@@ -57,3 +57,103 @@ def test_build_abc_quality_flags_with_errors():
 
     assert "finance" in flags["collector_errors"]
     assert abs(flags["coverage_pct"] - 84.5) < 0.1
+
+
+# ── Finance collector tests ──────────────────────────────────────────
+
+from unittest.mock import patch, MagicMock
+
+
+def test_collect_finance_merges_wb_ozon():
+    """Finance collector merges WB + OZON article data by article key."""
+    from scripts.abc_audit.collectors.finance import collect_finance
+
+    wb_articles = [
+        {
+            "article": "wendy/black",
+            "model": "wendy",
+            "orders_count": 100,
+            "sales_count": 85,
+            "revenue": 50000.0,
+            "margin": 12000.0,
+            "adv_internal": 2000.0,
+            "adv_external": 1000.0,
+            "adv_total": 3000.0,
+        }
+    ]
+    ozon_articles = [
+        {
+            "article": "wendy/black",
+            "model": "wendy",
+            "orders_count": 20,
+            "sales_count": 15,
+            "revenue": 9000.0,
+            "margin": 2200.0,
+            "adv_internal": 400.0,
+            "adv_external": 0.0,
+            "adv_total": 400.0,
+        }
+    ]
+
+    with (
+        patch(
+            "scripts.abc_audit.collectors.finance.get_wb_by_article",
+            return_value=wb_articles,
+        ),
+        patch(
+            "scripts.abc_audit.collectors.finance.get_ozon_by_article",
+            return_value=ozon_articles,
+        ),
+    ):
+        result = collect_finance(
+            "2026-03-12", "2026-04-12",
+            "2026-01-11", "2026-04-12",
+            "2025-10-13", "2026-04-12",
+        )
+
+    data = result["finance"]
+    assert "wendy/black" in data
+    art = data["wendy/black"]
+    assert art["revenue_30d"] == 50000.0 + 9000.0
+    assert art["margin_30d"] == 12000.0 + 2200.0
+    assert art["adv_internal_30d"] == 2000.0 + 400.0
+    assert art["sales_count_30d"] == 85 + 15
+
+
+def test_collect_finance_ozon_only_article():
+    """Article present only on OZON should still appear."""
+    from scripts.abc_audit.collectors.finance import collect_finance
+
+    ozon_articles = [
+        {
+            "article": "audrey/red",
+            "model": "audrey",
+            "orders_count": 8,
+            "sales_count": 5,
+            "revenue": 3000.0,
+            "margin": 800.0,
+            "adv_internal": 100.0,
+            "adv_external": 0.0,
+            "adv_total": 100.0,
+        }
+    ]
+
+    with (
+        patch(
+            "scripts.abc_audit.collectors.finance.get_wb_by_article",
+            return_value=[],
+        ),
+        patch(
+            "scripts.abc_audit.collectors.finance.get_ozon_by_article",
+            return_value=ozon_articles,
+        ),
+    ):
+        result = collect_finance(
+            "2026-03-12", "2026-04-12",
+            "2026-01-11", "2026-04-12",
+            "2025-10-13", "2026-04-12",
+        )
+
+    data = result["finance"]
+    assert "audrey/red" in data
+    assert data["audrey/red"]["margin_30d"] == 800.0
