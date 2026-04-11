@@ -296,3 +296,50 @@ def test_collect_hierarchy_excludes_archive():
     h = result["hierarchy"]
     assert h["articles"]["old/model"]["active"] is False
     assert h["status_counts"]["Архив"] == 1
+
+
+# ── Buyout + Size collector tests ─────────────────────────────────
+
+
+def test_collect_buyouts_calculates_pct():
+    """Buyout collector returns buyout % per article."""
+    from scripts.abc_audit.collectors.buyouts import collect_buyouts
+
+    wb_buyouts = [
+        ("wendy", "wendy/black", 100, 85, 15),
+        ("audrey", "audrey/red", 50, 30, 20),
+    ]
+
+    with patch(
+        "scripts.abc_audit.collectors.buyouts.get_wb_buyouts_returns_by_artikul",
+        return_value=wb_buyouts,
+    ):
+        result = collect_buyouts("2026-03-12", "2026-04-12")
+
+    data = result["buyouts"]
+    assert data["wendy/black"]["buyout_pct"] == 85.0
+    assert data["audrey/red"]["buyout_pct"] == 60.0
+
+
+def test_collect_size_data():
+    """Size collector aggregates sales by size from barcode data."""
+    from scripts.abc_audit.collectors.buyouts import collect_size_data
+
+    wb_barcodes = [
+        {"barcode": "123", "article": "wendy/black", "ts_name": "S", "sales_count": 30, "model": "wendy"},
+        {"barcode": "124", "article": "wendy/black", "ts_name": "M", "sales_count": 50, "model": "wendy"},
+        {"barcode": "125", "article": "wendy/black", "ts_name": "L", "sales_count": 35, "model": "wendy"},
+    ]
+
+    with patch(
+        "scripts.abc_audit.collectors.buyouts.get_wb_fin_data_by_barcode",
+        return_value=wb_barcodes,
+    ):
+        result = collect_size_data("2026-03-12", "2026-04-12")
+
+    sizes = result["sizes"]
+    assert "wendy/black" in sizes
+    size_dist = sizes["wendy/black"]
+    assert size_dist["S"] == 30
+    assert size_dist["M"] == 50
+    assert size_dist["L"] == 35
