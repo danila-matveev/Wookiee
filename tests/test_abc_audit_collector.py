@@ -369,3 +369,37 @@ def test_main_collector_runs_all_collectors():
     assert "meta" in result
     assert result["meta"]["cut_date"] == "2026-04-11"
     assert "errors" in result["meta"]
+
+
+def test_full_collector_json_schema():
+    """Smoke test: collector output has all required top-level keys."""
+    from scripts.abc_audit.collect_data import run_collection
+
+    with (
+        patch("scripts.abc_audit.collect_data.collect_finance", return_value={"finance": {}}),
+        patch("scripts.abc_audit.collect_data.collect_inventory", return_value={"inventory": {}, "meta": {"moysklad_stale": False}}),
+        patch("scripts.abc_audit.collect_data.collect_hierarchy", return_value={"hierarchy": {"articles": {}, "color_code_groups": {}, "status_counts": {}}}),
+        patch("scripts.abc_audit.collect_data.collect_buyouts", return_value={"buyouts": {}}),
+        patch("scripts.abc_audit.collect_data.collect_size_data", return_value={"sizes": {}}),
+    ):
+        result = run_collection("2026-04-11")
+
+    # Top-level keys
+    required_keys = {"finance", "inventory", "hierarchy", "buyouts", "sizes", "meta"}
+    assert required_keys.issubset(set(result.keys()))
+
+    # Meta structure
+    meta = result["meta"]
+    assert meta["cut_date"] == "2026-04-11"
+    assert "p30_start" in meta
+    assert "p90_start" in meta
+    assert "p180_start" in meta
+    assert "errors" in meta
+    assert "quality_flags" in meta
+    assert "duration_sec" in meta
+
+    # Quality flags structure
+    qf = meta["quality_flags"]
+    assert "coverage_pct" in qf
+    assert "ozon_buyout_available" in qf
+    assert qf["ozon_buyout_available"] is False
