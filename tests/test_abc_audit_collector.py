@@ -157,3 +157,64 @@ def test_collect_finance_ozon_only_article():
     data = result["finance"]
     assert "audrey/red" in data
     assert data["audrey/red"]["margin_30d"] == 800.0
+
+
+# ── Inventory collector tests ───────────────────────────────────────
+
+
+def test_collect_inventory_total_stock():
+    """Inventory collector sums WB + OZON + MoySklad stocks."""
+    from scripts.abc_audit.collectors.inventory import collect_inventory
+
+    with (
+        patch(
+            "scripts.abc_audit.collectors.inventory.get_wb_avg_stock",
+            return_value={"wendy/black": 200.0, "audrey/red": 50.0},
+        ),
+        patch(
+            "scripts.abc_audit.collectors.inventory.get_ozon_avg_stock",
+            return_value={"wendy/black": 80.0},
+        ),
+        patch(
+            "scripts.abc_audit.collectors.inventory.get_moysklad_stock_by_article",
+            return_value={
+                "wendy/black": {
+                    "stock_main": 150, "stock_transit": 50,
+                    "total": 200, "snapshot_date": "2026-04-11", "is_stale": False,
+                },
+            },
+        ),
+    ):
+        result = collect_inventory("2026-03-12", "2026-04-12")
+
+    data = result["inventory"]
+    assert data["wendy/black"]["stock_wb"] == 200.0
+    assert data["wendy/black"]["stock_ozon"] == 80.0
+    assert data["wendy/black"]["stock_moysklad"] == 200
+    assert data["wendy/black"]["stock_total"] == 480.0
+    assert data["audrey/red"]["stock_total"] == 50.0
+    assert result["meta"]["moysklad_stale"] is False
+
+
+def test_collect_inventory_turnover_calc():
+    """Turnover = total_stock / daily_sales. MOQ months calc."""
+    from scripts.abc_audit.collectors.inventory import calc_turnover_metrics
+
+    metrics = calc_turnover_metrics(stock_total=480.0, daily_sales=16.0)
+
+    assert metrics["turnover_days"] == 30.0
+    assert metrics["moq_months"] == pytest.approx(500 / (16.0 * 30), rel=0.01)
+    assert metrics["roi_annual"] == pytest.approx(0, abs=1)  # needs margin_pct
+
+
+def test_calc_turnover_with_margin():
+    """ROI annual = margin_pct * (365 / turnover_days)."""
+    from scripts.abc_audit.collectors.inventory import calc_turnover_metrics
+
+    metrics = calc_turnover_metrics(
+        stock_total=480.0, daily_sales=16.0, margin_pct=25.0,
+    )
+
+    # turnover_days = 480/16 = 30
+    # ROI = 25 * (365/30) = 304.2
+    assert metrics["roi_annual"] == pytest.approx(304.2, rel=0.01)
