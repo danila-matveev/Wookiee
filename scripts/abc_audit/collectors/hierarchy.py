@@ -53,10 +53,13 @@ def collect_hierarchy() -> dict:
             color_groups[key]["models"].add(model_osnova)
             color_groups[key]["statuses"].add(status)
 
-    # Конвертируем set -> list для JSON-сериализации
+    # Конвертируем set → list, tuple-ключи → string для JSON-сериализации
     serializable_groups = {}
     for key, group in color_groups.items():
-        serializable_groups[key] = {
+        str_key = f"{key[0]}|{key[1]}"
+        serializable_groups[str_key] = {
+            "tip_kollekcii": key[0],
+            "color_code": key[1],
             "articles": group["articles"],
             "models": sorted(group["models"]),
             "statuses": sorted(group["statuses"]),

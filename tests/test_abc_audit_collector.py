@@ -261,14 +261,14 @@ def test_collect_hierarchy_groups_by_color_code():
     assert h["articles"]["vuki/black"]["tip_kollekcii"] == "tricot"
 
     # Color_code группы для tricot
-    cc_key = ("tricot", "2")
+    cc_key = "tricot|2"
     assert cc_key in h["color_code_groups"]
     group = h["color_code_groups"][cc_key]
     assert set(group["models"]) == {"Vuki", "Moon"}
     assert len(group["articles"]) == 2
 
     # Wendy не в tricot color_code группе
-    assert ("seamless_wendy", "WE005") in h["color_code_groups"]
+    assert "seamless_wendy|WE005" in h["color_code_groups"]
 
     # Status counts
     assert h["status_counts"]["Продается"] == 3
