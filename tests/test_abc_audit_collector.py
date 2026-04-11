@@ -218,3 +218,81 @@ def test_calc_turnover_with_margin():
     # turnover_days = 480/16 = 30
     # ROI = 25 * (365/30) = 304.2
     assert metrics["roi_annual"] == pytest.approx(304.2, rel=0.01)
+
+
+# ── Hierarchy collector tests ──────────────────────────────────────
+
+
+def test_collect_hierarchy_groups_by_color_code():
+    """Hierarchy collector groups tricot articles by color_code."""
+    from scripts.abc_audit.collectors.hierarchy import collect_hierarchy
+
+    fake_info = {
+        "vuki/black": {
+            "status": "Продается", "model_kod": "VukiN",
+            "model_osnova": "Vuki", "color_code": "2",
+            "cvet": "черный", "color": "black",
+            "skleyka_wb": None, "tip_kollekcii": "tricot",
+        },
+        "moon/black": {
+            "status": "Продается", "model_kod": "MoonN",
+            "model_osnova": "Moon", "color_code": "2",
+            "cvet": "черный", "color": "black",
+            "skleyka_wb": None, "tip_kollekcii": "tricot",
+        },
+        "wendy/red": {
+            "status": "Продается", "model_kod": "WendyN",
+            "model_osnova": "Wendy", "color_code": "WE005",
+            "cvet": "красный", "color": "red",
+            "skleyka_wb": None, "tip_kollekcii": "seamless_wendy",
+        },
+    }
+
+    with patch(
+        "scripts.abc_audit.collectors.hierarchy.get_artikuly_full_info",
+        return_value=fake_info,
+    ):
+        result = collect_hierarchy()
+
+    h = result["hierarchy"]
+
+    # Все артикулы должны быть в articles
+    assert "vuki/black" in h["articles"]
+    assert h["articles"]["vuki/black"]["tip_kollekcii"] == "tricot"
+
+    # Color_code группы для tricot
+    cc_key = ("tricot", "2")
+    assert cc_key in h["color_code_groups"]
+    group = h["color_code_groups"][cc_key]
+    assert set(group["models"]) == {"Vuki", "Moon"}
+    assert len(group["articles"]) == 2
+
+    # Wendy не в tricot color_code группе
+    assert ("seamless_wendy", "WE005") in h["color_code_groups"]
+
+    # Status counts
+    assert h["status_counts"]["Продается"] == 3
+
+
+def test_collect_hierarchy_excludes_archive():
+    """Archive articles excluded from active analysis."""
+    from scripts.abc_audit.collectors.hierarchy import collect_hierarchy
+
+    fake_info = {
+        "old/model": {
+            "status": "Архив", "model_kod": "OldN",
+            "model_osnova": "Old", "color_code": "99",
+            "cvet": "серый", "color": "grey",
+            "skleyka_wb": None, "tip_kollekcii": "tricot",
+        },
+    }
+
+    with patch(
+        "scripts.abc_audit.collectors.hierarchy.get_artikuly_full_info",
+        return_value=fake_info,
+    ):
+        result = collect_hierarchy()
+
+    h = result["hierarchy"]
+    assert h["articles"]["old/model"]["active"] is False
+    assert h["status_counts"]["Архив"] == 1
