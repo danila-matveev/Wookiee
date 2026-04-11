@@ -343,3 +343,29 @@ def test_collect_size_data():
     assert size_dist["S"] == 30
     assert size_dist["M"] == 50
     assert size_dist["L"] == 35
+
+
+# ── Main collector orchestrator tests ────────────────────────────
+
+
+def test_main_collector_runs_all_collectors():
+    """Main collector calls all sub-collectors and merges."""
+    from scripts.abc_audit.collect_data import run_collection
+
+    with (
+        patch("scripts.abc_audit.collect_data.collect_finance", return_value={"finance": {"a/b": {"margin_30d": 100}}}),
+        patch("scripts.abc_audit.collect_data.collect_inventory", return_value={"inventory": {"a/b": {"stock_total": 50}}, "meta": {"moysklad_stale": False}}),
+        patch("scripts.abc_audit.collect_data.collect_hierarchy", return_value={"hierarchy": {"articles": {"a/b": {"status": "Продается"}}, "color_code_groups": {}, "status_counts": {"Продается": 1}}}),
+        patch("scripts.abc_audit.collect_data.collect_buyouts", return_value={"buyouts": {"a/b": {"buyout_pct": 85.0}}}),
+        patch("scripts.abc_audit.collect_data.collect_size_data", return_value={"sizes": {"a/b": {"M": 10}}}),
+    ):
+        result = run_collection("2026-04-11")
+
+    assert "finance" in result
+    assert "inventory" in result
+    assert "hierarchy" in result
+    assert "buyouts" in result
+    assert "sizes" in result
+    assert "meta" in result
+    assert result["meta"]["cut_date"] == "2026-04-11"
+    assert "errors" in result["meta"]
