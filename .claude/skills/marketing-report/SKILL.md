@@ -1,6 +1,6 @@
 ---
 name: marketing-report
-description: Deep marketing analytics for Wookiee brand (WB+OZON) — funnel analysis, DRR decomposition, model efficiency matrix, organic vs paid, external ads (bloggers/VK/SMM)
+description: Deep marketing analytics for Wookiee brand (WB+OZON) — P&L funnel per channel, 3 traffic funnels, real Sheets data (bloggers/VK/SMM), all 37 models, actionable recommendations
 triggers:
   - /marketing-report
   - маркетинговый отчёт
@@ -9,7 +9,7 @@ triggers:
 
 # Marketing Report Skill
 
-Deep marketing analytics for the Wookiee brand (WB+OZON). Uses a 3-wave analytics engine (detect → diagnose → strategize) before generating an 11-section report with funnel analysis, DRR decomposition, model efficiency matrix, and external ad breakdown.
+Deep marketing analytics for the Wookiee brand (WB+OZON). Uses a 3-wave analytics engine (detect -> diagnose -> strategize) before generating a 10-section report with P&L funnel per channel, 3 traffic funnels, real external ad data from Google Sheets, all 37 models with Russian lifecycle categories, and specific actionable recommendations.
 
 ## Quick Start
 
@@ -91,7 +91,34 @@ Read the output JSON. Save the full JSON as `data_bundle`.
 - `advertising` — ad spend, ROAS, DRR by channel (WB + OZON), organic vs paid split
 - `external_marketing` — bloggers, VK, Yandex, SMM spend and attribution
 - `traffic` — visits, conversion, by source (WB)
-- `sku_statuses` — model lifecycle statuses (Growth / Harvest / Optimize / Cut)
+- `sku_statuses` — model lifecycle statuses (Рост / Сбор / Оптимизация / Стоп)
+
+**CRITICAL: wb_external_breakdown columns:**
+`period`, `adv_internal` (МП), `adv_bloggers` (блогеры), `adv_vk` (ВК), `adv_creators` (=0, не используется), `adv_total`. The 183К value is `adv_vk` (ВК), NOT `adv_creators`!
+
+### 1.2 External Ad Data from Google Sheets
+
+Parse REAL data from 3 Google Sheets, filtered by period dates:
+
+**Блогеры (Sheet ID: 1Y7ux...):**
+```bash
+gws sheets get --spreadsheet-id {BLOGGERS_SHEET_ID} --range "A1:Z200"
+```
+Filter rows where "Дата публикации" column falls within `[START, END]`.
+
+**ВК/Яндекс (Sheet ID: 1h0Ne...):**
+```bash
+gws sheets get --spreadsheet-id {VK_SHEET_ID} --range "A1:Z200"
+```
+Filter rows by date columns within `[START, END]`.
+
+**SMM (Sheet ID: 19NXH...):**
+```bash
+gws sheets get --spreadsheet-id {SMM_SHEET_ID} --range "A1:Z200"
+```
+Filter rows by date columns within `[START, END]`.
+
+Save parsed data as `sheets_bloggers`, `sheets_vk`, `sheets_smm`. If a sheet fails — note in quality_flags, proceed with DB data only.
 
 ---
 
@@ -155,7 +182,7 @@ Read prompt: `.claude/skills/marketing-report/prompts/performance-analyst.md`
 
 Launch Performance Analyst as a subagent (Agent tool):
 - **Input data:** `finance` (totals + by-model) + `advertising` (all) + `external_marketing` + `sku_statuses` + `findings_raw` + `diagnostics` + `hypotheses` + analytics-kb.md
-- **Produces:** sections II (Channel P&L), V (External Ads), VI (Model Matrix), VII (Daily Dynamics), VIII (Avg Check + DRR)
+- **Produces:** sections II (P&L воронка по каналам), V (Внутренняя реклама МП), VI (Эффективность по моделям), VII (Средний чек и ассортимент)
 
 Save output as `performance_deep`.
 
@@ -164,8 +191,8 @@ Save output as `performance_deep`.
 Read prompt: `.claude/skills/marketing-report/prompts/funnel-analyst.md`
 
 Launch Funnel Analyst as a subagent (Agent tool):
-- **Input data:** `traffic` + `advertising` (organic_vs_paid, daily_series) + `finance` (totals) + `findings_raw` + `diagnostics` + analytics-kb.md
-- **Produces:** sections III (Funnel Analysis), IV (Organic vs Paid)
+- **Input data:** `traffic` + `advertising` (organic_vs_paid, daily_series) + `finance` (totals) + `sheets_bloggers` + `sheets_vk` + `sheets_smm` + `findings_raw` + `diagnostics` + analytics-kb.md
+- **Produces:** sections III (Воронки трафика), IV (Внешняя реклама)
 
 Save output as `funnel_deep`.
 
@@ -178,16 +205,16 @@ Read prompt: `.claude/skills/marketing-report/prompts/verifier.md`
 Launch Verifier as a subagent (Agent tool) with: `performance_deep` + `funnel_deep` + `findings_raw` + `hypotheses` + raw data blocks.
 
 **10 checks:**
-1. DRR split present (внутренняя МП и внешняя отдельно — нельзя объединять)
+1. ДРР split present (внутренняя МП и внешняя отдельно — нельзя объединять)
 2. Dual KPI for each ad channel (spend + orders or ROAS — not spend alone)
-3. Funnel math: each stage ≤ previous stage (no funnel inversions)
+3. Funnel math: each stage <= previous stage (no funnel inversions)
 4. ROMI formula correct: `(revenue - ad_spend) / ad_spend * 100`
-5. Organic + paid = total traffic (shares sum to 100%, within ±1%)
-6. Matrix coverage: all models from sku_statuses appear in matrix (Growth/Harvest/Optimize/Cut)
+5. 3 traffic funnels present: внешний, внутренний МП, органика. Органика = total - внутренняя - внешняя
+6. All 37 models from sku_statuses appear in model analysis (Рост/Сбор/Оптимизация/Стоп — Russian only)
 7. Real models only: no invented model names — all from sku_statuses
-8. ASCII funnel numbers match source data (spot-check 2 funnels)
-9. Google Sheets / external data sourced correctly and noted
-10. Action direction: every recommendation has a direction (increase/decrease/pause/test)
+8. Sheets data sourced correctly: bloggers filtered by "Дата публикации", VK/SMM by date columns
+9. Recommendations are SPECIFIC: model name + channel + конкретное действие + сумма в ₽ (not "масштабировать")
+10. Forecast in ₽ (Выручка, Маржа, ДРР) — NOT in штуки
 
 **Verdict:** APPROVE / CORRECT / REJECT (max 1 retry).
 
@@ -204,21 +231,20 @@ Launch Synthesizer as a subagent (Agent tool) with ALL outputs: `findings_raw` +
 
 **Output:** ONE `final_document_md` — clean Markdown that `md_to_notion_blocks()` converts to native Notion blocks.
 
-### 11-Section Report Structure
+### 10-Section Report Structure
 
-| # | Section | Content |
-|---|---------|---------|
-| I | Исполнительная сводка | Таблица: метрика/значение/Δ/статус + резюме 3-5 строк |
-| II | Анализ по каналам | WB P&L маркетинга + OZON P&L маркетинга + ключевые выводы |
-| III | Анализ воронки | WB organic ASCII + WB ad ASCII + OZON ad ASCII + бенчмарки |
-| IV | Органик vs Платное | 3 таблицы: доли, динамика, конверсии + инсайт-callout |
-| V | Внешняя реклама | Сводная разбивка каналов + V.1 Блогеры + V.2 VK/Яндекс + V.3 SMM |
-| VI | Матрица эффективности моделей | Growth/Harvest/Optimize/Cut + WB детали + OZON детали |
-| VII | Дневная динамика | WB по дням + OZON по дням (таблицы) |
-| VIII | Средний чек и ДРР | Таблица ср. чек по моделям + рекомендации по ассортименту |
-| IX | Рекомендации | Срочные (P0) + Оптимизация (P1) + Стратегические (P2) |
-| X | Прогноз | Таблица прогноза + Риски + Возможности |
-| XI | Advisor | 🔴🟡🟢 по каждому каналу с confidence% |
+| # | Секция | Содержание |
+|---|--------|------------|
+| 0 | Паспорт отчёта | Период, источники данных (БД WB, БД OZON, Google Sheets блогеры/ВК/SMM), с чем сравниваем, качество данных |
+| I | Исполнительная сводка | Короткие буллеты (NOT стена текста). Каждый буллет = метрика + дельта + причина |
+| II | P&L воронка по каналам | ПОЛНАЯ воронка на канал (WB, затем OZON): Показы → Переходы → Корзина → Заказы → Выкупы → Комиссия МП → Логистика → Хранение → Себестоимость → Маржа. С CR между каждым шагом. КЛЮЧЕВОЙ аналитический блок |
+| III | Воронки трафика | 3 отдельных воронки: (a) внешний трафик (блогеры+ВК→переходы→заказы), (b) внутренняя реклама МП (показы→клики→корзина→заказы), (c) органика = total - внутренняя - внешняя. ASCII-диаграммы |
+| IV | Внешняя реклама | РЕАЛЬНЫЕ данные из Google Sheets: блогеры (Sheet 1Y7ux, фильтр по "Дата публикации"), ВК/Яндекс (Sheet 1h0Ne), SMM (Sheet 19NXH). Парсинг и фильтрация по периоду. Dual KPI на каждый канал |
+| V | Внутренняя реклама МП | Дневная динамика, кампании, эффективность рекламы по моделям. Объединяет старые секции VI+VII |
+| VI | Эффективность по моделям | ВСЕ 37 моделей из sku_statuses. Русские категории: Рост/Сбор/Оптимизация/Стоп. Конкретные рекомендации по каждой модели ("увеличить бюджет внутренней рекламы на 15К₽/нед" — НЕ "масштабировать") |
+| VII | Средний чек и ассортимент | ВСЕ модели, анализ ассортимента, что продвигать для роста чека |
+| VIII | Рекомендации и план действий | ОБЪЕДИНЕНО из старых IX+XI. Один блок: Срочные (сегодня) → Неделя → Месяц. Каждая рекомендация = конкретное действие + модель/канал + внутренняя/внешняя + ₽ эффект |
+| IX | Прогноз | В ₽ (НЕ штуки!). Выручка, маржа, ДРР — прогноз с ₽ диапазонами |
 
 ### Formatting Rules
 
@@ -226,13 +252,16 @@ Launch Synthesizer as a subagent (Agent tool) with ALL outputs: `findings_raw` +
 - **Tables:** pipe format `| Col | Col |`. Bold in cells supported: `**+187К**`
 - **Toggle headings:** `## ▶` for sections, `### ▶` for subsections
 - **Callouts:** `> ⚠️ text`, `> 💡 text`, `> 📊 text`, `> ✅ text` → native Notion callout blocks
-- **ASCII funnels:** in triple-backtick code blocks (``` ``` ```) — not plain text
+- **ASCII funnels:** in triple-backtick code blocks — not plain text
 - **Numbers:** `1 234 567 ₽`, `24,1%`, `+3,2 п.п.`, `8,8М`, `42,8 млн`
-- **Terminology:** Russian only (ДРР, Выручка, Органик, Воронка, Маржинальность)
-- **Models:** Title Case (Wendy, not wendy). Only REAL models from sku_statuses
-- **Anomalies:** Δ ДРР > 2 п.п. → ⚠️ mark; organic share drop > 5 п.п. → ⚠️ mark
+- **Terminology:** Russian ONLY (ДРР, Выручка, Органик, Воронка, Маржинальность)
+- **Lifecycle categories:** Russian ONLY — Рост (not Growth), Сбор (not Harvest), Оптимизация (not Optimize), Стоп (not Cut)
+- **Models:** Title Case (Wendy, not wendy). Only REAL models from sku_statuses. ALL 37 models must appear
+- **Recommendations:** SPECIFIC — "увеличить бюджет внутренней рекламы Charlotte WB на 15К₽/нед" NOT "масштабировать"
+- **Anomalies:** Δ ДРР > 2 п.п. → mark; organic share drop > 5 п.п. → mark
 - **Risks:** always with ₽ estimate + time horizon
 - **ДРР:** ALWAYS split — внутренняя (МП) и внешняя (блогеры, VK) — never combined
+- **Forecast:** ALWAYS in ₽ (Выручка, Маржа) — never in штуки
 
 ### 5.2 Save MD file
 
@@ -279,8 +308,8 @@ Report to user (5-7 lines):
 - Verifier verdict
 - Key DRR finding (внутренняя vs внешняя, Δ п.п.)
 - Key funnel finding (organic share shift or conversion anomaly)
-- Model recommendation (top Growth model to scale or Cut model to pause)
-- External ad verdict (bloggers/VK: effective / ineffective with ₽ estimate)
+- Model recommendation (top Рост model to scale or Стоп model to pause)
+- External ad verdict (блогеры/ВК: effective / ineffective with ₽ estimate)
 - Files: MD path + Notion link
 
 ---
@@ -289,14 +318,38 @@ Report to user (5-7 lines):
 
 | File | Role | Wave |
 |------|------|------|
-| `prompts/detector.md` | Marketing anomaly detection — DRR spikes, traffic drops, ad efficiency shifts | 2A |
-| `prompts/diagnostician.md` | Root causes — ads↔organic linkage, external cut → organic drop | 2B |
+| `prompts/detector.md` | Marketing anomaly detection — DRR spikes, traffic drops, ad efficiency shifts, correct column mapping (adv_vk != adv_creators) | 2A |
+| `prompts/diagnostician.md` | Root causes — ads<->organic linkage, external cut → organic drop | 2B |
 | `prompts/strategist.md` | Budget reallocation, model actions, channel prioritization | 2C |
-| `prompts/performance-analyst.md` | Channels P&L + model matrix + daily dynamics + external ads + avg check | 3 |
-| `prompts/funnel-analyst.md` | ASCII funnels (WB organic, WB ad, OZON ad) + organic vs paid analysis | 3 |
-| `prompts/verifier.md` | 10 marketing-specific checks — DRR split, funnel math, ROMI formula | 4 |
-| `prompts/synthesizer.md` | 11-section report assembly with callouts and ASCII funnels | 5 |
+| `prompts/performance-analyst.md` | P&L воронка по каналам + внутренняя реклама МП + все 37 моделей + средний чек | 3 |
+| `prompts/funnel-analyst.md` | 3 воронки трафика (внешний, внутренний МП, органика) + внешняя реклама из Sheets | 3 |
+| `prompts/verifier.md` | 10 marketing-specific checks — DRR split, funnel math, all models, specific recommendations, forecast in ₽ | 4 |
+| `prompts/synthesizer.md` | 10-section report assembly: паспорт, буллеты-сводка, P&L воронка, 3 воронки, рекомендации, прогноз в ₽ | 5 |
 
 **External references (read-only):**
 - `.claude/skills/analytics-report/references/analytics-kb.md` — unified knowledge base
 - `.claude/skills/analytics-report/templates/notion-formatting-guide.md` — Notion formatting spec
+
+---
+
+## Changelog
+
+### v2 (2026-04-11)
+- 11 → 10 sections: removed Advisor (merged into Рекомендации), removed separate Органик vs Платное (merged into Воронки трафика)
+- NEW Section 0: Паспорт отчёта (период, источники, качество данных)
+- Section I: Исполнительная сводка rewritten as short bullet points (metric + delta + cause), not wall of text
+- Section II: P&L воронка по каналам — FULL funnel per channel (Показы → Переходы → Корзина → Заказы → Выкупы → Комиссия → Логистика → Хранение → Себестоимость → Маржа) with CR between steps
+- Section III: 3 separate traffic funnels (внешний, внутренний МП, органика = total - internal - external)
+- Section IV: Real external ad data from Google Sheets (блогеры/ВК/SMM parsed by period dates)
+- Section V: Merged internal ad sections (old VI+VII) into one block
+- Section VI: ALL 37 models from sku_statuses, Russian categories (Рост/Сбор/Оптимизация/Стоп), specific recommendations
+- Section VIII: Merged old Рекомендации + Advisor into one block (Срочные → Неделя → Месяц)
+- Section IX: Forecast in ₽ (not штуки) — Выручка, Маржа, ДРР with ranges
+- CRITICAL DATA FIX: wb_external_breakdown column mapping — adv_vk is ВК (183К), NOT adv_creators
+- Sheets parsing: filter bloggers by "Дата публикации", VK/SMM by date columns
+- Recommendations must be SPECIFIC: model + channel + action + ₽ amount
+- Russian terminology enforced: Рост/Сбор/Оптимизация/Стоп (not Growth/Harvest/Optimize/Cut)
+
+### v1 (2026-04-08)
+- Initial release: 3-wave engine + 2 parallel analysts
+- 11-section report, Notion publication
