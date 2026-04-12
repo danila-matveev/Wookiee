@@ -242,6 +242,12 @@ def test_collect_hierarchy_groups_by_color_code():
             "cvet": "черный", "color": "black",
             "skleyka_wb": None, "tip_kollekcii": "tricot",
         },
+        "vuki2/black": {
+            "status": "Продается", "model_kod": "Vuki2N",
+            "model_osnova": "Vuki2", "color_code": "2",
+            "cvet": "черный", "color": "black",
+            "skleyka_wb": None, "tip_kollekcii": "tricot",
+        },
         "moon/black": {
             "status": "Продается", "model_kod": "MoonN",
             "model_osnova": "Moon", "color_code": "2",
@@ -268,18 +274,26 @@ def test_collect_hierarchy_groups_by_color_code():
     assert "vuki/black" in h["articles"]
     assert h["articles"]["vuki/black"]["tip_kollekcii"] == "tricot"
 
+    # business_entity mapped for ООО articles
+    assert h["articles"]["vuki/black"]["business_entity"] == "Vuki"
+    assert h["articles"]["vuki2/black"]["business_entity"] == "Vuki"  # Vuki2 → Vuki
+    assert h["articles"]["moon/black"]["business_entity"] == "Moon"
+
     # Color_code группы для tricot
     cc_key = "tricot|2"
     assert cc_key in h["color_code_groups"]
     group = h["color_code_groups"][cc_key]
-    assert set(group["models"]) == {"Vuki", "Moon"}
-    assert len(group["articles"]) == 2
+    # models keeps raw values (including Vuki2)
+    assert set(group["models"]) == {"Vuki", "Vuki2", "Moon"}
+    # business_entities merges Vuki2 → Vuki
+    assert set(group["business_entities"]) == {"Vuki", "Moon"}
+    assert len(group["articles"]) == 3
 
     # Wendy не в tricot color_code группе
     assert "seamless_wendy|WE005" in h["color_code_groups"]
 
     # Status counts
-    assert h["status_counts"]["Продается"] == 3
+    assert h["status_counts"]["Продается"] == 4
 
 
 def test_collect_hierarchy_excludes_archive():
