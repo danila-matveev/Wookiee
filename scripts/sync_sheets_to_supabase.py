@@ -33,7 +33,7 @@ SPREADSHEET_ID = os.getenv(
     "19Nbr0kD8JJlwd7OCIMbM9qxucYNjmXnWtwJUgXv0vlg",
 )
 
-LEVELS_ORDER = ["statusy", "cveta", "modeli_osnova", "modeli", "artikuly", "tovary"]
+LEVELS_ORDER = ["statusy", "cveta", "modeli_osnova", "modeli", "artikuly", "tovary", "skleyki_ozon"]
 
 SA_FILE = os.getenv(
     "GOOGLE_SERVICE_ACCOUNT_FILE",
@@ -926,6 +926,174 @@ def sync_tovary(
     logger.info(f"tovary: {inserted} new, {updated} updated, {soft_deleted} archived")
 
 
+# --- Склейки Озон ---
+
+def load_sheet_as_rows(client: gspread.Client, spreadsheet_id: str, tab_name: str) -> list[list[str]]:
+    """Load a sheet tab as raw list of rows (list of lists), skipping fully-empty rows."""
+    sh = client.open_by_key(spreadsheet_id)
+    ws = sh.worksheet(tab_name)
+    rows = ws.get_all_values()
+    return [row for row in rows if any(cell.strip() for cell in row)]
+
+
+def sync_skleyki_ozon(
+    conn,
+    raw_rows: list[list[str]],
+    importer_map: dict[str, int],
+    log: dict,
+    dry_run: bool,
+) -> None:
+    """Sync skleyki_ozon and tovary_skleyki_ozon from 'Склейки Озон' sheet.
+
+    Sheet layout (0-indexed columns):
+      col 0 – importer ("ИП" / "ООО")
+      col 1 – skleyka name (e.g. "ООО_склейка_Joy")
+      col 3 – artikul_ozon (e.g. "Joy/white_S")
+      col 4 – SKU ozon
+      col 5 – model name
+
+    Row 0 is a header-like row and is skipped (col 0 is empty there).
+    """
+    # Skip row 0 (header) and rows where col 1 is empty
+    data_rows = []
+    for row in raw_rows:
+        # Pad row to at least 6 columns
+        padded = row + [""] * max(0, 6 - len(row))
+        col0 = padded[0].strip()
+        col1 = padded[1].strip()
+        if not col1 or col1 == "Склейкообразующий признак":
+            continue
+        data_rows.append(padded)
+
+    if not data_rows:
+        logger.warning("sync_skleyki_ozon: no data rows found in sheet")
+        log["summary"]["skleyki_ozon"] = {"inserted_skleyki": 0, "inserted_tovary": 0, "skipped": 0}
+        return
+
+    # Build unique skleyki: name → importer key
+    skleyki_names: dict[str, str] = {}
+    for row in data_rows:
+        importer_raw = row[0].strip()
+        skleyka_name = row[1].strip()
+        if skleyka_name and skleyka_name not in skleyki_names:
+            skleyki_names[skleyka_name] = importer_raw
+
+    # Resolve importer_id: map "ИП"→id, "ООО"→id
+    # importer_map keys come from importery.nazvanie (full names like "ИП Медведева П.В.")
+    # Build a short-key map: "ИП" → first importer id whose name starts with "ИП"
+    def _resolve_importer(raw: str) -> int | None:
+        raw_upper = raw.strip().upper()
+        for name, imp_id in importer_map.items():
+            if name.upper().startswith(raw_upper):
+                return imp_id
+        return None
+
+    # Load existing skleyki_ozon to avoid duplicates
+    existing_skleyki = query_all(conn, "SELECT id, nazvanie FROM skleyki_ozon")
+    existing_skleyki_map: dict[str, int] = {r["nazvanie"]: r["id"] for r in existing_skleyki}
+
+    inserted_skleyki = 0
+    # Insert missing skleyki
+    for skleyka_name, importer_raw in skleyki_names.items():
+        if skleyka_name in existing_skleyki_map:
+            continue
+        importer_id = _resolve_importer(importer_raw)
+        if not dry_run:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO skleyki_ozon (nazvanie, importer_id)
+                    VALUES (%s, %s)
+                    ON CONFLICT (nazvanie) DO NOTHING
+                    RETURNING id
+                    """,
+                    (skleyka_name, importer_id),
+                )
+                row_result = cur.fetchone()
+                if row_result:
+                    existing_skleyki_map[skleyka_name] = row_result[0]
+            conn.commit()
+        else:
+            # In dry-run, assign a placeholder id so tovary loop can proceed
+            existing_skleyki_map[skleyka_name] = -(inserted_skleyki + 1)
+        inserted_skleyki += 1
+        log["details"].append({"action": "insert", "level": "skleyki_ozon", "key": skleyka_name})
+
+    # After insert, reload map in case ON CONFLICT suppressed some returns
+    if not dry_run:
+        existing_skleyki = query_all(conn, "SELECT id, nazvanie FROM skleyki_ozon")
+        existing_skleyki_map = {r["nazvanie"]: r["id"] for r in existing_skleyki}
+
+    # Load existing tovary_skleyki_ozon to avoid duplicates
+    existing_tovary_links = set()
+    if not dry_run:
+        for r in query_all(conn, "SELECT tovar_id, skleyka_id FROM tovary_skleyki_ozon"):
+            existing_tovary_links.add((r["tovar_id"], r["skleyka_id"]))
+
+    # Build artikul_ozon → tovar_id map from DB
+    artikul_ozon_rows = query_all(
+        conn,
+        """
+        SELECT t.id AS tovar_id, a.artikul_ozon
+        FROM tovary t
+        JOIN artikuly a ON t.artikul_id = a.id
+        WHERE a.artikul_ozon IS NOT NULL AND a.artikul_ozon != ''
+        """,
+    )
+    # One artikul_ozon may map to multiple tovary (different sizes)
+    artikul_ozon_to_tovar_ids: dict[str, list[int]] = {}
+    for r in artikul_ozon_rows:
+        key = r["artikul_ozon"].strip()
+        artikul_ozon_to_tovar_ids.setdefault(key, []).append(r["tovar_id"])
+
+    inserted_tovary = 0
+    skipped = 0
+
+    for row in data_rows:
+        skleyka_name = row[1].strip()
+        artikul_ozon = row[3].strip()
+
+        skleyka_id = existing_skleyki_map.get(skleyka_name)
+        if not skleyka_id or skleyka_id < 0:
+            skipped += 1
+            continue
+
+        tovar_ids = artikul_ozon_to_tovar_ids.get(artikul_ozon, [])
+        if not tovar_ids:
+            skipped += 1
+            log["warnings"].append(
+                f"sync_skleyki_ozon: artikul_ozon '{artikul_ozon}' not found in DB"
+            )
+            continue
+
+        for tovar_id in tovar_ids:
+            if (tovar_id, skleyka_id) in existing_tovary_links:
+                continue
+            if not dry_run:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        INSERT INTO tovary_skleyki_ozon (tovar_id, skleyka_id)
+                        VALUES (%s, %s)
+                        ON CONFLICT DO NOTHING
+                        """,
+                        (tovar_id, skleyka_id),
+                    )
+                conn.commit()
+                existing_tovary_links.add((tovar_id, skleyka_id))
+            inserted_tovary += 1
+
+    log["summary"]["skleyki_ozon"] = {
+        "inserted_skleyki": inserted_skleyki,
+        "inserted_tovary": inserted_tovary,
+        "skipped": skipped,
+    }
+    logger.info(
+        f"skleyki_ozon: {inserted_skleyki} new skleyki, "
+        f"{inserted_tovary} new tovar links, {skipped} skipped rows"
+    )
+
+
 # --- Orchestrator ---
 
 def run_sync(level: str = "all", dry_run: bool = False, spreadsheet_id: Optional[str] = None):
@@ -970,6 +1138,12 @@ def run_sync(level: str = "all", dry_run: bool = False, spreadsheet_id: Optional
     logger.info(f"  Все модели: {len(sheets_modeli)} rows")
     logger.info(f"  Все товары: {len(sheets_tovary)} rows")
 
+    # Load raw rows for sheets with empty/merged headers
+    skleyki_ozon_rows: list[list[str]] = []
+    if "skleyki_ozon" in target_levels:
+        skleyki_ozon_rows = load_sheet_as_rows(gs_client, sid, "Склейки Озон")
+        logger.info(f"  Склейки Озон: {len(skleyki_ozon_rows)} rows (raw)")
+
     # Sync levels in order
     cvet_map = {}
     osnova_map = {}
@@ -1004,6 +1178,10 @@ def run_sync(level: str = "all", dry_run: bool = False, spreadsheet_id: Optional
     if "tovary" in target_levels:
         sync_tovary(conn, sheets_tovary, art_map, log, dry_run)
 
+    if "skleyki_ozon" in target_levels:
+        importer_map = {r["nazvanie"]: r["id"] for r in query_all(conn, "SELECT id, nazvanie FROM importery")}
+        sync_skleyki_ozon(conn, skleyki_ozon_rows, importer_map, log, dry_run)
+
     conn.close()
 
     # Duration
@@ -1025,8 +1203,16 @@ def run_sync(level: str = "all", dry_run: bool = False, spreadsheet_id: Optional
     print("━" * 55)
     total_i, total_u, total_d = 0, 0, 0
     for lv in LEVELS_ORDER:
-        if lv in log["summary"]:
-            s = log["summary"][lv]
+        if lv not in log["summary"]:
+            continue
+        s = log["summary"][lv]
+        if lv == "skleyki_ozon":
+            sk = s["inserted_skleyki"]
+            tv = s["inserted_tovary"]
+            sk_s = s["skipped"]
+            print(f"  {lv:20s} {sk:3d} skleyki, {tv:3d} links, {sk_s:3d} skipped")
+            total_i += sk + tv
+        else:
             i, u, d = s["inserted"], s["updated"], s["soft_deleted"]
             total_i += i
             total_u += u
