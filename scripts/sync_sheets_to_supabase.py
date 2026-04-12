@@ -499,22 +499,26 @@ def sync_modeli(
     Returns mapping: normalize_key(kod) → id.
     """
     # Build model records from 'Все модели'
-    # modeli.kod = "Название модели" (Vuki, VukiN, Moon...)
+    # Col A "Модель" = short code (VukiN, MoonW) → used as modeli.kod identifier
+    # Col C "Название модели" = display name (Vuki animal, Moon выстиранки) → stored as nazvanie
     # modeli.artikul_modeli = "Артикул модели" (компбел-ж-бесшов/, Vuki/...)
     model_data = {}
     for row in sheets_modeli:
+        model_col_a = clean_string(row.get("Модель", ""))
         nazvanie = clean_string(row.get("Название модели", ""))
-        if not nazvanie:
+        # Use col A as the identifier; fall back to col C if col A is empty
+        kod_raw = model_col_a if model_col_a else nazvanie
+        if not kod_raw:
             continue
-        kod = normalize_key(nazvanie)
+        kod = normalize_key(kod_raw)
         if kod in model_data:
             continue
         artikul_modeli = clean_string(row.get("Артикул модели", ""))
         osnova_raw = clean_string(row.get("Модель основа", ""))
         osnova_key = normalize_key(osnova_raw) if osnova_raw else None
         model_data[kod] = {
-            "kod_raw": nazvanie.strip(),
-            "nazvanie": nazvanie,
+            "kod_raw": kod_raw.strip(),
+            "nazvanie": nazvanie if nazvanie else kod_raw,
             "artikul_modeli": artikul_modeli.strip().rstrip("/") if artikul_modeli else None,
             "model_osnova_key": osnova_key,
             "status": clean_string(row.get("Статус", "")),
