@@ -45,7 +45,12 @@ def run_collection(cut_date_str: str | None = None) -> dict:
     end_ex = params["p30_end_exclusive"]
 
     tasks = {
-        "finance": lambda: collect_finance(p30s, end_ex, p90s, end_ex, p180s, end_ex),
+        "finance": lambda: collect_finance(
+            p30s, end_ex, p90s, end_ex, p180s, end_ex,
+            params["m1_start"], params["m1_end"],
+            params["m2_start"], params["m2_end"],
+            params["m3_start"], params["m3_end"],
+        ),
         "inventory": lambda: collect_inventory(p30s, end_ex),
         "hierarchy": lambda: collect_hierarchy(),
         "buyouts": lambda: collect_buyouts(p30s, end_ex),
@@ -87,6 +92,12 @@ def run_collection(cut_date_str: str | None = None) -> dict:
         "end_exclusive": end_ex,
         "year_ago_start": params["year_ago_start"],
         "year_ago_end": params["year_ago_end"],
+        "m1_start": params["m1_start"],
+        "m1_end": params["m1_end"],
+        "m2_start": params["m2_start"],
+        "m2_end": params["m2_end"],
+        "m3_start": params["m3_start"],
+        "m3_end": params["m3_end"],
         "collected_at": datetime.now().isoformat(timespec="seconds"),
         "duration_sec": round(time.time() - t0, 1),
         "errors": errors,

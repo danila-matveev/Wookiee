@@ -22,6 +22,14 @@ def test_compute_abc_date_params_default():
     assert params["days_90"] == 90
     assert params["days_180"] == 180
 
+    # Monthly breakdown (3 x 30-day windows within 90d)
+    assert params["m1_start"] == "2026-01-11"  # = p90_start
+    assert params["m1_end"] == "2026-02-10"
+    assert params["m2_start"] == "2026-02-10"
+    assert params["m2_end"] == "2026-03-12"
+    assert params["m3_start"] == "2026-03-12"  # = p30_start
+    assert params["m3_end"] == "2026-04-12"    # = end_exclusive
+
 
 def test_compute_abc_date_params_custom_date():
     """Custom reference date."""
