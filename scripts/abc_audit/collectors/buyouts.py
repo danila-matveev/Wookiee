@@ -7,8 +7,8 @@ from shared.data_layer.finance import get_wb_buyouts_returns_by_artikul
 from shared.data_layer.article import get_wb_fin_data_by_barcode
 
 
-def collect_buyouts(start_date: str, end_date: str) -> dict:
-    """Собирает данные по выкупам (WB). OZON buyout недоступен."""
+def collect_buyouts(start_date: str, end_date: str, ozon_finance: dict | None = None) -> dict:
+    """Собирает данные по выкупам (WB) + аппроксимацию OZON из finance."""
     wb_data = get_wb_buyouts_returns_by_artikul(start_date, end_date)
     result: dict[str, dict] = {}
 
@@ -30,7 +30,42 @@ def collect_buyouts(start_date: str, end_date: str) -> dict:
             "buyout_pct": buyout_pct,
         }
 
+    # Merge OZON approximation if finance data provided
+    if ozon_finance:
+        ozon_approx = approximate_ozon_buyout(ozon_finance)
+        ozon_data = ozon_approx["ozon_buyouts"]
+        for article, ozon_info in ozon_data.items():
+            if article in result:
+                # WB data is primary, add OZON buyout as extra field
+                result[article]["ozon_buyout_pct"] = ozon_info["buyout_pct"]
+            else:
+                result[article] = ozon_info
+
     return {"buyouts": result}
+
+
+def approximate_ozon_buyout(ozon_finance: dict[str, dict]) -> dict[str, dict]:
+    """Аппроксимация выкупа OZON: sales_count / orders_count.
+
+    Args:
+        ozon_finance: Dict from finance collector — {article: {orders_count_30d, sales_count_30d, ...}}
+
+    Returns:
+        {"ozon_buyouts": {article: {"buyout_pct": float, "orders": int, "sales": int, "approximate": True}}}
+    """
+    result: dict[str, dict] = {}
+    for article, data in ozon_finance.items():
+        orders = data.get("orders_count_30d", 0) or 0
+        sales = data.get("sales_count_30d", 0) or 0
+        if orders > 0:
+            buyout_pct = round(sales / orders * 100, 1)
+            result[article] = {
+                "orders": int(orders),
+                "sales": int(sales),
+                "buyout_pct": buyout_pct,
+                "approximate": True,
+            }
+    return {"ozon_buyouts": result}
 
 
 def collect_size_data(start_date: str, end_date: str) -> dict:

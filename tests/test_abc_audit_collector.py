@@ -411,3 +411,33 @@ def test_full_collector_json_schema():
     assert "coverage_pct" in qf
     assert "ozon_buyout_available" in qf
     assert qf["ozon_buyout_available"] is False
+
+
+def test_build_abc_quality_flags_ozon_buyout_available():
+    """OZON buyout flag can be set to True."""
+    from scripts.abc_audit.utils import build_abc_quality_flags
+
+    flags = build_abc_quality_flags(
+        errors={}, article_count=142, supabase_count=142,
+        ozon_buyout_available=True,
+    )
+
+    assert flags["ozon_buyout_available"] is True
+
+
+def test_approximate_ozon_buyout():
+    """OZON buyout approximated from sales/orders."""
+    from scripts.abc_audit.collectors.buyouts import approximate_ozon_buyout
+
+    ozon_data = {
+        "wendy/black": {"orders_count_30d": 200, "sales_count_30d": 160},
+        "audrey/red": {"orders_count_30d": 50, "sales_count_30d": 40},
+        "empty/article": {"orders_count_30d": 0, "sales_count_30d": 0},
+    }
+    result = approximate_ozon_buyout(ozon_data)
+    data = result["ozon_buyouts"]
+
+    assert data["wendy/black"]["buyout_pct"] == 80.0
+    assert data["wendy/black"]["approximate"] is True
+    assert data["audrey/red"]["buyout_pct"] == 80.0
+    assert "empty/article" not in data  # zero orders excluded
