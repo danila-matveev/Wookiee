@@ -60,17 +60,38 @@ def collect_finance(
     p90_end: str,
     p180_start: str,
     p180_end: str,
+    m1_start: str = "",
+    m1_end: str = "",
+    m2_start: str = "",
+    m2_end: str = "",
+    m3_start: str = "",
+    m3_end: str = "",
 ) -> dict:
-    """Собирает финансовые данные по артикулам за 3 периода.
+    """Собирает финансовые данные по артикулам за 3 периода + помесячную разбивку.
 
     Returns:
-        {"finance": {article: {revenue_30d, margin_30d, ..., revenue_90d, ...}}}
+        {"finance": {article: {revenue_30d, margin_30d, ..., revenue_m1, ...}}}
     """
     data_30 = _collect_period(p30_start, p30_end)
     data_90 = _collect_period(p90_start, p90_end)
     data_180 = _collect_period(p180_start, p180_end)
 
+    # Monthly breakdown (optional)
+    monthly: dict[str, dict[str, dict]] = {}
+    monthly_suffixes = ("m1", "m2", "m3")
+    monthly_ranges = (
+        (m1_start, m1_end),
+        (m2_start, m2_end),
+        (m3_start, m3_end),
+    )
+    for suffix, (ms, me) in zip(monthly_suffixes, monthly_ranges):
+        if ms and me:
+            monthly[suffix] = _collect_period(ms, me)
+
     all_articles = set(data_30) | set(data_90) | set(data_180)
+    for suffix, period_data in monthly.items():
+        all_articles |= set(period_data)
+
     result: dict[str, dict] = {}
 
     for article in all_articles:
@@ -99,6 +120,23 @@ def collect_finance(
 
         adv30 = entry.get("adv_total_30d", 0.0)
         entry["drr_30d"] = round(adv30 / rev30 * 100, 1) if rev30 else 0.0
+
+        # Monthly breakdown metrics
+        for suffix in monthly_suffixes:
+            if suffix not in monthly:
+                continue
+            dm = monthly[suffix].get(article, _empty_article())
+            for key in _SUM_KEYS:
+                entry[f"{key}_{suffix}"] = dm.get(key, 0.0)
+            rev_m = entry[f"revenue_{suffix}"]
+            mar_m = entry[f"margin_{suffix}"]
+            entry[f"margin_pct_{suffix}"] = (
+                round(mar_m / rev_m * 100, 1) if rev_m else 0.0
+            )
+            adv_m = entry.get(f"adv_total_{suffix}", 0.0)
+            entry[f"drr_{suffix}"] = (
+                round(adv_m / rev_m * 100, 1) if rev_m else 0.0
+            )
 
         result[article] = entry
 
