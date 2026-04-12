@@ -88,6 +88,11 @@ SYNC_REGISTRY: dict[str, dict] = {
         "sheet": "Аналитика по запросам",
         "description": "WB search analytics (keywords + per-article)",
     },
+    "search_queries": {
+        "module": "services.sheets_sync.sync.sync_search_queries",
+        "sheet": "Аналитика по запросам",
+        "description": "WB search query analytics with batching (GAS replacement)",
+    },
     "fin_data_new": {
         "module": "services.sheets_sync.sync.sync_fin_data_new",
         "sheet": "Фин данные NEW",

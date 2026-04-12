@@ -111,6 +111,45 @@ class MPStatsClient:
         result = self._request("GET", url)
         return result if isinstance(result, dict) else {}
 
+    # ---- Brand items (paginated) ----
+
+    def get_brand_items(self, path: str, d1: str, d2: str, start_row: int = 0, end_row: int = 500) -> dict:
+        """POST /api/wb/get/brand — get items of a brand with pagination.
+
+        Returns list of items with revenue, sales, price, etc.
+        """
+        url = f"{self.BASE_URL}/get/brand"
+        result = self._request("POST", url, json={
+            "startRow": start_row,
+            "endRow": end_row,
+            "path": path,
+            "d1": d1,
+            "d2": d2,
+        })
+        return result if isinstance(result, dict) else {"data": []}
+
+    def get_category_items(self, path: str, d1: str, d2: str, start_row: int = 0, end_row: int = 500) -> dict:
+        """POST /api/wb/get/category — get items in a category with pagination.
+
+        Returns list of items with revenue, sales, price, first_date, etc.
+        """
+        url = f"{self.BASE_URL}/get/category"
+        result = self._request("POST", url, json={
+            "startRow": start_row,
+            "endRow": end_row,
+            "path": path,
+            "d1": d1,
+            "d2": d2,
+        })
+        return result if isinstance(result, dict) else {"data": []}
+
+    def get_category_brands(self, path: str, d1: str, d2: str) -> dict:
+        """GET /api/wb/get/category/brands — brands in a category with revenue."""
+        url = f"{self.BASE_URL}/get/category/brands"
+        params = {"path": path, "d1": d1, "d2": d2}
+        result = self._request("GET", url, params=params)
+        return result if isinstance(result, dict) else {"data": []}
+
     # ---- Search ----
 
     def search_brands(self, query: str) -> dict:

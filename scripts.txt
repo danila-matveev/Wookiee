@@ -1,0 +1,1827 @@
+// Добавьте эту функцию и вызовите onOpen() один раз
+function onOpen() {
+  const ui = SpreadsheetApp.getUi();
+  ui.createMenu('📊 Поисковые запросы')
+  .addItem('🔄👀 Аналитика по запросам', 'letsGetPodmenArtikulAuto')
+ //.addItem('🔄🔍 Аналитика по запросам (поартикульно)', 'saveDataToArticulSheet')
+  
+    //.addItem('⚙️📉 Автосинхронизация (вчера)', 'dailySalesSync')
+    //.addItem('👆🗓️ Ручная выгрузка (за определённую дату)', 'manualSalesSync')
+   // .addSeparator()
+   
+    .addToUi();
+}
+
+
+function toastMessageTitle(message, title) {
+  if (!message) {
+    message = "Текст сообщения"
+  }
+  if (!title) {
+    tilte = "Заголовок"
+  }
+  SpreadsheetApp.getActive().toast(message, title);
+}
+
+function alertMessage(message) {
+  if (!message) {
+    message = "Текст сообщения"
+  }
+  SpreadsheetApp.getUi().alert(message);
+}
+
+function onEdit(e) {
+  // Проверка на наличие объекта события
+  if (!e) {
+    // Примерные данные для тестирования
+    e = {
+      source: SpreadsheetApp.getActiveSpreadsheet(),
+      range: SpreadsheetApp.getActiveSpreadsheet().getActiveSheet().getRange('B2'),
+      value: 'Новый статус'
+    };
+  }
+
+  const sheet1 = e.source.getSheetByName('База данных креаторов');
+  const sheet2 = e.source.getSheetByName('Контент-завод');
+  const activeSheet = e.source.getActiveSheet();
+  const activeCell = e.range;
+  const row = activeCell.getRow();
+  const col = activeCell.getColumn();
+
+  if ((col === 2 && activeSheet.getName() === 'База данных креаторов') || (col === 9 && activeSheet.getName() === 'Контент-завод')) {
+    let surname = "";
+    if (activeSheet.getName() === 'База данных креаторов') {
+      surname = activeSheet.getRange(row, 3).getValue();
+    } else if (activeSheet.getName() === 'Контент-завод') {
+      surname = activeSheet.getRange(row, 2).getValue();
+    }
+    const status = activeCell.getValue();
+Logger.log(surname.length)
+Logger.log(surname)
+    if (activeSheet.getName() === 'База данных креаторов' && surname.length > 0) {
+      syncStatus(sheet2, surname, status, 9); // Синхронизация на листе 'Контент-завод' в колонке 9
+    } else if (activeSheet.getName() === 'Контент-завод' && surname.length > 0) {
+      syncStatus(sheet1, surname, status, 2); // Синхронизация на листе 'База данных креаторов' в колонке 2
+      syncStatus(sheet2, surname, status, 9); // Синхронизация на листе 'Контент-завод' в колонке 9
+    }
+  }
+}
+
+function syncStatus(targetSheet, surname, status, targetCol) {
+  const data = targetSheet.getDataRange().getValues();
+  for (let i = 0; i < data.length; i++) {
+    let targetSurnameCol = 1; // По умолчанию фамилия в первой колонке
+    if (targetSheet.getName() === 'База данных креаторов') {
+      targetSurnameCol = 3; // Фамилия в третьей колонке на листе 'База данных креаторов'
+    } else if (targetSheet.getName() === 'Контент-завод') {
+      targetSurnameCol = 2; // Фамилия во второй колонке на листе 'Контент-завод'
+    }
+    if (data[i][targetSurnameCol - 1] === surname) {
+      targetSheet.getRange(i + 1, targetCol).setValue(status);
+    }
+  }
+}
+
+function заменитьМодели() {
+  const лист = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Контент-завод");
+  const справочник = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Справочник");
+
+  const данные = лист.getRange("G1370:G").getValues();
+  const замены = справочник.getRange("E2:F20").getValues();
+
+  const словарь = {};
+  замены.forEach(([старое, новое]) => {
+    if (старое && новое) словарь[старое.trim()] = новое.trim();
+  });
+
+  const новыеЗначения = данные.map(([ячейка]) => {
+    if (!ячейка) return [""];
+    let части = ячейка.toString().split(", ");
+    части = части.map(p => словарь[p] || p);
+    return [части.join(", ")];
+  });
+  console.log(данные[5])
+  console.log(новыеЗначения[5])
+  console.log()
+  лист.getRange("G1370:G").setValues(новыеЗначения);
+}
+
+// ====== Глобальные переменные =====//
+let activeSpreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+let sheetPodmen = activeSpreadsheet.getSheetByName("Подменные артикулы API");
+
+// Глобальные переменные WB //
+const apiKeyOOO = "eyJhbGciOiJFUzI1NiIsImtpZCI6IjIwMjUwOTA0djEiLCJ0eXAiOiJKV1QifQ.eyJhY2MiOjEsImVudCI6MSwiZXhwIjoxNzgyMjQ2MjU0LCJpZCI6IjAxOWI0YTRmLTEwYTctN2RlMS04YjA5LTFiNjYyMGIwNjE0YiIsImlpZCI6MTMyNTYzMTAsIm9pZCI6OTQ3Mzg4LCJzIjoxNjEyNiwic2lkIjoiNzM0YzEyMzAtYTUwYy00YzFjLThlZGUtYmMxMjRmMGY4YzcyIiwidCI6ZmFsc2UsInVpZCI6MTMyNTYzMTB9.AzefUj-4vs683KEcMOYPIZghmC19dsAvEIUEuNDnttqSi-QonNt5SU-_jYjgaWMFIHxfndJUJyW903dJAJVZdg";
+
+const apiKeyIP = "eyJhbGciOiJFUzI1NiIsImtpZCI6IjIwMjUwOTA0djEiLCJ0eXAiOiJKV1QifQ.eyJhY2MiOjEsImVudCI6MSwiZXhwIjoxNzgyMjQ2MjAwLCJpZCI6IjAxOWI0YTRlLTQwMGYtNzFjYS04YzBlLTQzMTZiOTM3YzBhYSIsImlpZCI6MTMyNTYzMTAsIm9pZCI6MTA1NzU3LCJzIjoxNjEyNiwic2lkIjoiNjZhNzgyMWQtMDhkMS01MGE2LWE2ODUtNmJlMDg4ODA4MGI0IiwidCI6ZmFsc2UsInVpZCI6MTMyNTYzMTB9.r45yyFsKamZJP_nD55Eqmhsd_R1-z2HoR6Bl0_u-w7Sm_rTdk8asl83ExFv04TnNIzmSs-44KR_jhlm9qU1ZRA";
+
+function letsGetPodmenArtikulOldStyle() {
+  const startEndDates = getFormattedDatesForPodmenAPI()
+  console.log("Даты получены")
+  console.log(startEndDates)
+  const nmIdsCabinets = classifyNmIdsByCabinet();
+  let oooIdArr = [];
+  let ipIdArr = [];
+  console.log("Артикулы по кабинетам получены")
+  if (nmIdsCabinets.ooo.length > 0) {
+    console.log("Запрашиваем ООО по API")
+    const optionsPostForPodmenOOO = createApiRequestOptionsPodmen(apiKeyOOO, startEndDates, nmIdsCabinets.ooo)
+    oooIdArr = letsGetResponsePodmen(optionsPostForPodmenOOO)
+  }
+  if (nmIdsCabinets.ip.length > 0) {
+    console.log("Запрашиваем ИП по API")
+    const optionsPostForPodmenIP = createApiRequestOptionsPodmen(apiKeyIP, startEndDates, nmIdsCabinets.ip)
+    ipIdArr = letsGetResponsePodmen(optionsPostForPodmenIP)
+  }
+  const idsArr = oooIdArr.concat(ipIdArr);
+  console.log(idsArr)
+  matchAndWriteData(idsArr)
+}
+
+//=====Функция для объекта с начальной и конечной датой для запроса Подменные артикулы=====//
+function getFormattedDatesForPodmenAPI() {
+
+  // Получаем значения из ячеек C1 и D1
+  const startDateStr = sheetPodmen.getRange("C1").getDisplayValue();
+  const endDateStr = sheetPodmen.getRange("D1").getDisplayValue();
+
+  // Функция для преобразования формата
+  const formatDate = (dateStr) => {
+    if (!dateStr) return null;
+
+    // Разбиваем строку на компоненты
+    const [day, month, year] = dateStr.split('.');
+
+    // Создаем объект Date (месяцы в JS начинаются с 0)
+    const date = new Date(year, month - 1, day);
+
+    // Проверяем валидность даты
+    if (isNaN(date.getTime())) {
+      throw new Error(`Неверный формат даты: ${dateStr}`);
+    }
+
+    // Форматируем в YYYY-MM-DD
+    return Utilities.formatDate(date, Session.getScriptTimeZone(), "yyyy-MM-dd");
+  };
+
+  return {
+    start: formatDate(startDateStr),
+    end: formatDate(endDateStr)
+  };
+}
+
+//=====Функция для массива артикулов для запроса Подменные артикулы=====//
+//Получает массив артикулов из колонки C (начиная с C2), игнорируя пустые ячейки //
+// @returns {number[]} Массив числовых артикулов //
+
+function getNmIdsFromSheetPodmen() {
+  // Получаем все значения колонки C, начиная со строки 2
+  const columnData = sheetPodmen.getRange("C2:C" + sheetPodmen.getLastRow()).getDisplayValues();
+
+  // Фильтруем пустые ячейки и преобразуем в числа
+  return columnData
+    .flat() // Преобразуем двумерный массив в одномерный
+    .filter(cell => cell !== "") // Игнорируем пустые ячейки
+    .map(Number) // Преобразуем строки в числа
+    .filter(id => !isNaN(id)); // Удаляем возможные некорректные значения
+}
+
+// Классифицирует артикулы по кабинетам (ООО/ИП), проверяя их в разных таблицах
+// @param {string} oooSpreadsheetId - ID таблицы ООО
+// @param {string} ipSpreadsheetId - ID таблицы ИП
+// @returns {Object} { ООО: number[], ИП: number[] }
+function classifyNmIdsByCabinet() {
+  Logger.log("Классифицируем артикулы по кабинету")
+  // Получаем артикулы из текущей таблицы
+  const allNmIds = getNmIdsFromSheetPodmen();
+
+  // Открываем внешние таблицы
+  const oooSpreadsheet = SpreadsheetApp.openById("1DNVrCecZAabhP0OXubVDeAwersyb_4hVhjLz3DQS2Aw");
+  const ipSpreadsheet = SpreadsheetApp.openById("1tnSTFd0ZgRVtQQ_Y_Tq7bJ790vV2BzCj3rzdvm0EERs");
+
+  // Получаем артикулы из кабинетов
+  const oooNmIds = getNmIdsFromExternalSheet(oooSpreadsheet, "Склад");
+  const ipNmIds = getNmIdsFromExternalSheet(ipSpreadsheet, "Склад");
+
+  Logger.log("Артикулы классифицированы")
+  console.log({
+    ooo: allNmIds.filter(id => oooNmIds.includes(id)),
+    ip: allNmIds.filter(id => ipNmIds.includes(id))
+  })
+  // Классифицируем артикулы
+  return {
+    ooo: allNmIds.filter(id => oooNmIds.includes(id)),
+    ip: allNmIds.filter(id => ipNmIds.includes(id))
+  };
+}
+
+// Получает артикулы из листа во внешней таблице
+function getNmIdsFromExternalSheet(spreadsheet, sheetName) {
+  try {
+    const sheet = spreadsheet.getSheetByName(sheetName);
+    if (!sheet) return [];
+
+    return sheet.getRange("A2:A" + sheet.getLastRow())
+      .getValues()
+      .flat()
+      .filter(cell => cell !== "")
+      .map(Number)
+      .filter(id => !isNaN(id));
+  } catch (e) {
+    console.error(`Ошибка при чтении таблицы ${spreadsheet.getName()}:`, e);
+    return [];
+  }
+}
+
+//=====Функция для опций запроса Подменные артикулы=====//
+// Создает опции для POST-запроса к API с настраиваемыми параметрами//
+// @param {string} apiKey - Ключ авторизации API//
+// @param {Object} currentPeriod - Период дат {start: string, end: string}//
+// @param {Array<number>} nmIds - Массив идентификаторов товаров//
+// @returns {Object} Объект с настройками запроса//
+
+function createApiRequestOptionsPodmen(apiKey, currentPeriod, nmIds) {
+  formData = {
+    "currentPeriod": currentPeriod,
+    "nmIds": nmIds,
+    "topOrderBy": "openToCart",
+    "includeSubstitutedSKUs": true,
+    "includeSearchTexts": false,
+    "orderBy": {
+      "field": "openCard",
+      "mode": "asc"
+    },
+    "limit": 30
+  }
+  let optionsPostResult = {
+    "method": "POST",
+    "muteHttpExceptions": true,
+    "headers": {
+      "Authorization": apiKey,
+      "Content-Type": "application/json"
+    },
+    "payload": JSON.stringify(formData)
+  };
+  return optionsPostResult
+}
+
+function letsGetResponsePodmen(options) {
+  let wbApiURl = "https://seller-analytics-api.wildberries.ru/api/v2/search-report/product/search-texts"
+  const response = UrlFetchApp.fetch(wbApiURl, options);
+  const data = JSON.parse(response.getContentText());
+  console.log(data)
+  let textSearchArr = transformSearchData(data.data.items);
+  console.log(textSearchArr)
+  console.log(textSearchArr.length)
+
+  return textSearchArr
+}
+
+function transformSearchData(originalArray) {
+  return originalArray.map(function (item) {
+    return {
+      text: item.text,
+      nmId: item.nmId,
+      frequency: item.frequency.current, // Количество обращений с поисковым запросом
+      weekFrequency: item.weekFrequency, // Количество обращений с поисковым запросом за неделю
+      medianPosition: item.medianPosition.current, // Медианная позиция в поиске
+      avgPosition: item.avgPosition.current, // Средняя позиция в поиске
+      openCard: item.openCard.current, // Переходы в карточку товара
+      addToCart: item.addToCart.current, // Добавления в корзину
+      openToCart: item.openToCart.current, // Конверсия в корзину (добавления / переходы)
+      orders: item.orders.current, // Заказы из поиска
+      cartToOrder: item.cartToOrder.current, // Конверсия в заказ (заказы / добавления в корзину)
+      visibility: item.visibility.current // Видимость товара (%)
+    };
+  });
+}
+
+// Сопоставляет данные из массива с таблицей и записывает результаты
+// @param {Array} dataArray - Массив объектов с данными
+
+function matchAndWriteData(dataArray) {
+  Logger.log("Начинаем запись результатов")
+  // Получаем данные из колонок C (артикулы) и F (подменные артикулы)
+  const lastRow = sheetPodmen.getLastRow();
+  const nmIds = sheetPodmen.getRange("C3:C" + lastRow).getValues().flat();
+  const substituteTexts = sheetPodmen.getRange("F3:F" + lastRow).getValues().flat();
+
+  // Подготовим массив для записи результатов
+  const results = [];
+
+  // Перебираем строки таблицы
+  for (let i = 0; i < nmIds.length; i++) {
+    const nmId = nmIds[i];
+    const text = substituteTexts[i];
+    // Ищем совпадения в массиве данных
+    const matchedData = dataArray.find(item =>
+      item.nmId == nmId && item.text == text
+    );
+
+    // Формируем строку результатов
+    if (matchedData) {
+      results.push([
+        matchedData.frequency || 0,
+        matchedData.openCard || 0,
+        matchedData.addToCart || 0,
+        matchedData.orders || 0
+      ]);
+    } else {
+      // Если совпадений нет - пустые значения
+      results.push(["", "", "", ""]);
+    }
+  }
+  // Записываем результаты в колонки J-M начиная с 3 строки
+  if (results.length > 0) {
+    sheetPodmen.getRange(3, 10, results.length, 4).setValues(results);
+  }
+  Logger.log("Результаты записаны")
+}
+
+// ====== Глобальные переменные =====//
+let sheetZaprosy; // Основной рабочий лист
+let sheetNmIds;   // Лист с nmIds и кабинетами
+
+// ====== API КЛЮЧИ (ОПРЕДЕЛЕНЫ В ГЛОБАЛЬНОЙ ПЕРЕМЕННОЙ) ====== //
+// apiKeyOOO и apiKeyIP должны быть определены выше в вашем коде
+
+// ====== КОНФИГУРАЦИЯ ЛИМИТОВ ====== //
+const LIMIT_CONFIG = {
+  OOO: 100,   // Лимит для ООО Вуки
+  IP: 30      // Лимит для ИП Медведева П.В.
+};
+
+// ====== НАЗВАНИЯ КАБИНЕТОВ В ЛИСТЕ nmIds ====== //
+const CABINET_NAMES = {
+  OOO: "ООО Вуки",
+  IP: "ИП Медведева П.В."
+};
+
+// ====== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ДЛЯ МАППИНГА ====== //
+let _poiskovie_zaprosi_podmenMapping = null;
+
+// ====== ТРИ ВАРИАНТА ЗАПУСКА ====== //
+
+function letsGetPodmenArtikul() {
+  if (!initializeSheets()) {
+    console.error("❌ Невозможно выполнить функцию: листы не найдены");
+    return;
+  }
+  
+  const startEndDates = getFormattedDatesForPodmenAPI('sheet');
+  console.log("Даты получены из таблицы");
+  executeSearchWordsAnalysis(startEndDates);
+}
+
+function letsGetPodmenArtikulManual() {
+  if (!initializeSheets()) {
+    console.error("❌ Невозможно выполнить функцию: листы не найдены");
+    return;
+  }
+  
+  const manualStartDate = "23.03.2026";
+  const manualEndDate = "29.03.2026";
+  const startEndDates = getFormattedDatesForPodmenAPI('manual', manualStartDate, manualEndDate);
+  console.log("Даты получены из переменных");
+  executeSearchWordsAnalysis(startEndDates);
+}
+
+function letsGetPodmenArtikulNextWeek() {
+  if (!initializeSheets()) {
+    console.error("❌ Невозможно выполнить функцию: листы не найдены");
+    return;
+  }
+  
+  console.log("=== ЗАПУСК: СЛЕДУЮЩАЯ НЕДЕЛЯ ===");
+  
+  const lastColumn = sheetZaprosy.getLastColumn();
+  console.log(`Последняя колонка в таблице: ${lastColumn}`);
+  
+  if (lastColumn < 4) {
+    console.error("❌ В таблице недостаточно колонок");
+    return;
+  }
+  
+  let foundDates = [];
+  
+  for (let col = lastColumn; col >= 1; col--) {
+    const cellValue = sheetZaprosy.getRange(2, col).getDisplayValue();
+    if (cellValue && cellValue.trim() !== "") {
+      if (cellValue.match(/^\d{2}\.\d{2}\.\d{4}$/)) {
+        foundDates.push({
+          value: cellValue,
+          column: col
+        });
+        
+        if (foundDates.length === 2) {
+          foundDates.sort((a, b) => a.column - b.column);
+          break;
+        }
+      }
+    }
+  }
+  
+  if (foundDates.length < 2) {
+    console.log("Поиск по паттерну не дал результатов, используем альтернативный метод");
+    const col1 = lastColumn - 3;
+    const col2 = lastColumn - 2;
+    
+    if (col1 < 1 || col2 < 1) {
+      console.error("❌ Не удалось найти колонки с датами");
+      return;
+    }
+    
+    foundDates = [
+      { value: sheetZaprosy.getRange(2, col1).getDisplayValue(), column: col1 },
+      { value: sheetZaprosy.getRange(2, col2).getDisplayValue(), column: col2 }
+    ];
+  }
+  
+  console.log(`Найдены даты: Колонка ${foundDates[0].column}: "${foundDates[0].value}", Колонка ${foundDates[1].column}: "${foundDates[1].value}"`);
+  
+  function parseDate(dateStr) {
+    if (!dateStr || dateStr.trim() === "") return null;
+    const [day, month, year] = dateStr.split('.');
+    return new Date(year, month - 1, day);
+  }
+  
+  const lastStartDate = parseDate(foundDates[0].value);
+  const lastEndDate = parseDate(foundDates[1].value);
+  
+  if (!lastStartDate || !lastEndDate || isNaN(lastStartDate.getTime()) || isNaN(lastEndDate.getTime())) {
+    console.error(`❌ Не удалось распознать даты: "${foundDates[0].value}", "${foundDates[1].value}"`);
+    console.log("Отладка: все ячейки строки 2:");
+    const row2Data = sheetZaprosy.getRange(2, 1, 1, lastColumn).getValues()[0];
+    row2Data.forEach((value, index) => {
+      if (value) console.log(`Колонка ${index + 1}: "${value}"`);
+    });
+    return;
+  }
+  
+  const nextWeekStart = new Date(lastStartDate);
+  nextWeekStart.setDate(nextWeekStart.getDate() + 7);
+  
+  const nextWeekEnd = new Date(lastEndDate);
+  nextWeekEnd.setDate(nextWeekEnd.getDate() + 7);
+  
+  function formatDate(date) {
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}.${month}.${year}`;
+  }
+  
+  const nextWeekStartStr = formatDate(nextWeekStart);
+  const nextWeekEndStr = formatDate(nextWeekEnd);
+  
+  const today = new Date();
+  const todayStr = formatDate(today);
+  console.log(`📅 Сегодня: ${todayStr}`);
+  
+  if (nextWeekStart > today) {
+    console.log(`✅ Новая неделя ${nextWeekStartStr} начинается в будущем (после ${todayStr})`);
+    console.log(`✅ Выгрузка завершена - достигнут сегодняшний день`);
+    return;
+  }
+  
+  let finalEndDate = nextWeekEnd;
+  let isTrimmed = false;
+  
+  if (nextWeekEnd > today) {
+    console.log(`⚠️ Конец недели ${nextWeekEndStr} позже сегодняшнего дня, обрезаем до ${todayStr}`);
+    finalEndDate = today;
+    isTrimmed = true;
+  }
+  
+  const finalEndDateStr = formatDate(finalEndDate);
+  
+  console.log(`📅 Последняя загруженная неделя: ${foundDates[0].value} - ${foundDates[1].value}`);
+  console.log(`📅 Выгружаем следующую неделю: ${nextWeekStartStr} - ${finalEndDateStr}`);
+  
+  const startEndDates = getFormattedDatesForPodmenAPI('manual', nextWeekStartStr, finalEndDateStr);
+  executeSearchWordsAnalysis(startEndDates);
+  
+  console.log(`✅ Выгрузка завершена для недели ${nextWeekStartStr} - ${finalEndDateStr}`);
+  
+  if (isTrimmed) {
+    console.log(`🎉 Достигнут сегодняшний день! Автоматическая выгрузка завершена.`);
+  }
+}
+
+function letsGetPodmenArtikulAuto() {
+  if (!initializeSheets()) {
+    console.error("❌ Невозможно выполнить функцию: листы не найдены");
+    return;
+  }
+  
+  const startEndDates = getFormattedDatesForPodmenAPI('auto');
+  console.log("Даты получены автоматически (прошлая неделя)");
+  executeSearchWordsAnalysis(startEndDates);
+}
+
+// ====== ФУНКЦИЯ ИНИЦИАЛИЗАЦИИ ЛИСТОВ ====== //
+function initializeSheets() {
+  try {
+    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    sheetZaprosy = spreadsheet.getSheetByName("Аналитика по запросам");
+    
+    if (!sheetZaprosy) {
+      console.error("❌ Лист 'Аналитика по запросам' не найден!");
+      SpreadsheetApp.getUi().alert(
+        'Ошибка', 
+        'Лист "Аналитика по запросам" не найден в таблице', 
+        SpreadsheetApp.getUi().ButtonSet.OK
+      );
+      return false;
+    }
+    
+    sheetNmIds = spreadsheet.getSheetByName("nmIds");
+    if (!sheetNmIds) {
+      console.error("❌ Лист 'nmIds' не найден!");
+      SpreadsheetApp.getUi().alert(
+        'Ошибка', 
+        'Лист "nmIds" не найден в таблице. Создайте лист с артикулами и кабинетами.', 
+        SpreadsheetApp.getUi().ButtonSet.OK
+      );
+      return false;
+    }
+    
+    console.log("✅ Листы 'Аналитика по запросам' и 'nmIds' успешно загружены");
+    return true;
+  } catch (error) {
+    console.error("Ошибка при получении листов:", error.message);
+    sheetZaprosy = null;
+    sheetNmIds = null;
+    return false;
+  }
+}
+
+// Сохраняем старую функцию initializeSheet для обратной совместимости
+function initializeSheet() {
+  return initializeSheets();
+}
+
+// ====== ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ: РАЗБИВКА МАССИВА НА ЧАСТИ ====== //
+function chunkArray(array, chunkSize) {
+  const chunks = [];
+  for (let i = 0; i < array.length; i += chunkSize) {
+    chunks.push(array.slice(i, i + chunkSize));
+  }
+  return chunks;
+}
+
+// ====== ФУНКЦИЯ: ПОЛУЧЕНИЕ ВСЕХ nmIds ДЛЯ КАБИНЕТА ====== //
+function getAllNmIdsByCabinet(cabinetName) {
+  if (!sheetNmIds) {
+    console.error("❌ Лист nmIds не инициализирован");
+    return [];
+  }
+  
+  const lastRow = sheetNmIds.getLastRow();
+  if (lastRow < 2) {
+    console.log("⚠️ На листе nmIds нет данных (нужна хотя бы строка с заголовком)");
+    return [];
+  }
+  
+  // Получаем все данные, начиная со строки 2 (после заголовка)
+  const dataRange = sheetNmIds.getRange(2, 1, lastRow - 1, 2);
+  const data = dataRange.getValues();
+  
+  const nmIds = [];
+  const seenIds = new Set();
+  
+  for (let i = 0; i < data.length; i++) {
+    const nmId = data[i][0];      // Столбец A - nmId
+    const cabinet = data[i][1];   // Столбец B - кабинет
+    
+    // Пропускаем пустые nmId
+    if (!nmId || nmId.toString().trim() === "") {
+      continue;
+    }
+    
+    // Пропускаем, если кабинет не соответствует нужному
+    if (!cabinet || cabinet.toString().trim() !== cabinetName) {
+      continue;
+    }
+    
+    const nmIdNum = Number(nmId);
+    if (!isNaN(nmIdNum) && nmIdNum > 0 && !seenIds.has(nmIdNum)) {
+      nmIds.push(nmIdNum);
+      seenIds.add(nmIdNum);
+    }
+  }
+  
+  console.log(`✅ Для кабинета "${cabinetName}" найдено ВСЕГО ${nmIds.length} nmId`);
+  return nmIds;
+}
+
+// ====== ФУНКЦИЯ: ЗАГРУЗКА МАППИНГА ПОДМЕННЫХ АРТИКУЛОВ ====== //
+function _poiskovie_zaprosi_loadPodmenMapping() {
+  console.log("Загружаем маппинг подменных артикулов из листа 'Аналитика по запросам'...");
+  
+  if (!sheetZaprosy) {
+    console.error("❌ Лист не инициализирован");
+    return new Map();
+  }
+  
+  const lastRow = sheetZaprosy.getLastRow();
+  if (lastRow < 3) {
+    console.log("❌ На листе нет данных (требуются данные с строки 3)");
+    return new Map();
+  }
+  
+  const dataRange = sheetZaprosy.getRange(3, 1, lastRow - 2, 2);
+  const data = dataRange.getValues();
+  
+  const mapping = new Map();
+  let loadedCount = 0;
+  let duplicateCount = 0;
+  
+  data.forEach((row) => {
+    const searchWord = String(row[0]).trim();
+    const mainArtikul = row[1];
+    
+    if (!searchWord || searchWord === "") {
+      return;
+    }
+    
+    if (mapping.has(searchWord)) {
+      duplicateCount++;
+      const currentValue = mapping.get(searchWord);
+      
+      if (!Array.isArray(currentValue)) {
+        mapping.set(searchWord, [currentValue, mainArtikul]);
+      } else {
+        currentValue.push(mainArtikul);
+      }
+    } else {
+      mapping.set(searchWord, mainArtikul);
+    }
+    
+    loadedCount++;
+  });
+  
+  console.log(`✅ Загружено ${loadedCount} соответствий для фильтрации переходов`);
+  if (duplicateCount > 0) {
+    console.log(`⚠️ Найдено ${duplicateCount} дублирующихся запросов (будут обработаны как массивы)`);
+  }
+  
+  return mapping;
+}
+
+// ====== ФУНКЦИЯ: ПОЛУЧЕНИЕ ОСНОВНОГО АРТИКУЛА ====== //
+function _poiskovie_zaprosi_shouldCountTransitions(searchWord, nmId, mapping) {
+  const nmIdStr = String(nmId);
+  
+  if (mapping.has(searchWord)) {
+    const mainArtikulValue = mapping.get(searchWord);
+    
+    if (Array.isArray(mainArtikulValue)) {
+      return mainArtikulValue.some(main => {
+        if (!main && main !== 0) return false;
+        return String(main) === nmIdStr;
+      });
+    } else {
+      if (!mainArtikulValue && mainArtikulValue !== 0) {
+        return true;
+      }
+      return String(mainArtikulValue) === nmIdStr;
+    }
+  }
+  
+  return true;
+}
+
+// ====== ФУНКЦИЯ ПОЛУЧЕНИЯ ДАТ ====== //
+function getFormattedDatesForPodmenAPI(mode = 'sheet', manualStartDate = null, manualEndDate = null) {
+  let startDateStr, endDateStr;
+
+  switch (mode) {
+    case 'sheet':
+      startDateStr = sheetZaprosy.getRange("A1").getDisplayValue();
+      endDateStr = sheetZaprosy.getRange("B1").getDisplayValue();
+      break;
+    case 'manual':
+      startDateStr = manualStartDate;
+      endDateStr = manualEndDate;
+      break;
+    case 'auto':
+      const dates = getLastWeekDates();
+      startDateStr = dates.start;
+      endDateStr = dates.end;
+      break;
+    default:
+      throw new Error("Неизвестный режим получения дат");
+  }
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return null;
+    const [day, month, year] = dateStr.split('.');
+    const date = new Date(year, month - 1, day);
+    if (isNaN(date.getTime())) {
+      throw new Error(`Неверный формат даты: ${dateStr}`);
+    }
+    return Utilities.formatDate(date, Session.getScriptTimeZone(), "yyyy-MM-dd");
+  };
+
+  return {
+    start: formatDate(startDateStr),
+    end: formatDate(endDateStr),
+    displayStart: startDateStr,
+    displayEnd: endDateStr
+  };
+}
+
+function getLastWeekDates() {
+  const today = new Date();
+  const dayOfWeek = today.getDay();
+  const lastMonday = new Date(today);
+  lastMonday.setDate(today.getDate() - dayOfWeek - 6);
+  const lastSunday = new Date(lastMonday);
+  lastSunday.setDate(lastMonday.getDate() + 6);
+
+  const formatToDDMMYYYY = (date) => {
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}.${month}.${year}`;
+  };
+
+  return {
+    start: formatToDDMMYYYY(lastMonday),
+    end: formatToDDMMYYYY(lastSunday)
+  };
+}
+
+// ====== ОСНОВНАЯ ЛОГИКА ДЛЯ ПОИСКОВЫХ СЛОВ ====== //
+function executeSearchWordsAnalysis(startEndDates) {
+  console.log("=== АНАЛИЗ ПОИСКОВЫХ СЛОВ ===");
+  console.log("Период:", startEndDates.displayStart, "-", startEndDates.displayEnd);
+  
+  _poiskovie_zaprosi_podmenMapping = _poiskovie_zaprosi_loadPodmenMapping();
+  console.log(`Загружено ${_poiskovie_zaprosi_podmenMapping.size} запросов для фильтрации переходов`);
+  
+  const searchWordsData = getSearchWordsFromSheetZaprosy();
+  console.log("Найдено поисковых слов:", searchWordsData.words.length);
+
+  if (searchWordsData.words.length === 0) {
+    console.log("❌ Нет поисковых слов для анализа");
+    return;
+  }
+
+  const startColumn = findFirstEmptyColumn();
+  console.log(`Запись начнется с колонки: ${startColumn}`);
+
+  createHeadersAndDates(startColumn, startEndDates);
+
+  console.log(`\n=== АНАЛИЗ ДЛЯ ${CABINET_NAMES.OOO} (лимит: ${LIMIT_CONFIG.OOO}) ===`);
+  const oooResults = analyzeSearchWordsForCabinet(apiKeyOOO, startEndDates, searchWordsData, CABINET_NAMES.OOO, LIMIT_CONFIG.OOO);
+
+  // ====== ПАУЗА МЕЖДУ КАБИНЕТАМИ ====== //
+  console.log(`\n⏳ Пауза 1 секунду перед анализом следующего кабинета...`);
+  Utilities.sleep(1000);
+
+  console.log(`\n=== АНАЛИЗ ДЛЯ ${CABINET_NAMES.IP} (лимит: ${LIMIT_CONFIG.IP}) ===`);
+  const ipResults = analyzeSearchWordsForCabinet(apiKeyIP, startEndDates, searchWordsData, CABINET_NAMES.IP, LIMIT_CONFIG.IP);
+
+  const combinedResults = combineResults(oooResults, ipResults, searchWordsData.words);
+  writeResultsToSheet(combinedResults, searchWordsData, startColumn);
+
+  console.log("\n✅ Все данные записаны в таблицу!");
+}
+
+function getSearchWordsFromSheetZaprosy() {
+  if (!sheetZaprosy) {
+    console.log("❌ Лист не инициализирован");
+    return { words: [], rowMap: {}, lastRow: 0 };
+  }
+
+  const lastRow = sheetZaprosy.getLastRow();
+  if (lastRow < 3) {
+    console.log("❌ На листе нет данных (нужны данные с строки 3)");
+    return { words: [], rowMap: {}, lastRow: 0 };
+  }
+
+  const columnData = sheetZaprosy.getRange("A3:A" + lastRow).getValues();
+  const words = [];
+  const rowMap = {};
+
+  for (let i = 0; i < columnData.length; i++) {
+    const cellValue = columnData[i][0];
+    if (cellValue && cellValue.toString().trim() !== "") {
+      const word = cellValue.toString().trim();
+      words.push(word);
+      rowMap[word] = i + 3;
+    }
+  }
+
+  console.log(`✅ Получено ${words.length} запросов с листа`);
+  return { words, rowMap, lastRow };
+}
+
+function findFirstEmptyColumn() {
+  const lastColumn = sheetZaprosy.getLastColumn();
+  return lastColumn + 1;
+}
+
+function createHeadersAndDates(startColumn, startEndDates) {
+  const headers = ["Частота", "Переходы", "Добавления", "Заказы"];
+  sheetZaprosy.getRange(1, startColumn, 1, 4).setValues([headers]);
+  
+  const datesRow = [startEndDates.displayStart, startEndDates.displayEnd, "", ""];
+  sheetZaprosy.getRange(2, startColumn, 1, 4).setValues([datesRow]);
+  
+  const newColor = getNextBlockColor(startColumn);
+  sheetZaprosy.getRange(1, startColumn, 2, 4).setBackground(newColor);
+  
+  console.log(`✅ Заголовки созданы в колонках ${startColumn}-${startColumn + 3}`);
+}
+
+function getNextBlockColor(startColumn) {
+  if (startColumn === 1) return "#FED6BC";
+  
+  try {
+    const lastCellColor = sheetZaprosy.getRange(1, startColumn - 1).getBackground();
+    return (lastCellColor === "#fed6bc" || lastCellColor === "#FED6BC") ? "#DEF7FE" : "#FED6BC";
+  } catch (error) {
+    return "#FED6BC";
+  }
+}
+
+// ====== ОСНОВНАЯ ФУНКЦИЯ: АНАЛИЗ ДЛЯ КАБИНЕТА С ПАКЕТНОЙ ОБРАБОТКОЙ ====== //
+function analyzeSearchWordsForCabinet(apiKey, dates, searchWordsData, cabinetName, limit) {
+  console.log(`\n📊 НАЧАЛО АНАЛИЗА ДЛЯ КАБИНЕТА: ${cabinetName}`);
+  console.log(`📋 Лимит запроса (количество поисковых слов в ответе): ${limit}`);
+  
+  // Получаем ВСЕ nmIds для кабинета
+  const allNmIds = getAllNmIdsByCabinet(cabinetName);
+  
+  if (allNmIds.length === 0) {
+    console.log(`❌ Нет nmIds для кабинета "${cabinetName}"`);
+    return {};
+  }
+  
+  console.log(`📦 Всего nmId для ${cabinetName}: ${allNmIds.length}`);
+  
+  // Разбиваем на порции по 50 (ограничение API)
+  const nmIdChunks = chunkArray(allNmIds, 50);
+  console.log(`📦 Разбито на ${nmIdChunks.length} порций по 50 nmId (последняя порция: ${nmIdChunks[nmIdChunks.length-1].length} nmId)`);
+  
+  // Хранилище для объединённых результатов по всем порциям
+  let aggregatedResults = {};
+  let totalRequests = 0;
+  let successfulRequests = 0;
+  
+  // Обрабатываем каждую порцию
+  for (let i = 0; i < nmIdChunks.length; i++) {
+    const chunk = nmIdChunks[i];
+    console.log(`\n--- Пакет ${i+1}/${nmIdChunks.length} для ${cabinetName} (${chunk.length} nmId) ---`);
+    console.log(`📝 nmId в этом пакете: ${chunk.slice(0, 5).join(", ")}${chunk.length > 5 ? "..." : ""}`);
+    
+    try {
+      // Создаем запрос для текущей порции nmId
+      const options = createSearchWordsRequestOptions(apiKey, dates, limit, chunk);
+      const response = sendSearchWordsRequest(options, `${cabinetName} (пакет ${i+1})`);
+      
+      totalRequests++;
+      
+      if (response && response.length > 0) {
+        successfulRequests++;
+        console.log(`✅ Пакет ${i+1}: получено ${response.length} записей`);
+        
+        // Анализируем текущую порцию и суммируем с предыдущими
+        const chunkResults = analyzeResultsChunk(response, searchWordsData, cabinetName, _poiskovie_zaprosi_podmenMapping);
+        
+        // Суммируем результаты с общими
+        for (const word in chunkResults) {
+          if (!aggregatedResults[word]) {
+            aggregatedResults[word] = {
+              totalFrequency: 0,
+              totalOrders: 0,
+              totalOpenCard: 0,
+              totalAddToCart: 0,
+              matchCount: 0,
+              includedTransitionsCount: 0,
+              excludedTransitionsCount: 0
+            };
+          }
+          
+          aggregatedResults[word].totalFrequency += chunkResults[word].totalFrequency;
+          aggregatedResults[word].totalOrders += chunkResults[word].totalOrders;
+          aggregatedResults[word].totalOpenCard += chunkResults[word].totalOpenCard;
+          aggregatedResults[word].totalAddToCart += chunkResults[word].totalAddToCart;
+          aggregatedResults[word].matchCount += chunkResults[word].matchCount;
+          aggregatedResults[word].includedTransitionsCount += chunkResults[word].includedTransitionsCount;
+          aggregatedResults[word].excludedTransitionsCount += chunkResults[word].excludedTransitionsCount;
+        }
+      } else {
+        console.log(`⚠️ Пакет ${i+1}: нет данных или ошибка`);
+      }
+      
+      // ====== ВАЖНО: ПАУЗА МЕЖДУ ПАКЕТАМИ ====== //
+      // API Wildberries: 3 запроса в минуту = 1 запрос каждые 20 секунд
+      // Делаем паузу 21 секунду для безопасности
+      if (i < nmIdChunks.length - 1) {
+        const waitTime = 21000; // 21 секунда
+        console.log(`⏳ Ожидание ${waitTime/1000} секунд перед следующим пакетом (соблюдение лимитов API)...`);
+        Utilities.sleep(waitTime);
+      }
+      
+    } catch (error) {
+      console.log(`❌ Ошибка при обработке пакета ${i+1} для ${cabinetName}:`, error.toString());
+      
+      // При ошибке тоже делаем паузу перед следующим пакетом
+      if (i < nmIdChunks.length - 1) {
+        const waitTime = 30000; // 30 секунд при ошибке
+        console.log(`⏳ Ошибка! Ожидание ${waitTime/1000} секунд перед следующим пакетом...`);
+        Utilities.sleep(waitTime);
+      }
+    }
+  }
+  
+  console.log(`\n📊 ИТОГО ДЛЯ ${cabinetName}:`);
+  console.log(`✅ Успешных запросов: ${successfulRequests}/${totalRequests}`);
+  console.log(`📊 Найдено уникальных поисковых слов: ${Object.keys(aggregatedResults).length}`);
+  
+  // Выводим детальную статистику по каждому слову (ограничим вывод, чтобы не забивать лог)
+  let wordCount = 0;
+  for (const word in aggregatedResults) {
+    if (wordCount >= 20) {
+      console.log(`... и еще ${Object.keys(aggregatedResults).length - 20} слов`);
+      break;
+    }
+    const data = aggregatedResults[word];
+    console.log(`\n🎯 Слово: "${word}"`);
+    console.log(`📊 Найдено совпадений: ${data.matchCount}`);
+    console.log(`📈 Итоговые суммы: Частота=${data.totalFrequency}, Переходы=${data.totalOpenCard} (учтено: ${data.includedTransitionsCount}, исключено: ${data.excludedTransitionsCount}), Добавления=${data.totalAddToCart}, Заказы=${data.totalOrders}`);
+    
+    if (data.excludedTransitionsCount > 0) {
+      console.log(`⚠️ Переходы отфильтрованы: исключено ${data.excludedTransitionsCount} записей (не основной артикул)`);
+    }
+    wordCount++;
+  }
+  
+  return aggregatedResults;
+}
+
+// ====== НОВАЯ ФУНКЦИЯ: АНАЛИЗ ОДНОГО ПАКЕТА ДАННЫХ ====== //
+function analyzeResultsChunk(data, searchWordsData, cabinetName, podmenMapping) {
+  if (data.length === 0) {
+    return {};
+  }
+
+  const wordsAnalysis = {};
+  const { words } = searchWordsData;
+  
+  words.forEach(word => {
+    const wordLower = word.toLowerCase();
+    const matches = [];
+
+    data.forEach(item => {
+      if (item.text && item.text.toLowerCase().includes(wordLower)) {
+        matches.push({
+          text: item.text,
+          frequency: item.frequency,
+          openCard: item.openCard,
+          addToCart: item.addToCart,
+          orders: item.orders,
+          nmId: item.nmId
+        });
+      }
+    });
+
+    if (matches.length > 0) {
+      const totals = matches.reduce((acc, match) => {
+        acc.frequency += match.frequency;
+        acc.addToCart += match.addToCart;
+        acc.orders += match.orders;
+        
+        const shouldCountTransitions = _poiskovie_zaprosi_shouldCountTransitions(
+          word,
+          match.nmId,
+          podmenMapping
+        );
+        
+        if (shouldCountTransitions) {
+          acc.openCard += match.openCard;
+          acc.includedTransitionsCount++;
+        } else {
+          acc.excludedTransitionsCount++;
+        }
+        
+        return acc;
+      }, { 
+        frequency: 0, 
+        openCard: 0, 
+        addToCart: 0, 
+        orders: 0,
+        includedTransitionsCount: 0,
+        excludedTransitionsCount: 0
+      });
+
+      wordsAnalysis[word] = {
+        totalFrequency: totals.frequency,
+        totalOrders: totals.orders,
+        totalOpenCard: totals.openCard,
+        totalAddToCart: totals.addToCart,
+        matchCount: matches.length,
+        includedTransitionsCount: totals.includedTransitionsCount,
+        excludedTransitionsCount: totals.excludedTransitionsCount
+      };
+    }
+  });
+
+  return wordsAnalysis;
+}
+
+// ====== СОЗДАНИЕ ЗАПРОСА К API (с передачей конкретной порции nmIds) ====== //
+function createSearchWordsRequestOptions(apiKey, currentPeriod, limit, nmIdsChunk) {
+  if (!nmIdsChunk || nmIdsChunk.length === 0) {
+    throw new Error(`❌ Нет nmIds для запроса`);
+  }
+  
+  const formData = {
+    "currentPeriod": {
+      "start": currentPeriod.start,
+      "end": currentPeriod.end
+    },
+    "nmIds": nmIdsChunk,
+    "topOrderBy": "openCard",
+    "includeSubstitutedSKUs": true,
+    "includeSearchTexts": true,
+    "orderBy": {
+      "field": "visibility",
+      "mode": "asc"
+    },
+    "limit": limit
+  };
+
+  return {
+    "method": "POST",
+    "muteHttpExceptions": true,
+    "headers": {
+      "Authorization": apiKey,
+      "Content-Type": "application/json"
+    },
+    "payload": JSON.stringify(formData)
+  };
+}
+
+// ====== ОТПРАВКА ЗАПРОСА ====== //
+function sendSearchWordsRequest(options, requestName) {
+  const wbApiURL = "https://seller-analytics-api.wildberries.ru/api/v2/search-report/product/search-texts";
+
+  try {
+    console.log(`📤 Отправляем запрос ${requestName}...`);
+    const response = UrlFetchApp.fetch(wbApiURL, options);
+    const responseCode = response.getResponseCode();
+
+    if (responseCode !== 200) {
+      console.log(`❌ Ошибка API для ${requestName}:`, response.getContentText());
+      return [];
+    }
+
+    const data = JSON.parse(response.getContentText());
+
+    if (!data?.data?.items) {
+      console.log(`⚠️ Нет данных в ответе для ${requestName}`);
+      return [];
+    }
+
+    console.log(`✅ Получено элементов для ${requestName}: ${data.data.items.length}`);
+    return transformSearchData(data.data.items);
+
+  } catch (error) {
+    console.log(`❌ Ошибка при обработке ответа для ${requestName}:`, error.toString());
+    return [];
+  }
+}
+
+// ====== ПРЕОБРАЗОВАНИЕ ДАННЫХ ====== //
+function transformSearchData(originalArray) {
+  if (!Array.isArray(originalArray)) return [];
+
+  return originalArray.map(function (item) {
+    const frequency = typeof item.frequency === 'object' ?
+      (item.frequency.current || item.frequency || 0) :
+      (item.frequency || 0);
+
+    const openCard = typeof item.openCard === 'object' ?
+      (item.openCard.current || item.openCard || 0) :
+      (item.openCard || 0);
+
+    const addToCart = typeof item.addToCart === 'object' ?
+      (item.addToCart.current || item.addToCart || 0) :
+      (item.addToCart || 0);
+
+    const orders = typeof item.orders === 'object' ?
+      (item.orders.current || item.orders || 0) :
+      (item.orders || 0);
+
+    return {
+      text: item.text || "",
+      nmId: item.nmId || 0,
+      frequency: Number(frequency) || 0,
+      openCard: Number(openCard) || 0,
+      addToCart: Number(addToCart) || 0,
+      orders: Number(orders) || 0
+    };
+  }).filter(item => item.text !== "");
+}
+
+// ====== ОБЪЕДИНЕНИЕ РЕЗУЛЬТАТОВ ООО И ИП ====== //
+function combineResults(oooResults, ipResults, words) {
+  const combinedResults = {};
+  
+  words.forEach(word => {
+    const oooData = oooResults[word] || {
+      totalFrequency: 0,
+      totalOrders: 0,
+      totalOpenCard: 0,
+      totalAddToCart: 0
+    };
+    
+    const ipData = ipResults[word] || {
+      totalFrequency: 0,
+      totalOrders: 0,
+      totalOpenCard: 0,
+      totalAddToCart: 0
+    };
+    
+    combinedResults[word] = {
+      totalFrequency: oooData.totalFrequency + ipData.totalFrequency,
+      totalOrders: oooData.totalOrders + ipData.totalOrders,
+      totalOpenCard: oooData.totalOpenCard + ipData.totalOpenCard,
+      totalAddToCart: oooData.totalAddToCart + ipData.totalAddToCart
+    };
+  });
+  
+  console.log(`\n📊 ОБЪЕДИНЕНИЕ РЕЗУЛЬТАТОВ:`);
+  console.log(`✅ Результаты ООО и ИП объединены (данные за один период суммированы по одинаковым словам)`);
+  
+  return combinedResults;
+}
+
+// ====== ЗАПИСЬ РЕЗУЛЬТАТОВ В ТАБЛИЦУ ====== //
+function writeResultsToSheet(results, searchWordsData, startColumn) {
+  if (Object.keys(results).length === 0) {
+    console.log(`❌ Нет результатов для записи`);
+    return;
+  }
+
+  const { words, rowMap, lastRow } = searchWordsData;
+  const dataToWrite = [];
+
+  for (let row = 3; row <= lastRow; row++) {
+    dataToWrite.push(["", "", "", ""]);
+  }
+
+  words.forEach(word => {
+    const rowIndex = rowMap[word] - 3;
+    const wordResults = results[word] || {
+      totalFrequency: 0,
+      totalOrders: 0,
+      totalOpenCard: 0,
+      totalAddToCart: 0
+    };
+
+    dataToWrite[rowIndex] = [
+      wordResults.totalFrequency,
+      wordResults.totalOpenCard,
+      wordResults.totalAddToCart,
+      wordResults.totalOrders
+    ];
+  });
+
+  if (dataToWrite.length > 0) {
+    sheetZaprosy.getRange(3, startColumn, dataToWrite.length, 4).setValues(dataToWrite);
+    console.log(`\n📝 ЗАПИСЬ В ТАБЛИЦУ:`);
+    console.log(`✅ Записаны суммарные данные в колонки ${startColumn}-${startColumn + 3}`);
+    console.log(`ℹ️ Переходы уже отфильтрованы по основному артикулу`);
+    console.log(`ℹ️ Данные ООО и ИП объединены (суммированы по одинаковым поисковым словам)`);
+    console.log(`ℹ️ Обработаны ВСЕ nmId из листа nmIds (разбиты на пакеты по 50)`);
+  }
+}
+
+// ====== Глобальные переменные =====//
+let sheetCSVExport = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Аналитика по запросам (поартикульно)");
+
+
+// ====== МАССИВ АРТИКУЛОВ ДЛЯ АНАЛИЗА ====== //
+function getUniqueNmIdsFromListSecondScript() {
+  const nmIds = [];
+  
+  /*
+  const nmIds = [
+    94725850, 98842349, 97282355, 94725851, 165100165, 97282347, 98892525, 98893130, 
+    98708431, 98894289, 132336514, 132336515, 163150593, 163150222, 177452699
+  ];
+  */
+  
+  console.log(`📦 Загружено ${nmIds.length} артикулов для анализа`);
+  if (nmIds.length === 0) {
+    console.log("ℹ️ Массив артикулов пустой. Будет использован запрос без артикулов (все товары)");
+  }
+  
+  return [...new Set(nmIds)];
+}
+
+// ====== ОСНОВНЫЕ ФУНКЦИИ ЗАПУСКА ====== //
+function saveDataToArticulSheet() {
+  console.log("=== СОХРАНЕНИЕ ДАННЫХ ПО АРТИКУЛАМ ===");
+  const {currentPeriod, pastPeriod} = getFormattedDatesForCSVExport('sheet');
+  console.log("Даты получены из таблицы");
+  executeDataSaving(currentPeriod, pastPeriod);
+}
+
+function saveDataToArticulSheetManual() {
+  console.log("=== РУЧНОЕ СОХРАНЕНИЕ ДАННЫХ ===");
+  const manualStartDate = "06.10.2025";
+  const manualEndDate = "12.10.2025";
+  const {currentPeriod, pastPeriod} = getFormattedDatesForCSVExport('manual', manualStartDate, manualEndDate);
+  console.log("Даты получены из переменных");
+  executeDataSaving(currentPeriod, pastPeriod);
+}
+
+function saveDataToArticulSheetAuto() {
+  console.log("=== АВТОМАТИЧЕСКОЕ СОХРАНЕНИЕ ДАННЫХ ===");
+  const {currentPeriod, pastPeriod} = getFormattedDatesForCSVExport('auto');
+  console.log("Даты получены автоматически (прошлая неделя)");
+  executeDataSaving(currentPeriod, pastPeriod);
+}
+
+// ====== ОСНОВНАЯ ЛОГИКА ====== //
+function executeDataSaving(currentPeriod, pastPeriod) {
+  console.log("=== СБОР ДАННЫХ ЗА ТЕКУЩИЙ ПЕРИОД ===");
+  console.log("📅 Текущий период:", currentPeriod.displayStart, "-", currentPeriod.displayEnd);
+  console.log("📅 Предыдущий период:", pastPeriod.displayStart, "-", pastPeriod.displayEnd);
+
+  const allNmIds = getUniqueNmIdsFromListSecondScript();
+  console.log(`📦 Всего уникальных артикулов: ${allNmIds.length}`);
+  
+  let allResults = [];
+
+  if (allNmIds.length === 0) {
+    console.log("🔄 Режим: Запрос без артикулов (все товары)");
+    const results = analyzeForDataSaving(apiKeyOOO, currentPeriod, pastPeriod, LIMIT_OOO, []);
+    if (results && results.length > 0) {
+      allResults = results;
+      console.log(`✅ Получено ${results.length} записей без артикулов`);
+    } else {
+      console.log(`❌ Нет данных при запросе без артикулов`);
+      return;
+    }
+  } else {
+    console.log("🔄 Режим: Запрос с конкретными артикулами");
+    const batches = [];
+    for (let i = 0; i < allNmIds.length; i += BATCH_SIZE) {
+      batches.push(allNmIds.slice(i, i + BATCH_SIZE));
+    }
+    
+    console.log(`🔄 Разбито на ${batches.length} групп по ${BATCH_SIZE} артикулов`);
+    let batchNumber = 1;
+    let hasData = false;
+    
+    for (const batch of batches) {
+      console.log(`\n📦 === ГРУППА ${batchNumber}/${batches.length} ===`);
+      console.log(`📡 Запрашиваем данные для ${batch.length} артикулов`);
+      
+      const results = analyzeForDataSaving(apiKeyOOO, currentPeriod, pastPeriod, LIMIT_OOO, batch);
+      
+      if (results && results.length > 0) {
+        console.log(`✅ Получено ${results.length} записей`);
+        allResults.push(...results);
+        hasData = true;
+      } else {
+        console.log(`❌ Нет данных для этой группы`);
+      }
+      
+      batchNumber++;
+      
+      if (batchNumber <= batches.length) {
+        console.log(`⏳ Пауза ${BATCH_DELAY/1000} секунд...`);
+        Utilities.sleep(BATCH_DELAY);
+      }
+    }
+    
+    if (!hasData) {
+      console.log("❌ Нет данных ни для одной группы артикулов");
+      return;
+    }
+  }
+
+  if (allResults.length > 0) {
+    console.log(`\n✅ Данные успешно получены (${allResults.length} записей). Очищаем лист...`);
+    clearOldData();
+    writeResultsToCSVSheet(allResults, currentPeriod, pastPeriod);
+    console.log(`\n🎉 ВСЕГО сохранено: ${allResults.length} записей`);
+  } else {
+    console.log("\n❌ Нет данных для сохранения");
+  }
+}
+
+// ====== АНАЛИЗ ДЛЯ СОХРАНЕНИЯ ДАННЫХ ====== //
+function analyzeForDataSaving(apiKey, currentPeriod, pastPeriod, limit, nmIds) {
+  console.log(`Запрашиваем данные для ${nmIds.length} артикулов`);
+
+  try {
+    const options = createDataRequestOptions(apiKey, currentPeriod, pastPeriod, limit, nmIds);
+    
+    console.log(`⏳ Пауза ${REQUEST_DELAY/1000} сек перед запросом...`);
+    Utilities.sleep(REQUEST_DELAY);
+    
+    const response = sendDataRequest(options);
+
+    if (response && response.length > 0) {
+      return response;
+    } else {
+      return [];
+    }
+
+  } catch (error) {
+    console.log(`❌ Ошибка при запросе:`, error.toString());
+    return [];
+  }
+}
+
+// ====== ЗАПРОС К API С ДВУМЯ ПЕРИОДАМИ ====== //
+function createDataRequestOptions(apiKey, currentPeriod, pastPeriod, limit, nmIds) {
+  const formData = {
+    "currentPeriod": {
+      "start": currentPeriod.start,
+      "end": currentPeriod.end
+    },
+    "pastPeriod": {
+      "start": pastPeriod.start,
+      "end": pastPeriod.end
+    },
+    "nmIds": nmIds,
+    "topOrderBy": "openCard",
+    "includeSubstitutedSKUs": true,
+    "includeSearchTexts": true,
+    "orderBy": {
+      "field": "openCard",
+      "mode": "desc"
+    },
+    "limit": limit
+  };
+
+  return {
+    "method": "POST",
+    "muteHttpExceptions": true,
+    "headers": {
+      "Authorization": apiKey,
+      "Content-Type": "application/json"
+    },
+    "payload": JSON.stringify(formData)
+  };
+}
+
+function sendDataRequest(options) {
+  const wbApiURL = "https://seller-analytics-api.wildberries.ru/api/v2/search-report/product/search-texts";
+
+  try {
+    const response = UrlFetchApp.fetch(wbApiURL, options);
+    const responseCode = response.getResponseCode();
+
+    if (responseCode === 429) {
+      console.log("⚠️ Превышен лимит запросов. Увеличиваем паузу...");
+      Utilities.sleep(60000);
+      return [];
+    } else if (responseCode !== 200) {
+      console.log(`❌ Ошибка API (${responseCode}):`, response.getContentText());
+      return [];
+    }
+
+    const data = JSON.parse(response.getContentText());
+
+    if (!data?.data?.items) {
+      console.log(`ℹ️ Нет данных в ответе`);
+      return [];
+    }
+
+    console.log(`📊 Получено ${data.data.items.length} записей от API`);
+    return transformDataForCSVSheetAdvanced(data.data.items);
+
+  } catch (error) {
+    console.log(`❌ Критическая ошибка при обработке ответа:`, error.toString());
+    return [];
+  }
+}
+
+// ====== АЛЬТЕРНАТИВНАЯ ТРАНСФОРМАЦИЯ ДАННЫХ ====== //
+function transformDataForCSVSheetAdvanced(originalArray) {
+  if (!Array.isArray(originalArray)) return [];
+
+  console.log(`\n🔍 АЛЬТЕРНАТИВНАЯ ТРАНСФОРМАЦИЯ ДАННЫХ:`);
+  console.log("Количество элементов:", originalArray.length);
+
+  const transformField = (field, fieldName = '') => {
+    if (typeof field === 'object' && field !== null) {
+      const currentValue = Number(field.current) || 0;
+      const dynamicsValue = Number(field.dynamics) || 0;
+      
+      console.log(`📊 ${fieldName}: current=${currentValue}, dynamics=${dynamicsValue}`);
+      
+      // АНАЛИЗ ТИПА DYNAMICS
+      let displayValue = 0;
+      
+      if (fieldName === 'frequency') {
+        // Для frequency: dynamics = абсолютное изменение (не проценты)
+        displayValue = dynamicsValue; // Абсолютное число
+        console.log(`🔢 ${fieldName}: АБСОЛЮТНОЕ изменение: ${dynamicsValue}`);
+      } else {
+        // Для остальных полей: dynamics = проценты
+        displayValue = dynamicsValue / 100; // Конвертируем в десятичную дробь
+        console.log(`📈 ${fieldName}: ПРОЦЕНТНОЕ изменение: ${dynamicsValue}%`);
+      }
+      
+      return {
+        current: currentValue,
+        dynamics: displayValue
+      };
+    }
+    
+    console.log(`⚠️ ${fieldName}: Нет данных`);
+    return {
+      current: 0,
+      dynamics: 0
+    };
+  };
+
+  return originalArray.map(function (item, index) {
+    const frequencyData = transformField(item.frequency, 'frequency');
+    const openCardData = transformField(item.openCard, 'openCard');
+    const addToCartData = transformField(item.addToCart, 'addToCart');
+    const ordersData = transformField(item.orders, 'orders');
+
+    // Логируем первые 2 записи
+    if (index < 2) {
+      console.log(`\n📋 ТРАНСФОРМАЦИЯ "${item.text}":`);
+      console.log("Запросы:", frequencyData.current, `(abs: ${frequencyData.dynamics})`);
+      console.log("Переходы:", openCardData.current, `(%: ${(openCardData.dynamics * 100).toFixed(1)}%)`);
+      console.log("Корзина:", addToCartData.current, `(%: ${(addToCartData.dynamics * 100).toFixed(1)}%)`);
+      console.log("Заказы:", ordersData.current, `(%: ${(ordersData.dynamics * 100).toFixed(1)}%)`);
+    }
+
+    return {
+      vendorCode: item.vendorCode || "",
+      nmId: item.nmId || 0,
+      name: item.name || "",
+      text: item.text || "",
+      frequency: frequencyData.current,
+      openCard: openCardData.current,
+      addToCart: addToCartData.current,
+      orders: ordersData.current,
+      frequencyDynamics: frequencyData.dynamics,
+      openCardDynamics: openCardData.dynamics,
+      addToCartDynamics: addToCartData.dynamics,
+      ordersDynamics: ordersData.dynamics
+    };
+  });
+}
+
+// ====== ЗАПИСЬ РЕЗУЛЬТАТОВ НА ЛИСТ ====== //
+function writeResultsToCSVSheet(results, currentPeriod, pastPeriod) {
+  if (results.length === 0) {
+    console.log("❌ Нет результатов для записи");
+    return;
+  }
+
+  console.log(`\n💾 Сохраняем ${results.length} записей на лист...`);
+
+  addCSVSheetHeadersAdvanced(currentPeriod, pastPeriod);
+  
+  const dataToWrite = results.map(item => {
+    console.log(`📊 "${item.text}":`);
+    console.log(`   Запросы: ${item.frequency} (abs change: ${item.frequencyDynamics})`);
+    console.log(`   Переходы: ${item.openCard} (change: ${(item.openCardDynamics * 100).toFixed(1)}%)`);
+    console.log(`   Корзина: ${item.addToCart} (change: ${(item.addToCartDynamics * 100).toFixed(1)}%)`);
+    console.log(`   Заказы: ${item.orders} (change: ${(item.ordersDynamics * 100).toFixed(1)}%)`);
+    
+    return [
+      item.vendorCode,
+      item.nmId,
+      item.name,
+      item.text,
+      item.frequency,
+      item.frequencyDynamics, // Абсолютное изменение для запросов
+      item.openCard,
+      item.openCardDynamics,  // Процентное изменение для переходов
+      item.addToCart,
+      item.addToCartDynamics, // Процентное изменение для корзины
+      item.orders,
+      item.ordersDynamics,    // Процентное изменение для заказов
+      "OOO"
+    ];
+  });
+
+  if (dataToWrite.length > 0) {
+    const startRow = 4;
+    const numColumns = dataToWrite[0].length;
+    
+    sheetCSVExport.getRange(startRow, 1, dataToWrite.length, numColumns).setValues(dataToWrite);
+    console.log(`✅ Сохранено ${dataToWrite.length} строк данных`);
+    
+    formatCSVSheetColumnsAdvanced(dataToWrite.length);
+    applyConditionalFormattingAdvanced(dataToWrite.length);
+    
+    console.log("🎨 Применено условное форматирование");
+  }
+}
+
+// ====== ДОБАВЛЕНИЕ ЗАГОЛОВКОВ ====== //
+function addCSVSheetHeadersAdvanced(currentPeriod, pastPeriod) {
+  try {
+    const headers = [
+      "Артикул продавца", 
+      "Артикул WB", 
+      "Название", 
+      "Поисковый запрос",
+      `Запросы (${currentPeriod.displayStart})`, 
+      `Абс. изменение vs ${pastPeriod.displayStart}`,
+      `Переходы (${currentPeriod.displayStart})`, 
+      `Изменение % vs ${pastPeriod.displayStart}`,
+      `Корзина (${currentPeriod.displayStart})`, 
+      `Изменение % vs ${pastPeriod.displayStart}`,
+      `Заказы (${currentPeriod.displayStart})`, 
+      `Изменение % vs ${pastPeriod.displayStart}`,
+      "Кабинет"
+    ];
+    
+    const headerRange = sheetCSVExport.getRange(3, 1, 1, headers.length);
+    headerRange.setValues([headers]);
+    
+    // Черный шрифт для всех заголовков
+    headerRange.setFontColor("#000000");
+    headerRange.setFontWeight("bold");
+    
+    // Разные цвета фона
+    const currentDataColor = "#E6F3FF";  // Голубой для текущих данных
+    const changesColor = "#FFF2E6";      // Оранжевый для изменений
+    
+    for (let col = 1; col <= headers.length; col++) {
+      const cell = sheetCSVExport.getRange(3, col);
+      
+      if (col >= 5 && col <= 11) {
+        if (col % 2 === 1) { // Нечетные: 5,7,9,11 - текущие данные
+          cell.setBackground(currentDataColor);
+        } else { // Четные: 6,8,10,12 - изменения
+          cell.setBackground(changesColor);
+        }
+      } else {
+        cell.setBackground("#FFFFFF");
+      }
+    }
+    
+    console.log("✅ Заголовки добавлены (альтернативный подход)");
+  } catch (error) {
+    console.log("⚠️ Не удалось добавить заголовки:", error.message);
+  }
+}
+
+// ====== ФОРМАТИРОВАНИЕ КОЛОНОК ====== //
+function formatCSVSheetColumnsAdvanced(rowCount) {
+  if (rowCount === 0) return;
+  try {
+    // Числовые колонки текущего периода (5, 7, 9, 11)
+    const numberColumns = [5, 7, 9, 11];
+    numberColumns.forEach(col => {
+      const range = sheetCSVExport.getRange(4, col, rowCount, 1);
+      range.setNumberFormat("0");
+    });
+    
+    // Колонка 6: абсолютное изменение для запросов (целые числа)
+    const absChangeRange = sheetCSVExport.getRange(4, 6, rowCount, 1);
+    absChangeRange.setNumberFormat("0");
+    
+    // Процентные колонки (8, 10, 12)
+    const percentageColumns = [8, 10, 12];
+    percentageColumns.forEach(col => {
+      const range = sheetCSVExport.getRange(4, col, rowCount, 1);
+      range.setNumberFormat("0.0%");
+    });
+    
+    console.log("✅ Колонки отформатированы (разные форматы)");
+  } catch (error) {
+    console.log("⚠️ Не удалось отформатировать колонки:", error.message);
+  }
+}
+
+// ====== УСЛОВНОЕ ФОРМАТИРОВАНИЕ ====== //
+function applyConditionalFormattingAdvanced(rowCount) {
+  if (rowCount === 0) return;
+  
+  try {
+    const sheet = sheetCSVExport;
+    sheet.clearConditionalFormatRules();
+    
+    let newRules = [];
+    
+    // Для абсолютных изменений (колонка 6) - запросы
+    const absRange = sheet.getRange(4, 6, rowCount, 1);
+    const absGreenRule = SpreadsheetApp.newConditionalFormatRule()
+      .setRanges([absRange])
+      .whenNumberGreaterThan(0)
+      .setBackground("#C6EFCE")
+      .setFontColor("#006100")
+      .build();
+    
+    const absRedRule = SpreadsheetApp.newConditionalFormatRule()
+      .setRanges([absRange])
+      .whenNumberLessThan(0)
+      .setBackground("#FFC7CE")
+      .setFontColor("#9C0006")
+      .build();
+    
+    const absGrayRule = SpreadsheetApp.newConditionalFormatRule()
+      .setRanges([absRange])
+      .whenNumberEqualTo(0)
+      .setBackground("#F3F3F3")
+      .setFontColor("#666666")
+      .build();
+    
+    newRules.push(absGreenRule, absRedRule, absGrayRule);
+    
+    // Для процентных изменений (колонки 8, 10, 12)
+    const percentageColumns = [8, 10, 12];
+    percentageColumns.forEach(col => {
+      const range = sheet.getRange(4, col, rowCount, 1);
+      
+      const greenRule = SpreadsheetApp.newConditionalFormatRule()
+        .setRanges([range])
+        .whenNumberGreaterThan(0)
+        .setBackground("#C6EFCE")
+        .setFontColor("#006100")
+        .build();
+      
+      const redRule = SpreadsheetApp.newConditionalFormatRule()
+        .setRanges([range])
+        .whenNumberLessThan(0)
+        .setBackground("#FFC7CE")
+        .setFontColor("#9C0006")
+        .build();
+      
+      const grayRule = SpreadsheetApp.newConditionalFormatRule()
+        .setRanges([range])
+        .whenNumberEqualTo(0)
+        .setBackground("#F3F3F3")
+        .setFontColor("#666666")
+        .build();
+      
+      newRules.push(greenRule, redRule, grayRule);
+    });
+    
+    sheet.setConditionalFormatRules(newRules);
+    console.log("🎨 Условное форматирование применено (разные типы)");
+    
+  } catch (error) {
+    console.log("⚠️ Не удалось применить условное форматирование:", error.message);
+  }
+}
+
+// ====== ФУНКЦИИ ДЛЯ РАБОТЫ С ДАТАМИ ====== //
+function getFormattedDatesForCSVExport(mode = 'sheet', manualStartDate = null, manualEndDate = null) {
+  let startDateStr, endDateStr;
+
+  switch (mode) {
+    case 'sheet':
+      startDateStr = sheetCSVExport.getRange("A2").getDisplayValue();
+      endDateStr = sheetCSVExport.getRange("B2").getDisplayValue();
+      
+      if (!startDateStr || !endDateStr || startDateStr.trim() === "" || endDateStr.trim() === "") {
+        console.log("⚠️ Даты в таблице пустые. Используем автоматический режим.");
+        const dates = getLastWeekDatesCSV();
+        startDateStr = dates.start;
+        endDateStr = dates.end;
+      }
+      break;
+    case 'manual':
+      startDateStr = manualStartDate;
+      endDateStr = manualEndDate;
+      break;
+    case 'auto':
+      const dates = getLastWeekDatesCSV();
+      startDateStr = dates.start;
+      endDateStr = dates.end;
+      break;
+    default:
+      throw new Error("Неизвестный режим получения дат");
+  }
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return null;
+    
+    try {
+      const [day, month, year] = dateStr.split('.');
+      if (!day || !month || !year) {
+        throw new Error(`Неполная дата: ${dateStr}`);
+      }
+      
+      const date = new Date(year, month - 1, day);
+      if (isNaN(date.getTime())) {
+        throw new Error(`Неверный формат даты: ${dateStr}`);
+      }
+      return Utilities.formatDate(date, Session.getScriptTimeZone(), "yyyy-MM-dd");
+    } catch (error) {
+      console.log(`❌ Ошибка при форматировании даты "${dateStr}":`, error.message);
+      return null;
+    }
+  };
+
+  const currentStart = formatDate(startDateStr);
+  const currentEnd = formatDate(endDateStr);
+
+  if (!currentStart || !currentEnd) {
+    console.log("❌ Не удалось получить корректные даты. Используем прошлую неделю.");
+    const fallbackDates = getLastWeekDatesCSV();
+    const currentPeriod = {
+      start: formatDate(fallbackDates.start),
+      end: formatDate(fallbackDates.end),
+      displayStart: fallbackDates.start,
+      displayEnd: fallbackDates.end
+    };
+    
+    const pastPeriod = calculatePastPeriod(currentPeriod.start, currentPeriod.end);
+    return { currentPeriod, pastPeriod };
+  }
+
+  const currentPeriod = {
+    start: currentStart,
+    end: currentEnd,
+    displayStart: startDateStr,
+    displayEnd: endDateStr
+  };
+
+  const pastPeriod = calculatePastPeriod(currentPeriod.start, currentPeriod.end);
+
+  return {
+    currentPeriod,
+    pastPeriod
+  };
+}
+
+function calculatePastPeriod(currentStart, currentEnd) {
+  const startDate = new Date(currentStart);
+  const endDate = new Date(currentEnd);
+  
+  const durationMs = endDate - startDate;
+  const durationDays = Math.round(durationMs / (1000 * 60 * 60 * 24)) + 1;
+  
+  console.log(`📅 Расчет прошлого периода: ${durationDays} дней`);
+  
+  const pastStart = new Date(startDate);
+  pastStart.setDate(pastStart.getDate() - durationDays);
+  
+  const pastEnd = new Date(endDate);
+  pastEnd.setDate(pastEnd.getDate() - durationDays);
+  
+  const formatToDDMMYYYY = (date) => {
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}.${month}.${year}`;
+  };
+
+  const result = {
+    start: Utilities.formatDate(pastStart, Session.getScriptTimeZone(), "yyyy-MM-dd"),
+    end: Utilities.formatDate(pastEnd, Session.getScriptTimeZone(), "yyyy-MM-dd"),
+    displayStart: formatToDDMMYYYY(pastStart),
+    displayEnd: formatToDDMMYYYY(pastEnd)
+  };
+  
+  console.log(`📅 Прошлый период: ${result.displayStart} - ${result.displayEnd}`);
+  
+  return result;
+}
+
+function getLastWeekDatesCSV() {
+  const today = new Date();
+  const dayOfWeek = today.getDay();
+  const lastMonday = new Date(today);
+  lastMonday.setDate(today.getDate() - dayOfWeek - 6);
+  const lastSunday = new Date(lastMonday);
+  lastSunday.setDate(lastMonday.getDate() + 6);
+
+  const formatToDDMMYYYY = (date) => {
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}.${month}.${year}`;
+  };
+
+  return {
+    start: formatToDDMMYYYY(lastMonday),
+    end: formatToDDMMYYYY(lastSunday)
+  };
+}
+
+function clearOldData() {
+  const lastRow = sheetCSVExport.getLastRow();
+  if (lastRow >= 4) {
+    sheetCSVExport.getRange(4, 1, lastRow - 3, sheetCSVExport.getLastColumn()).clearContent();
+    console.log(`✅ Полностью очищены данные с строки 4 до ${lastRow}`);
+  } else {
+    console.log("✅ Нет старых данных для очистки");
+  }
+}

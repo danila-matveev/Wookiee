@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Edit(/.claude/**)",
+      "Write(/.claude/**)",
+      "Read(/.claude/**)",
+      "Edit(/Users/danilamatveev/.claude/**)",
+      "Write(/Users/danilamatveev/.claude/**)",
+      "Read(/Users/danilamatveev/.claude/**)",
+      "Write(/Users/danilamatveev/Desktop/Документы/Cursor/Wookiee/.claude/**)",
+      "Edit(/Users/danilamatveev/Desktop/Документы/Cursor/Wookiee/.claude/**)",
+      "Edit(/.claude/skills/abc-audit/**)"
+    ],
+    "additionalDirectories": [
+      "/Users/danilamatveev/Desktop/Документы/Cursor/Wookiee/.claude/skills",
+      "/Users/danilamatveev/Desktop/Документы/Cursor/Wookiee/.claude",
+      "/Users/danilamatveev/Desktop/Документы/Cursor/Matveev OS/matveev_os/.claude",
+      "/Users/danilamatveev/Desktop/Документы/Cursor/Matveev OS/matveev_os/.claude/agents"
+    ]
+  },
+  "hooks": {}
+}

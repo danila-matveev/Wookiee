@@ -21,7 +21,7 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-ALL_SECTIONS = "categories,our,competitors,models_ours,models_rivals,new_items"
+ALL_SECTIONS = "categories,our,competitors,competitor_deep,discovery,models_ours,models_rivals,new_items"
 
 
 def _month_range(month_str: str) -> tuple[str, str]:
@@ -101,6 +101,14 @@ def main():
     if "models_rivals" in sections:
         from scripts.market_review.collectors.top_models_rivals import collect_top_models_rivals
         collectors["models_rivals"] = (collect_top_models_rivals, shared_kwargs)
+
+    if "competitor_deep" in sections:
+        from scripts.market_review.collectors.competitor_deep_dive import collect_competitor_deep_dive
+        collectors["competitor_deep"] = (collect_competitor_deep_dive, shared_kwargs)
+
+    if "discovery" in sections:
+        from scripts.market_review.collectors.discovery_brands import collect_discovery_brands
+        collectors["discovery"] = (collect_discovery_brands, shared_kwargs)
 
     if "new_items" in sections:
         from scripts.market_review.collectors.new_items import collect_new_items

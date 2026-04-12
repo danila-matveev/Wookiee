@@ -11,13 +11,12 @@ logger = logging.getLogger(__name__)
 
 
 class WBClient:
-    """Client for Wildberries APIs (Statistics, Prices, Feedbacks, Returns)."""
+    """Client for Wildberries APIs (Statistics, Prices, Feedbacks)."""
 
     ANALYTICS_BASE = "https://seller-analytics-api.wildberries.ru"
     STATISTICS_BASE = "https://statistics-api.wildberries.ru"
     PRICES_BASE = "https://discounts-prices-api.wildberries.ru"
     FEEDBACKS_BASE = "https://feedbacks-api.wildberries.ru"
-    RETURNS_BASE = "https://returns-api.wildberries.ru"
 
     def __init__(self, api_key: str, cabinet_name: str):
         self.cabinet_name = cabinet_name
@@ -343,28 +342,6 @@ class WBClient:
         if isinstance(resp, list):
             return resp
         return []
-
-    # ---- Returns (customer return claims) ----
-
-    def get_return_claims(self, is_archive: bool = False) -> list[dict]:
-        """Fetch customer return claims (last 14 days, API limit).
-
-        Args:
-            is_archive: If True, fetch archived claims. Default False (active claims).
-
-        Returns:
-            List of claim dicts.
-        """
-        url = f"{self.RETURNS_BASE}/api/v1/claims?is_archive={'true' if is_archive else 'false'}"
-        resp = self._request("GET", url)
-        if not resp:
-            return []
-        if isinstance(resp, list):
-            return resp
-        claims = resp.get("claims", [])
-        if not claims and resp.keys() - {"error", "errorText", "additionalErrors"}:
-            logger.warning("[%s] Unexpected response keys: %s", self.cabinet_name, list(resp.keys()))
-        return claims
 
     # ---- Common request handler ----
 
