@@ -79,6 +79,34 @@ class TestGetItemSimilar:
         assert result == {"similar": [{"sku": 99999, "name": "Similar Item"}]}
 
 
+class TestGetItemInfo:
+    def test_returns_item_info(self, client: MPStatsClient):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "id": 12345, "name": "Test Item", "brand": "Wookiee",
+        }
+
+        with patch.object(client.client, "request", return_value=mock_response):
+            result = client.get_item_info(12345)
+
+        assert result == {"id": 12345, "name": "Test Item", "brand": "Wookiee"}
+
+
+class TestSearchBrands:
+    def test_returns_brand_list(self, client: MPStatsClient):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": [{"name": "Birka Art", "revenue": 3000000}],
+        }
+
+        with patch.object(client.client, "request", return_value=mock_response):
+            result = client.search_brands("Birka")
+
+        assert result == {"data": [{"name": "Birka Art", "revenue": 3000000}]}
+
+
 class TestRetryOn429:
     @patch("shared.clients.mpstats_client.time.sleep")
     def test_retries_on_rate_limit(self, mock_sleep, client: MPStatsClient):

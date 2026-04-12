@@ -9,7 +9,7 @@ services:
     entrypoint: ["/bin/bash", "-c"]
     command:
       - |
-        echo "*/30 7-18 * * * cd /app && python scripts/run_report.py --schedule >> /proc/1/fd/1 2>&1" | crontab -
+        (echo "PATH=/usr/local/bin:/usr/bin:/bin"; echo "PYTHONPATH=/app"; echo "*/30 7-18 * * * cd /app && python scripts/run_report.py --schedule >> /proc/1/fd/1 2>&1") | crontab -
         echo "Wookiee report cron installed: every 30 min, 07:00-18:00 MSK"
         cron -f
 

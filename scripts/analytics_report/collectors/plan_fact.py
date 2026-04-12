@@ -1,32 +1,17 @@
-"""Plan-fact data collector: plan from Google Sheets + MTD info."""
+"""Plan-fact data collector: plan from DB (plan_article) + MTD info."""
 from __future__ import annotations
 
-import json
-import subprocess
+import logging
 from calendar import monthrange
 from datetime import date
 
-# Financier plan sheet
-FINANCIER_SHEET_ID = "1Dsz7s_mZ0wUhviGFho89lyhtjce1V0Cmv_RPL1aLxnk"
+from shared.data_layer.planning import get_plan_by_period
 
-
-def _gws_read(sheet_id: str, range_str: str) -> list:
-    """Read a range from Google Sheets via gws CLI."""
-    try:
-        result = subprocess.run(
-            ["gws", "sheets", "+read", "--spreadsheet", sheet_id, "--range", range_str],
-            capture_output=True, text=True, timeout=30,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            data = json.loads(result.stdout)
-            return data.get("values", [])
-    except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
-        pass
-    return []
+logger = logging.getLogger(__name__)
 
 
 def collect_plan_fact(start: str, end: str, month_start: str) -> dict:
-    """Collect plan data and compute MTD ratios.
+    """Collect plan data from DB and compute MTD ratios.
 
     Args:
         start: period start (YYYY-MM-DD)
@@ -36,16 +21,36 @@ def collect_plan_fact(start: str, end: str, month_start: str) -> dict:
     Returns:
         {"plan_fact": {...}} with plan data and MTD info.
     """
-    # Read plan from Sheets
-    plan_wb = _gws_read(FINANCIER_SHEET_ID, "WB!A1:Z50")
-    plan_ozon = _gws_read(FINANCIER_SHEET_ID, "OZON!A1:Z30")
-
     # Compute MTD info
     ms = date.fromisoformat(month_start)
     end_date = date.fromisoformat(end)
     dim = monthrange(ms.year, ms.month)[1]
     days_elapsed = (end_date - ms).days + 1  # inclusive
     mtd_ratio = days_elapsed / dim if dim > 0 else 0
+
+    # Month boundaries for plan query
+    month_end_str = f"{ms.year}-{ms.month:02d}-{dim:02d}"
+
+    # Get plan from DB
+    plan_wb = []
+    plan_ozon = []
+    try:
+        rows = get_plan_by_period(month_start, month_end_str)
+        for mp, lk, artikul, pokazatel, znachenie in rows:
+            entry = {
+                "mp": (mp or "").strip(),
+                "lk": (lk or "").strip(),
+                "artikul": (artikul or "").strip(),
+                "pokazatel": (pokazatel or "").strip(),
+                "znachenie": (znachenie or "").replace("\xa0", "").strip(),
+            }
+            if "ozon" in entry["mp"].lower() or "озон" in entry["mp"].lower():
+                plan_ozon.append(entry)
+            else:
+                plan_wb.append(entry)
+        logger.info(f"Plan data: {len(plan_wb)} WB rows, {len(plan_ozon)} OZON rows")
+    except Exception as e:
+        logger.warning(f"Failed to get plan from DB: {e}")
 
     return {
         "plan_fact": {
