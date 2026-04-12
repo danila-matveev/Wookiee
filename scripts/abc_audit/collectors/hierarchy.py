@@ -8,6 +8,12 @@ from shared.data_layer.sku_mapping import get_artikuly_full_info
 # Статусы, участвующие в активном анализе
 _ACTIVE_STATUSES = {"Продается", "Выводим", "Новый", "Запуск"}
 
+# ИП/ООО пары: модель ООО → модель ИП (основная)
+_OOO_TO_IP_MAP = {
+    "Vuki2": "Vuki",
+    "Moon2": "Moon",
+}
+
 
 def collect_hierarchy() -> dict:
     """Собирает полную товарную иерархию из Supabase.
@@ -23,7 +29,7 @@ def collect_hierarchy() -> dict:
 
     articles: dict[str, dict] = {}
     color_groups: dict[tuple, dict] = defaultdict(
-        lambda: {"articles": [], "models": set(), "statuses": set()}
+        lambda: {"articles": [], "models": set(), "business_entities": set(), "statuses": set()}
     )
     status_counts: dict[str, int] = defaultdict(int)
 
@@ -34,10 +40,13 @@ def collect_hierarchy() -> dict:
         tip_kol = info.get("tip_kollekcii", "")
         active = status in _ACTIVE_STATUSES
 
+        entity = _OOO_TO_IP_MAP.get(model_osnova, model_osnova)
+
         articles[article] = {
             "status": status,
             "model_kod": info.get("model_kod", ""),
             "model_osnova": model_osnova,
+            "business_entity": entity,
             "color_code": color_code,
             "cvet": info.get("cvet", ""),
             "color": info.get("color", ""),
@@ -51,6 +60,8 @@ def collect_hierarchy() -> dict:
             key = (tip_kol, color_code)
             color_groups[key]["articles"].append(article)
             color_groups[key]["models"].add(model_osnova)
+            # Normalize ООО → ИП for business entity grouping
+            color_groups[key]["business_entities"].add(entity)
             color_groups[key]["statuses"].add(status)
 
     # Конвертируем set → list, tuple-ключи → string для JSON-сериализации
@@ -62,6 +73,7 @@ def collect_hierarchy() -> dict:
             "color_code": key[1],
             "articles": group["articles"],
             "models": sorted(group["models"]),
+            "business_entities": sorted(group["business_entities"]),
             "statuses": sorted(group["statuses"]),
         }
 
