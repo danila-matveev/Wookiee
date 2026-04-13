@@ -254,8 +254,18 @@ def _sync_artikul(spreadsheet, start_date: str | None, end_date: str | None) -> 
     if last_row >= 4:
         ws.batch_clear([f"A4:M{last_row}"])
 
-    # Fetch from both cabinets using all nmIds
+    # Load search words from main sheet to filter results
     ws_main = get_or_create_worksheet(spreadsheet, get_sheet_name(SHEET_NAME))
+    col_a = ws_main.col_values(1)
+    search_words_lower: set[str] = set()
+    for val in col_a[2:]:  # Skip rows 1-2
+        word = str(val).strip()
+        if word:
+            search_words_lower.add(word.lower())
+
+    logger.info("Artikul filter: %d search words loaded", len(search_words_lower))
+
+    # Fetch from both cabinets using all nmIds
     ws_nmids = get_or_create_worksheet(
         spreadsheet, get_sheet_name(SHEET_NAME_NMIDS)
     )
@@ -287,6 +297,11 @@ def _sync_artikul(spreadsheet, start_date: str | None, end_date: str | None) -> 
             )
 
             for item in items:
+                text = item.get("text", "")
+                # Only keep items matching our tracked search words
+                if not any(sw in text.lower() for sw in search_words_lower):
+                    continue
+
                 open_card = item.get("openCard", 0)
                 add_to_cart = item.get("addToCart", 0)
                 orders = item.get("orders", 0)
@@ -294,7 +309,7 @@ def _sync_artikul(spreadsheet, start_date: str | None, end_date: str | None) -> 
                 cart_to_order = orders / add_to_cart if add_to_cart > 0 else 0
 
                 all_results.append([
-                    item.get("text", ""),
+                    text,
                     item.get("nmId", 0),
                     open_card,
                     add_to_cart,
