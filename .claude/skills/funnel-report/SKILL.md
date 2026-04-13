@@ -86,10 +86,15 @@ Read the output JSON. Save the full JSON as `data_bundle`.
 - If collector fails entirely → report error and STOP
 
 **Data blocks used in this skill:**
-- `traffic` — WB funnel (card_opens, cart, orders, buyouts) total + by model, organic vs paid
-- `advertising` — ad spend, organic vs paid split, WB ad funnel (impressions, clicks, cart, orders)
+- `traffic.wb_total` — brand-level funnel from content_analysis (card_opens, cart, orders, buyouts)
+- `traffic.wb_content_by_model` — **PER-MODEL funnel from content_analysis** (card_opens, cart, orders, buyouts). Columns: [period, model, card_opens, add_to_cart, orders, buyouts]. This is the CORRECT source for CRO calculation.
+- `traffic.wb_by_model` — **ADS-ONLY data from wb_adv** (ad_views, ad_clicks, ad_spend, ad_to_cart, ad_orders). DO NOT use for CRO calculation — it contains only advertising traffic.
+- `traffic.wb_organic_vs_paid` — organic vs paid split
+- `advertising` — ad spend, ROMI, DRR by model
 - `finance` — revenue, margin, DRR by model (WB only)
 - `sku_statuses` — model lifecycle statuses (Продается / Выводим / Архив / Запуск)
+
+**CRITICAL: For per-model funnel (CRO), use `traffic.wb_content_by_model`, NOT `traffic.wb_by_model`.** The latter contains only advertising clicks and will produce absurdly high CRO (>30%) because ad clicks are a fraction of total traffic while orders come from all sources.
 
 **Data NOT used (other skills handle these):**
 - `external_marketing` → marketing-report
