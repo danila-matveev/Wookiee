@@ -94,6 +94,12 @@ def _read_barcodes_from_sheet(ws) -> tuple[list[str], list[list[str]]]:
     return primary, all_per_row
 
 
+def _read_statuses_from_sheet(ws) -> list[str]:
+    """Read product status from column F (rows 3+)."""
+    col_f = ws.col_values(6)  # column F
+    return [str(v).strip() for v in col_f[2:]]
+
+
 # ---- Row building ----
 
 def _build_fin_row(item):
@@ -125,6 +131,14 @@ def _build_fin_row(item):
         _frac0(_safe_div(adv_int, rev_aspp)),                   # U  ДРР внутр
         _frac0(_safe_div(adv_ext_total, rev_aspp)),             # V  ДРР внеш
     ]
+
+
+def _build_fallback_fin_row(fb_item):
+    """Build fin row using fallback per-unit metrics but 0 for current-period activity."""
+    row = _build_fin_row(fb_item)
+    row[3] = 0   # K: orders_per_day stays 0 (no current orders)
+    row[5] = 0   # M: margin (absolute ₽) stays 0 (no real revenue)
+    return row
 
 
 # ---- Sheet writing ----
@@ -200,7 +214,7 @@ def sync(start_date: str | None = None, end_date: str | None = None) -> int:
     Reads barcodes from column A (rows 3+), fetches financial data from DB,
     and writes only to columns H-V. Does NOT modify columns A-G.
     """
-    from datetime import datetime
+    from datetime import datetime, timedelta
 
     # 1. Connect to Google Sheets
     gc = get_client(GOOGLE_SA_FILE)
@@ -227,6 +241,9 @@ def sync(start_date: str | None = None, end_date: str | None = None) -> int:
         logger.warning("No barcodes found in column A (rows 3+)")
         return 0
     logger.info("Sheet barcodes: %d rows in columns A/B/C", len(sheet_barcodes))
+
+    # 3b. Read statuses from column F (for fallback logic)
+    statuses = _read_statuses_from_sheet(ws)
 
     # 4. Fetch WB data
     logger.info("Fetching WB financial data...")
@@ -274,7 +291,48 @@ def sync(start_date: str | None = None, end_date: str | None = None) -> int:
 
     logger.info("Matched: %d / %d barcodes", matched, len(sheet_barcodes))
 
-    # 9. Write only financial columns H-V
+    # 9. Fallback: for "Продается" barcodes with 0 orders, fetch 90-day historical period
+    fallback_indices = []
+    for i, (row_barcodes, fin_row) in enumerate(zip(all_barcodes_per_row, fin_rows)):
+        status = statuses[i] if i < len(statuses) else ''
+        if status == 'Продается' and fin_row[3] == 0:  # col K = orders_per_day
+            fallback_indices.append(i)
+
+    if fallback_indices:
+        fb_start = (datetime.strptime(iso_start, '%Y-%m-%d') - timedelta(days=90)).strftime('%Y-%m-%d')
+        fb_end = iso_start
+        logger.info("Fallback: %d 'Продается' barcodes with 0 orders, fetching %s — %s",
+                     len(fallback_indices), fb_start, fb_end)
+
+        fb_wb_fin = get_wb_fin_data_by_barcode(fb_start, fb_end)
+        fb_wb_orders = get_wb_orders_by_barcode(fb_start, fb_end)
+        fb_ozon_fin = get_ozon_fin_data_by_barcode(fb_start, fb_end)
+        fb_ozon_orders = get_ozon_orders_by_barcode(fb_start, fb_end)
+
+        fb_combined = _merge_data(fb_wb_fin, fb_wb_orders, fb_ozon_fin, fb_ozon_orders,
+                                  gs2_mapping=gs2_mapping)
+        for item in fb_combined.values():
+            _calculate_derived_metrics(item, 90)
+
+        fb_applied = 0
+        for i in fallback_indices:
+            fb_item = None
+            for bc in all_barcodes_per_row[i]:
+                fb_item = fb_combined.get(bc)
+                if fb_item:
+                    break
+                mkt_bc = gs2_mapping.get(bc)
+                if mkt_bc:
+                    fb_item = fb_combined.get(mkt_bc)
+                    if fb_item:
+                        break
+            if fb_item and fb_item.get('orders_count', 0) > 0:
+                fin_rows[i] = _build_fallback_fin_row(fb_item)
+                fb_applied += 1
+
+        logger.info("Fallback applied: %d / %d", fb_applied, len(fallback_indices))
+
+    # 10. Write only financial columns H-V
     logger.info("Writing financial data to '%s'...", sheet_name)
     _write_fin_data(ws, spreadsheet, display_start, display_end, fin_rows, len(sheet_barcodes))
 
