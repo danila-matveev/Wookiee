@@ -6,6 +6,7 @@ from shared.model_mapping import get_osnova_sql
 __all__ = [
     "get_wb_traffic",
     "get_wb_traffic_by_model",
+    "get_wb_content_analysis_by_model",
     "get_ozon_traffic",
 ]
 
@@ -55,6 +56,40 @@ def get_wb_traffic(current_start, prev_start, current_end):
     cur.close()
     conn.close()
     return content_results, adv_results
+
+
+def get_wb_content_analysis_by_model(current_start, prev_start, current_end):
+    """WB воронка по моделям из content_analysis (ВСЕ источники трафика).
+
+    Returns per-model funnel: card_opens, add_to_cart, orders, buyouts.
+    This is the correct source for CRO calculation (not wb_adv which is ads-only).
+    """
+    conn = _get_wb_connection()
+    cur = conn.cursor()
+
+    query = f"""
+    SELECT
+        CASE WHEN ca.date >= %s THEN 'current' ELSE 'previous' END as period,
+        {get_osnova_sql("SPLIT_PART(ca.vendorcode, '/', 1)")} as model,
+        SUM(ca.opencardcount) as card_opens,
+        SUM(ca.addtocartcount) as add_to_cart,
+        SUM(ca.orderscount) as funnel_orders,
+        SUM(ca.buyoutscount) as buyouts
+    FROM content_analysis ca
+    WHERE ca.date >= %s AND ca.date < %s
+        AND ca.vendorcode IN (
+            SELECT DISTINCT article FROM abc_date
+            WHERE date >= %s AND date < %s
+        )
+    GROUP BY 1, 2
+    ORDER BY 1, SUM(ca.orderscount) DESC;
+    """
+    cur.execute(query, (current_start, prev_start, current_end, prev_start, current_end))
+    results = cur.fetchall()
+
+    cur.close()
+    conn.close()
+    return results
 
 
 def get_wb_traffic_by_model(current_start, prev_start, current_end):

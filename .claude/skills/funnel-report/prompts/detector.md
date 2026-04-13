@@ -18,12 +18,15 @@
 ## Входные данные
 
 - `{{DATA}}` — полный JSON:
-  - `traffic.wb_total` — бренд WB итого: переходы, корзина, заказы, выкупы (тек + пред)
-  - `traffic.wb_by_model` — per-model: переходы, корзина, заказы, выкупы (тек + пред), по КАЖДОМУ артикулу
-  - `traffic.wb_organic_vs_paid` — органика vs реклама: переходы, корзина, заказы (тек + пред)
+  - `traffic.wb_total` — бренд WB итого из content_analysis: [period, card_opens, add_to_cart, orders, buyouts]
+  - `traffic.wb_content_by_model` — **PER-MODEL воронка из content_analysis** (ВСЕ источники): [period, model, card_opens, add_to_cart, orders, buyouts]. **ИСПОЛЬЗОВАТЬ ДЛЯ CRO.**
+  - `traffic.wb_by_model` — **ТОЛЬКО реклама** (wb_adv): [period, model, ad_views, ad_clicks, ad_spend, ad_to_cart, ad_orders, ctr, cpc]. НЕ для CRO!
+  - `traffic.wb_organic_vs_paid` — органика vs реклама
   - `advertising` — рекламные расходы, ROMI, ДРР по моделям
   - `finance` — выручка, маржа по моделям
   - `sku_statuses` — статусы моделей (Продается / Выводим / Архив / Запуск)
+  
+  **КРИТИЧЕСКИ ВАЖНО:** Для CRO по моделям = `traffic.wb_content_by_model`. НЕ `traffic.wb_by_model` (реклама = завышенный CRO).
 - `{{DEPTH}}` — глубина: `day` / `week` / `month`
 - `{{PERIOD_LABEL}}` — текущий период
 - `{{PREV_PERIOD_LABEL}}` — предыдущий период
