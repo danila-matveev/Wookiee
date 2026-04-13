@@ -7,6 +7,7 @@ __all__ = [
     "get_wb_traffic",
     "get_wb_traffic_by_model",
     "get_wb_content_analysis_by_model",
+    "get_wb_skleyka_halo",
     "get_ozon_traffic",
 ]
 
