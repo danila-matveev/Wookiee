@@ -12,6 +12,7 @@ from shared.data_layer.advertising import (
     get_wb_organic_vs_paid_funnel,
     get_wb_organic_by_status,
     get_ozon_organic_estimated,
+    get_ozon_ad_funnel_by_model,
 )
 
 
@@ -32,6 +33,7 @@ def collect_traffic(start: str, prev_start: str, end: str) -> dict:
             "wb_organic_by_status": get_wb_organic_by_status(start, prev_start, end),
             "ozon_organic_estimated": get_ozon_organic_estimated(start, prev_start, end),
             "wb_skleyka_halo": get_wb_skleyka_halo(start, end),
+            "ozon_ad_funnel_by_model": get_ozon_ad_funnel_by_model(start, prev_start, end),
             "limitations": [
                 "WB content_analysis: ~20% gap with PowerBI",
                 "Buyout % is lagging (3-21 days delay)",
