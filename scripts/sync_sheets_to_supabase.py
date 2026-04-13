@@ -777,7 +777,7 @@ def sync_tovary(
     # Parse sheets records
     tovar_data = {}
     for row in sheets_tovary:
-        barkod = clean_barcode(row.get("БАРКОД ", ""))  # Note: header has trailing space
+        barkod = clean_barcode(row.get("БАРКОД", "") or row.get("БАРКОД ", ""))
         if not barkod:
             continue
         if barkod in tovar_data:
