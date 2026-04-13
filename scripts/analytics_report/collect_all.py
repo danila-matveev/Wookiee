@@ -28,6 +28,7 @@ from scripts.analytics_report.collectors.inventory import collect_inventory
 from scripts.analytics_report.collectors.pricing import collect_pricing
 from scripts.analytics_report.collectors.plan_fact import collect_plan_fact
 from scripts.analytics_report.collectors.sku_statuses import collect_sku_statuses
+from scripts.analytics_report.collectors.skleyki import collect_skleyki
 
 
 def run_collection(start_str: str, end_str: str | None = None) -> dict:
@@ -81,6 +82,15 @@ def run_collection(start_str: str, end_str: str | None = None) -> dict:
     merged = {}
     for block_result in results.values():
         merged.update(block_result)
+
+    # Skleikas: depend on finance.wb_articles, run after merge
+    try:
+        wb_articles = merged.get("finance", {}).get("wb_articles", [])
+        if wb_articles:
+            skleyki_result = collect_skleyki(wb_articles)
+            merged.update(skleyki_result)
+    except Exception as e:
+        errors["skleyki"] = str(e)
 
     # Ad totals cross-check (if advertising data present)
     ad_data = merged.get("advertising", {})

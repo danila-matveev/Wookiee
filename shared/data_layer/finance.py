@@ -254,9 +254,9 @@ def get_ozon_finance(current_start, prev_start, current_end):
     query = """
     SELECT
         CASE WHEN date >= %s THEN 'current' ELSE 'previous' END as period,
-        SUM(count_end) as sales_count,
-        SUM(price_end) as revenue_before_spp,
-        SUM(price_end_spp) as revenue_after_spp,
+        SUM(count_end) - COALESCE(SUM(count_return), 0) as sales_count,
+        SUM(price_end) + COALESCE(SUM(return_end), 0) as revenue_before_spp,
+        SUM(price_end_spp) + COALESCE(SUM(return_end_spp), 0) as revenue_after_spp,
         SUM(reclama_end) as adv_internal,
         SUM(adv_vn) as adv_external,
         SUM(marga) - SUM(nds) as margin,
@@ -303,8 +303,8 @@ def get_ozon_by_model(current_start, prev_start, current_end):
     SELECT
         CASE WHEN date >= %s THEN 'current' ELSE 'previous' END as period,
         {get_osnova_sql("SPLIT_PART(article, '/', 1)")} as model,
-        SUM(count_end) as sales_count,
-        SUM(price_end) as revenue_before_spp,
+        SUM(count_end) - COALESCE(SUM(count_return), 0) as sales_count,
+        SUM(price_end) + COALESCE(SUM(return_end), 0) as revenue_before_spp,
         SUM(reclama_end) as adv_internal,
         SUM(adv_vn) as adv_external,
         SUM(marga) - SUM(nds) as margin,
