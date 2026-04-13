@@ -31,6 +31,7 @@ def collect_hierarchy() -> dict:
     color_groups: dict[tuple, dict] = defaultdict(
         lambda: {"articles": [], "models": set(), "business_entities": set(), "statuses": set()}
     )
+    skleyka_groups: dict[str, list] = defaultdict(list)
     status_counts: dict[str, int] = defaultdict(int)
 
     for article, info in raw.items():
@@ -38,6 +39,7 @@ def collect_hierarchy() -> dict:
         model_osnova = info.get("model_osnova", "")
         color_code = info.get("color_code", "")
         tip_kol = info.get("tip_kollekcii", "")
+        skleyka_wb = info.get("skleyka_wb") or ""
         active = status in _ACTIVE_STATUSES
 
         entity = _OOO_TO_IP_MAP.get(model_osnova, model_osnova)
@@ -50,9 +52,13 @@ def collect_hierarchy() -> dict:
             "color_code": color_code,
             "cvet": info.get("cvet", ""),
             "color": info.get("color", ""),
+            "skleyka_wb": skleyka_wb,
             "tip_kollekcii": tip_kol,
             "active": active,
         }
+
+        if skleyka_wb:
+            skleyka_groups[skleyka_wb].append(article)
 
         status_counts[status] += 1
 
@@ -81,6 +87,7 @@ def collect_hierarchy() -> dict:
         "hierarchy": {
             "articles": articles,
             "color_code_groups": serializable_groups,
+            "skleyka_groups": dict(skleyka_groups),
             "status_counts": dict(status_counts),
         }
     }
