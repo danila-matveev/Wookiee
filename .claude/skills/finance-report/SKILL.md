@@ -124,6 +124,68 @@ If both fail — proceed without plan, note: "План недоступен".
 
 ---
 
+## Stage 1.5: Data Validation (MANDATORY)
+
+After collecting data, run a quick validation script to catch data integrity issues BEFORE analytics waves begin. This prevents propagating bad data through the entire pipeline.
+
+```bash
+PYTHONPATH=. python3 -c "
+import json, sys
+with open('/tmp/finance-report-{START}_{END}.json') as f:
+    d = json.load(f)
+fin = d['finance']
+errors = []
+
+# 1. WB: margin = revenue - costs (sanity check)
+wb = fin['wb_total']['current'][0]
+wb_margin_check = wb['revenue_before_spp'] - wb.get('cost_of_goods',0) - wb.get('commission',0) - wb.get('logistics',0) - wb.get('storage',0) - wb.get('adv_internal',0) - wb.get('adv_external',0) - wb.get('nds',0)
+if abs(wb_margin_check - wb['margin']) / max(abs(wb['margin']),1) > 0.15:
+    errors.append(f'WB margin sanity: computed {wb_margin_check:.0f} vs reported {wb[\"margin\"]:.0f}')
+
+# 2. OZON: margin = revenue - costs (sanity check)
+oz = fin['ozon_total']['current'][0]
+oz_margin_check = oz['revenue_before_spp'] - oz.get('cost_of_goods',0) - oz.get('commission',0) - oz.get('logistics',0) - oz.get('storage',0) - oz.get('adv_internal',0) - oz.get('adv_external',0) - oz.get('nds',0)
+# OZON margin formula = marga - nds; commission includes SPP + services not in simple check; 25% tolerance
+if abs(oz_margin_check - oz['margin']) / max(abs(oz['margin']),1) > 0.25:
+    errors.append(f'OZON margin sanity: computed {oz_margin_check:.0f} vs reported {oz[\"margin\"]:.0f}')
+
+# 3. Margin % in reasonable range (5-40%)
+for name, ch in [('WB', wb), ('OZON', oz)]:
+    marg_pct = ch['margin'] / ch['revenue_before_spp'] * 100 if ch['revenue_before_spp'] else 0
+    if marg_pct < 5 or marg_pct > 40:
+        errors.append(f'{name} маржинальность {marg_pct:.1f}% вне диапазона 5-40%')
+
+# 4. Sales count positive and reasonable
+for name, ch in [('WB', wb), ('OZON', oz)]:
+    sc = ch.get('sales_count', 0)
+    if sc < 0:
+        errors.append(f'{name} sales_count отрицательный: {sc}')
+
+# 5. Revenue > 0
+for name, ch in [('WB', wb), ('OZON', oz)]:
+    if ch['revenue_before_spp'] <= 0:
+        errors.append(f'{name} revenue_before_spp <= 0: {ch[\"revenue_before_spp\"]}')
+
+if errors:
+    print('❌ DATA VALIDATION FAILED:')
+    for e in errors:
+        print(f'  - {e}')
+    sys.exit(1)
+else:
+    total_rev = wb['revenue_before_spp'] + oz['revenue_before_spp']
+    total_margin = wb['margin'] + oz['margin']
+    print(f'✅ Data validation passed')
+    print(f'  WB:   выручка {wb[\"revenue_before_spp\"]:,.0f}, маржа {wb[\"margin\"]:,.0f} ({wb[\"margin\"]/wb[\"revenue_before_spp\"]*100:.1f}%)')
+    print(f'  OZON: выручка {oz[\"revenue_before_spp\"]:,.0f}, маржа {oz[\"margin\"]:,.0f} ({oz[\"margin\"]/oz[\"revenue_before_spp\"]*100:.1f}%)')
+    print(f'  Итого: выручка {total_rev:,.0f}, маржа {total_margin:,.0f} ({total_margin/total_rev*100:.1f}%)')
+"
+```
+
+**If validation fails** — STOP and report errors to user. Do NOT proceed to analytics waves.
+**If validation passes** — print summary and proceed.
+
+---
+
 ## Stage 2: Analytics Engine (3 sequential waves)
 
 Three waves run SEQUENTIALLY. Each wave builds on the previous one's output.
@@ -307,6 +369,14 @@ Report to user (5-7 lines):
 ---
 
 ## Changelog
+
+### v4 (2026-04-13)
+- NEW Stage 1.5: Data Validation — mandatory sanity checks before analytics waves (margin range, revenue > 0, costs reconciliation)
+- NEW Verifier check #11: Data source integrity — detects missing return deductions in OZON revenue
+- FIX: OZON revenue_before_spp now correctly deducts returns (return_end is negative)
+- FIX: OZON sales_count now correctly deducts return count
+- Root cause: `get_ozon_finance()` used `SUM(price_end)` without `+ COALESCE(SUM(return_end), 0)`
+- Impact: all reports before 2026-04-13 overstated OZON revenue by ~5% and understated OZON marginality by ~1 п.п.
 
 ### v3 (2026-04-10)
 - 14 → 12 sections (merged drivers/anti-drivers WB+OZON)

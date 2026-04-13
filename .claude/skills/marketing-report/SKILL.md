@@ -92,6 +92,7 @@ Read the output JSON. Save the full JSON as `data_bundle`.
 - `external_marketing` — bloggers, VK, Yandex, SMM spend and attribution
 - `traffic` — visits, conversion, by source (WB)
 - `sku_statuses` — model lifecycle statuses (Рост / Сбор / Оптимизация / Стоп)
+- `skleyki` — WB card group performance: per-group revenue, margin, ads, ROMI, cross-model flags
 
 **CRITICAL: wb_external_breakdown columns:**
 `period`, `adv_internal` (МП), `adv_bloggers` (блогеры), `adv_vk` (ВК), `adv_creators` (=0, не используется), `adv_total`. The 183К value is `adv_vk` (ВК), NOT `adv_creators`!
@@ -119,6 +120,68 @@ gws sheets get --spreadsheet-id {SMM_SHEET_ID} --range "A1:Z200"
 Filter rows by date columns within `[START, END]`.
 
 Save parsed data as `sheets_bloggers`, `sheets_vk`, `sheets_smm`. If a sheet fails — note in quality_flags, proceed with DB data only.
+
+---
+
+## Stage 1.5: Data Validation (MANDATORY)
+
+After collecting data, run a quick validation script to catch data integrity issues BEFORE analytics waves begin. This prevents propagating bad data through the entire pipeline.
+
+```bash
+PYTHONPATH=. python3 -c "
+import json, sys
+with open('/tmp/marketing-report-{START}_{END}.json') as f:
+    d = json.load(f)
+fin = d['finance']
+errors = []
+
+# 1. WB: margin = revenue - costs (sanity check)
+wb = fin['wb_total']['current'][0]
+wb_margin_check = wb['revenue_before_spp'] - wb.get('cost_of_goods',0) - wb.get('commission',0) - wb.get('logistics',0) - wb.get('storage',0) - wb.get('adv_internal',0) - wb.get('adv_external',0) - wb.get('nds',0)
+if abs(wb_margin_check - wb['margin']) / max(abs(wb['margin']),1) > 0.15:
+    errors.append(f'WB margin sanity: computed {wb_margin_check:.0f} vs reported {wb[\"margin\"]:.0f}')
+
+# 2. OZON: margin = revenue - costs (sanity check)
+oz = fin['ozon_total']['current'][0]
+oz_margin_check = oz['revenue_before_spp'] - oz.get('cost_of_goods',0) - oz.get('commission',0) - oz.get('logistics',0) - oz.get('storage',0) - oz.get('adv_internal',0) - oz.get('adv_external',0) - oz.get('nds',0)
+# OZON margin formula = marga - nds; commission includes SPP + services not in simple check; 25% tolerance
+if abs(oz_margin_check - oz['margin']) / max(abs(oz['margin']),1) > 0.25:
+    errors.append(f'OZON margin sanity: computed {oz_margin_check:.0f} vs reported {oz[\"margin\"]:.0f}')
+
+# 3. Margin % in reasonable range (5-40%)
+for name, ch in [('WB', wb), ('OZON', oz)]:
+    marg_pct = ch['margin'] / ch['revenue_before_spp'] * 100 if ch['revenue_before_spp'] else 0
+    if marg_pct < 5 or marg_pct > 40:
+        errors.append(f'{name} маржинальность {marg_pct:.1f}% вне диапазона 5-40%')
+
+# 4. Sales count positive and reasonable
+for name, ch in [('WB', wb), ('OZON', oz)]:
+    sc = ch.get('sales_count', 0)
+    if sc < 0:
+        errors.append(f'{name} sales_count отрицательный: {sc}')
+
+# 5. Revenue > 0
+for name, ch in [('WB', wb), ('OZON', oz)]:
+    if ch['revenue_before_spp'] <= 0:
+        errors.append(f'{name} revenue_before_spp <= 0: {ch[\"revenue_before_spp\"]}')
+
+if errors:
+    print('❌ DATA VALIDATION FAILED:')
+    for e in errors:
+        print(f'  - {e}')
+    sys.exit(1)
+else:
+    total_rev = wb['revenue_before_spp'] + oz['revenue_before_spp']
+    total_margin = wb['margin'] + oz['margin']
+    print(f'✅ Data validation passed')
+    print(f'  WB:   выручка {wb[\"revenue_before_spp\"]:,.0f}, маржа {wb[\"margin\"]:,.0f} ({wb[\"margin\"]/wb[\"revenue_before_spp\"]*100:.1f}%)')
+    print(f'  OZON: выручка {oz[\"revenue_before_spp\"]:,.0f}, маржа {oz[\"margin\"]:,.0f} ({oz[\"margin\"]/oz[\"revenue_before_spp\"]*100:.1f}%)')
+    print(f'  Итого: выручка {total_rev:,.0f}, маржа {total_margin:,.0f} ({total_margin/total_rev*100:.1f}%)')
+"
+```
+
+**If validation fails** — STOP and report errors to user. Do NOT proceed to analytics waves.
+**If validation passes** — print summary and proceed.
 
 ---
 
@@ -181,8 +244,8 @@ Launch BOTH analysts in a SINGLE message (2 Agent calls in parallel). Wait for b
 Read prompt: `.claude/skills/marketing-report/prompts/performance-analyst.md`
 
 Launch Performance Analyst as a subagent (Agent tool):
-- **Input data:** `finance` (totals + by-model) + `advertising` (all) + `external_marketing` + `sku_statuses` + `findings_raw` + `diagnostics` + `hypotheses` + analytics-kb.md
-- **Produces:** sections II (P&L воронка по каналам), V (Внутренняя реклама МП), VI (Эффективность по моделям), VII (Средний чек и ассортимент)
+- **Input data:** `finance` (totals + by-model) + `advertising` (all) + `external_marketing` + `sku_statuses` + `skleyki` (card group performance) + `findings_raw` + `diagnostics` + `hypotheses` + analytics-kb.md
+- **Produces:** sections II (P&L воронка по каналам), V (Внутренняя реклама МП), V.5 (Кросс-атрибуция склеек), VI (Эффективность по моделям), VII (Средний чек и ассортимент)
 
 Save output as `performance_deep`.
 
@@ -241,6 +304,7 @@ Launch Synthesizer as a subagent (Agent tool) with ALL outputs: `findings_raw` +
 | III | Воронки трафика | 3 отдельных воронки: (a) внешний трафик (блогеры+ВК→переходы→заказы), (b) внутренняя реклама МП (показы→клики→корзина→заказы), (c) органика = total - внутренняя - внешняя. ASCII-диаграммы |
 | IV | Внешняя реклама | РЕАЛЬНЫЕ данные из Google Sheets: блогеры (Sheet 1Y7ux, фильтр по "Дата публикации"), ВК/Яндекс (Sheet 1h0Ne), SMM (Sheet 19NXH). Парсинг и фильтрация по периоду. Dual KPI на каждый канал |
 | V | Внутренняя реклама МП | Дневная динамика, кампании, эффективность рекламы по моделям. Объединяет старые секции VI+VII |
+| V.5 | Кросс-атрибуция рекламы (склейки WB) | Групповой ROMI по склейкам, TOP-3 детализация, флаги кросс-атрибуции для рекомендаций. Данные из `skleyki.wb` |
 | VI | Эффективность по моделям | ВСЕ 37 моделей из sku_statuses. Русские категории: Рост/Сбор/Оптимизация/Стоп. Конкретные рекомендации по каждой модели ("увеличить бюджет внутренней рекламы на 15К₽/нед" — НЕ "масштабировать") |
 | VII | Средний чек и ассортимент | ВСЕ модели, анализ ассортимента, что продвигать для роста чека |
 | VIII | Рекомендации и план действий | ОБЪЕДИНЕНО из старых IX+XI. Один блок: Срочные (сегодня) → Неделя → Месяц. Каждая рекомендация = конкретное действие + модель/канал + внутренняя/внешняя + ₽ эффект |
@@ -333,6 +397,19 @@ Report to user (5-7 lines):
 ---
 
 ## Changelog
+
+### v4 (2026-04-13)
+- NEW Section V.5: Кросс-атрибуция рекламы (склейки WB) — групповой ROMI по карточным группам
+- NEW Collector: `collect_skleyki()` — агрегирует WB article data по склейкам из Supabase
+- NEW data block: `skleyki.wb` — per-group revenue, margin, ads, ROMI, cross-model flags, article breakdown
+- Performance Analyst now receives `{{SKLEYKI}}` input and produces Section V.5
+- Key insight: 74% рекламного бюджета WB проходит через кросс-модельные склейки, искажая ROMI по моделям
+
+### v3 (2026-04-13)
+- NEW Stage 1.5: Data Validation — mandatory sanity checks before analytics waves (margin range, revenue > 0, costs reconciliation)
+- NEW Verifier check #14: Data source integrity — detects missing return deductions in OZON revenue
+- FIX: OZON revenue_before_spp now correctly deducts returns (shared fix with finance-report)
+- Impact: all marketing reports before 2026-04-13 overstated OZON revenue by ~5%
 
 ### v2 (2026-04-11)
 - 11 → 10 sections: removed Advisor (merged into Рекомендации), removed separate Органик vs Платное (merged into Воронки трафика)
