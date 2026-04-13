@@ -726,7 +726,15 @@ def sync_artikuly(
                 with conn.cursor() as cur:
                     cur.execute(
                         """INSERT INTO artikuly (artikul, model_id, cvet_id, status_id, nomenklatura_wb, artikul_ozon)
-                           VALUES (%s, %s, %s, %s, %s, %s) RETURNING id""",
+                           VALUES (%s, %s, %s, %s, %s, %s)
+                           ON CONFLICT (artikul) DO UPDATE SET
+                               model_id = COALESCE(EXCLUDED.model_id, artikuly.model_id),
+                               cvet_id = COALESCE(EXCLUDED.cvet_id, artikuly.cvet_id),
+                               status_id = COALESCE(EXCLUDED.status_id, artikuly.status_id),
+                               nomenklatura_wb = COALESCE(EXCLUDED.nomenklatura_wb, artikuly.nomenklatura_wb),
+                               artikul_ozon = COALESCE(EXCLUDED.artikul_ozon, artikuly.artikul_ozon),
+                               updated_at = NOW()
+                           RETURNING id""",
                         (data["artikul_raw"], model_id, cvet_id, status_id,
                          data["nomenklatura_wb"], data["artikul_ozon"]),
                     )
