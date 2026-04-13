@@ -5,6 +5,7 @@ from shared.data_layer.traffic import (
     get_wb_traffic,
     get_wb_traffic_by_model,
     get_wb_content_analysis_by_model,
+    get_wb_skleyka_halo,
     get_ozon_traffic,
 )
 from shared.data_layer.advertising import (
@@ -30,6 +31,7 @@ def collect_traffic(start: str, prev_start: str, end: str) -> dict:
             "wb_organic_vs_paid": get_wb_organic_vs_paid_funnel(start, prev_start, end),
             "wb_organic_by_status": get_wb_organic_by_status(start, prev_start, end),
             "ozon_organic_estimated": get_ozon_organic_estimated(start, prev_start, end),
+            "wb_skleyka_halo": get_wb_skleyka_halo(start, end),
             "limitations": [
                 "WB content_analysis: ~20% gap with PowerBI",
                 "Buyout % is lagging (3-21 days delay)",

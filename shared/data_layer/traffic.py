@@ -169,8 +169,8 @@ def get_wb_skleyka_halo(current_start: str, current_end: str) -> list[dict]:
         # Total orders/revenue/margin across ALL articles in skleyka
         wb_cur.execute(f"""
             SELECT
-                COALESCE(SUM(count_end), 0) as total_sales,
-                COALESCE(SUM(price_end), 0) as total_revenue,
+                COALESCE(SUM(full_counts), 0) as total_orders,
+                COALESCE(SUM(revenue_spp), 0) as total_revenue,
                 COALESCE(SUM(marga), 0) as total_margin
             FROM abc_date
             WHERE date >= %s AND date < %s
@@ -178,7 +178,7 @@ def get_wb_skleyka_halo(current_start: str, current_end: str) -> list[dict]:
                     IN ({placeholders})
         """, [current_start, current_end] + articles)
         total_row = wb_cur.fetchone()
-        total_sales = int(total_row[0] or 0)
+        total_orders = int(total_row[0] or 0)
         total_revenue = float(total_row[1] or 0)
         total_margin = float(total_row[2] or 0)
 
@@ -199,11 +199,11 @@ def get_wb_skleyka_halo(current_start: str, current_end: str) -> list[dict]:
             'articles_count': len(articles),
             'ad_spend': round(ad_spend, 0),
             'ad_orders': ad_orders,
-            'total_sales': total_sales,
+            'total_orders': total_orders,
             'total_revenue': round(total_revenue, 0),
             'total_margin': round(total_margin, 0),
             'skleyka_drr': round(skleyka_drr, 1),
-            'halo_note': f'Реклама на {ad_orders} шт из {total_sales} шт продаж склейки',
+            'halo_note': f'Реклама на {ad_orders} шт из {total_orders} шт заказов склейки',
         })
 
     wb_cur.close()
