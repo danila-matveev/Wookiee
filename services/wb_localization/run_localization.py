@@ -107,6 +107,10 @@ def parse_args():
         '--skip-il-analysis', action='store_true', default=False,
         help='Пропустить ИЛ/ИРП анализ (только перестановки)'
     )
+    parser.add_argument(
+        '--il-days', type=int, default=91,
+        help='Период для ИЛ/ИРП анализа, дней (по умолчанию: 91 = 13 недель, как WB)'
+    )
     return parser.parse_args()
 
 
@@ -725,15 +729,35 @@ def run_for_cabinet(
     print(f"\n   Отчёт сохранён: {report_path}")
 
     # Module 2: ИЛ/ИРП анализ (в обоих режимах: CLI и service)
+    # ИЛ/ИРП считается за 91 день (13 недель) — как WB.
+    # Перестановки (Module 1) — за args.days (7 дней).
     il_irp = None
+    il_days = getattr(args, 'il_days', 91)
     if not getattr(args, 'skip_il_analysis', False):
-        print("\n4. ИЛ/ИРП анализ...")
+        # Загружаем ТОЛЬКО заказы за 91 день (без remains — они не нужны для ИЛ/ИРП)
+        if il_days != args.days:
+            print(f"\n4. ИЛ/ИРП анализ (загрузка заказов за {il_days} дн.)...")
+            il_client = WBClient(api_key=cabinet.wb_api_key, cabinet_name=cabinet.name)
+            try:
+                il_date_from = (datetime.now() - timedelta(days=il_days)).strftime('%Y-%m-%dT00:00:00')
+                print(f"   [{cabinet.name}] Запрос заказов с {il_date_from[:10]} ({il_days} дн.)...")
+                il_orders = il_client.get_supplier_orders(date_from=il_date_from)
+                print(f"   [{cabinet.name}] Получено: {len(il_orders)} заказов за {il_days} дн.")
+            finally:
+                il_client.close()
+            il_prices = prices_dict  # цены уже загружены
+        else:
+            print("\n4. ИЛ/ИРП анализ...")
+            il_orders = orders
+            il_prices = prices_dict
+
         il_irp = analyze_il_irp(
-            orders=orders,
-            prices_dict=prices_dict,
-            period_days=args.days,
+            orders=il_orders,
+            prices_dict=il_prices,
+            period_days=il_days,
         )
         s = il_irp['summary']
+        print(f"   Период: {il_days} дн. (13 недель)")
         print(f"   ИЛ: {s['overall_il']:.2f}, ИРП: {s['overall_irp_pct']:.2f}%")
         print(f"   Артикулов: {s['total_articles']}, в ИРП-зоне: {s['irp_zone_articles']}")
         print(f"   ИРП-нагрузка: {s['irp_monthly_cost_rub']:,.0f} ₽/мес")
@@ -742,16 +766,16 @@ def run_for_cabinet(
     economics = None
     if il_irp and not getattr(args, 'skip_il_analysis', False):
         print("\n5. Экономический анализ...")
-        logistics_costs = fetch_logistics_costs(cabinet, args.days)
+        logistics_costs = fetch_logistics_costs(cabinet, il_days)
         if logistics_costs:
             from services.wb_localization.calculators.economic_analyzer import analyze_economics
 
-            economics = analyze_economics(il_irp, logistics_costs, period_days=args.days)
+            economics = analyze_economics(il_irp, logistics_costs, period_days=il_days)
             sc = economics['scenarios']
             curr = sc['current']
             opt = sc['optimized']
             no_ctrl = sc['no_control']
-            print(f"   Логистика факт: {economics['total_logistics_fact']:,.0f} ₽ за {args.days} дн.")
+            print(f"   Логистика факт: {economics['total_logistics_fact']:,.0f} ₽ за {il_days} дн.")
             print(f"   Экономия от ИЛ<1: {economics['il_savings_rub']:,.0f} ₽/мес")
             print(f"   ИРП-нагрузка: {curr['irp_monthly']:,.0f} ₽/мес")
             print(f"   Без контроля: +{no_ctrl['vs_current_monthly']:,.0f} ₽/мес переплата")
@@ -801,6 +825,7 @@ def run_service_report(
 
     args = argparse.Namespace(
         days=days,
+        il_days=91,  # ИЛ/ИРП всегда за 13 недель (стандарт WB)
         safety_days=safety_days,
         min_donor_localization=min_donor_localization,
         max_turnover_days=max_turnover_days,
