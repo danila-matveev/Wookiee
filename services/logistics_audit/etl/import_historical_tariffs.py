@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_WORKBOOK_PATH = PROJECT_ROOT / "services" / "logistics_audit" / "Тарифы на логискику.xlsx"
 DEFAULT_SHEET_NAME = "Тарифы короб"
-DEFAULT_BATCH_SIZE = 1000
+DEFAULT_BATCH_SIZE = 5000
 DEFAULT_PROGRESS_EVERY = 5000
 
 UPSERT_SQL = """
@@ -137,6 +137,12 @@ def load_historical_tariff_rows(
     finally:
         wb.close()
 
+    # Deduplicate: keep last occurrence per (dt, warehouse_name)
+    deduped: dict[tuple[date, str], tuple] = {}
+    for row in rows:
+        deduped[(row[0], row[1])] = row
+    unique_rows = list(deduped.values())
+
     stats = ImportStats(
         raw_rows=raw_rows,
         valid_rows=valid_rows,
@@ -148,7 +154,7 @@ def load_historical_tariff_rows(
         min_date=min(dates) if dates else None,
         max_date=max(dates) if dates else None,
     )
-    return rows, stats
+    return unique_rows, stats
 
 
 def import_historical_tariffs(
@@ -171,13 +177,31 @@ def import_historical_tariffs(
         logger.warning("No valid workbook rows found in %s", workbook_path)
         return stats
 
+    from psycopg2.extras import execute_values
+
+    values_sql = """
+INSERT INTO public.wb_tariffs (
+    dt, warehouse_name, delivery_coef, logistics_1l,
+    logistics_extra_l, storage_1l_day, acceptance, storage_coef, geo_name
+)
+VALUES %s
+ON CONFLICT (dt, warehouse_name) DO UPDATE SET
+    delivery_coef = EXCLUDED.delivery_coef,
+    logistics_1l = EXCLUDED.logistics_1l,
+    logistics_extra_l = EXCLUDED.logistics_extra_l,
+    storage_1l_day = EXCLUDED.storage_1l_day,
+    acceptance = EXCLUDED.acceptance,
+    storage_coef = EXCLUDED.storage_coef,
+    geo_name = EXCLUDED.geo_name
+"""
+
     conn = _get_supabase_connection()
     try:
         cur = conn.cursor()
         processed = 0
         for start in range(0, len(rows), batch_size):
             batch = rows[start:start + batch_size]
-            cur.executemany(UPSERT_SQL, batch)
+            execute_values(cur, values_sql, batch, page_size=batch_size)
             conn.commit()
             processed += len(batch)
             if processed % progress_every == 0 or processed == len(rows):

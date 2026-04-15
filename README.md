@@ -181,6 +181,9 @@ python -m services.marketplace_etl.scripts.run_daily_sync
 # WB tariffs bootstrap: schema + historical Excel + API gap backfill
 python -m services.logistics_audit.etl.setup_wb_tariffs
 
+# WB tariffs historical Excel import only
+python -m services.logistics_audit.etl.import_historical_tariffs
+
 # WB tariffs daily collector
 python -m services.logistics_audit.etl.tariff_collector --cabinet OOO
 
