@@ -4,6 +4,7 @@ All queries hit Supabase (artikuly / modeli / modeli_osnova / statusy).
 """
 
 import os
+from typing import Optional
 
 import psycopg2
 from dotenv import load_dotenv
@@ -21,8 +22,12 @@ __all__ = [
 ]
 
 
-def get_artikuly_statuses():
-    """Получение статусов артикулов из Supabase."""
+def get_artikuly_statuses(cabinet_name: Optional[str] = None):
+    """Получение статусов артикулов из Supabase.
+
+    Args:
+        cabinet_name: Фильтр по кабинету ("ИП" или "ООО"). None = без фильтра.
+    """
     if os.path.exists(SUPABASE_ENV_PATH):
         load_dotenv(SUPABASE_ENV_PATH)
 
@@ -48,7 +53,14 @@ def get_artikuly_statuses():
         LEFT JOIN modeli m ON a.model_id = m.id
         LEFT JOIN modeli_osnova mo ON m.model_osnova_id = mo.id
         """
-        cur.execute(query)
+        params: tuple = ()
+        if cabinet_name:
+            query += """
+            JOIN importery i ON m.importer_id = i.id
+            WHERE i.nazvanie LIKE %s
+            """
+            params = (f"%{cabinet_name}%",)
+        cur.execute(query, params)
         results = cur.fetchall()
 
         cur.close()
@@ -67,11 +79,14 @@ def get_artikuly_statuses():
         return {}
 
 
-def get_artikul_to_submodel_mapping() -> dict:
+def get_artikul_to_submodel_mapping(cabinet_name: Optional[str] = None) -> dict:
     """Маппинг артикул → kod модели из Supabase (VukiN, VukiW, RubyP, ...).
 
     Returns: {"компбел-ж-бесшов/leo_brown": "VukiN", "vuki/washed_black": "VukiW", ...}
     Ключи lowercase.
+
+    Args:
+        cabinet_name: Фильтр по кабинету ("ИП" или "ООО"). None = без фильтра.
     """
     if os.path.exists(SUPABASE_ENV_PATH):
         load_dotenv(SUPABASE_ENV_PATH)
@@ -87,12 +102,20 @@ def get_artikul_to_submodel_mapping() -> dict:
     try:
         conn = psycopg2.connect(**supabase_config)
         cur = conn.cursor()
-        cur.execute("""
+        query = """
             SELECT a.artikul, m.kod as model_kod, mo.kod as osnova_kod
             FROM artikuly a
             JOIN modeli m ON a.model_id = m.id
             JOIN modeli_osnova mo ON m.model_osnova_id = mo.id
-        """)
+        """
+        params: tuple = ()
+        if cabinet_name:
+            query += """
+            JOIN importery i ON m.importer_id = i.id
+            WHERE i.nazvanie LIKE %s
+            """
+            params = (f"%{cabinet_name}%",)
+        cur.execute(query, params)
         result = {}
         for row in cur.fetchall():
             result[row[0].lower()] = {'model_kod': row[1], 'osnova_kod': row[2]}
@@ -104,11 +127,14 @@ def get_artikul_to_submodel_mapping() -> dict:
         return {}
 
 
-def get_nm_to_article_mapping() -> dict:
+def get_nm_to_article_mapping(cabinet_name: Optional[str] = None) -> dict:
     """Маппинг WB nm_id → artikul из Supabase.
 
     Returns: {123456: 'vuki/black', 789012: 'ruby/red', ...}
     nm_id ключи — int, artikul значения — lowercase.
+
+    Args:
+        cabinet_name: Фильтр по кабинету ("ИП" или "ООО"). None = без фильтра.
     """
     if os.path.exists(SUPABASE_ENV_PATH):
         load_dotenv(SUPABASE_ENV_PATH)
@@ -124,11 +150,22 @@ def get_nm_to_article_mapping() -> dict:
     try:
         conn = psycopg2.connect(**supabase_config)
         cur = conn.cursor()
-        cur.execute("""
+        query = """
             SELECT nomenklatura_wb, LOWER(artikul)
-            FROM artikuly
+            FROM artikuly a
             WHERE nomenklatura_wb IS NOT NULL
-        """)
+        """
+        params: tuple = ()
+        if cabinet_name:
+            query += """
+            AND EXISTS (
+                SELECT 1 FROM modeli m
+                JOIN importery i ON m.importer_id = i.id
+                WHERE m.id = a.model_id AND i.nazvanie LIKE %s
+            )
+            """
+            params = (f"%{cabinet_name}%",)
+        cur.execute(query, params)
         result = {}
         for row in cur.fetchall():
             if row[0]:
