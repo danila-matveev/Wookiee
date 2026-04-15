@@ -53,6 +53,7 @@ from services.wb_localization.wb_localization_mappings import (
     log_unknown_mappings,
 )
 from services.wb_localization.history import History
+from services.wb_localization.calculators.il_irp_analyzer import analyze_il_irp
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +101,10 @@ def parse_args():
     parser.add_argument(
         '--dry-run', action='store_true', default=False,
         help='Только загрузить данные и показать сводку'
+    )
+    parser.add_argument(
+        '--skip-il-analysis', action='store_true', default=False,
+        help='Пропустить ИЛ/ИРП анализ (только перестановки)'
     )
     return parser.parse_args()
 
@@ -639,6 +644,21 @@ def run_for_cabinet(
         result = _build_result_payload(cabinet.name, analysis)
         if history_store is not None:
             _attach_comparison_and_save(result, history_store)
+
+        # Module 2: ИЛ/ИРП анализ
+        if not getattr(args, 'skip_il_analysis', False):
+            print("\n4. ИЛ/ИРП анализ...")
+            il_irp = analyze_il_irp(
+                orders=orders,
+                prices_dict=prices_dict,
+                period_days=args.days,
+            )
+            result['il_irp'] = il_irp
+            s = il_irp['summary']
+            print(f"   ИЛ: {s['overall_il']:.2f}, ИРП: {s['overall_irp_pct']:.2f}%")
+            print(f"   Артикулов: {s['total_articles']}, в ИРП-зоне: {s['irp_zone_articles']}")
+            print(f"   ИРП-нагрузка: {s['irp_monthly_cost_rub']:,.0f} ₽/мес")
+
         return result
 
     # 5. Консольная сводка
