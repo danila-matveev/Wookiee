@@ -305,7 +305,7 @@ wookiee_marketplace (PostgreSQL)
 ### Sheets Sync (`services/sheets_sync/`)
 
 ```
-Синхронизация данных → Google Sheets
+Синхронизация данных → Google Sheets (API/DB → Sheets)
 ├── runner.py              ← CLI (--list для списка задач)
 ├── control_panel.py       ← Основной контроллер (Docker CMD)
 ├── config.py              ← Google credentials, spreadsheet IDs
@@ -318,6 +318,17 @@ wookiee_marketplace (PostgreSQL)
     ├── sync_moysklad.py         ← МойСклад данные
     ├── sync_fin_data.py         ← Финансовые данные
     └── sync_search_analytics.py ← Поисковая аналитика
+```
+
+### Sheets → Supabase Sync (`scripts/sync_sheets_to_supabase.py`)
+
+```
+Синхронизация товарной матрицы Google Sheets → Supabase (обратное направление)
+Sheets = source of truth, smart upsert + soft-delete (→ статус "Архив")
+Иерархия: справочники → cveta → modeli_osnova → modeli → artikuly → tovary
+CLI: python scripts/sync_sheets_to_supabase.py [--level all] [--dry-run]
+Скилл: /sync-sheets
+Лог: docs/reports/sync-log-YYYY-MM-DD.json
 ```
 
 ### Vasily API (`services/vasily_api/`)
@@ -361,6 +372,8 @@ HTTP API для расчёта WB-локализации (FastAPI + uvicorn)
 | `abc_helpers.py` | Общие ABC-функции (не CLI) | импорт из abc_analysis/abc_analysis_unified |
 | `notion_sync.py` | Sync отчётов → Notion | `python scripts/notion_sync.py` |
 | `wb_vuki_ratings.py` | Рейтинги WB Vuki | `python scripts/wb_vuki_ratings.py` |
+| `sync_sheets_to_supabase.py` | Sync Google Sheets → Supabase (товарная матрица) | `python scripts/sync_sheets_to_supabase.py [--level all\|modeli\|tovary] [--dry-run]` |
+| `collect_all.py` | Сбор данных market review (MPStats + DB) | `python scripts/market_review/collect_all.py` |
 
 **Общий паттерн:** `run_report.py` создаёт `OlegApp()`, вызывает `pipeline.generate_report()`.
 
@@ -447,6 +460,11 @@ shared/
 │  Supabase (cloud)                                         │
 │  sku_database — матрица товаров (SKU, цвета, модели)     │
 │  RLS включён, CLI: python sku_database/db.py             │
+│  Sync: python scripts/sync_sheets_to_supabase.py         │
+│  Иерархия: modeli_osnova(25) → modeli(58) →              │
+│            artikuly(548) → tovary(1473)                   │
+│  Справочники: statusy(7), cveta(141), razmery(6),        │
+│               importery(2), fabriki(2), kategorii(4)     │
 └───────────────────────────────────────────────────────────┘
 
 ┌───────────────────────────────────────────────────────────┐

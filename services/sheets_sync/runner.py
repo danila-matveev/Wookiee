@@ -88,6 +88,11 @@ SYNC_REGISTRY: dict[str, dict] = {
         "sheet": "Аналитика по запросам",
         "description": "WB search analytics (keywords + per-article)",
     },
+    "search_queries": {
+        "module": "services.sheets_sync.sync.sync_search_queries",
+        "sheet": "Аналитика по запросам",
+        "description": "WB search query analytics with batching (GAS replacement)",
+    },
     "fin_data_new": {
         "module": "services.sheets_sync.sync.sync_fin_data_new",
         "sheet": "Фин данные NEW",
@@ -166,7 +171,7 @@ def main():
             suffix = "_TEST" if TEST_MODE else ""
             print(f"  {name:<20} -> {info['sheet']}{suffix}")
             print(f"  {'':20}    {info['description']}")
-        print(f"\nUsage: python -m services.sheets_sync.runner <name|all>")
+        print("\nUsage: python -m services.sheets_sync.runner <name|all>")
         return
 
     if not args.sync_name:
@@ -196,7 +201,7 @@ def main():
     else:
         if args.sync_name not in SYNC_REGISTRY:
             print(f"Unknown sync: {args.sync_name}")
-            print(f"Use --list to see available syncs")
+            print("Use --list to see available syncs")
             sys.exit(1)
 
         result = run_sync(args.sync_name, start_date=args.start, end_date=args.end)

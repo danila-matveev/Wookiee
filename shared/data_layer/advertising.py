@@ -6,7 +6,7 @@
 
 from shared.data_layer._connection import _get_wb_connection, _get_ozon_connection, to_float
 from shared.data_layer._sql_fragments import WB_MARGIN_SQL
-from shared.model_mapping import get_osnova_sql, map_to_osnova
+from shared.model_mapping import get_osnova_sql
 
 __all__ = [
     "get_wb_external_ad_breakdown",
@@ -23,6 +23,7 @@ __all__ = [
     "get_wb_organic_by_status",
     "get_ozon_organic_estimated",
     "get_wb_model_metrics_comparison",
+    "get_ozon_ad_funnel_by_model",
 ]
 
 
@@ -416,6 +417,44 @@ def get_ozon_ad_by_sku(current_start, prev_start, current_end):
     WHERE operation_date >= %s AND operation_date < %s
     GROUP BY 1, 2
     ORDER BY period DESC, SUM(sum_rev) DESC;
+    """
+    cur.execute(query, (current_start, prev_start, current_end))
+    results = cur.fetchall()
+
+    cur.close()
+    conn.close()
+    return results
+
+
+def get_ozon_ad_funnel_by_model(current_start, prev_start, current_end):
+    """OZON рекламная воронка по моделям: показы→клики→корзина→заказы.
+
+    Sources: adv_stats_daily (views, clicks) + ozon_adv_api (to_cart, orders, spend).
+    Groups by model via nomenclature JOIN.
+
+    Returns: list of (period, model, views, clicks, to_cart, orders, spend, ctr, cpc, cpo)
+    """
+    conn = _get_ozon_connection()
+    cur = conn.cursor()
+
+    model_sql = get_osnova_sql("SPLIT_PART(o.offername, '/', 1)")
+
+    query = f"""
+    SELECT
+        CASE WHEN o.operation_date >= %s THEN 'current' ELSE 'previous' END as period,
+        {model_sql} as model,
+        0 as views,
+        SUM(o.clicks) as clicks,
+        SUM(o.to_cart) as to_cart,
+        SUM(o.orders) as orders,
+        SUM(o.sum_rev) as spend,
+        0 as ctr,
+        CASE WHEN SUM(o.clicks) > 0 THEN SUM(o.sum_rev) / SUM(o.clicks) ELSE 0 END as cpc,
+        CASE WHEN SUM(o.orders) > 0 THEN SUM(o.sum_rev) / SUM(o.orders) ELSE 0 END as cpo
+    FROM ozon_adv_api o
+    WHERE o.operation_date >= %s AND o.operation_date < %s
+    GROUP BY 1, 2
+    ORDER BY 1, SUM(o.sum_rev) DESC;
     """
     cur.execute(query, (current_start, prev_start, current_end))
     results = cur.fetchall()

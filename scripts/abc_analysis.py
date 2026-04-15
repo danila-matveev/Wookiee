@@ -14,14 +14,12 @@ import os
 import sys
 import argparse
 from datetime import datetime, timedelta
-from statistics import median
 
 # Корень проекта
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from shared.data_layer import (
-    to_float, format_num, format_pct,
-    get_wb_by_article, get_ozon_by_article,
+    format_num, get_wb_by_article, get_ozon_by_article,
     get_wb_orders_by_article,
     get_wb_avg_stock, get_ozon_avg_stock,
     get_artikuly_full_info,

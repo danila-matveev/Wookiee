@@ -16,5 +16,5 @@ GOOGLE_SA_FILE: str = os.getenv(
 VASILY_SPREADSHEET_ID: str = os.getenv("VASILY_SPREADSHEET_ID", "")
 
 # Period and cabinets for service/API runs
-REPORT_PERIOD_DAYS: int = int(os.getenv("VASILY_REPORT_PERIOD_DAYS", "2"))
+REPORT_PERIOD_DAYS: int = int(os.getenv("VASILY_REPORT_PERIOD_DAYS", "7"))
 CABINETS: list = os.getenv("VASILY_CABINETS", "ip,ooo").split(",")

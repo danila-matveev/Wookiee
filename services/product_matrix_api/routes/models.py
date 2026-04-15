@@ -14,8 +14,8 @@ from services.product_matrix_api.dependencies import (
 )
 from services.product_matrix_api.models.schemas import (
     ModelOsnovaCreate, ModelOsnovaUpdate, ModelOsnovaRead,
-    ModelCreate, ModelUpdate, ModelRead,
-    PaginatedResponse, LookupItem,
+    ModelCreate, ModelRead,
+    PaginatedResponse,
 )
 from services.product_matrix_api.services.crud import CrudService
 from services.product_matrix_api.services.audit_service import AuditService

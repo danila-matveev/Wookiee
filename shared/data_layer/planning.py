@@ -5,8 +5,8 @@
 
 from datetime import datetime
 
-from shared.data_layer._connection import _get_wb_connection, _get_ozon_connection, _db_cursor, to_float
-from shared.model_mapping import get_osnova_sql, map_to_osnova
+from shared.data_layer._connection import _get_wb_connection, _db_cursor
+from shared.model_mapping import get_osnova_sql
 
 __all__ = [
     "get_active_models_with_abc",

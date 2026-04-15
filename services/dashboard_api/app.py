@@ -9,7 +9,6 @@ import logging
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 
 from services.dashboard_api.routes.abc import router as abc_router
 from services.dashboard_api.routes.finance import router as finance_router

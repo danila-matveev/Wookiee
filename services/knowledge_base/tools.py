@@ -7,7 +7,6 @@ Two groups:
 - KB_TOOL_DEFINITIONS — backward-compatible alias for search tools
 """
 
-import asyncio
 import json
 import logging
 import os

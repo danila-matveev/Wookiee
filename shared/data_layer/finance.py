@@ -4,9 +4,9 @@
 по моделям для обоих маркетплейсов.
 """
 
-from shared.data_layer._connection import _get_wb_connection, _get_ozon_connection, to_float
+from shared.data_layer._connection import _get_wb_connection, _get_ozon_connection
 from shared.data_layer._sql_fragments import WB_MARGIN_SQL
-from shared.model_mapping import get_osnova_sql, map_to_osnova
+from shared.model_mapping import get_osnova_sql
 
 __all__ = [
     "get_wb_finance",
@@ -15,6 +15,9 @@ __all__ = [
     "get_ozon_finance",
     "get_ozon_by_model",
     "get_ozon_orders_by_model",
+    "get_wb_buyouts_returns_by_model",
+    "get_wb_buyouts_returns_by_artikul",
+    "get_wb_buyouts_returns_monthly",
 ]
 
 
@@ -128,6 +131,117 @@ def get_wb_orders_by_model(current_start, prev_start, current_end):
     return results
 
 
+def get_wb_buyouts_returns_by_model(
+    current_start: str, prev_start: str, current_end: str
+) -> list[tuple]:
+    """Get buyout and return counts by model for WB.
+
+    Uses the orders table to compute:
+    - orders_count: total orders
+    - buyout_count: orders where isCancel == 0 (not cancelled/returned)
+    - return_count: orders where isCancel == 1 (cancelled/returned)
+
+    Args:
+        current_start: Start of current period (YYYY-MM-DD)
+        prev_start: Start of previous period (YYYY-MM-DD)
+        current_end: End of analysis window (YYYY-MM-DD)
+
+    Returns:
+        List of (period, model, orders_count, buyout_count, return_count)
+    """
+    conn = _get_wb_connection()
+    cur = conn.cursor()
+
+    sql = f"""
+        SELECT
+            CASE WHEN date >= %s THEN 'current' ELSE 'previous' END as period,
+            {get_osnova_sql("SPLIT_PART(supplierarticle, '/', 1)")} as model,
+            COUNT(*) as orders_count,
+            SUM(CASE WHEN iscancel::text IN ('0', 'false') OR iscancel IS NULL THEN 1 ELSE 0 END) as buyout_count,
+            SUM(CASE WHEN iscancel::text IN ('1', 'true') THEN 1 ELSE 0 END) as return_count
+        FROM orders
+        WHERE date >= %s AND date < %s
+        GROUP BY 1, 2
+        ORDER BY 1, 3 DESC;
+    """
+    cur.execute(sql, (current_start, prev_start, current_end))
+    results = cur.fetchall()
+
+    cur.close()
+    conn.close()
+    return results
+
+
+def get_wb_buyouts_returns_by_artikul(
+    date_from: str, date_to: str
+) -> list[tuple]:
+    """Get buyout and return counts by artikul (model + color) for WB.
+
+    Args:
+        date_from: Start date (YYYY-MM-DD)
+        date_to: End date (YYYY-MM-DD)
+
+    Returns:
+        List of (model, artikul, orders_count, buyout_count, return_count)
+    """
+    conn = _get_wb_connection()
+    cur = conn.cursor()
+
+    sql = f"""
+        SELECT
+            {get_osnova_sql("SPLIT_PART(supplierarticle, '/', 1)")} as model,
+            LOWER(supplierarticle) as artikul,
+            COUNT(*) as orders_count,
+            SUM(CASE WHEN iscancel::text IN ('0', 'false') OR iscancel IS NULL THEN 1 ELSE 0 END) as buyout_count,
+            SUM(CASE WHEN iscancel::text IN ('1', 'true') THEN 1 ELSE 0 END) as return_count
+        FROM orders
+        WHERE date >= %s AND date < %s
+        GROUP BY 1, 2
+        ORDER BY 1, 3 DESC;
+    """
+    cur.execute(sql, (date_from, date_to))
+    results = cur.fetchall()
+
+    cur.close()
+    conn.close()
+    return results
+
+
+def get_wb_buyouts_returns_monthly(
+    date_from: str, date_to: str
+) -> list[tuple]:
+    """Get buyout and return counts by month and model for WB.
+
+    Args:
+        date_from: Start date (YYYY-MM-DD)
+        date_to: End date (YYYY-MM-DD)
+
+    Returns:
+        List of (month, model, orders_count, buyout_count, return_count)
+    """
+    conn = _get_wb_connection()
+    cur = conn.cursor()
+
+    sql = f"""
+        SELECT
+            DATE_TRUNC('month', date)::date as month,
+            {get_osnova_sql("SPLIT_PART(supplierarticle, '/', 1)")} as model,
+            COUNT(*) as orders_count,
+            SUM(CASE WHEN iscancel::text IN ('0', 'false') OR iscancel IS NULL THEN 1 ELSE 0 END) as buyout_count,
+            SUM(CASE WHEN iscancel::text IN ('1', 'true') THEN 1 ELSE 0 END) as return_count
+        FROM orders
+        WHERE date >= %s AND date < %s
+        GROUP BY 1, 2
+        ORDER BY 1, 2;
+    """
+    cur.execute(sql, (date_from, date_to))
+    results = cur.fetchall()
+
+    cur.close()
+    conn.close()
+    return results
+
+
 # =============================================================================
 # OZON ДАННЫЕ
 # =============================================================================
@@ -140,9 +254,9 @@ def get_ozon_finance(current_start, prev_start, current_end):
     query = """
     SELECT
         CASE WHEN date >= %s THEN 'current' ELSE 'previous' END as period,
-        SUM(count_end) as sales_count,
-        SUM(price_end) as revenue_before_spp,
-        SUM(price_end_spp) as revenue_after_spp,
+        SUM(count_end) - COALESCE(SUM(count_return), 0) as sales_count,
+        SUM(price_end) + COALESCE(SUM(return_end), 0) as revenue_before_spp,
+        SUM(price_end_spp) + COALESCE(SUM(return_end_spp), 0) as revenue_after_spp,
         SUM(reclama_end) as adv_internal,
         SUM(adv_vn) as adv_external,
         SUM(marga) - SUM(nds) as margin,
@@ -189,8 +303,8 @@ def get_ozon_by_model(current_start, prev_start, current_end):
     SELECT
         CASE WHEN date >= %s THEN 'current' ELSE 'previous' END as period,
         {get_osnova_sql("SPLIT_PART(article, '/', 1)")} as model,
-        SUM(count_end) as sales_count,
-        SUM(price_end) as revenue_before_spp,
+        SUM(count_end) - COALESCE(SUM(count_return), 0) as sales_count,
+        SUM(price_end) + COALESCE(SUM(return_end), 0) as revenue_before_spp,
         SUM(reclama_end) as adv_internal,
         SUM(adv_vn) as adv_external,
         SUM(marga) - SUM(nds) as margin,

@@ -29,7 +29,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r agents/oleg/requirements.txt
           pip install -r services/sheets_sync/requirements.txt
-          pip install requests schedule
+          pip install requests schedule "ruff>=0.15,<0.16"
+
+      - name: Lint & security scan (ruff)
+        run: ruff check agents services shared scripts
 
       - name: Compile all Python modules
         run: python -m compileall -q agents services shared scripts

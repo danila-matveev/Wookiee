@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Аудит логистики Wildberries — Wookiee Workflow</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #fafbfc;
+            --bg-toolbar: #ffffff;
+            --text: #1a1a2e;
+            --text-muted: #6b7280;
+            --border: #e5e7eb;
+            --accent: #3b82f6;
+            --sidebar-bg: #ffffff;
+            --shadow: 0 1px 3px rgba(0,0,0,0.08);
+            --shadow-lg: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        [data-theme="dark"] {
+            --bg: #0f172a;
+            --bg-toolbar: #1e293b;
+            --text: #e2e8f0;
+            --text-muted: #94a3b8;
+            --border: #334155;
+            --accent: #60a5fa;
+            --sidebar-bg: #1e293b;
+            --shadow: 0 1px 3px rgba(0,0,0,0.3);
+            --shadow-lg: 0 4px 12px rgba(0,0,0,0.4);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .toolbar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 20px;
+            background: var(--bg-toolbar);
+            border-bottom: 1px solid var(--border);
+            box-shadow: var(--shadow);
+            z-index: 100;
+            flex-shrink: 0;
+        }
+        .toolbar h1 {
+            font-size: 16px;
+            font-weight: 600;
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .toolbar .badge {
+            font-size: 11px;
+            font-weight: 500;
+            padding: 2px 8px;
+            border-radius: 9999px;
+            background: var(--accent);
+            color: white;
+            white-space: nowrap;
+        }
+        .btn-group {
+            display: flex;
+            gap: 4px;
+            background: var(--bg);
+            border-radius: 8px;
+            padding: 3px;
+        }
+        .btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            border: none;
+            border-radius: 6px;
+            background: transparent;
+            color: var(--text);
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.15s;
+        }
+        .btn:hover { background: var(--border); }
+        .btn-text {
+            width: auto;
+            padding: 0 10px;
+            font-size: 12px;
+            font-weight: 500;
+            font-family: inherit;
+        }
+        .main {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+            position: relative;
+        }
+        .diagram-viewport {
+            flex: 1;
+            overflow: hidden;
+            cursor: grab;
+            position: relative;
+        }
+        .diagram-viewport:active { cursor: grabbing; }
+        .diagram-canvas {
+            transform-origin: 0 0;
+            transition: transform 0.08s ease-out;
+            padding: 40px;
+            display: inline-block;
+            min-width: 100%;
+            min-height: 100%;
+        }
+        .sidebar {
+            width: 320px;
+            background: var(--sidebar-bg);
+            border-left: 1px solid var(--border);
+            box-shadow: var(--shadow-lg);
+            padding: 20px;
+            overflow-y: auto;
+            transform: translateX(100%);
+            transition: transform 0.25s ease;
+            position: absolute;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            z-index: 50;
+        }
+        .sidebar.open { transform: translateX(0); }
+        .sidebar h2 {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .sidebar .close-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 18px;
+            padding: 4px;
+        }
+        .sidebar .detail-label {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin-top: 16px;
+            margin-bottom: 4px;
+        }
+        .sidebar .detail-value {
+            font-size: 13px;
+            line-height: 1.5;
+            color: var(--text);
+        }
+        .zoom-indicator {
+            position: absolute;
+            bottom: 16px;
+            left: 16px;
+            font-size: 12px;
+            color: var(--text-muted);
+            background: var(--bg-toolbar);
+            padding: 4px 10px;
+            border-radius: 6px;
+            box-shadow: var(--shadow);
+            z-index: 10;
+        }
+        .mermaid { font-family: 'Inter', sans-serif !important; }
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateY(80px);
+            background: var(--text);
+            color: var(--bg);
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            transition: transform 0.3s ease;
+            z-index: 200;
+        }
+        .toast.show { transform: translateX(-50%) translateY(0); }
+        @media (max-width: 768px) {
+            .toolbar h1 { font-size: 14px; }
+            .sidebar { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="toolbar">
+        <h1>Аудит логистики Wildberries</h1>
+        <span class="badge">Сервис проверки переплат</span>
+        <div class="btn-group">
+            <button class="btn" onclick="zoomIn()" title="Zoom in">+</button>
+            <button class="btn" onclick="zoomOut()" title="Zoom out">−</button>
+            <button class="btn" onclick="zoomReset()" title="Fit to screen">⊡</button>
+        </div>
+        <button class="btn btn-text" onclick="toggleTheme()" id="themeBtn">🌙</button>
+        <button class="btn btn-text" onclick="copySVG()">📋 SVG</button>
+    </div>
+
+    <div class="main">
+        <div class="diagram-viewport" id="viewport">
+            <div class="diagram-canvas" id="canvas">
+                <pre class="mermaid">
+flowchart TD
+    classDef api fill:#ffedd5,stroke:#f97316,stroke-width:2px,color:#7c2d12
+    classDef process fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0c4a6e
+    classDef human fill:#fce7f3,stroke:#ec4899,stroke-width:2px,color:#831843
+    classDef gate fill:#fef3c7,stroke:#f59e0b,stroke-width:2px,color:#78350f
+    classDef output fill:#f3e8ff,stroke:#a855f7,stroke-width:2px,color:#581c87
+    classDef database fill:#dcfce7,stroke:#22c55e,stroke-width:2px,color:#14532d
+    classDef error fill:#fee2e2,stroke:#ef4444,stroke-width:2px,color:#991b1b
+
+    subgraph DATA["📥 Сбор данных"]
+        REPORT["Еженедельный<br/>финансовый отчёт"]:::api
+        TARIFFS["Тарифы доставки<br/>по складам"]:::api
+        CARDS["Габариты товаров<br/>из карточек"]:::api
+        MEASURES["Замеры WB<br/>на складе"]:::api
+        PENALTIES["Штрафы и<br/>удержания"]:::api
+    end
+
+    subgraph MANUAL["✋ Ручной ввод"]
+        KTR["КТР<br/>коэф. территориального распределения"]:::human
+        IL["Индекс<br/>локализации"]:::human
+        SPECS["Фактические<br/>габариты товаров"]:::human
+    end
+
+    subgraph CALC["🔢 Расчёты"]
+        LOGISTICS["Расчёт переплаты<br/>логистики"]:::process
+        DIMS["Проверка расхождений<br/>габаритов"]:::process
+        FINES["Аудит штрафов<br/>и удержаний"]:::process
+        STORAGE["Проверка хранения<br/>и приёмки"]:::process
+        PERUNIT["Стоимость логистики<br/>на единицу товара"]:::process
+    end
+
+    subgraph CHECK["⚖️ Анализ"]
+        OVERPAY{"Есть<br/>переплата?"}:::gate
+        DISPUTE{"Штраф<br/>оспариваемый?"}:::gate
+        DIMSDIFF{"Замеры<br/>расходятся?"}:::gate
+    end
+
+    subgraph OUT["📊 Результаты"]
+        EXCEL["Excel-отчёт<br/>для юристов"]:::output
+        SUMMARY["Сводка переплат<br/>по периодам"]:::output
+        ALERT["Уведомление<br/>в Telegram"]:::output
+        DB["База данных<br/>история аудитов"]:::database
+    end
+
+    REPORT -->|"все операции<br/>за период"| LOGISTICS
+    TARIFFS -->|"стоимость 1л<br/>и доп. литров"| LOGISTICS
+    CARDS -->|"объём товара<br/>из карточки"| LOGISTICS
+    KTR -->|"еженедельный<br/>коэффициент"| LOGISTICS
+    IL -->|"для расчёта КТР<br/>если не введён вручную"| KTR
+
+    REPORT -->|"delivery_rub,<br/>storage_fee, penalty"| FINES
+    PENALTIES -->|"подмены, маркировка,<br/>антифрод"| FINES
+    REPORT -->|"хранение<br/>и приёмка"| STORAGE
+    TARIFFS -->|"тариф хранения<br/>за литр"| STORAGE
+
+    MEASURES -->|"объём по<br/>замерам WB"| DIMS
+    CARDS -->|"объём по<br/>карточке"| DIMS
+    SPECS -->|"реальные<br/>размеры"| DIMS
+
+    REPORT -->|"доставки, возвраты,<br/>отмены"| PERUNIT
+
+    LOGISTICS --> OVERPAY
+    OVERPAY -->|"✅ да, WB списал больше"| EXCEL
+    OVERPAY -->|"❌ нет, всё корректно"| DB
+
+    FINES --> DISPUTE
+    DISPUTE -->|"✅ можно оспорить"| EXCEL
+    DISPUTE -->|"❌ обоснованный"| DB
+
+    DIMS --> DIMSDIFF
+    DIMSDIFF -->|"⚠️ WB замерил больше"| EXCEL
+    DIMSDIFF -->|"✅ замеры совпадают"| DB
+
+    STORAGE --> EXCEL
+    PERUNIT --> SUMMARY
+
+    EXCEL --> ALERT
+    SUMMARY --> ALERT
+    EXCEL --> DB
+                </pre>
+            </div>
+        </div>
+        <div class="sidebar" id="sidebar">
+            <h2>
+                <span id="sidebarTitle">Node Details</span>
+                <button class="close-btn" onclick="closeSidebar()">✕</button>
+            </h2>
+            <div id="sidebarContent"></div>
+        </div>
+        <div class="zoom-indicator" id="zoomLevel">100%</div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+    <script>
+        window.nodeDetails = {
+  "REPORT": {
+    "name": "Еженедельный финансовый отчёт",
+    "type": "Источник данных (Wildberries)",
+    "description": "Главный документ — отчёт о реализации, который WB публикует каждую неделю. Содержит ВСЕ финансовые операции: продажи, возвраты, логистику, штрафы, хранение, приёмку. Каждая строка — одна операция с конкретным товаром.",
+    "notes": "Endpoint: reportDetailByPeriod v5. Пагинация по rrd_id, до 100 000 строк. Ключевые поля: delivery_rub (логистика), dlv_prc (коэф. склада), storage_fee, penalty, deduction."
+  },
+  "TARIFFS": {
+    "name": "Тарифы доставки по складам",
+    "type": "Источник данных (Wildberries)",
+    "description": "Актуальные тарифы на логистику: сколько стоит первый литр объёма и каждый дополнительный литр. Тарифы разные для каждого склада и меняются со временем.",
+    "notes": "Endpoint: /api/v1/tariffs/box. Возвращает boxDeliveryBase (1 литр) и boxDeliveryLiter (доп. литры) + коэффициенты склада. Исторические тарифы не хранятся — нужно накапливать с момента запуска."
+  },
+  "CARDS": {
+    "name": "Габариты товаров из карточек",
+    "type": "Источник данных (Wildberries)",
+    "description": "Размеры товара (длина, ширина, высота), которые продавец указал в карточке. Из них рассчитывается объём в литрах. Именно этот объём должен использоваться для расчёта стоимости логистики.",
+    "notes": "Content API: dimensions.width × height × length / 1000 = объём в литрах. Пример: рубашка 30×20×5 см = 3 литра. Если WB считает по другому объёму — это переплата."
+  },
+  "MEASURES": {
+    "name": "Замеры WB на складе",
+    "type": "Источник данных (Wildberries)",
+    "description": "Wildberries сам замеряет товары на складе раз в месяц. Если их замеры больше, чем в карточке — стоимость логистики увеличивается. Часто замеры завышены из-за неаккуратных измерений.",
+    "notes": "Endpoint: warehouse-measurements. Возвращает volume, width, length, height + фото замеров (photoUrls). Фото — ключевое доказательство для оспаривания."
+  },
+  "PENALTIES": {
+    "name": "Штрафы и удержания",
+    "type": "Источник данных (Wildberries)",
+    "description": "Все штрафы: за занижение габаритов упаковки, подмены товаров на ПВЗ, неверные вложения, проблемы с маркировкой, самовыкупы. Многие из них можно оспорить.",
+    "notes": "4 отдельных endpoint: measurement-penalties (габариты), deductions (подмены), antifraud-details (самовыкупы), goods-labeling (маркировка). Каждый с разным rate limit."
+  },
+  "KTR": {
+    "name": "КТР — коэффициент территориального распределения",
+    "type": "Ручной ввод (нет в открытом доступе)",
+    "description": "Индивидуальный коэффициент продавца, который WB применяет к стоимости логистики. Зависит от того, как товары распределены по складам. Обновляется еженедельно. По умолчанию = 1.",
+    "notes": "⚠️ КТР доступен ТОЛЬКО в личном кабинете продавца → раздел Тарифы. Нет API для получения. Пока вводим вручную. В будущем: расчёт через индекс локализации или парсинг ЛК."
+  },
+  "IL": {
+    "name": "Индекс локализации",
+    "type": "Ручной ввод",
+    "description": "Показатель того, насколько хорошо товары продавца распределены по складам WB. Чем выше индекс — тем выше КТР и дороже логистика. Обновляется еженедельно.",
+    "notes": "Из Excel подрядчика: ИЛ колеблется от 1.29 до 1.48. Используется для расчёта КТР, если КТР не введён вручную. Формула пересчёта ИЛ→КТР требует уточнения."
+  },
+  "SPECS": {
+    "name": "Фактические габариты товаров",
+    "type": "Ручной ввод / Google Таблица",
+    "description": "Реальные размеры товаров, измеренные продавцом. Используются для проверки: если замеры WB сильно отличаются от реальных — это основание для возражения.",
+    "notes": "Источник: Google Sheets со спецификациями или Content API (габариты из карточки). Приоритет: реальные замеры продавца > карточка > замеры WB."
+  },
+  "LOGISTICS": {
+    "name": "Расчёт переплаты логистики",
+    "type": "Ключевой расчёт",
+    "description": "Берём каждую доставку из отчёта и пересчитываем: сколько WB ДОЛЖЕН БЫЛ списать по формуле (объём × тариф × коэф. склада × КТР). Сравниваем с тем, что списал фактически. Разница — переплата.",
+    "notes": "Формула: Расчёт = (Тариф_1л + Тариф_доп_л × (Объём - 1)) × Коэф_склада × КТР. Пример из кейса ИП Фисанов: из 491 329₽ логистики — 144 901₽ переплата (29.5%)."
+  },
+  "DIMS": {
+    "name": "Проверка расхождений габаритов",
+    "type": "Детектор проблем",
+    "description": "Сравниваем три источника: 1) габариты из карточки, 2) замеры WB на складе, 3) реальные размеры товара. Если WB замерил больше — это причина переплаты и основание для возражения с фото.",
+    "notes": "Порог: если замеры WB > карточки на 5% и более — алерт. Приложить photoUrls из warehouse-measurements как доказательство. Частая проблема: WB измеряет мятую упаковку."
+  },
+  "FINES": {
+    "name": "Аудит штрафов и удержаний",
+    "type": "Классификатор",
+    "description": "Собираем ВСЕ штрафы и удержания за период. Классифицируем каждый: обоснованный или оспариваемый. Для оспариваемых готовим основание и рекомендуемую сумму возврата.",
+    "notes": "Высокая оспариваемость: штрафы МП (невыполненный заказ), подмены, повышенная логистика по обмерам. Низкая: самовыкупы, подтверждённые нарушения маркировки."
+  },
+  "STORAGE": {
+    "name": "Проверка хранения и приёмки",
+    "type": "Дополнительная проверка",
+    "description": "Пересчитываем стоимость хранения: объём товара × тариф хранения за литр × коэффициент склада × количество дней. Сравниваем с тем, что списал WB. Аналогично для платной приёмки.",
+    "notes": "Ограничение: для точного расчёта нужны ежедневные остатки на каждом складе. Пока работаем в режиме детекции аномалий — резкие скачки storage_fee без роста остатков."
+  },
+  "PERUNIT": {
+    "name": "Стоимость логистики на единицу товара",
+    "type": "Аналитика",
+    "description": "Считаем, сколько реально стоит доставка одной проданной единицы с учётом возвратов и отмен. Если товар часто возвращают — логистика на выкуп кратно дороже.",
+    "notes": "Формула: (вся логистика по артикулу) / (количество выкупов). Включает: доставку к клиенту, обратную логистику при отмене (50₽), возврат брака. Помогает понять реальную unit-экономику."
+  },
+  "OVERPAY": {
+    "name": "Есть переплата?",
+    "type": "Проверка",
+    "description": "Если расчётная стоимость логистики меньше того, что списал WB — фиксируем переплату. Даже разница в 1₽ на операцию при тысячах доставок даёт существенную сумму.",
+    "notes": "Из кейса: переплата 181₽ на одну доставку рубашки (WB списал 269₽, должно быть 88₽). При 800 доставках в месяц — это 145 000₽ переплаты."
+  },
+  "DISPUTE": {
+    "name": "Штраф оспариваемый?",
+    "type": "Проверка",
+    "description": "Не все штрафы можно оспорить. Классификатор определяет вероятность успешного возражения на основе типа штрафа, наличия доказательств и практики WB.",
+    "notes": "Высокие шансы: невыполненные заказы по вине WB, завышенные замеры с фото, подмены без видеодоказательств WB. Низкие шансы: подтверждённые самовыкупы."
+  },
+  "DIMSDIFF": {
+    "name": "Замеры расходятся?",
+    "type": "Проверка",
+    "description": "Если объём по замерам WB больше объёма из карточки более чем на 5% — это красный флаг. Значит WB считает логистику по завышенному объёму.",
+    "notes": "Действия при расхождении: 1) скачать фото замеров, 2) сравнить с реальными габаритами, 3) если WB неправ — подать возражение с фото и расчётом разницы."
+  },
+  "EXCEL": {
+    "name": "Excel-отчёт для юристов",
+    "type": "Итоговый документ",
+    "description": "Готовый файл с 6 листами: СВОД (общая картина), Детализация (каждая операция), Переплата по артикулам, Штрафы, Расхождения габаритов, Виды логистики. Юристы берут этот файл и подают возражения в WB.",
+    "notes": "Формат аналогичен файлу подрядчика (ИП Фисанов). Каждая строка содержит: что списал WB, что должно быть, разница, основание для возражения."
+  },
+  "SUMMARY": {
+    "name": "Сводка переплат по периодам",
+    "type": "Аналитика",
+    "description": "Дашборд с историей: сколько переплачено за каждую неделю, тренд переплат, топ артикулов с максимальной переплатой, общая сумма к возврату.",
+    "notes": "Позволяет видеть динамику: растут ли переплаты, помогли ли предыдущие возражения, какие товары генерируют больше всего проблем."
+  },
+  "ALERT": {
+    "name": "Уведомление в Telegram",
+    "type": "Оповещение",
+    "description": "После каждого еженедельного отчёта WB — автоматическое сообщение: 'Найдена переплата X₽ за период Y. Отчёт готов.' Чтобы не пропустить и вовремя подать возражение.",
+    "notes": "WB публикует отчёт по понедельникам. Сервис проверяет наличие нового отчёта, запускает расчёт и отправляет уведомление. Дедлайн на возражения — обычно 7 дней."
+  },
+  "DB": {
+    "name": "База данных — история аудитов",
+    "type": "Хранилище",
+    "description": "Все результаты аудитов сохраняются: переплаты, штрафы, замеры, тарифы. Это позволяет отслеживать историю, видеть тренды и не терять данные между проверками.",
+    "notes": "Supabase/PostgreSQL. Накапливает исторические тарифы (которые WB не хранит в API), коэффициенты складов, результаты замеров. Чем дольше работает — тем точнее ретро-расчёты."
+  }
+};
+
+        const lightTheme = {
+            theme: 'base',
+            themeVariables: {
+                primaryColor: '#dbeafe',
+                primaryBorderColor: '#3b82f6',
+                primaryTextColor: '#1e3a5f',
+                secondaryColor: '#dcfce7',
+                secondaryBorderColor: '#22c55e',
+                secondaryTextColor: '#14532d',
+                tertiaryColor: '#fef3c7',
+                tertiaryBorderColor: '#f59e0b',
+                tertiaryTextColor: '#78350f',
+                lineColor: '#64748b',
+                textColor: '#1a1a2e',
+                mainBkg: '#dbeafe',
+                nodeBorder: '#3b82f6',
+                clusterBkg: '#f0f9ff',
+                clusterBorder: '#bae6fd',
+                titleColor: '#1e3a5f',
+                edgeLabelBackground: '#ffffff',
+                fontFamily: 'Inter, sans-serif',
+                fontSize: '14px'
+            }
+        };
+
+        const darkTheme = {
+            theme: 'base',
+            themeVariables: {
+                primaryColor: '#1e3a5f',
+                primaryBorderColor: '#60a5fa',
+                primaryTextColor: '#e2e8f0',
+                secondaryColor: '#14532d',
+                secondaryBorderColor: '#4ade80',
+                secondaryTextColor: '#dcfce7',
+                tertiaryColor: '#78350f',
+                tertiaryBorderColor: '#fbbf24',
+                tertiaryTextColor: '#fef3c7',
+                lineColor: '#94a3b8',
+                textColor: '#e2e8f0',
+                mainBkg: '#1e3a5f',
+                nodeBorder: '#60a5fa',
+                clusterBkg: '#0f172a',
+                clusterBorder: '#334155',
+                titleColor: '#e2e8f0',
+                edgeLabelBackground: '#1e293b',
+                fontFamily: 'Inter, sans-serif',
+                fontSize: '14px'
+            }
+        };
+
+        function getTheme() {
+            return document.documentElement.dataset.theme === 'dark' ? darkTheme : lightTheme;
+        }
+
+        async function renderDiagram() {
+            const el = document.querySelector('.mermaid');
+            const code = el.textContent.trim();
+            el.removeAttribute('data-processed');
+            el.innerHTML = code;
+            mermaid.initialize({ startOnLoad: false, ...getTheme(), securityLevel: 'loose', flowchart: { curve: 'linear', nodeSpacing: 60, rankSpacing: 80, padding: 20 } });
+            const { svg } = await mermaid.render('mermaid-diagram', code);
+            el.innerHTML = svg;
+            el.querySelectorAll('[id^="flowchart-"], [id^="statediagram-"]').forEach(node => {
+                node.style.cursor = 'pointer';
+                node.addEventListener('click', () => {
+                    const id = node.id.replace(/^(flowchart-|statediagram-)/, '').replace(/-\d+$/, '');
+                    showNodeDetail(id);
+                });
+            });
+            el.querySelectorAll('.node').forEach(node => {
+                node.style.cursor = 'pointer';
+                node.addEventListener('click', () => {
+                    const id = node.id?.replace(/^(flowchart-|statediagram-)/, '').replace(/-\d+$/, '')
+                             || node.getAttribute('data-id');
+                    if (id) showNodeDetail(id);
+                });
+            });
+        }
+
+        window.showNodeDetail = function(nodeId) {
+            const details = window.nodeDetails[nodeId];
+            if (!details) return;
+            const sidebar = document.getElementById('sidebar');
+            const title = document.getElementById('sidebarTitle');
+            const content = document.getElementById('sidebarContent');
+            title.textContent = details.name || nodeId;
+            let html = '';
+            if (details.type) {
+                html += `<div class="detail-label">Роль</div><div class="detail-value">${details.type}</div>`;
+            }
+            if (details.description) {
+                html += `<div class="detail-label">Что делает</div><div class="detail-value">${details.description}</div>`;
+            }
+            if (details.notes) {
+                html += `<div class="detail-label">Подробнее</div><div class="detail-value">${details.notes}</div>`;
+            }
+            content.innerHTML = html;
+            sidebar.classList.add('open');
+        };
+
+        window.closeSidebar = function() {
+            document.getElementById('sidebar').classList.remove('open');
+        };
+
+        let scale = 1, panX = 0, panY = 0, isPanning = false, startX, startY;
+        const canvas = document.getElementById('canvas');
+        const viewport = document.getElementById('viewport');
+
+        function updateTransform() {
+            canvas.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+            document.getElementById('zoomLevel').textContent = Math.round(scale * 100) + '%';
+        }
+
+        window.zoomIn = () => { scale = Math.min(scale * 1.2, 5); updateTransform(); };
+        window.zoomOut = () => { scale = Math.max(scale / 1.2, 0.1); updateTransform(); };
+        window.zoomReset = () => { scale = 1; panX = 0; panY = 0; updateTransform(); };
+
+        viewport.addEventListener('wheel', e => {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? 0.9 : 1.1;
+            const rect = viewport.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+            const newScale = Math.min(Math.max(scale * delta, 0.1), 5);
+            panX = mx - (mx - panX) * (newScale / scale);
+            panY = my - (my - panY) * (newScale / scale);
+            scale = newScale;
+            updateTransform();
+        }, { passive: false });
+
+        viewport.addEventListener('mousedown', e => {
+            if (e.target.closest('.node')) return;
+            isPanning = true; startX = e.clientX - panX; startY = e.clientY - panY;
+        });
+        window.addEventListener('mousemove', e => {
+            if (!isPanning) return;
+            panX = e.clientX - startX; panY = e.clientY - startY;
+            updateTransform();
+        });
+        window.addEventListener('mouseup', () => { isPanning = false; });
+
+        let lastTouchDist = 0;
+        viewport.addEventListener('touchstart', e => {
+            if (e.touches.length === 1) {
+                isPanning = true;
+                startX = e.touches[0].clientX - panX;
+                startY = e.touches[0].clientY - panY;
+            } else if (e.touches.length === 2) {
+                lastTouchDist = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+            }
+        }, { passive: false });
+        viewport.addEventListener('touchmove', e => {
+            e.preventDefault();
+            if (e.touches.length === 1 && isPanning) {
+                panX = e.touches[0].clientX - startX;
+                panY = e.touches[0].clientY - startY;
+                updateTransform();
+            } else if (e.touches.length === 2) {
+                const dist = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+                scale = Math.min(Math.max(scale * (dist / lastTouchDist), 0.1), 5);
+                lastTouchDist = dist;
+                updateTransform();
+            }
+        }, { passive: false });
+        viewport.addEventListener('touchend', () => { isPanning = false; });
+
+        window.toggleTheme = function() {
+            const html = document.documentElement;
+            const isDark = html.dataset.theme === 'dark';
+            html.dataset.theme = isDark ? 'light' : 'dark';
+            document.getElementById('themeBtn').textContent = isDark ? '🌙' : '☀️';
+            renderDiagram();
+        };
+
+        window.copySVG = async function() {
+            const svg = document.querySelector('.mermaid svg');
+            if (!svg) return;
+            try {
+                await navigator.clipboard.writeText(svg.outerHTML);
+                showToast('SVG скопирован в буфер обмена');
+            } catch {
+                showToast('Не удалось скопировать');
+            }
+        };
+
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.classList.add('show');
+            setTimeout(() => t.classList.remove('show'), 2000);
+        }
+
+        renderDiagram();
+    </script>
+</body>
+</html>

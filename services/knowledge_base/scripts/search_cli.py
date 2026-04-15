@@ -48,12 +48,12 @@ def print_stats():
     print("=" * 60)
     print(f"\n  Всего чанков: {stats['total_chunks']}")
     print(f"  Файлов:       {stats['unique_files']}")
-    print(f"\n  По модулям:")
+    print("\n  По модулям:")
     for mod, count in sorted(stats.get("by_module", {}).items(), key=lambda x: x[0]):
         name = MODULE_NAMES.get(mod, mod)
         bar = "█" * (count // 50)
         print(f"    Модуль {mod:>10s}: {count:>5d} {bar}  ({name})")
-    print(f"\n  По типу файлов:")
+    print("\n  По типу файлов:")
     for ft, count in stats.get("by_file_type", {}).items():
         print(f"    {ft:>6s}: {count}")
     print()
@@ -92,7 +92,7 @@ async def run_search(query: str, limit: int, module: str = None, content_type: s
         print(f"  │  Модуль: {mod} — {mod_name}")
         print(f"  │  Файл:   {r['file_name']}")
         print(f"  │  Тип:    {r['content_type']}  |  Чанк #{r['chunk_index']}")
-        print(f"  │")
+        print("  │")
         # Show text, indented
         text = r["text"]
         if len(text) > 600:

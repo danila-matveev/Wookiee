@@ -9,7 +9,6 @@ Timeline on report failure:
 
 Multi-day failures: escalating severity on consecutive days.
 """
-import asyncio
 import logging
 import time
 from datetime import datetime

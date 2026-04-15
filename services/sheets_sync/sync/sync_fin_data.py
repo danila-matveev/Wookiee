@@ -14,7 +14,6 @@ from shared.clients.sheets_client import (
     get_moscow_datetime,
     get_or_create_worksheet,
     set_checkbox,
-    to_number,
 )
 from shared.data_layer import (
     get_wb_fin_data_by_barcode,
