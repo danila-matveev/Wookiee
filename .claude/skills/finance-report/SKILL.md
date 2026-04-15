@@ -124,6 +124,25 @@ If both fail — proceed without plan, note: "План недоступен".
 
 ---
 
+### 1.3 Start Tool Logging
+
+Record the run start in Supabase tool_runs:
+
+```bash
+PYTHONPATH=. python3 -c "
+from shared.tool_logger import ToolLogger
+logger = ToolLogger('/finance-report')
+run_id = logger.start(trigger='manual', user='danila', version='v4',
+    period_start='{START}', period_end='{END}', depth='{DEPTH}')
+print(f'RUN_ID={run_id}')
+"
+```
+
+Save the printed `RUN_ID` value — it is needed in Stage 5.5.
+If run_id is `None` — continue normally, logging is fire-and-forget.
+
+---
+
 ## Stage 1.5: Data Validation (MANDATORY)
 
 After collecting data, run a quick validation script to catch data integrity issues BEFORE analytics waves begin. This prevents propagating bad data through the entire pipeline.
@@ -335,6 +354,31 @@ After publishing — fetch page via `mcp__claude_ai_Notion__notion-fetch` and ve
 - Toggle headings work (`{toggle="true"}`)
 - Callouts render with icons and colors
 - Bold text preserved in table cells
+
+### 5.5 Finish Tool Logging
+
+Record the run completion:
+
+```bash
+PYTHONPATH=. python3 -c "
+from shared.tool_logger import ToolLogger
+logger = ToolLogger('/finance-report')
+logger.finish('{RUN_ID}',
+    status='success',
+    result_url='{NOTION_URL}',
+    items_processed={MODEL_COUNT},
+    output_sections=12,
+    details={
+        'margin': {BRAND_MARGIN},
+        'revenue': {BRAND_REVENUE},
+        'depth': '{DEPTH}'
+    })
+print('Logged successfully')
+"
+```
+
+Replace placeholders: `{RUN_ID}` from Stage 1.3, `{NOTION_URL}` from Stage 5.3, `{MODEL_COUNT}` = number of models analyzed, `{BRAND_MARGIN}` = total margin ₽, `{BRAND_REVENUE}` = total revenue ₽.
+If run_id is empty/None — skip this step.
 
 ---
 
