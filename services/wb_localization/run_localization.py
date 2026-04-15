@@ -26,6 +26,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pandas as pd
 
 # Путь к корню проекта
@@ -194,6 +195,89 @@ def fetch_own_stock() -> dict[str, int]:
         logger.error("МойСклад ошибка: %s", e)
         print(f"   МойСклад: ошибка загрузки ({e}), продолжаем без данных")
         return {}
+
+
+def fetch_logistics_costs(cabinet, days: int) -> dict[str, float]:
+    """Fetch actual logistics costs per article from WB reportDetailByPeriod v5.
+
+    Calls the statistics API, filters for logistics rows only
+    (``supplier_oper_name == "Логистика"``), and groups by ``sa_name``.
+
+    Args:
+        cabinet: Cabinet config with ``wb_api_key`` and ``name``.
+        days: Number of days back.
+
+    Returns:
+        ``{article_lower: total_delivery_rub}``
+    """
+    date_from = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+    date_to = datetime.now().strftime('%Y-%m-%d')
+    url = "https://statistics-api.wildberries.ru/api/v5/supplier/reportDetailByPeriod"
+
+    print(f"   [{cabinet.name}] Запрос расходов на логистику (reportDetailByPeriod)...")
+
+    all_rows: list[dict] = []
+    rrd_id = 0
+    page = 0
+
+    with httpx.Client(timeout=120.0) as client:
+        while True:
+            page += 1
+            params = {
+                "dateFrom": date_from,
+                "dateTo": date_to,
+                "limit": 100000,
+                "rrdid": rrd_id,
+            }
+            try:
+                resp = client.get(
+                    url,
+                    params=params,
+                    headers={"Authorization": cabinet.wb_api_key},
+                )
+
+                if resp.status_code == 429:
+                    logger.warning("Rate limited, sleeping 62s")
+                    time.sleep(62)
+                    continue
+
+                resp.raise_for_status()
+                data = resp.json()
+            except Exception as e:
+                logger.error("reportDetailByPeriod page %d error: %s", page, e)
+                break
+
+            if not data:
+                break
+
+            all_rows.extend(data)
+            rrd_id = data[-1].get("rrd_id", 0)
+            logger.info(
+                "reportDetailByPeriod page %d: %d rows, rrd_id=%d",
+                page, len(data), rrd_id,
+            )
+
+            if len(data) < 100000:
+                break
+
+            # Rate limit: 1 req/min
+            time.sleep(62)
+
+    print(f"   [{cabinet.name}] reportDetailByPeriod: {len(all_rows)} строк")
+
+    # Aggregate logistics costs by supplier article
+    costs: dict[str, float] = {}
+    logistics_rows = 0
+    for row in all_rows:
+        if row.get("supplier_oper_name") != "Логистика":
+            continue
+        logistics_rows += 1
+        article = (row.get("sa_name") or "").strip().lower()
+        if article:
+            costs[article] = costs.get(article, 0) + abs(row.get("delivery_rub", 0))
+
+    print(f"   [{cabinet.name}] Логистика: {logistics_rows} строк, {len(costs)} артикулов")
+    return costs
 
 
 # ============================================
@@ -654,12 +738,35 @@ def run_for_cabinet(
         print(f"   Артикулов: {s['total_articles']}, в ИРП-зоне: {s['irp_zone_articles']}")
         print(f"   ИРП-нагрузка: {s['irp_monthly_cost_rub']:,.0f} ₽/мес")
 
+    # 5. Economic analysis (requires il_irp + actual logistics costs)
+    economics = None
+    if il_irp and not getattr(args, 'skip_il_analysis', False):
+        print("\n5. Экономический анализ...")
+        logistics_costs = fetch_logistics_costs(cabinet, args.days)
+        if logistics_costs:
+            from services.wb_localization.calculators.economic_analyzer import analyze_economics
+
+            economics = analyze_economics(il_irp, logistics_costs, period_days=args.days)
+            sc = economics['scenarios']
+            curr = sc['current']
+            opt = sc['optimized']
+            no_ctrl = sc['no_control']
+            print(f"   Логистика факт: {economics['total_logistics_fact']:,.0f} ₽ за {args.days} дн.")
+            print(f"   Экономия от ИЛ<1: {economics['il_savings_rub']:,.0f} ₽/мес")
+            print(f"   ИРП-нагрузка: {curr['irp_monthly']:,.0f} ₽/мес")
+            print(f"   Без контроля: +{no_ctrl['vs_current_monthly']:,.0f} ₽/мес переплата")
+            print(f"   При оптимизации: {opt['vs_current_monthly']:,.0f} ₽/мес экономия")
+        else:
+            print("   Нет данных по логистике — пропуск экономического анализа")
+
     if return_result:
         result = _build_result_payload(cabinet.name, analysis)
         if history_store is not None:
             _attach_comparison_and_save(result, history_store)
         if il_irp:
             result['il_irp'] = il_irp
+        if economics:
+            result['economics'] = economics
         return result
 
     # 5. Консольная сводка
