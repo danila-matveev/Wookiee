@@ -427,17 +427,17 @@ def get_ozon_ad_by_sku(current_start, prev_start, current_end):
 
 
 def get_ozon_ad_funnel_by_model(current_start, prev_start, current_end):
-    """OZON рекламная воронка по моделям: показы→клики→корзина→заказы.
+    """OZON рекламная воронка по моделям: клики→корзина→заказы.
 
-    Sources: adv_stats_daily (views, clicks) + ozon_adv_api (to_cart, orders, spend).
-    Groups by model via nomenclature JOIN.
+    Joins ozon_adv_api via sku to abc_date to get model article.
+    Groups by model using get_osnova_sql on SPLIT_PART(article, '/', 1).
 
     Returns: list of (period, model, views, clicks, to_cart, orders, spend, ctr, cpc, cpo)
     """
     conn = _get_ozon_connection()
     cur = conn.cursor()
 
-    model_sql = get_osnova_sql("SPLIT_PART(o.offername, '/', 1)")
+    model_sql = get_osnova_sql("SPLIT_PART(a.article, '/', 1)")
 
     query = f"""
     SELECT
@@ -452,6 +452,11 @@ def get_ozon_ad_funnel_by_model(current_start, prev_start, current_end):
         CASE WHEN SUM(o.clicks) > 0 THEN SUM(o.sum_rev) / SUM(o.clicks) ELSE 0 END as cpc,
         CASE WHEN SUM(o.orders) > 0 THEN SUM(o.sum_rev) / SUM(o.orders) ELSE 0 END as cpo
     FROM ozon_adv_api o
+    JOIN (
+        SELECT DISTINCT sku, article
+        FROM abc_date
+        WHERE sku IS NOT NULL AND article IS NOT NULL
+    ) a ON a.sku = o.sku
     WHERE o.operation_date >= %s AND o.operation_date < %s
     GROUP BY 1, 2
     ORDER BY 1, SUM(o.sum_rev) DESC;
