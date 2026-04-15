@@ -35,6 +35,11 @@ logger = logging.getLogger("search_queries_sync")
 
 
 def main():
+    if len(sys.argv) == 2:
+        print("Error: provide both start and end dates, or neither.")
+        print("Usage: python scripts/run_search_queries_sync.py [DD.MM.YYYY DD.MM.YYYY]")
+        sys.exit(1)
+
     start_date = sys.argv[1] if len(sys.argv) > 1 else None
     end_date = sys.argv[2] if len(sys.argv) > 2 else None
 
