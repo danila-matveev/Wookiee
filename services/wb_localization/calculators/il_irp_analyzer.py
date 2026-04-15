@@ -129,13 +129,23 @@ def analyze_il_irp(
             continue
 
         delivery_fd = get_delivery_fd(oblast)
+        # If oblastOkrugName didn't resolve, try regionName as fallback
+        if delivery_fd is None:
+            region_name = order.get('regionName', '') or ''
+            delivery_fd = get_delivery_fd(region_name)
+
         # CIS delivery address → count as CIS, skip
         if delivery_fd in CIS_REGIONS:
             total_cis_orders += 1
             continue
 
-        # Unknown delivery region → skip (can't classify localization)
+        # Still unknown — check if regionName looks like CIS
+        # (orders from RU warehouse → CIS delivery have empty oblastOkrugName)
         if delivery_fd is None:
+            region_name = order.get('regionName', '') or ''
+            if region_name:
+                # CIS regions not in our mapping but detectable by country pattern
+                total_cis_orders += 1
             continue
 
         is_local = warehouse_fd == delivery_fd
