@@ -668,7 +668,7 @@ def run_service_report(
 
     sku_db = sku_db_path or str(PROJECT_ROOT / 'sku_database' / 'Спецификации.xlsx')
     barcode_dict = load_barcodes(sku_db)
-    statuses = load_statuses(skip=no_statuses)
+    statuses = load_statuses(skip=no_statuses, cabinet_name=cabinet.name)
     own_stock = fetch_own_stock()
 
     args = argparse.Namespace(
@@ -719,13 +719,16 @@ def main():
 
     # Загрузка общих данных (один раз для всех кабинетов)
     print("\n0. Загрузка общих данных...")
-    barcode_dict = load_barcodes(args.sku_db)
-    statuses = load_statuses(skip=args.no_statuses)
     own_stock = fetch_own_stock()
 
     # Запуск для каждого кабинета
     results = []
     for i, cabinet in enumerate(cabinets):
+        barcode_dict = load_barcodes(args.sku_db)
+        statuses = load_statuses(
+            skip=args.no_statuses,
+            cabinet_name=cabinet.name,
+        )
         result = run_for_cabinet(cabinet, args, own_stock, barcode_dict, statuses)
         if result:
             results.append(result)

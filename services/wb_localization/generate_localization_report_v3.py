@@ -228,7 +228,7 @@ def load_barcodes(sku_db_path):
     return barcode_dict
 
 
-def load_statuses(skip=False):
+def load_statuses(skip=False, cabinet_name: str | None = None):
     """
     Загрузка статусов артикулов из Supabase (graceful degradation).
 
@@ -243,8 +243,8 @@ def load_statuses(skip=False):
         print("2.5. Статусы: data_layer не найден, продолжаем без статусов")
         return {}
 
-    print("2.5. Загрузка статусов из Supabase...")
-    statuses = get_artikuly_statuses()
+    print(f"2.5. Загрузка статусов из Supabase{f' ({cabinet_name})' if cabinet_name else ''}...")
+    statuses = get_artikuly_statuses(cabinet_name=cabinet_name)
 
     if not statuses:
         print("   Статусы не загружены (нет подключения?)")
