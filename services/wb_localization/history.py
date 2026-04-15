@@ -1,16 +1,34 @@
-"""Хранилище истории расчётов Василия (SQLite)."""
+"""Хранилище истории расчётов WB Logistics (SQLite)."""
 from __future__ import annotations
 
 import json
 import logging
+import shutil
 import sqlite3
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 DATA_DIR = Path(__file__).parent / "data"
-_DEFAULT_DB = DATA_DIR / "vasily.db"
+_OLD_DB = DATA_DIR / "vasily.db"
+_NEW_DB = DATA_DIR / "wb_logistics.db"
 _DEFAULT_TIMEOUT = 5.0  # seconds
+
+
+def _get_db_path() -> Path:
+    """Get DB path, migrating from old name if needed."""
+    if _NEW_DB.exists():
+        return _NEW_DB
+    if _OLD_DB.exists():
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(_OLD_DB, _NEW_DB)
+        logger.info("Мигрирована БД: vasily.db → wb_logistics.db")
+        return _NEW_DB
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    return _NEW_DB
+
+
+_DEFAULT_DB = _get_db_path()
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS reports (
@@ -38,7 +56,7 @@ CREATE INDEX IF NOT EXISTS idx_reports_timestamp ON reports(cabinet, timestamp D
 class History:
     """SQLite-хранилище истории расчётов.
 
-    Файл: services/wb_localization/data/vasily.db
+    Файл: services/wb_localization/data/wb_logistics.db
     Таблица: reports — один ряд на расчёт (кабинет × дата).
     """
 

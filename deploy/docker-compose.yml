@@ -69,12 +69,12 @@ services:
           cpus: '0.25'
           memory: 128M
 
-  # ── Vasily API: HTTP-эндпоинт для запуска расчёта перестановок из Google Sheets ──
-  vasily-api:
+  # ── WB Logistics API: HTTP-эндпоинт для запуска расчёта перестановок из Google Sheets ──
+  wb-logistics-api:
     build:
       context: ..
-      dockerfile: deploy/Dockerfile.vasily_api
-    container_name: vasily-api
+      dockerfile: deploy/Dockerfile.wb_logistics_api
+    container_name: wb-logistics-api
     restart: unless-stopped
 
     env_file:

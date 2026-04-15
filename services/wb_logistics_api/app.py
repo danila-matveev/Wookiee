@@ -1,4 +1,4 @@
-"""Vasily API — HTTP-эндпоинт для запуска расчёта перестановок WB.
+"""WB Logistics API — HTTP-эндпоинт для запуска расчёта перестановок WB.
 
 Используется Google Apps Script для запуска из кнопки в Google Sheets.
 
@@ -19,11 +19,14 @@ from fastapi.responses import JSONResponse
 
 load_dotenv()
 
-API_KEY = os.getenv("VASILY_API_KEY", "")
-VASILY_SPREADSHEET_ID = os.getenv("VASILY_SPREADSHEET_ID", "")
+API_KEY = os.getenv("WB_LOGISTICS_API_KEY") or os.getenv("VASILY_API_KEY", "")
+VASILY_SPREADSHEET_ID = (
+    os.getenv("WB_LOGISTICS_SPREADSHEET_ID")
+    or os.getenv("VASILY_SPREADSHEET_ID", "")
+)
 
-app = FastAPI(title="Vasily API", version="1.0.0")
-logger = logging.getLogger("vasily_api")
+app = FastAPI(title="WB Logistics API", version="1.0.0")
+logger = logging.getLogger("wb_logistics_api")
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
@@ -42,7 +45,7 @@ _state: dict = {
 
 def _verify_key(x_api_key: str = Header(...)) -> None:
     if not API_KEY:
-        raise HTTPException(500, "VASILY_API_KEY not configured on server")
+        raise HTTPException(500, "WB_LOGISTICS_API_KEY not configured on server")
     if x_api_key != API_KEY:
         raise HTTPException(403, "Invalid API key")
 
@@ -66,7 +69,7 @@ def _write_sheets_status(status: str) -> None:
 
 # ── Background worker ────────────────────────────────────────────────────────
 def _run_reports() -> None:
-    """Run Vasily reports for all cabinets (blocking, runs in thread)."""
+    """Run WB Logistics reports for all cabinets (blocking, runs in thread)."""
     from services.wb_localization.config import CABINETS, REPORT_PERIOD_DAYS, VASILY_SPREADSHEET_ID
     from services.wb_localization.history import History
     from services.wb_localization.run_localization import run_service_report
