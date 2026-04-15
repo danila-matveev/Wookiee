@@ -200,7 +200,7 @@ def _apply_formatting(spreadsheet, ws, num_data_rows):
     # Decimal: K
     for col in sorted(_DEC_COLS):
         reqs.append(_num_fmt_req(sheet_id, data_start, data_end, col, col + 1,
-                                 '#,##0.0'))
+                                 '#,##0.00'))
 
     if reqs:
         spreadsheet.batch_update({"requests": reqs})
