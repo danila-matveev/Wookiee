@@ -34,6 +34,17 @@ def run_audit(config: AuditConfig, output_dir: str = ".") -> str:
     Run full logistics audit pipeline.
     Returns path to generated Excel file.
     """
+    # Tool logging
+    try:
+        from shared.tool_logger import ToolLogger
+        _tl = ToolLogger("logistics-audit")
+        _run_id = _tl.start(
+            trigger="cli", user="danila",
+            period_start=config.date_from.isoformat(),
+            period_end=config.date_to.isoformat(),
+        )
+    except Exception:
+        _tl, _run_id = None, None
     df = config.date_from.isoformat()
     dt = config.date_to.isoformat()
     logger.info(f"Starting audit: {df} → {dt}, KTR={config.ktr}")
@@ -200,6 +211,16 @@ def run_audit(config: AuditConfig, output_dir: str = ".") -> str:
     filepath = str(Path(output_dir) / filename)
     wb.save(filepath)
     logger.info(f"Excel saved: {filepath}")
+
+    # Finish logging
+    if _tl and _run_id:
+        _tl.finish(
+            _run_id, status="success",
+            result_url=filepath,
+            items_processed=len(all_rows),
+            details={"cabinet": config.cabinet, "overpayment_rows": len(results)},
+        )
+
     return filepath
 
 

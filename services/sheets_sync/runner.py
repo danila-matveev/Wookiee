@@ -182,6 +182,14 @@ def main():
     print(f"\nMode: {mode_str}")
     print(f"{'=' * 50}")
 
+    # Tool logging
+    try:
+        from shared.tool_logger import ToolLogger
+        _tl = ToolLogger("sheets-sync")
+        _run_id = _tl.start(trigger="cli", user="danila", environment="local")
+    except Exception:
+        _tl, _run_id = None, None
+
     if args.sync_name == "all":
         results = run_all(start_date=args.start, end_date=args.end)
         print(f"\n{'=' * 50}")
@@ -217,7 +225,20 @@ def main():
             logger.error("Failed to update status sheet: %s", e)
 
         if result.status == "error":
+            if _tl and _run_id:
+                _tl.error(_run_id, stage=args.sync_name, message=result.error or "unknown")
             sys.exit(1)
+
+    # Finish logging
+    if _tl and _run_id:
+        total_rows = sum(r.rows for r in (results if args.sync_name == "all" else [result]))
+        errors = [r for r in (results if args.sync_name == "all" else [result]) if r.status == "error"]
+        _tl.finish(
+            _run_id,
+            status="success" if not errors else "error",
+            items_processed=total_rows,
+            details={"sync_name": args.sync_name, "errors": len(errors)},
+        )
 
 
 if __name__ == "__main__":

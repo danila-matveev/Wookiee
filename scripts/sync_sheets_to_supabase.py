@@ -1106,6 +1106,14 @@ def sync_skleyki_ozon(
 
 def run_sync(level: str = "all", dry_run: bool = False, spreadsheet_id: Optional[str] = None):
     """Run the sync pipeline."""
+    # Tool logging
+    try:
+        from shared.tool_logger import ToolLogger
+        _tl = ToolLogger("sync-sheets-to-supabase")
+        _run_id = _tl.start(trigger="cli", user="danila")
+    except Exception:
+        _tl, _run_id = None, None
+
     sid = spreadsheet_id or SPREADSHEET_ID
     start = time.time()
 
@@ -1191,6 +1199,11 @@ def run_sync(level: str = "all", dry_run: bool = False, spreadsheet_id: Optional
         sync_skleyki_ozon(conn, skleyki_ozon_rows, importer_map, log, dry_run)
 
     conn.close()
+
+    # Finish tool logging
+    if _tl and _run_id:
+        total = sum(v for k, v in log.items() if isinstance(v, int) and ("upserted" in k or "inserted" in k))
+        _tl.finish(_run_id, status="success", items_processed=total, details={"level": level})
 
     # Duration
     duration = time.time() - start
