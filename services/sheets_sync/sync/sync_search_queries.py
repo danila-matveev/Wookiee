@@ -510,7 +510,7 @@ def _fetch_search_data(
             detail = ""
             try:
                 detail = resp.json().get("detail", "")
-            except Exception:
+            except (ValueError, KeyError):
                 pass
 
             # Extract bad nmId from error like "Check correctness of nm id: 123456"
@@ -722,7 +722,7 @@ def _dd_mm_to_api(date_str: str) -> str | None:
         if len(parts) != 3:
             return None
         return f"{parts[2]}-{parts[1]}-{parts[0]}"
-    except Exception:
+    except (AttributeError, IndexError):
         return None
 
 
