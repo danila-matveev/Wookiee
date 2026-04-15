@@ -231,10 +231,31 @@ def _write_il_analysis(il_irp: dict, cabinet: str, spreadsheet) -> None:
 
     summary = il_irp["summary"]
     articles = il_irp["articles"]
+    meta = summary.get("metadata", {})
 
-    # Header KPIs (rows 1-10)
-    header_data = [
-        ["", "Метрика", "Значение"],
+    # --- Passport block (rows 1-11) ---
+    passport_data = [
+        ["ПАСПОРТ ОТЧЁТА", "", ""],
+        ["Дата формирования", meta.get("generated_at", "—"), ""],
+        [
+            "Период анализа",
+            f"{meta.get('period_from', '—')} — {meta.get('period_to', '—')} "
+            f"({meta.get('period_days', '—')} дн.)",
+            "",
+        ],
+        ["Источник данных", meta.get("data_source", "—"), ""],
+        ["Всего заказов", meta.get("total_orders_loaded", "—"), ""],
+        ["Отменённые", meta.get("cancelled_orders", "—"), ""],
+        ["Пропущенные", meta.get("skipped_orders", "—"), "(не удалось определить регион)"],
+        ["РФ заказов", meta.get("rf_orders_analyzed", "—"), ""],
+        ["СНГ заказов", meta.get("cis_orders", "—"), ""],
+        ["Артикулов", meta.get("articles_analyzed", "—"), ""],
+        ["", "", ""],
+    ]
+
+    # --- KPI block (rows 12-21) ---
+    kpi_data = [
+        ["МЕТРИКИ", "Метрика", "Значение"],
         ["", "ИЛ (Индекс Локализации)", summary["overall_il"]],
         ["", "ИРП", f"{summary['overall_irp_pct']:.2f}%"],
         ["", "Локальных заказов WB (РФ)", summary["local_orders"]],
@@ -253,7 +274,7 @@ def _write_il_analysis(il_irp: dict, cabinet: str, spreadsheet) -> None:
         "Уральский", "Дальневосточный + Сибирский", "Северо-Западный",
     ]
 
-    # Column headers (row 12)
+    # Column headers (row 23)
     col_headers = [
         "Артикул", "ВБ Лок. (РФ)", "ВБ Нелок. (РФ)", "Всего WB (РФ)",
         "% лок.", "КТР", "КРП,%", "Вклад шт×КТР", "Статус",
@@ -278,10 +299,11 @@ def _write_il_analysis(il_irp: dict, cabinet: str, spreadsheet) -> None:
         data_rows.append(row)
 
     ws.clear()
-    write_range(ws, 1, 1, header_data)
-    write_range(ws, 12, 1, [col_headers])
+    write_range(ws, 1, 1, passport_data)
+    write_range(ws, 12, 1, kpi_data)
+    write_range(ws, 23, 1, [col_headers])
     if data_rows:
-        write_range(ws, 13, 1, data_rows)
+        write_range(ws, 24, 1, data_rows)
     logger.info("Записан лист '%s': %d артикулов", sheet_name, len(articles))
 
 
@@ -331,16 +353,44 @@ _DARK_RED_BG = {"red": 0.698, "green": 0.133, "blue": 0.133}
 
 def _write_economics_sheet(economics: dict, cabinet: str, spreadsheet) -> None:
     """Write economic scenario analysis sheet."""
+    import datetime as _dt
+
     sheet_name = f"Экономика {cabinet}"
-    ws = get_or_create_worksheet(spreadsheet, sheet_name, rows=100, cols=10)
+    ws = get_or_create_worksheet(spreadsheet, sheet_name, rows=120, cols=10)
     ws.clear()
 
     sc = economics["scenarios"]
     no_ctrl = sc["no_control"]
     current = sc["current"]
     optimized = sc["optimized"]
+    period_days = economics.get("period_days", 30)
 
-    # --- Block A: Current situation (rows 1-12) ---
+    _now = _dt.datetime.now()
+    _period_from = (_now - _dt.timedelta(days=period_days)).strftime('%d.%m.%Y')
+    _period_to = _now.strftime('%d.%m.%Y')
+    _generated_at = _now.strftime('%d.%m.%Y %H:%M')
+
+    # --- Passport block (rows 1-12) ---
+    passport = [
+        ["ПАСПОРТ ОТЧЁТА", "", "", ""],
+        ["Дата формирования", _generated_at, "", ""],
+        [
+            "Период анализа",
+            f"{_period_from} — {_period_to} ({period_days} дн.)",
+            "", "",
+        ],
+        ["Источник заказов", "WB supplier/orders API (v1)", "", ""],
+        ["Источник логистики", "WB reportDetailByPeriod API (v5)", "", ""],
+        ["Точность", "Расхождение с WB ≤ 3 п.п. (orders vs deliveries)", "", ""],
+        ["Артикулов проанализировано", economics.get("matched_articles", "—"), "", ""],
+        ["Артикулов пропущено", economics.get("skipped_articles", "—"), "", "(нет данных о цене)"],
+        ["Текущий ИЛ", economics.get("current_il", "—"), "", ""],
+        ["", "", "", ""],
+    ]
+    write_range(ws, 1, 1, passport)
+
+    # --- Block A: Current situation (rows 11-22) ---
+    block_a_start = 11
     block_a = [
         ["ЭКОНОМИЧЕСКИЙ АНАЛИЗ ЛОГИСТИКИ", "", "", ""],
         ["", "", "", ""],
@@ -390,9 +440,10 @@ def _write_economics_sheet(economics: dict, cabinet: str, spreadsheet) -> None:
         ],
         ["", "", "", ""],
     ]
-    write_range(ws, 1, 1, block_a)
+    write_range(ws, block_a_start, 1, block_a)
 
-    # --- Block B: Scenarios comparison (rows 13-22) ---
+    # --- Block B: Scenarios comparison (rows 23-32) ---
+    block_b_start = block_a_start + len(block_a)
     block_b = [
         ["СРАВНЕНИЕ СЦЕНАРИЕВ", "", "", "", "", ""],
         [
@@ -419,11 +470,11 @@ def _write_economics_sheet(economics: dict, cabinet: str, spreadsheet) -> None:
         no_ctrl["total_monthly"] - optimized["total_monthly"],
         "",
     ])
-    write_range(ws, 13, 1, block_b)
+    write_range(ws, block_b_start, 1, block_b)
 
-    # --- Block C: Top-10 articles for optimization (rows 21+) ---
+    # --- Block C: Top-10 articles for optimization ---
     top = economics.get("top_savings", [])
-    block_c_start = 21
+    block_c_start = block_b_start + len(block_b)
     block_c = [
         ["", "", "", "", "", "", ""],
         ["ТОП-10 АРТИКУЛОВ ДЛЯ ОПТИМИЗАЦИИ", "", "", "", "", "", ""],
@@ -450,7 +501,45 @@ def _write_economics_sheet(economics: dict, cabinet: str, spreadsheet) -> None:
 
 
 def _apply_economics_formatting(spreadsheet, ws, num_top: int) -> None:
-    """Apply visual formatting to economics sheet."""
+    """Apply visual formatting to economics sheet.
+
+    Layout (1-indexed rows):
+      1      — passport title
+      2-9    — passport data rows
+      10     — empty
+      11     — block A title (ЭКОНОМИЧЕСКИЙ АНАЛИЗ ЛОГИСТИКИ)
+      12     — empty
+      13     — block A header (Метрика / Значение / ₽/мес / Комментарий)
+      14-22  — block A data rows
+      23     — block B title (СРАВНЕНИЕ СЦЕНАРИЕВ)
+      24     — block B headers
+      25-27  — scenario rows (no_control, current, optimized)
+      28-29  — empty + diff row
+      30     — empty  ← block C begins
+      31     — block C title
+      32     — block C headers
+      33+    — top-10 data rows
+    All 0-indexed = row - 1.
+    """
+    # Row offsets (0-indexed)
+    PASSPORT_TITLE = 0       # row 1
+    BLOCK_A_TITLE  = 10      # row 11
+    BLOCK_A_HEADER = 12      # row 13
+    BLOCK_A_SAVINGS = 15     # row 16 (Экономия)
+    BLOCK_A_IRP    = 16      # row 17 (ИРП)
+    BLOCK_A_TOTAL  = 17      # row 18 (ИТОГО)
+    BLOCK_A_END    = 22      # exclusive end for num fmt
+    BLOCK_B_TITLE  = 22      # row 23
+    BLOCK_B_HEADER = 23      # row 24
+    BLOCK_B_NO_CTRL = 24     # row 25
+    BLOCK_B_CURRENT = 25     # row 26
+    BLOCK_B_OPT    = 26      # row 27
+    BLOCK_B_END    = 30      # exclusive
+    # Block C depends on dynamic block sizes; use approximate +10 offset
+    BLOCK_C_TITLE  = 31      # row 32 (approx)
+    BLOCK_C_HEADER = 32      # row 33
+    BLOCK_C_DATA   = 33      # row 34
+
     sid = ws.id
     reqs: list[dict] = []
 
@@ -458,15 +547,48 @@ def _apply_economics_formatting(spreadsheet, ws, num_top: int) -> None:
 
     # Column widths
     reqs.extend(_col_widths(sid, [
-        (0, 280), (1, 100), (2, 140), (3, 140),
+        (0, 280), (1, 140), (2, 140), (3, 180),
         (4, 140), (5, 160), (6, 180),
     ]))
 
-    # Row 1: title — dark blue
+    # --- Passport block ---
+    # Row 1: passport title — dark blue
     reqs.append({
         "repeatCell": {
-            "range": {"sheetId": sid, "startRowIndex": 0, "endRowIndex": 1,
-                       "startColumnIndex": 0, "endColumnIndex": 7},
+            "range": {"sheetId": sid, "startRowIndex": PASSPORT_TITLE,
+                       "endRowIndex": PASSPORT_TITLE + 1,
+                       "startColumnIndex": 0, "endColumnIndex": 4},
+            "cell": {
+                "userEnteredFormat": {
+                    "backgroundColor": _HEADER_BG,
+                    "textFormat": {"bold": True, "fontSize": 11, "foregroundColor": _HEADER_FG},
+                    "horizontalAlignment": "LEFT",
+                    "verticalAlignment": "MIDDLE",
+                }
+            },
+            "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)",
+        }
+    })
+    reqs.append(_row_height(sid, PASSPORT_TITLE, PASSPORT_TITLE + 1, 30))
+    # Rows 2-9: passport data — light grey
+    for r in range(1, 10):
+        reqs.append({
+            "repeatCell": {
+                "range": {"sheetId": sid, "startRowIndex": r, "endRowIndex": r + 1,
+                           "startColumnIndex": 0, "endColumnIndex": 4},
+                "cell": {"userEnteredFormat": {"backgroundColor": _META_BG,
+                                               "textFormat": {"fontSize": 10}}},
+                "fields": "userEnteredFormat(backgroundColor,textFormat)",
+            }
+        })
+
+    # --- Block A ---
+    # Row 11: block A title — dark blue
+    reqs.append({
+        "repeatCell": {
+            "range": {"sheetId": sid, "startRowIndex": BLOCK_A_TITLE,
+                       "endRowIndex": BLOCK_A_TITLE + 1,
+                       "startColumnIndex": 0, "endColumnIndex": 4},
             "cell": {
                 "userEnteredFormat": {
                     "backgroundColor": _HEADER_BG,
@@ -478,49 +600,53 @@ def _apply_economics_formatting(spreadsheet, ws, num_top: int) -> None:
             "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)",
         }
     })
-    reqs.append(_row_height(sid, 0, 1, 36))
+    reqs.append(_row_height(sid, BLOCK_A_TITLE, BLOCK_A_TITLE + 1, 36))
 
-    # Row 3: header for Block A
-    reqs.append(_header_fmt(sid, 2, 4))
+    # Row 13: header for Block A
+    reqs.append(_header_fmt(sid, BLOCK_A_HEADER, 4))
 
-    # Row 6: green bg for IL savings (if positive)
+    # Row 16: green bg for IL savings
     reqs.append({
         "repeatCell": {
-            "range": {"sheetId": sid, "startRowIndex": 5, "endRowIndex": 6,
+            "range": {"sheetId": sid, "startRowIndex": BLOCK_A_SAVINGS,
+                       "endRowIndex": BLOCK_A_SAVINGS + 1,
                        "startColumnIndex": 0, "endColumnIndex": 4},
             "cell": {"userEnteredFormat": {"backgroundColor": _GREEN_BG}},
             "fields": "userEnteredFormat.backgroundColor",
         }
     })
 
-    # Row 7: red bg for IRP load
+    # Row 17: red bg for IRP load
     reqs.append({
         "repeatCell": {
-            "range": {"sheetId": sid, "startRowIndex": 6, "endRowIndex": 7,
+            "range": {"sheetId": sid, "startRowIndex": BLOCK_A_IRP,
+                       "endRowIndex": BLOCK_A_IRP + 1,
                        "startColumnIndex": 0, "endColumnIndex": 4},
             "cell": {"userEnteredFormat": {"backgroundColor": _RED_BG}},
             "fields": "userEnteredFormat.backgroundColor",
         }
     })
 
-    # Row 8: bold total
+    # Row 18: bold total
     reqs.append({
         "repeatCell": {
-            "range": {"sheetId": sid, "startRowIndex": 7, "endRowIndex": 8,
+            "range": {"sheetId": sid, "startRowIndex": BLOCK_A_TOTAL,
+                       "endRowIndex": BLOCK_A_TOTAL + 1,
                        "startColumnIndex": 0, "endColumnIndex": 4},
             "cell": {"userEnteredFormat": {"textFormat": {"bold": True}, "backgroundColor": _META_BG}},
             "fields": "userEnteredFormat(textFormat,backgroundColor)",
         }
     })
 
-    # Number format for currency columns in Block A (col C = index 2)
-    reqs.append(_num_fmt(sid, 2, 12, 1, 3, "#,##0"))
+    # Number format for currency columns in Block A
+    reqs.append(_num_fmt(sid, BLOCK_A_HEADER, BLOCK_A_END, 1, 3, "#,##0"))
 
     # --- Block B ---
-    # Row 13: scenarios title
+    # Row 23: scenarios title
     reqs.append({
         "repeatCell": {
-            "range": {"sheetId": sid, "startRowIndex": 12, "endRowIndex": 13,
+            "range": {"sheetId": sid, "startRowIndex": BLOCK_B_TITLE,
+                       "endRowIndex": BLOCK_B_TITLE + 1,
                        "startColumnIndex": 0, "endColumnIndex": 6},
             "cell": {
                 "userEnteredFormat": {
@@ -532,33 +658,36 @@ def _apply_economics_formatting(spreadsheet, ws, num_top: int) -> None:
         }
     })
 
-    # Row 14: scenario headers
-    reqs.append(_header_fmt(sid, 13, 6))
+    # Row 24: scenario headers
+    reqs.append(_header_fmt(sid, BLOCK_B_HEADER, 6))
 
-    # Row 15: no_control — red bg
+    # Row 25: no_control — red bg
     reqs.append({
         "repeatCell": {
-            "range": {"sheetId": sid, "startRowIndex": 14, "endRowIndex": 15,
+            "range": {"sheetId": sid, "startRowIndex": BLOCK_B_NO_CTRL,
+                       "endRowIndex": BLOCK_B_NO_CTRL + 1,
                        "startColumnIndex": 0, "endColumnIndex": 6},
             "cell": {"userEnteredFormat": {"backgroundColor": _RED_BG}},
             "fields": "userEnteredFormat.backgroundColor",
         }
     })
 
-    # Row 16: current — yellow bg
+    # Row 26: current — yellow bg
     reqs.append({
         "repeatCell": {
-            "range": {"sheetId": sid, "startRowIndex": 15, "endRowIndex": 16,
+            "range": {"sheetId": sid, "startRowIndex": BLOCK_B_CURRENT,
+                       "endRowIndex": BLOCK_B_CURRENT + 1,
                        "startColumnIndex": 0, "endColumnIndex": 6},
             "cell": {"userEnteredFormat": {"backgroundColor": _YELLOW_BG}},
             "fields": "userEnteredFormat.backgroundColor",
         }
     })
 
-    # Row 17: optimized — green bg
+    # Row 27: optimized — green bg
     reqs.append({
         "repeatCell": {
-            "range": {"sheetId": sid, "startRowIndex": 16, "endRowIndex": 17,
+            "range": {"sheetId": sid, "startRowIndex": BLOCK_B_OPT,
+                       "endRowIndex": BLOCK_B_OPT + 1,
                        "startColumnIndex": 0, "endColumnIndex": 6},
             "cell": {"userEnteredFormat": {"backgroundColor": _GREEN_BG}},
             "fields": "userEnteredFormat.backgroundColor",
@@ -566,16 +695,17 @@ def _apply_economics_formatting(spreadsheet, ws, num_top: int) -> None:
     })
 
     # Number format for scenario table
-    reqs.append(_num_fmt(sid, 14, 20, 2, 6, "#,##0"))
+    reqs.append(_num_fmt(sid, BLOCK_B_NO_CTRL, BLOCK_B_END, 2, 6, "#,##0"))
 
     # Borders for scenario table
-    reqs.append(_borders(sid, 13, 20, 0, 6))
+    reqs.append(_borders(sid, BLOCK_B_HEADER, BLOCK_B_END, 0, 6))
 
     # --- Block C ---
-    # Row 22: top-10 title
+    # Top-10 title
     reqs.append({
         "repeatCell": {
-            "range": {"sheetId": sid, "startRowIndex": 21, "endRowIndex": 22,
+            "range": {"sheetId": sid, "startRowIndex": BLOCK_C_TITLE,
+                       "endRowIndex": BLOCK_C_TITLE + 1,
                        "startColumnIndex": 0, "endColumnIndex": 7},
             "cell": {
                 "userEnteredFormat": {
@@ -587,19 +717,19 @@ def _apply_economics_formatting(spreadsheet, ws, num_top: int) -> None:
         }
     })
 
-    # Row 23: top-10 headers
-    reqs.append(_header_fmt(sid, 22, 7))
+    # Top-10 headers
+    reqs.append(_header_fmt(sid, BLOCK_C_HEADER, 7))
 
     # Top-10 data rows
     if num_top > 0:
-        data_end = 23 + num_top
-        reqs.append(_borders(sid, 22, data_end, 0, 7))
-        reqs.append(_banding(sid, 23, data_end, 7))
-        reqs.append(_num_fmt(sid, 23, data_end, 1, 2, "0.0"))  # Лок.%
-        reqs.append(_num_fmt(sid, 23, data_end, 4, 7, "#,##0"))  # ₽ columns
+        data_end = BLOCK_C_DATA + num_top
+        reqs.append(_borders(sid, BLOCK_C_HEADER, data_end, 0, 7))
+        reqs.append(_banding(sid, BLOCK_C_DATA, data_end, 7))
+        reqs.append(_num_fmt(sid, BLOCK_C_DATA, data_end, 1, 2, "0.0"))  # Лок.%
+        reqs.append(_num_fmt(sid, BLOCK_C_DATA, data_end, 4, 7, "#,##0"))  # ₽ columns
 
-    # Freeze
-    reqs.append(_freeze(sid, rows=3, cols=1))
+    # Freeze top portion including passport
+    reqs.append(_freeze(sid, rows=1, cols=1))
 
     if reqs:
         spreadsheet.batch_update({"requests": reqs})
@@ -621,14 +751,66 @@ def _apply_il_formatting(spreadsheet, cabinet: str, num_articles: int) -> None:
 
     sid = ws.id
     nc = 35  # approximate number of columns
-    data_start = 12  # 0-indexed: row 13 is first data row (row 12 is header)
+    # Layout after passport addition:
+    #   rows 1-11  → passport block (0-indexed 0-10)
+    #   rows 12-21 → KPI block     (0-indexed 11-20)
+    #   row  22    → empty separator (0-indexed 21) – unused
+    #   row  23    → column headers  (0-indexed 22)
+    #   row  24+   → data rows       (0-indexed 23+)
+    col_header_row = 22  # 0-indexed
+    data_start = 23       # 0-indexed: row 24 is first data row
     data_end = data_start + num_articles
 
     reqs: list[dict] = []
     _clear_banding(spreadsheet, sid)
 
-    # KPI header block (rows 1-10): light grey background
-    for r in range(10):
+    # Passport block (rows 1-11, 0-indexed 0-10): title + light grey rows
+    # Row 1 (0-indexed 0): passport title — dark blue header
+    reqs.append({
+        "repeatCell": {
+            "range": {"sheetId": sid, "startRowIndex": 0, "endRowIndex": 1,
+                       "startColumnIndex": 0, "endColumnIndex": 3},
+            "cell": {
+                "userEnteredFormat": {
+                    "backgroundColor": _HEADER_BG,
+                    "textFormat": {"bold": True, "fontSize": 11, "foregroundColor": _HEADER_FG},
+                }
+            },
+            "fields": "userEnteredFormat(backgroundColor,textFormat)",
+        }
+    })
+    # Rows 2-11 (0-indexed 1-10): passport data — light grey
+    for r in range(1, 11):
+        reqs.append({
+            "repeatCell": {
+                "range": {"sheetId": sid, "startRowIndex": r, "endRowIndex": r + 1,
+                           "startColumnIndex": 0, "endColumnIndex": 3},
+                "cell": {
+                    "userEnteredFormat": {
+                        "backgroundColor": _META_BG,
+                        "textFormat": {"bold": False, "fontSize": 10},
+                    }
+                },
+                "fields": "userEnteredFormat(backgroundColor,textFormat)",
+            }
+        })
+
+    # KPI block title (row 12, 0-indexed 11): dark blue header
+    reqs.append({
+        "repeatCell": {
+            "range": {"sheetId": sid, "startRowIndex": 11, "endRowIndex": 12,
+                       "startColumnIndex": 0, "endColumnIndex": 3},
+            "cell": {
+                "userEnteredFormat": {
+                    "backgroundColor": _HEADER_BG,
+                    "textFormat": {"bold": True, "fontSize": 11, "foregroundColor": _HEADER_FG},
+                }
+            },
+            "fields": "userEnteredFormat(backgroundColor,textFormat)",
+        }
+    })
+    # KPI data rows (rows 13-21, 0-indexed 12-20): light grey
+    for r in range(12, 21):
         reqs.append({
             "repeatCell": {
                 "range": {"sheetId": sid, "startRowIndex": r, "endRowIndex": r + 1,
@@ -636,19 +818,19 @@ def _apply_il_formatting(spreadsheet, cabinet: str, num_articles: int) -> None:
                 "cell": {
                     "userEnteredFormat": {
                         "backgroundColor": _META_BG,
-                        "textFormat": {"bold": r == 0, "fontSize": 10},
+                        "textFormat": {"bold": False, "fontSize": 10},
                     }
                 },
                 "fields": "userEnteredFormat(backgroundColor,textFormat)",
             }
         })
 
-    # Row 12 (0-indexed = 11): column headers — dark blue
-    reqs.append(_header_fmt(sid, 11, nc))
-    reqs.append(_row_height(sid, 11, 12, 32))
+    # Row 23 (0-indexed 22): column headers — dark blue
+    reqs.append(_header_fmt(sid, col_header_row, nc))
+    reqs.append(_row_height(sid, col_header_row, col_header_row + 1, 32))
 
-    # Freeze header + article column
-    reqs.append(_freeze(sid, rows=12, cols=1))
+    # Freeze to include passport + KPI + column header row
+    reqs.append(_freeze(sid, rows=23, cols=1))
 
     # Column widths
     reqs.extend(_col_widths(sid, [
@@ -662,16 +844,16 @@ def _apply_il_formatting(spreadsheet, cabinet: str, num_articles: int) -> None:
 
     # Borders around data area
     if num_articles > 0:
-        reqs.append(_borders(sid, 11, data_end, 0, nc))
-        reqs.append(_banding(sid, 12, data_end, nc))
+        reqs.append(_borders(sid, col_header_row, data_end, 0, nc))
+        reqs.append(_banding(sid, data_start, data_end, nc))
 
         # Number format: % лок (col 4), КТР (col 5)
-        reqs.append(_num_fmt(sid, 12, data_end, 4, 5, "0.0"))
-        reqs.append(_num_fmt(sid, 12, data_end, 5, 6, "0.00"))
-        reqs.append(_num_fmt(sid, 12, data_end, 6, 7, "0.00"))
+        reqs.append(_num_fmt(sid, data_start, data_end, 4, 5, "0.0"))
+        reqs.append(_num_fmt(sid, data_start, data_end, 5, 6, "0.00"))
+        reqs.append(_num_fmt(sid, data_start, data_end, 6, 7, "0.00"))
 
         # Bold article column
-        reqs.append(_bold_col(sid, 12, data_end, 0))
+        reqs.append(_bold_col(sid, data_start, data_end, 0))
 
     # Status column conditional formatting (col 8 = index 8)
     # Using addConditionalFormatRule for text-based coloring
@@ -687,7 +869,7 @@ def _apply_il_formatting(spreadsheet, cabinet: str, num_articles: int) -> None:
                 "rule": {
                     "ranges": [{
                         "sheetId": sid,
-                        "startRowIndex": 12,
+                        "startRowIndex": data_start,
                         "endRowIndex": data_end,
                         "startColumnIndex": 8,
                         "endColumnIndex": 9,

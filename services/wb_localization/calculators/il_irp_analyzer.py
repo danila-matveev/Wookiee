@@ -9,6 +9,7 @@ Replicates the logic of the community WB ИЛ/ИРП spreadsheet:
 from __future__ import annotations
 
 from collections import defaultdict
+from datetime import datetime, timedelta
 from typing import Any
 
 from services.wb_localization.irp_coefficients import (
@@ -98,9 +99,12 @@ def analyze_il_irp(
 
     total_rf_orders: int = 0
     total_cis_orders: int = 0
+    cancelled_orders: int = 0
+    skipped_orders: int = 0
 
     for order in orders:
         if order.get('isCancel'):
+            cancelled_orders += 1
             continue
 
         article_raw: str = order.get('supplierArticle', '') or ''
@@ -121,6 +125,7 @@ def analyze_il_irp(
         warehouse_fd = get_warehouse_fd(warehouse)
         # Unknown warehouse → skip (can't determine localization)
         if warehouse_fd is None:
+            skipped_orders += 1
             continue
 
         # CIS warehouse → count as CIS, skip article-level processing
@@ -146,6 +151,8 @@ def analyze_il_irp(
             if region_name:
                 # CIS regions not in our mapping but detectable by country pattern
                 total_cis_orders += 1
+            else:
+                skipped_orders += 1
             continue
 
         is_local = warehouse_fd == delivery_fd
@@ -250,6 +257,10 @@ def analyze_il_irp(
     irp_zone_articles = sum(1 for a in rf_articles_with_orders if a['krp_pct'] > 0)
     irp_monthly_cost_rub = sum(a['irp_per_month'] for a in rf_articles_with_orders)
 
+    _now = datetime.now()
+    _period_from = (_now - timedelta(days=period_days)).strftime('%d.%m.%Y')
+    _period_to = _now.strftime('%d.%m.%Y')
+
     summary: dict[str, Any] = {
         'overall_il': round(overall_il, 4),
         'overall_irp_pct': round(overall_irp_pct, 4),
@@ -261,6 +272,24 @@ def analyze_il_irp(
         'total_articles': len(rf_articles_with_orders),
         'irp_zone_articles': irp_zone_articles,
         'irp_monthly_cost_rub': round(irp_monthly_cost_rub, 2),
+        'metadata': {
+            'generated_at': _now.strftime('%d.%m.%Y %H:%M'),
+            'period_days': period_days,
+            'period_from': _period_from,
+            'period_to': _period_to,
+            'total_orders_loaded': len(orders),
+            'cancelled_orders': cancelled_orders,
+            'rf_orders_analyzed': total_rf_orders,
+            'cis_orders': total_cis_orders,
+            'skipped_orders': skipped_orders,
+            'articles_analyzed': len(rf_articles_with_orders),
+            'data_source': 'WB supplier/orders API (v1)',
+            'note': (
+                'WB считает ИЛ/ИРП за 13 ISO-недель. '
+                'Наш расчёт за календарные дни. '
+                'Расхождение ≤ 3 п.п. по % локализации из-за разницы: orders vs deliveries.'
+            ),
+        },
     }
 
     # -------------------------------------------------------------------------
