@@ -640,25 +640,26 @@ def run_for_cabinet(
     report_path = analysis['report_path']
     print(f"\n   Отчёт сохранён: {report_path}")
 
+    # Module 2: ИЛ/ИРП анализ (в обоих режимах: CLI и service)
+    il_irp = None
+    if not getattr(args, 'skip_il_analysis', False):
+        print("\n4. ИЛ/ИРП анализ...")
+        il_irp = analyze_il_irp(
+            orders=orders,
+            prices_dict=prices_dict,
+            period_days=args.days,
+        )
+        s = il_irp['summary']
+        print(f"   ИЛ: {s['overall_il']:.2f}, ИРП: {s['overall_irp_pct']:.2f}%")
+        print(f"   Артикулов: {s['total_articles']}, в ИРП-зоне: {s['irp_zone_articles']}")
+        print(f"   ИРП-нагрузка: {s['irp_monthly_cost_rub']:,.0f} ₽/мес")
+
     if return_result:
         result = _build_result_payload(cabinet.name, analysis)
         if history_store is not None:
             _attach_comparison_and_save(result, history_store)
-
-        # Module 2: ИЛ/ИРП анализ
-        if not getattr(args, 'skip_il_analysis', False):
-            print("\n4. ИЛ/ИРП анализ...")
-            il_irp = analyze_il_irp(
-                orders=orders,
-                prices_dict=prices_dict,
-                period_days=args.days,
-            )
+        if il_irp:
             result['il_irp'] = il_irp
-            s = il_irp['summary']
-            print(f"   ИЛ: {s['overall_il']:.2f}, ИРП: {s['overall_irp_pct']:.2f}%")
-            print(f"   Артикулов: {s['total_articles']}, в ИРП-зоне: {s['irp_zone_articles']}")
-            print(f"   ИРП-нагрузка: {s['irp_monthly_cost_rub']:,.0f} ₽/мес")
-
         return result
 
     # 5. Консольная сводка

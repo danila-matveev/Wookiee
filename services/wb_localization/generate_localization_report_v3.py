@@ -228,7 +228,7 @@ def load_barcodes(sku_db_path):
     return barcode_dict
 
 
-def load_statuses(skip=False, cabinet_name: str | None = None):
+def load_statuses(skip=False, cabinet_name=None):
     """
     Загрузка статусов артикулов из Supabase (graceful degradation).
 
