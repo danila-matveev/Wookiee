@@ -83,7 +83,7 @@ _PCT_COLS = {17, 21, 24, 30, 31, 32, 40, 43, 46, 49,
              52, 55, 58, 61, 67, 68, 69, 70, 71, 72,
              73, 74, 75, 76}
 _INT_COLS = {13, 19, 20, 37}
-_DEC_COLS = {14, 34}  # decimal (1 digit)
+_DEC_COLS = {14, 34}  # decimal (2 digits)
 
 
 def sync(start_date: str | None = None, end_date: str | None = None) -> int:
@@ -440,7 +440,7 @@ def _calculate_derived_metrics(item, days_in_period):
     orders_tbl = item.get('orders_table_count', 0)
 
     # Orders
-    item['orders_per_day'] = round(_safe_div(orders, days_in_period), 1)
+    item['orders_per_day'] = round(_safe_div(orders, days_in_period), 2)
     item['avg_check_orders_bspp'] = round(_safe_div(orders_rub, orders_tbl), 2)
     item['avg_check_orders_aspp'] = round(
         _safe_div(orders_rub, orders_tbl) * (1 - _safe_div(spp_amount, rev_gross)), 2
@@ -810,10 +810,10 @@ def _apply_formatting(spreadsheet, ws, num_data_rows, num_cols):
         reqs.append(_num_fmt_req(sheet_id, data_start, data_end, col, col + 1,
                                  '#,##0'))
 
-    # Decimal columns: #,##0.0
+    # Decimal columns: #,##0.00
     for col in sorted(_DEC_COLS):
         reqs.append(_num_fmt_req(sheet_id, data_start, data_end, col, col + 1,
-                                 '#,##0.0'))
+                                 '#,##0.00'))
 
     # --- Date format for B1:C1 (dd.mm.yyyy) ---
     reqs.append(_num_fmt_req(sheet_id, 0, 1, 1, 3, 'dd.mm.yyyy'))
