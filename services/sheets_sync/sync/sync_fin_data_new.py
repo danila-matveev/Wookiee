@@ -95,9 +95,9 @@ def _read_barcodes_from_sheet(ws) -> tuple[list[str], list[list[str]]]:
 
 
 def _read_statuses_from_sheet(ws) -> list[str]:
-    """Read product status from column F (rows 3+)."""
-    col_f = ws.col_values(6)  # column F
-    return [str(v).strip() for v in col_f[2:]]
+    """Read product status from column G (rows 3+)."""
+    col_g = ws.col_values(7)  # column G = Статус товара
+    return [str(v).strip() for v in col_g[2:]]
 
 
 # ---- Row building ----
