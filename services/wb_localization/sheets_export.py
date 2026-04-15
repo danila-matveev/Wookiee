@@ -85,6 +85,12 @@ def export_to_sheets(result: dict) -> str:
     # --- Форматирование всех листов кабинета ---
     _apply_formatting(spreadsheet, cabinet)
 
+    # --- Module 2: ИЛ/ИРП analysis sheets ---
+    il_irp = result.get("il_irp")
+    if il_irp:
+        _write_il_analysis(il_irp, cabinet, spreadsheet)
+        _write_reference_sheet(spreadsheet)
+
     url = f"https://docs.google.com/spreadsheets/d/{VASILY_SPREADSHEET_ID}"
     logger.info("Экспорт в Sheets: %s (%s)", cabinet, url)
     return url
@@ -210,6 +216,99 @@ def _write_top_problems(spreadsheet, cabinet: str, top_problems: list, meta):
         ])
 
     clear_and_write(ws, headers, data, meta_cells=meta)
+
+
+def _write_il_analysis(il_irp: dict, cabinet: str, spreadsheet) -> None:
+    """Write per-article ИЛ analysis sheet (37 columns)."""
+    sheet_name = f"ИЛ Анализ {cabinet}"
+    ws = get_or_create_worksheet(spreadsheet, sheet_name, rows=2000, cols=37)
+
+    summary = il_irp["summary"]
+    articles = il_irp["articles"]
+
+    # Header KPIs (rows 1-10)
+    header_data = [
+        ["", "Метрика", "Значение"],
+        ["", "ИЛ (Индекс Локализации)", summary["overall_il"]],
+        ["", "ИРП", f"{summary['overall_irp_pct']:.2f}%"],
+        ["", "Локальных заказов WB (РФ)", summary["local_orders"]],
+        ["", "Нелокальных заказов WB (РФ)", summary["nonlocal_orders"]],
+        ["", "% локализации (всего)", f"{summary['loc_pct']:.1f}%"],
+        ["", "Всего FBW заказов (РФ)", summary["total_rf_orders"]],
+        ["", "Артикулов в расчёте", summary["total_articles"]],
+        ["", "Артикулов в ИРП-зоне", summary["irp_zone_articles"]],
+        ["", "ИРП-нагрузка ₽/мес", f"{summary['irp_monthly_cost_rub']:,.0f}"],
+    ]
+
+    # Region names for column headers
+    region_short = ["Центр.", "Юж.+СК", "Привол.", "Урал.", "Дальн.+Сиб.", "С-Зап."]
+    region_keys = [
+        "Центральный", "Южный + Северо-Кавказский", "Приволжский",
+        "Уральский", "Дальневосточный + Сибирский", "Северо-Западный",
+    ]
+
+    # Column headers (row 12)
+    col_headers = [
+        "Артикул", "ВБ Лок. (РФ)", "ВБ Нелок. (РФ)", "Всего WB (РФ)",
+        "% лок.", "КТР", "КРП,%", "Вклад шт×КТР", "Статус",
+    ]
+    for rn in region_short:
+        col_headers.extend([f"Лок. {rn}", f"Нелок. {rn}", f"Всего {rn}", f"% лок. {rn}"])
+    col_headers.extend(["Вклад в ИЛ", "ИРП ₽/мес"])
+
+    # Data rows
+    data_rows = []
+    for art in articles:
+        row = [
+            art["article"],
+            art["wb_local"], art["wb_nonlocal"], art["wb_total"],
+            art["loc_pct"], art["ktr"], art["krp_pct"],
+            art["weighted"], art["status"],
+        ]
+        for rk in region_keys:
+            rg = art.get("regions", {}).get(rk, {"local": 0, "nonlocal": 0, "total": 0, "pct": 0})
+            row.extend([rg["local"], rg["nonlocal"], rg["total"], rg["pct"]])
+        row.extend([art["contribution"], art.get("irp_per_month", 0)])
+        data_rows.append(row)
+
+    ws.clear()
+    write_range(ws, 1, 1, header_data)
+    write_range(ws, 12, 1, [col_headers])
+    if data_rows:
+        write_range(ws, 13, 1, data_rows)
+    logger.info("Записан лист '%s': %d артикулов", sheet_name, len(articles))
+
+
+def _write_reference_sheet(spreadsheet) -> None:
+    """Write static reference sheet with КТР/КРП tables and formulas."""
+    from services.wb_localization.irp_coefficients import COEFF_TABLE
+
+    ws = get_or_create_worksheet(spreadsheet, "Справочник", rows=40, cols=10)
+
+    data = [
+        ["Таблица КТР (с 23.03.2026)", "", "", "", "Таблица КРП (с 23.03.2026)"],
+        ["Доля лок., %", "КТР", "Описание", "", "Доля лок., %", "КРП, %", "Описание"],
+    ]
+
+    for min_loc, max_loc, ktr, krp in COEFF_TABLE:
+        ktr_desc = "Скидка" if ktr < 1.0 else ("Базовый" if ktr == 1.0 else "Штраф")
+        krp_desc = "Нет надбавки" if krp == 0 else f"{krp}% от цены"
+        data.append([
+            f"{min_loc:.0f}–{max_loc:.0f}%", ktr, ktr_desc,
+            "", f"{min_loc:.0f}–{max_loc:.0f}%", f"{krp:.2f}%", krp_desc,
+        ])
+
+    data.append([])
+    data.append(["Формулы:"])
+    data.append(["ИЛ = Σ(заказы × КТР) / Σ(заказы)  — средневзвешенный КТР"])
+    data.append(["ИРП = Σ(заказы × КРП%) / (РФ + СНГ заказы)  — СНГ в знаменателе с КРП=0"])
+    data.append([])
+    data.append(["Статусы:"])
+    data.append(["КТР ≤ 0.90 → Отличная | 0.91–1.05 → Нейтральная | 1.06–1.30 → Слабая | ≥ 1.31 → Критическая"])
+
+    ws.clear()
+    write_range(ws, 1, 1, data)
+    logger.info("Записан лист 'Справочник'")
 
 
 _HISTORY_TITLE = "ИСТОРИЯ РАСЧЁТОВ ЛОКАЛИЗАЦИИ"
