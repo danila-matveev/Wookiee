@@ -15,6 +15,7 @@ __all__ = [
     "_DATA_SOURCE",
     "_get_wb_connection",
     "_get_ozon_connection",
+    "_get_supabase_connection",
     "_db_cursor",
     "to_float",
     "format_num",
@@ -48,6 +49,18 @@ def _get_ozon_connection():
             cur.execute("SET search_path TO ozon, public")
         return conn
     return psycopg2.connect(**DB_CONFIG, database=DB_OZON)
+
+
+def _get_supabase_connection():
+    """Get a connection to the Supabase pooler using root .env settings."""
+    return psycopg2.connect(
+        host=os.getenv("SUPABASE_HOST", "aws-1-ap-northeast-2.pooler.supabase.com"),
+        port=int(os.getenv("SUPABASE_PORT", "5432")),
+        database=os.getenv("SUPABASE_DB", "postgres"),
+        user=os.getenv("SUPABASE_USER", "postgres"),
+        password=os.getenv("SUPABASE_PASSWORD", ""),
+        sslmode="require",
+    )
 
 
 @contextmanager

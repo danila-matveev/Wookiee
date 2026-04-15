@@ -5,6 +5,37 @@
 
 ---
 
+## [2026-04-15] WB Tariffs ETL: bootstrap миграции, исторический импорт и daily cron
+
+### Что сделано
+- Обновлена миграция `007_create_wb_tariffs.py`: подключение переведено на `SUPABASE_*`, в таблицу `public.wb_tariffs` добавлен `storage_coef`, а RLS/policies сделаны идемпотентными для повторного запуска.
+- В `shared/data_layer/_connection.py` добавлен единый helper `_get_supabase_connection()`, и логистический аудит переведён на него для чтения и записи тарифов.
+- `tariff_collector.py` теперь сохраняет `storage_coef`, использует `SUPABASE_*` и остаётся безопасным для повторного запуска через `ON CONFLICT`.
+- Добавлен исторический импорт `import_historical_tariffs.py`: чтение Excel `Тарифы на логискику.xlsx`, batched upsert по 1000 строк и логирование прогресса.
+- Добавлен bootstrap-скрипт `setup_wb_tariffs.py`: применяет миграцию, импортирует историю, дозаполняет gap через WB API и печатает итоговую верификацию `COUNT/MIN/MAX`.
+- Добавлена host-level cron-обёртка `cron_tariff_collector.sh` для сервера Timeweb и обновлена документация по ручной установке `crontab`.
+- Расширены тесты логистического аудита для parsing/ETL helper-логики и обновлены README/algorithm docs под новый поток тарифов.
+
+### Зачем
+До изменения таблица `wb_tariffs` не была развернута в Supabase, исторические коэффициенты жили только в локальном Excel, а ежедневный сбор не был подготовлен к серверному cron. Из-за этого Tier 2 lookup в логистическом аудите был ненадёжен и зависел от ручной подготовки окружения.
+
+### Обновлено
+- [x] `sku_database/scripts/migrations/007_create_wb_tariffs.py`
+- [x] `shared/data_layer/_connection.py`
+- [x] `services/logistics_audit/calculators/warehouse_coef_resolver.py`
+- [x] `services/logistics_audit/etl/tariff_collector.py`
+- [x] `services/logistics_audit/etl/import_historical_tariffs.py`
+- [x] `services/logistics_audit/etl/setup_wb_tariffs.py`
+- [x] `services/logistics_audit/etl/cron_tariff_collector.sh`
+- [x] `tests/services/logistics_audit/test_api_parsing.py`
+- [x] `tests/services/logistics_audit/test_tariff_etl.py`
+- [x] `README.md`
+- [x] `services/logistics_audit/README.md`
+- [x] `docs/logistics-audit-algorithm-v2.md`
+- [x] `docs/development-history.md`
+
+---
+
 ## [2026-02-25] Аудит SKU Database + ТЗ Dashboard каталога
 
 ### Что сделано
@@ -220,37 +251,3 @@
 ### Следующие шаги
 - Обновить docs/agents/telegram-bot.md (рефрейминг Олега как AI-агента, не бота)
 - Обновить docs/agents/lyudmila-bot.md (аналогично)
-
----
-
-## [2026-02-11] IEE-агент Людмила — полная реализация
-
-### Что сделано
-- Создан модуль `lyudmila_bot/` — отдельный Telegram-бот (aiogram 3.15)
-- Bitrix24 async-обёртка (`services/bitrix_service.py`) через `asyncio.to_thread()`
-- Кеш сотрудников с нечётким поиском русских имён (54 уменьшительных, thefuzz)
-- SQLite хранилище пользователей и лога действий
-- Email-авторизация через Bitrix24
-- Claude API клиент (Sonnet 4.5) — мозг Людмилы
-- ИИ-ассистент создания задач: валидация процесс/задача, чеклист, целевой результат
-- ИИ-ассистент создания встреч: повестка, подготовка, pre-reading
-- Утренний дайджест с ИИ-подсказками (per-user timezone, APScheduler)
-- Личность Людмилы: промпты, характер, правила (`persona.py`)
-- UX без тупиков: кнопка «Назад» на каждом экране, `/menu` из любого FSM-состояния
-- Документация: `docs/agents/lyudmila-bot.md`, обновлены `docs/agents/README.md`, `AGENTS.md`
-
-### Зачем
-Команде Wookiee нужен ИИ-ассистент для структурной работы с CRM Bitrix24. Людмила экономит время: трансформирует сырые описания задач и встреч в бизнес-ориентированные документы с чёткими целевыми результатами.
-
-### Обновлено
-- [x] `lyudmila_bot/` (24 Python-файла, ~123 KB)
-- [x] `docs/agents/lyudmila-bot.md` (создан)
-- [x] `docs/agents/README.md` (добавлена Людмила)
-- [x] `AGENTS.md` (добавлен компонент)
-- [x] `docs/development-history.md` (эта запись)
-
-### Следующие шаги
-- Live-тестирование бота в Telegram
-- Dockerfile + docker-compose для деплоя
-- ADR для архитектурного решения (отдельный бот vs модуль)
-

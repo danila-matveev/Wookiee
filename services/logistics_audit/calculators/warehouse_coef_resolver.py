@@ -1,9 +1,10 @@
 """3-tier warehouse coefficient resolution: fixation → Supabase → dlv_prc fallback."""
 from __future__ import annotations
 import logging
-import os
 from dataclasses import dataclass
 from datetime import date
+
+from shared.data_layer._connection import _get_supabase_connection
 
 logger = logging.getLogger(__name__)
 
@@ -114,28 +115,12 @@ def load_supabase_tariffs(date_from: date, date_to: date) -> dict[str, dict[date
     Returns: {warehouse_name: {date: delivery_coef / 100}}
     """
     try:
-        import psycopg2
-    except ImportError:
-        logger.warning("psycopg2 not installed, skipping Supabase tariff lookup")
-        return {}
-
-    # Same env vars as etl/tariff_collector.py (Supabase connection)
-    config = {
-        "host": os.getenv("POSTGRES_HOST", "localhost"),
-        "port": int(os.getenv("POSTGRES_PORT", "5432")),
-        "database": os.getenv("POSTGRES_DB", "postgres"),
-        "user": os.getenv("POSTGRES_USER", "postgres"),
-        "password": os.getenv("POSTGRES_PASSWORD", ""),
-        "sslmode": "require",
-    }
-
-    try:
-        conn = psycopg2.connect(**config)
+        conn = _get_supabase_connection()
         cur = conn.cursor()
         cur.execute(
             """
             SELECT dt, warehouse_name, delivery_coef
-            FROM wb_tariffs
+            FROM public.wb_tariffs
             WHERE dt BETWEEN %s AND %s
             """,
             (date_from, date_to),

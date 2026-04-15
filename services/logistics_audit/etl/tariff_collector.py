@@ -16,6 +16,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
+from shared.data_layer._connection import _get_supabase_connection
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 load_dotenv(PROJECT_ROOT / ".env")
@@ -24,29 +25,17 @@ from services.logistics_audit.api.wb_tariffs import fetch_tariffs_box
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Supabase connection (reuse sku_database pattern)
-# ---------------------------------------------------------------------------
-
-_SUPABASE_CONFIG = {
-    "host": os.getenv("POSTGRES_HOST", "localhost"),
-    "port": int(os.getenv("POSTGRES_PORT", "5432")),
-    "database": os.getenv("POSTGRES_DB", "postgres"),
-    "user": os.getenv("POSTGRES_USER", "postgres"),
-    "password": os.getenv("POSTGRES_PASSWORD", ""),
-    "sslmode": "require",
-}
-
 UPSERT_SQL = """
 INSERT INTO wb_tariffs (dt, warehouse_name, delivery_coef, logistics_1l,
-                        logistics_extra_l, storage_1l_day, acceptance, geo_name)
-VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        logistics_extra_l, storage_1l_day, acceptance, storage_coef, geo_name)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
 ON CONFLICT (dt, warehouse_name) DO UPDATE SET
     delivery_coef     = EXCLUDED.delivery_coef,
     logistics_1l      = EXCLUDED.logistics_1l,
     logistics_extra_l = EXCLUDED.logistics_extra_l,
     storage_1l_day    = EXCLUDED.storage_1l_day,
     acceptance        = EXCLUDED.acceptance,
+    storage_coef      = EXCLUDED.storage_coef,
     geo_name          = EXCLUDED.geo_name
 """
 
@@ -58,10 +47,26 @@ def _get_api_key(cabinet: str) -> str:
     return key
 
 
+def build_tariff_rows(dt: date, tariffs: dict[str, object]) -> list[tuple]:
+    """Convert tariff snapshots to wb_tariffs upsert rows."""
+    return [
+        (
+            dt,
+            snap.warehouse_name,
+            snap.delivery_coef_pct,
+            snap.box_delivery_base,
+            snap.box_delivery_liter,
+            snap.box_storage_base,
+            0,
+            snap.storage_coef_pct,
+            snap.geo_name,
+        )
+        for snap in tariffs.values()
+    ]
+
+
 def collect_tariffs(dt: date, api_key: str) -> int:
     """Fetch tariffs for a single date and upsert into Supabase. Returns row count."""
-    import psycopg2
-
     date_str = dt.isoformat()
     logger.info("Fetching tariffs for %s", date_str)
 
@@ -70,21 +75,9 @@ def collect_tariffs(dt: date, api_key: str) -> int:
         logger.warning("No tariffs returned for %s", date_str)
         return 0
 
-    rows = [
-        (
-            dt,
-            snap.warehouse_name,
-            snap.delivery_coef_pct,
-            snap.box_delivery_base,
-            snap.box_delivery_liter,
-            snap.box_storage_base,
-            snap.box_storage_liter,
-            snap.geo_name,
-        )
-        for snap in tariffs.values()
-    ]
+    rows = build_tariff_rows(dt, tariffs)
 
-    conn = psycopg2.connect(**_SUPABASE_CONFIG)
+    conn = _get_supabase_connection()
     try:
         cur = conn.cursor()
         cur.executemany(UPSERT_SQL, rows)

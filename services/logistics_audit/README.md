@@ -65,7 +65,10 @@ services/logistics_audit/
 │   ├── sheet_tariffs_box.py   # Тарифы (короб)
 │   └── sheet_tariffs_pallet.py # Тарифы (монопалета)
 ├── etl/
-│   └── tariff_collector.py    # Daily ETL: WB tariffs → Supabase
+│   ├── tariff_collector.py    # Daily ETL: WB tariffs → Supabase
+│   ├── import_historical_tariffs.py # Исторический импорт Excel → Supabase
+│   ├── setup_wb_tariffs.py    # Bootstrap: schema + import + API gap fill
+│   └── cron_tariff_collector.sh # Host-level cron wrapper для Timeweb
 ├── validate_fisanov.py        # Валидация на эталоне ИП Фисанова
 ├── recalculate_ooo.py         # Перерасчёт ООО из локальных файлов (без API)
 ├── generate_fisanov_report.py # Генерация отчёта сравнения с Фисановым
@@ -99,14 +102,46 @@ services/logistics_audit/
 ## ETL тарифов складов
 
 ```bash
+# Полный bootstrap: миграция + исторический импорт + gap-fill через WB API
+python -m services.logistics_audit.etl.setup_wb_tariffs
+
+# Только исторический импорт Excel → Supabase
+python -m services.logistics_audit.etl.import_historical_tariffs
+
 # Сбор тарифов за сегодня
-python -m services.logistics_audit.etl.tariff_collector
+python -m services.logistics_audit.etl.tariff_collector --cabinet OOO
 
 # Бэкфилл за 30 дней
-python -m services.logistics_audit.etl.tariff_collector --backfill 30
+python -m services.logistics_audit.etl.tariff_collector --backfill 30 --cabinet OOO
 ```
 
-Данные сохраняются в Supabase таблицу `wb_tariffs` (RLS включён).
+Bootstrap-поток:
+1. `setup_wb_tariffs.py` вызывает миграцию `007_create_wb_tariffs.py`
+2. История из `Тарифы на логискику.xlsx` импортируется в `public.wb_tariffs`
+3. Разрыв после последней даты Excel дозаполняется через `tariff_collector.py`
+4. Повторный запуск безопасен: используется `ON CONFLICT (dt, warehouse_name) DO UPDATE`
+
+Данные сохраняются в Supabase таблицу `public.wb_tariffs` (RLS включён). В таблице хранятся и `delivery_coef`, и `storage_coef`; в текущей формуле аудита используется только `delivery_coef`.
+
+### Cron на сервере
+
+Host-level wrapper для Timeweb: `services/logistics_audit/etl/cron_tariff_collector.sh`
+
+Проверка shell-скрипта:
+
+```bash
+bash -n services/logistics_audit/etl/cron_tariff_collector.sh
+```
+
+Ручная установка cron на сервере (`ssh timeweb` → `crontab -e`):
+
+```cron
+PATH=/usr/local/bin:/usr/bin:/bin
+CRON_TZ=Europe/Moscow
+0 8 * * * /home/danila/projects/wookiee/services/logistics_audit/etl/cron_tariff_collector.sh
+```
+
+Cron запускает ежедневный сбор в 08:00 МСК и пишет логи в `/home/danila/projects/wookiee/logs/wb_tariffs/`.
 
 ## Перерасчёт ООО из локальных файлов
 

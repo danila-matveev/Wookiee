@@ -125,6 +125,7 @@ overpayment = delivery_rub - calculated_cost
 Берётся ближайшая дата `<= order_date` из таблицы `wb_tariffs` для данного склада.
 
 - Коэффициент хранится в процентах → делится на 100
+- В ETL также сохраняется `storage_coef`, но в текущей формуле аудита он не используется
 - `source = "supabase"`, `verified = True`
 
 ### Tier 3: dlv_prc fallback
@@ -328,7 +329,7 @@ reportDetailByPeriod v5 row
 
 | Таблица        | Описание                                           |
 |----------------|-----------------------------------------------------|
-| `wb_tariffs`   | Исторические коэффициенты складов (ETL-загрузка)   |
+| `wb_tariffs`   | Исторические коэффициенты складов: `delivery_coef` + `storage_coef` (ETL-загрузка) |
 
 ---
 

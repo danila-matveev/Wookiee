@@ -22,11 +22,15 @@
   - `traffic.wb_content_by_model` — **PER-MODEL воронка из content_analysis** (ВСЕ источники): [period, model, card_opens, add_to_cart, orders, buyouts]. **ИСПОЛЬЗОВАТЬ ДЛЯ CRO.**
   - `traffic.wb_by_model` — **ТОЛЬКО реклама** (wb_adv): [period, model, ad_views, ad_clicks, ad_spend, ad_to_cart, ad_orders, ctr, cpc]. НЕ для CRO!
   - `traffic.wb_organic_vs_paid` — органика vs реклама
+  - `traffic.ozon_total` — OZON канал итого: [period, ad_views, ad_clicks, ad_orders, ad_spend, ctr, cpc]
+  - `traffic.ozon_ad_funnel_by_model` — OZON рекламная воронка по моделям: [period, model, views(0), clicks, to_cart, orders, spend, ctr(0), cpc, cpo]
+  - `traffic.ozon_organic_estimated` — OZON органика (расч.): [period, model, total_orders, ad_orders, organic_orders, total_revenue, ad_spend]
   - `advertising` — рекламные расходы, ROMI, ДРР по моделям
   - `finance` — выручка, маржа по моделям
   - `sku_statuses` — статусы моделей (Продается / Выводим / Архив / Запуск)
   
   **КРИТИЧЕСКИ ВАЖНО:** Для CRO по моделям = `traffic.wb_content_by_model`. НЕ `traffic.wb_by_model` (реклама = завышенный CRO).
+  **OZON:** Нет органической воронки (нет аналога content_analysis). CRO не считать. Органика = расчётная (total - ad).
 - `{{DEPTH}}` — глубина: `day` / `week` / `month`
 - `{{PERIOD_LABEL}}` — текущий период
 - `{{PREV_PERIOD_LABEL}}` — предыдущий период
@@ -201,6 +205,21 @@ ORGANIC_VS_PAID:
   organic_orders_share: {current_pct: <n>, previous_pct: <n>, delta_pp: <n>},
   cr_organic: {current_pct: <n>, previous_pct: <n>, delta_pp: <n>},
   cr_paid: {current_pct: <n>, previous_pct: <n>, delta_pp: <n>}
+}
+
+OZON_OVERVIEW:
+{
+  channel_total: {
+    current: {total_orders: <n>, revenue: <n>, ad_spend: <n>, organic_orders_estimated: <n>, organic_share_pct: <n>, drr: <n>},
+    previous: {total_orders: <n>, revenue: <n>, ad_spend: <n>, organic_orders_estimated: <n>, organic_share_pct: <n>, drr: <n>},
+    delta: {orders_pct: <n>, revenue_pct: <n>, drr_pp: <n>}
+  },
+  models_summary: [
+    {model: "Wendy", total_orders_cur: <n>, total_orders_prev: <n>, delta_pct: <n>, ad_orders: <n>, organic_orders: <n>, revenue: <n>},
+    ...
+  ],
+  top_growers: [{model, delta_pct}],
+  top_fallers: [{model, delta_pct}]
 }
 ```
 

@@ -62,6 +62,7 @@ def test_parse_tariff_response():
     assert len(tariffs) == 1
     assert tariffs["Коледино"].box_delivery_base == 89.7
     assert tariffs["Коледино"].delivery_coef_pct == 195
+    assert tariffs["Коледино"].storage_coef_pct == 145
 
 
 def test_parse_cards_dimensions():

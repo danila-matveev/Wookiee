@@ -279,16 +279,26 @@ def md_to_notion_blocks(md_text: str) -> list:
             continue
 
         # Callout: > [icon] text  OR  > ⚠️ text  OR  > 💡 text
-        callout_match = re.match(r'^>\s*([^\s])\s+(.+)', line.strip())
+        # Use [^\s]+ to capture multi-codepoint emoji (e.g. ⚠️ = U+26A0 + U+FE0F)
+        callout_match = re.match(r'^>\s*([^\s]+)\s+(.+)', line.strip())
         if callout_match:
             icon = callout_match.group(1)
             callout_text = callout_match.group(2)
-            # Collect continuation lines (> text)
+            # Collect continuation lines (> text) but stop at new callout (> emoji text)
             i += 1
             while i < len(lines) and lines[i].strip().startswith('>'):
-                cont = lines[i].strip()
-                cont = re.sub(r'^>\s*', '', cont)
-                callout_text += '\n' + cont
+                cont_stripped = lines[i].strip()
+                # Stop if this is a new callout (> emoji text)
+                if re.match(r'^>\s*[^\s]+\s+.+', cont_stripped) and not cont_stripped.startswith('> '):
+                    break
+                # Check if it's a new callout with emoji (not just continuation text)
+                cont_after_gt = re.sub(r'^>\s*', '', cont_stripped)
+                if cont_after_gt and not cont_after_gt[0].isalpha() and not cont_after_gt[0].isdigit() and re.match(r'^[^\s]+\s+.+', cont_after_gt):
+                    # Looks like a new callout emoji — check if it matches the icon pattern
+                    potential_icon = cont_after_gt.split()[0]
+                    if len(potential_icon) <= 4 and not potential_icon.isascii():
+                        break
+                callout_text += '\n' + cont_after_gt
                 i += 1
             # Map common icons to colors
             color_map = {'⚠️': 'yellow_background', '❌': 'red_background',

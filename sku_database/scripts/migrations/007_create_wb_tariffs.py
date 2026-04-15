@@ -16,23 +16,25 @@ from pathlib import Path
 from dotenv import load_dotenv
 import os
 
-load_dotenv(Path(__file__).parent.parent.parent / ".env")
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+load_dotenv(PROJECT_ROOT / ".env")
 
 SUPABASE_CONFIG = {
-    "host": os.getenv("POSTGRES_HOST", "aws-1-ap-northeast-2.pooler.supabase.com"),
-    "port": int(os.getenv("POSTGRES_PORT", "5432")),
-    "database": os.getenv("POSTGRES_DB", "postgres"),
-    "user": os.getenv("POSTGRES_USER", "postgres.gjvwcdtfglupewcwzfhw"),
-    "password": os.getenv("POSTGRES_PASSWORD"),
+    "host": os.getenv("SUPABASE_HOST", "aws-1-ap-northeast-2.pooler.supabase.com"),
+    "port": int(os.getenv("SUPABASE_PORT", "5432")),
+    "database": os.getenv("SUPABASE_DB", "postgres"),
+    "user": os.getenv("SUPABASE_USER", "postgres.gjvwcdtfglupewcwzfhw"),
+    "password": os.getenv("SUPABASE_PASSWORD"),
     "sslmode": "require",
 }
 
 CREATE_TABLE_SQL = """
-CREATE TABLE IF NOT EXISTS wb_tariffs (
+CREATE TABLE IF NOT EXISTS public.wb_tariffs (
     id                BIGSERIAL PRIMARY KEY,
     dt                DATE           NOT NULL,
     warehouse_name    TEXT           NOT NULL,
     delivery_coef     INTEGER        NOT NULL DEFAULT 0,
+    storage_coef      INTEGER        NOT NULL DEFAULT 0,
     logistics_1l      NUMERIC(10,2)  NOT NULL DEFAULT 0,
     logistics_extra_l NUMERIC(10,2)  NOT NULL DEFAULT 0,
     storage_1l_day    NUMERIC(10,2)  NOT NULL DEFAULT 0,
@@ -44,22 +46,28 @@ CREATE TABLE IF NOT EXISTS wb_tariffs (
 );
 """
 
+ALTER_TABLE_SQL = """
+ALTER TABLE public.wb_tariffs
+    ADD COLUMN IF NOT EXISTS storage_coef INTEGER NOT NULL DEFAULT 0;
+"""
+
 CREATE_INDEX_SQL = """
 CREATE INDEX IF NOT EXISTS idx_wb_tariffs_dt_wh
-    ON wb_tariffs (dt, warehouse_name);
+    ON public.wb_tariffs (dt, warehouse_name);
 """
 
-RLS_SQL = """
-ALTER TABLE wb_tariffs ENABLE ROW LEVEL SECURITY;
-
-REVOKE ALL ON wb_tariffs FROM anon, authenticated;
-GRANT SELECT ON wb_tariffs TO authenticated;
-
-CREATE POLICY wb_tariffs_select ON wb_tariffs
-    FOR SELECT TO authenticated USING (true);
-
-REVOKE ALL ON SEQUENCE wb_tariffs_id_seq FROM anon, authenticated;
-"""
+RLS_STATEMENTS = [
+    "ALTER TABLE public.wb_tariffs ENABLE ROW LEVEL SECURITY;",
+    "REVOKE ALL ON public.wb_tariffs FROM anon, authenticated;",
+    "GRANT SELECT ON public.wb_tariffs TO authenticated;",
+    "DROP POLICY IF EXISTS service_role_full_access_wb_tariffs ON public.wb_tariffs;",
+    "CREATE POLICY service_role_full_access_wb_tariffs ON public.wb_tariffs "
+    "FOR ALL TO postgres USING (true) WITH CHECK (true);",
+    "DROP POLICY IF EXISTS authenticated_select_wb_tariffs ON public.wb_tariffs;",
+    "CREATE POLICY authenticated_select_wb_tariffs ON public.wb_tariffs "
+    "FOR SELECT TO authenticated USING (true);",
+    "REVOKE ALL ON SEQUENCE public.wb_tariffs_id_seq FROM anon, authenticated;",
+]
 
 
 def run():
@@ -74,19 +82,21 @@ def run():
         print("  Creating table wb_tariffs...")
         cur.execute(CREATE_TABLE_SQL)
 
+        print("  Ensuring storage_coef column exists...")
+        cur.execute(ALTER_TABLE_SQL)
+
         print("  Creating index idx_wb_tariffs_dt_wh...")
         cur.execute(CREATE_INDEX_SQL)
 
         print("  Enabling RLS and setting permissions...")
-        for stmt in RLS_SQL.strip().split(";"):
-            stmt = stmt.strip()
-            if stmt:
-                cur.execute(stmt + ";")
+        for stmt in RLS_STATEMENTS:
+            cur.execute(stmt)
 
         # Verify
         cur.execute(
             "SELECT column_name, data_type FROM information_schema.columns "
-            "WHERE table_name = 'wb_tariffs' ORDER BY ordinal_position"
+            "WHERE table_schema = 'public' AND table_name = 'wb_tariffs' "
+            "ORDER BY ordinal_position"
         )
         columns = cur.fetchall()
         print(f"  Table created with {len(columns)} columns:")
@@ -94,7 +104,8 @@ def run():
             print(f"    - {col_name}: {col_type}")
 
         cur.execute(
-            "SELECT relrowsecurity FROM pg_class WHERE relname = 'wb_tariffs'"
+            "SELECT relrowsecurity FROM pg_class "
+            "WHERE relnamespace = 'public'::regnamespace AND relname = 'wb_tariffs'"
         )
         rls_enabled = cur.fetchone()[0]
         print(f"  RLS enabled: {rls_enabled}")

@@ -6,6 +6,7 @@
 - `agents/oleg`
 - `agents/ibrahim`
 - `services/marketplace_etl`
+- `services/logistics_audit`
 - `services/sheets_sync`
 - `services/wb_localization`
 - `deploy`
@@ -23,6 +24,7 @@
 ### Services
 
 - `services/marketplace_etl/` — WB/OZON API -> PostgreSQL
+- `services/logistics_audit/` — аудит логистики WB + ETL тарифов складов в Supabase
 - `services/sheets_sync/` — синхронизация Google Sheets
 - `services/wb_localization/` — расчёт локализации WB + экспорт в Sheets
 - `services/vasily_api/` — HTTP trigger для запуска WB localization
@@ -100,6 +102,7 @@ graph TB
 |-------|-----------|--------|
 | [`shared/`](shared/) | Общая библиотека: config, data_layer, API-клиенты | Активен |
 | [`services/marketplace_etl/`](services/marketplace_etl/) | ETL-пайплайн WB/OZON API → PostgreSQL | Активен |
+| [`services/logistics_audit/`](services/logistics_audit/) | Аудит логистики WB + bootstrap/ETL тарифов складов → Supabase | Активен |
 | [`services/sheets_sync/`](services/sheets_sync/) | Синхронизация Google Sheets ↔ МП | Активен |
 | [`services/ozon_delivery/`](services/ozon_delivery/) | Оптимизация доставки OZON | Активен |
 | [`sku_database/`](sku_database/) | Товарная матрица (Supabase pooler). Заполняйте `POSTGRES_*` (fallback `SUPABASE_*`). | Активен |
@@ -138,6 +141,7 @@ Wookiee/
 │
 ├── services/                    — доменные сервисы
 │   ├── marketplace_etl/        — ETL-пайплайн WB/OZON → PostgreSQL
+│   ├── logistics_audit/        — аудит логистики WB + ETL тарифов складов → Supabase
 │   ├── sheets_sync/            — синхронизация Google Sheets ↔ МП
 │   └── ozon_delivery/          — оптимизация доставки OZON
 │
@@ -173,6 +177,12 @@ python -m services.sheets_sync
 
 # Marketplace ETL daily sync
 python -m services.marketplace_etl.scripts.run_daily_sync
+
+# WB tariffs bootstrap: schema + historical Excel + API gap backfill
+python -m services.logistics_audit.etl.setup_wb_tariffs
+
+# WB tariffs daily collector
+python -m services.logistics_audit.etl.tariff_collector --cabinet OOO
 
 # WB localization dry-run
 python -m services.wb_localization.run_localization --dry-run

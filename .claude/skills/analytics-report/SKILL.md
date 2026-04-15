@@ -1,295 +1,229 @@
 ---
 name: analytics-report
-description: Meta-orchestrator — runs or reuses finance/marketing/funnel reports, cross-validates, produces unified Executive Summary
+description: Pattern Brief — reads ALL existing reports (finance, marketing, funnel), finds multi-week trends, cross-report patterns, unresolved issues, produces a Decision Brief
 triggers:
   - /analytics-report
-  - analytics report
+  - /pattern-brief
   - аналитический отчёт
   - сводный отчёт
+  - паттерны
+  - что происходит
 ---
 
-# Analytics Report — Meta-Orchestrator v2
+# Pattern Brief — Аналитик с памятью
 
-Orchestrates the full analytics pipeline for Wookiee brand. Either generates all 3 deep reports from scratch (finance, marketing, funnel) or reuses existing ones, then cross-validates and produces a unified Executive Summary.
+Читает ВСЕ накопленные отчёты (finance, marketing, funnel) за несколько периодов, ищет тренды, кросс-паттерны и незакрытые проблемы. Выдаёт компактный Decision Brief для руководителя.
+
+**НЕ дублирует** отдельные отчёты. Находит то, что видно ТОЛЬКО при взгляде через несколько периодов и несколько модулей одновременно.
 
 ## Quick Start
 
 ```
-/analytics-report 2026-04-06 2026-04-12
+/pattern-brief
 ```
 
-**Estimated time:**
-- With existing reports: ~5 min (read → validate → synthesize → publish)
-- Full pipeline: ~45-60 min (3 skills ~15 min each → validate → synthesize → publish)
+Без аргументов — анализирует все доступные отчёты. Автоматически определяет последний период.
 
-**Results:**
-- MD: `docs/reports/{START}_{END}_analytics.md`
-- Notion: page in "Аналитические отчеты" (database `30158a2b-d587-8091-bfc3-000b83c6b747`)
-- Chat: Executive Summary
+```
+/pattern-brief 2026-04-12
+```
+
+С датой — фокусируется на неделе, включающей эту дату, + предыдущие периоды для сравнения.
+
+**Время:** ~3-5 мин (чтение отчётов + анализ)
+
+**Результаты:**
+- Chat: Decision Brief (основной формат — прямо в чат)
+- Notion: опционально, по запросу
 
 ---
 
-## Stage 0: Parse Arguments & Confirm
+## Stage 0: Собрать все отчёты
 
-Parse dates from user input:
+### Scan docs/reports/
 
-- **1 date** → `START = END = date`, `DEPTH = "day"`
-- **2 dates** → `START = first`, `END = second`, `DEPTH = "week"` if span ≤ 14, else `"month"`
-
-Compute:
+Найти все файлы по паттерну:
 ```
-PERIOD_LABEL = "DD.MM — DD.MM.YYYY" (or "DD.MM.YYYY" for daily)
-```
-
-### Check report availability
-
-Check if reports exist for this period:
-```
-docs/reports/{START}_{END}_finance.md
-docs/reports/{START}_{END}_marketing.md
-docs/reports/{START}_{END}_funnel.md
+docs/reports/*_finance.md
+docs/reports/*_marketing.md
+docs/reports/*_funnel.md
 ```
 
-### Confirm with user BEFORE starting
+Группировать по периодам. Определить:
+- Какие периоды покрыты полностью (все 3 отчёта)
+- Какие частично (1-2 из 3)
+- Самый последний полный период = ТЕКУЩИЙ
+- Предпоследний = ПРЕДЫДУЩИЙ
 
-**ALWAYS ask** the user what to do. Show status and options:
-
+Показать пользователю:
 ```
-📊 Сводный аналитический отчёт ({DEPTH}) за {PERIOD_LABEL}
+📊 Pattern Brief
 
-Статус отчётов:
-  - finance.md {✅ найден / ❌ отсутствует}
-  - marketing.md {✅ найден / ❌ отсутствует}
-  - funnel.md {✅ найден / ❌ отсутствует}
+Найдено отчётов:
+  Неделя 06-12 апр: finance ✅ marketing ✅ funnel ✅
+  Неделя 30 мар-05 апр: finance ✅ marketing ✅ funnel ✅
+  Неделя 16-22 мар: marketing ✅
 
-Варианты:
-1. Использовать готовые отчёты → свести в единый (быстро, ~5 мин)
-2. Сгенерировать недостающие → свести в единый (~15 мин за каждый)
-3. Перегенерировать ВСЕ отчёты заново → свести (~45-60 мин)
-
-Что делаем?
+Анализирую тренды за 2 полных периода...
 ```
 
-If all 3 exist, recommend option 1. If some missing, recommend option 2. Wait for user response before proceeding.
+### Read all reports
+
+Прочитать ВСЕ найденные отчёты (Read tool). Из каждого извлечь ключевые метрики:
+
+**Из Finance:**
+- Выручка, маржа, маржинальность, заказы
+- По каналам (WB/OZON)
+- План-факт (если есть)
+- Топ-3 драйвера и антидрайвера
+
+**Из Marketing:**
+- ДРР (внутр/внешн/общий)
+- Рекламный расход, CPO
+- Эффективность каналов
+
+**Из Funnel:**
+- CRO бренда
+- CRO по моделям (топ-3 рост, топ-3 падение)
+- Halo-эффект
+
+**Из каждого отчёта — рекомендации** (секции Рекомендации/Гипотезы).
 
 ---
 
-### Start Tool Logging
+## Stage 1: Pattern Analysis (Agent)
 
-```bash
-PYTHONPATH=. python3 -c "
-from shared.tool_logger import ToolLogger
-logger = ToolLogger('/analytics-report')
-run_id = logger.start(trigger='manual', user='danila', version='v2',
-    period_start='{START}', period_end='{END}', depth='{DEPTH}')
-print(f'RUN_ID={run_id}')
-"
-```
+Read prompt: `.claude/skills/analytics-report/prompts/pattern-analyzer.md`
+Read KB: `.claude/skills/analytics-report/references/analytics-kb.md`
 
-Save `RUN_ID`. If `None` — continue, logging is fire-and-forget.
+Launch **Pattern Analyzer** as a subagent (Agent tool):
 
-## Stage 1: Obtain Reports
+- `{{REPORTS}}` — ВСЕ прочитанные отчёты (полный текст)
+- `{{PERIODS}}` — список периодов с покрытием
+- `{{CURRENT_PERIOD}}` — последний полный период
+- `{{NOTION_GUIDE}}` — правила форматирования
 
-Based on user's choice in Stage 0:
+Анализатор ищет:
 
-### Option 1: Use existing reports
+### 1. Тренды метрик (3+ недели)
+- Маржинальность: растёт / падает / стагнирует?
+- CRO: тренд по модели?
+- ДРР: стабильный / растёт?
+- Заказы: динамика?
 
-Read all 3 files. Save as `finance_report`, `marketing_report`, `funnel_report`.
+### 2. Кросс-паттерны (между модулями)
+Связки, которые ни один отчёт не видит:
+- Модель X: маржа↓ [Finance] + CRO↓ [Funnel] + реклама ОК [Marketing] = ?
+- Канал Y: ДРР↑ [Marketing] + заказы↑ [Finance] + CRO↑ [Funnel] = работает!
+- Модель Z: рекомендовали 2 недели назад → результат?
 
-### Option 2: Generate missing only
+### 3. Повторяющиеся проблемы
+- Что упоминается как проблема 2+ раза подряд?
+- Что рекомендовали, но ничего не изменилось?
 
-For each missing report, invoke the corresponding Skill tool:
-- Missing finance → `Skill("finance-report", "{START} {END}")`
-- Missing marketing → `Skill("marketing-report", "{START} {END}")`
-- Missing funnel → `Skill("funnel-report", "{START} {END}")`
-
-Run missing skills sequentially (each uses significant context). Report progress after each completes. Read existing reports from files.
-
-### Option 3: Regenerate all
-
-Run ALL 3 skills sequentially:
-1. `Skill("finance-report", "{START} {END}")` → report progress
-2. `Skill("marketing-report", "{START} {END}")` → report progress
-3. `Skill("funnel-report", "{START} {END}")` → report progress
-
-After all reports are available, save as `finance_report`, `marketing_report`, `funnel_report`.
+### 4. Аномалии и разрывы
+- Метрика резко изменилась vs тренд?
+- Данные из разных отчётов противоречат друг другу?
 
 ---
 
-## Stage 2: Cross-Validation (Agent)
+## Stage 2: Output Decision Brief
 
-Read prompt: `.claude/skills/analytics-report/prompts/cross-validator.md`
+Формат: **чистый Markdown**, правила из `notion-formatting-guide.md`.
 
-Launch **Cross-Validator** as a subagent (Agent tool):
+### Структура (60-80 строк)
 
-- `{{FINANCE_REPORT}}` = full finance_report text
-- `{{MARKETING_REPORT}}` = full marketing_report text
-- `{{FUNNEL_REPORT}}` = full funnel_report text
-- `{{PERIOD_LABEL}}` = period label
-- `{{DEPTH}}` = depth
+```markdown
+# Pattern Brief — {CURRENT_PERIOD}
 
-The validator checks:
-1. **Number consistency** — same revenue/margin/orders across reports (tolerance ±2%)
-2. **Directional consistency** — if finance says margin↓, marketing shouldn't say margin↑
-3. **Completeness** — each report has its required sections
-4. **Data quality flags** — unified list from all 3 reports
+> 📊 Главный паттерн: {1 предложение — что происходит на уровне бренда}
 
-Save output as `validation_result`.
+## Дашборд (тренд)
 
-### Verdict Handling
+| Метрика | {период -2} | {период -1} | Текущий | Тренд |
+|---|---|---|---|---|
+| Маржинальность | X% | Y% | Z% | ↓↓ |
+| Заказы | X шт | Y шт | Z шт | ↑ |
+| ДРР общий | X% | Y% | Z% | → |
+| CRO (WB) | X% | Y% | Z% | ↓ |
 
-**PASS** (or minor discrepancies only) → proceed to Stage 3, note discrepancies.
+## Кросс-паттерны
 
-**FAIL** (critical inconsistencies):
-- Report to user which numbers conflict and by how much
-- Proceed to Stage 3 with discrepancy notes included (do not block)
-- The synthesizer will flag inconsistencies in the final report
+> 💡 {Паттерн 1 — кросс-модульный, со ссылками на источники}
+
+> 💡 {Паттерн 2}
+
+> ⚠️ {Паттерн 3 — проблемный}
+
+## Незакрытые вопросы
+
+| # | Проблема | Когда впервые | Сколько недель | Что рекомендовали | Результат |
+|---|---|---|---|---|---|
+| 1 | ... | ... | ... | ... | ... |
+
+## Чеклист на неделю
+
+| # | Приоритет | Действие | Эффект ₽ | Источник |
+|---|---|---|---|---|
+| 1 | 🔴 | ... | ... | Finance + Funnel |
+| 2 | 🟡 | ... | ... | Marketing |
+| 3 | 🟢 | ... | ... | Funnel |
+```
+
+### Правила
+
+1. **НЕ пересказывать** отчёты — только паттерны, тренды, кросс-ссылки
+2. **Конкретные числа** из отчётов (не "выросло", а "+12,4%")
+3. **Ссылки на источник** — "Finance секция VII", "Funnel модель Wendy"
+4. **Незакрытые вопросы** — если рекомендация повторяется 2+ раза, это красный флаг
+5. **Чеклист** — объединён из всех отчётов, без дублей, приоритизирован по ₽ влиянию
 
 ---
 
-## Stage 3: Executive Synthesis (Agent)
+## Stage 3: Publish (опционально)
 
-Read prompt: `.claude/skills/analytics-report/prompts/executive-synthesizer.md`
-Read formatting guide: `.claude/skills/analytics-report/templates/notion-formatting-guide.md`
+Если пользователь попросит — опубликовать в Notion через `shared.notion_client.NotionClient.sync_report()`.
 
-Launch **Executive Synthesizer** as a subagent (Agent tool):
+По умолчанию — только в чат. Pattern Brief ценен именно как быстрая сводка для принятия решений.
 
-- `{{FINANCE_REPORT}}` = full finance_report text
-- `{{MARKETING_REPORT}}` = full marketing_report text
-- `{{FUNNEL_REPORT}}` = full funnel_report text
-- `{{VALIDATION_RESULT}}` = validation_result
-- `{{PERIOD_LABEL}}` = period label
-- `{{DEPTH}}` = depth
-- `{{NOTION_GUIDE}}` = contents of notion-formatting-guide.md
-
-The synthesizer produces `final_document` — a unified report in pure Markdown (Notion-compatible).
-
-### Report Structure (8 sections)
-
-| # | Section | Source |
-|---|---------|--------|
-| I | Паспорт отчёта | All 3 — period, channels, data quality flags |
-| II | Резюме руководителя | Top 5 findings ranked by ₽ impact, cross-linked |
-| III | P&L бренда | Finance — revenue funnel, margin decomposition, plan-fact |
-| IV | Модельная декомпозиция | Finance — model P&L, top/bottom models, margin waterfall |
-| V | Маркетинг и реклама | Marketing — DRR, ROAS, efficiency matrix, external channels |
-| VI | Воронка и конверсия | Funnel — CRO/CRP, model funnels, halo-effect, conversion |
-| VII | Остатки и риски | Finance (inventory/turnover) + risk signals from all 3 |
-| VIII | Рекомендации и прогноз | Merged — prioritized actions, MTD forecast, control metrics |
-
-### Formatting Rules
-
-1. **Pure Markdown only** — pipe-tables, `## ▶` toggle headings, `> emoji text` callouts
-2. **NO HTML** — no `<table>`, `<callout>`, `<tr>`, `<td>` tags
-3. **Numbers from source reports** — never recalculate or invent
-4. **Cross-reference** — link findings across reports (e.g., Vuki margin↓ in finance + CRO↓ in funnel)
-5. **Conflict resolution** — if reports show different values, include both with note
-6. **Russian language** — all headers, terminology per analytics-kb.md
-7. **Number format** — `1 234 567 ₽`, `24,1%`, `+3,2 п.п.`
-8. **Model names** — Title Case (Wendy, Vuki, Ruby)
-9. **Callout usage** — `> ⚠️` warnings, `> 🔥` wins, `> 📊` data, `> 🚀` actions
+Если публикация нужна — сохранить MD и отправить в Notion:
+- report_type = "weekly" (или соответствующий)
+- title = "Pattern Brief за {PERIOD}"
 
 ---
-
-## Stage 4: Publication
-
-### 4.1 Save MD file
-
-```bash
-mkdir -p docs/reports
-```
-
-Write `final_document` to `docs/reports/{START}_{END}_analytics.md`
-
-### 4.2 Publish to Notion
-
-Use `mcp__claude_ai_Notion__notion-create-pages` with `parent.type = "data_source_id"`.
-
-- **Database ID (data_source_id):** `30158a2b-d587-8091-bfc3-000b83c6b747`
-- **Title:** `Сводный анализ за {PERIOD_LABEL}`
-- **Content:** Full `final_document` (all 8 sections, NEVER truncate)
-- **Properties:**
-  - Тип анализа = depth-dependent (see below)
-  - Источник = "Claude Code"
-  - Статус = "Актуальный"
-  - date:Период начала:start = `{START}` (YYYY-MM-DD)
-  - date:Период конца:start = `{END}` (YYYY-MM-DD)
-
-**Тип анализа by depth:**
-- `day` → "Ежедневный сводный анализ"
-- `week` → "Еженедельный сводный анализ"
-- `month` → "Ежемесячный сводный анализ"
-
-### 4.3 Chat Summary
-
-Show executive summary in chat (10-15 lines):
-
-```
-📊 Сводный аналитический отчёт ({DEPTH}) за {PERIOD_LABEL} — готов.
-
-Ключевые цифры:
-- Выручка: X ₽ (Δ Y%)
-- Маржа: X ₽ / Z% (Δ Y п.п.)
-- Заказы: X шт (Δ Y%)
-- ДРР: X% (внутр. A% + внешн. B%)
-- CRO: X% (Δ Y п.п.)
-
-Топ-находки:
-1. {Finding — biggest ₽ impact}
-2. {Finding — most actionable}
-3. {Finding — risk or opportunity}
-
-Валидация: {PASS/FAIL} ({count} расхождений)
-
-MD: docs/reports/{START}_{END}_analytics.md
-Notion: {notion_url}
-```
-
----
-
-### Finish Tool Logging
-
-```bash
-PYTHONPATH=. python3 -c "
-from shared.tool_logger import ToolLogger
-logger = ToolLogger('/analytics-report')
-logger.finish('{RUN_ID}', status='success',
-    result_url='{NOTION_URL}',
-    output_sections=8)
-"
-```
-
-If `RUN_ID` is empty — skip.
 
 ## Reference Files
 
 | File | Purpose |
 |---|---|
-| `prompts/cross-validator.md` | Cross-validates 3 reports |
-| `prompts/executive-synthesizer.md` | Merges 3 reports into 8-section summary |
-| `templates/notion-formatting-guide.md` | Notion Markdown formatting rules |
-| `references/analytics-kb.md` | Analytics business rules |
-| `references/data-sources.md` | Data source documentation |
+| `prompts/pattern-analyzer.md` | Main analysis prompt — trends, cross-patterns, unresolved issues |
+| `templates/notion-formatting-guide.md` | Formatting rules |
+| `references/analytics-kb.md` | Business rules and benchmarks |
 
-**Module skills (generate source reports):**
+**Source reports (read-only, generated by independent skills):**
 
-| Skill | Trigger | Output |
-|---|---|---|
-| `/finance-report` | `/finance-report START END` | `docs/reports/{S}_{E}_finance.md` + Notion |
-| `/marketing-report` | `/marketing-report START END` | `docs/reports/{S}_{E}_marketing.md` + Notion |
-| `/funnel-report` | `/funnel-report START END` | `docs/reports/{S}_{E}_funnel.md` + Notion |
+| Skill | Output |
+|---|---|
+| `/finance-report` | `docs/reports/{S}_{E}_finance.md` |
+| `/marketing-report` | `docs/reports/{S}_{E}_marketing.md` |
+| `/funnel-report` | `docs/reports/{S}_{E}_funnel.md` |
 
 ---
 
 ## Changelog
 
+### v3 (2026-04-15)
+- Complete redesign: Pattern Brief instead of meta-orchestrator
+- Reads ALL historical reports, not just current period
+- Trend analysis across multiple weeks
+- Cross-pattern detection between modules
+- "Unresolved issues" tracker (recommendations that didn't lead to results)
+- Compact Decision Brief format (~60-80 lines vs 250 in v2)
+- Chat-first output (Notion optional)
+
 ### v2 (2026-04-13)
-- Complete rewrite: meta-orchestrator with 3-module architecture
-- Smart report reuse: uses existing reports or generates missing ones
-- Cross-validation stage for inter-report consistency
-- 8-section unified report (streamlined from v1's 13)
-- Pure Markdown output (fixed v1 HTML rendering issues)
-- ~5 min with existing reports, ~45 min full pipeline
+- Deprecated: meta-orchestrator that summarized 3 reports into 8 sections
+- User feedback: "урезанная функция" — no added value over individual reports
 
 ### v1 (2026-04-07)
-- Deprecated: 12 subagents (8 analysts + 3 verifiers + synthesizer), shallow analysis
+- Deprecated: 12 subagents (8 analysts + 3 verifiers + synthesizer)
