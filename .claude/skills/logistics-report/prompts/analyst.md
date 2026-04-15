@@ -63,12 +63,34 @@ For each model (aggregate WB + OZON + MoySklad stock):
 Compute total marketplace stock = wb_stock[model] + ozon_stock[model]
 Compute turnover = min(wb_turnover[model], ozon_turnover[model]) if both exist
 
-Status classification:
+Status classification — **velocity-adjusted thresholds:**
+
+First, compute `daily_sales` for each model from turnover data.
+
+For high-velocity models (daily_sales >= 10):
+- `DEFICIT` — turnover < 14 days OR marketplace stock < daily_sales × 3
+- `WARNING` — turnover 14–21 days
+- `OK` — turnover 21–60 days
+- `OVERSTOCK` — turnover 60–120 days
+- `DEAD_STOCK` — turnover > 120 days
+
+For medium-velocity models (daily_sales 2–9):
 - `DEFICIT` — turnover < 7 days OR marketplace stock < 3 units
 - `WARNING` — turnover 7–14 days
 - `OK` — turnover 14–45 days
 - `OVERSTOCK` — turnover 45–90 days
-- `DEAD_STOCK` — turnover > 90 days OR no sales in period
+- `DEAD_STOCK` — turnover > 90 days
+
+For low-velocity models (daily_sales < 2):
+- `DEFICIT` — marketplace stock = 0
+- `WARNING` — turnover < 7 days AND stock < 3
+- `OK` — turnover 7–45 days
+- `OVERSTOCK` — turnover 45–60 days
+- `DEAD_STOCK` — turnover > 60 days OR no sales in period
+
+**CRITICAL:** A bestseller (top-10 by revenue or daily_sales >= 20) with 45-60 days turnover is NOT overstock — it needs this buffer because resupply takes 5-14 days and stockout = lost revenue. Only flag bestsellers as OVERSTOCK if turnover > 90 days.
+
+Include `velocity_tier` ("high" / "medium" / "low") and `daily_sales` in output for each model.
 
 For DEFICIT models:
 - Estimate lost sales: turnover_gap_days × avg_daily_sales × avg_price
@@ -123,7 +145,7 @@ Respond ONLY with valid JSON:
     "ozon_summary": {"avg_buyout_pct": 0}
   },
   "inventory_assessment": {
-    "deficit": [{"model": "...", "wb_stock": 0, "ozon_stock": 0, "turnover_days": 0, "lost_sales_est": 0}],
+    "deficit": [{"model": "...", "wb_stock": 0, "ozon_stock": 0, "turnover_days": 0, "daily_sales": 0, "velocity_tier": "high|medium|low", "lost_sales_est": 0}],
     "warning": [...],
     "overstock": [{"model": "...", "total_stock": 0, "turnover_days": 0, "frozen_capital_est": 0}],
     "dead_stock": [...]

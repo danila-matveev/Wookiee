@@ -45,24 +45,58 @@ For each expense group:
 - Δ percentage points (пп)
 - Flag if Δ > 3 пп: `"significant": true`
 
-### 4. cash_gap_scenarios
+### 4. planned_operations_gap
 
-Three scenarios based on `forecast` data:
-- **Optimistic**: income +10% vs forecast
-- **Base**: forecast as-is
-- **Pessimistic**: income -20% vs forecast
+The key question: **хватит ли свободных денег на все запланированные расходы?**
 
-For each scenario, compute month-by-month balance projection (start from current total balance).
-Flag months where balance drops below 1,000,000 ₽.
+Use `forecast` data — it contains planned expenses by group for each of the next 12 months.
 
-Format:
+**Step 1:** Calculate `free_balance` = sum of "operating" purpose accounts only. Funds (tax, payroll, reserve) are RESERVED — do not count as free.
+
+**Step 2:** For each month in `forecast`, extract total planned expenses (sum of negative values in `groups`). These are the REAL planned operations: закупки, ФОТ, логистика, маркетинг, налоги, склад, услуги, кредиты.
+
+**Step 3:** Compute cumulative projection:
+```
+Month 1: free_balance + forecast[0].income + forecast[0].expense → end_balance_1
+Month 2: end_balance_1 + forecast[1].income + forecast[1].expense → end_balance_2
+...
+```
+
+**Step 4:** Three scenarios:
+- **Optimistic**: income = forecast income × 1.1
+- **Base**: income = forecast income as-is
+- **Pessimistic**: income = forecast income × 0.8
+
+For each scenario, flag months where projected balance < 2,000,000 ₽ (operational minimum ≈ 2 weeks expenses).
+
+**Step 5:** Compute:
+- `months_of_runway` = free_balance / avg_monthly_expense (from forecast)
+- `gap_month` = first month where balance < 2M₽, or null
+- `min_balance` = lowest projected balance
+- `largest_expense_month` = month with highest planned expenses (breakdown by group)
+
+Output:
 ```json
 {
-  "optimistic": {"months": [...], "gap_month": null, "min_balance": ...},
-  "base": {"months": [...], "gap_month": "май 2026", "min_balance": ...},
-  "pessimistic": {"months": [...], "gap_month": "март 2026", "min_balance": ...}
+  "free_balance": 0,
+  "funds_reserved": 0,
+  "total_balance": 0,
+  "avg_monthly_planned_expense": 0,
+  "months_of_runway_from_free": 0,
+  "scenarios": {
+    "optimistic": {
+      "months": [{"month": "апр 2026", "income": 0, "planned_expenses": 0, "end_balance": 0, "below_2m": false}],
+      "gap_month": null,
+      "min_balance": 0
+    },
+    "base": {"months": [...], "gap_month": null, "min_balance": 0},
+    "pessimistic": {"months": [...], "gap_month": "май 2026", "min_balance": 0}
+  },
+  "largest_expense_month": {"month": "май 2026", "total_planned": 0, "breakdown": {"Закупки": 0, "ФОТ": 0}}
 }
 ```
+
+**CRITICAL:** Do NOT say "ликвидность высокая" if free_balance covers less than 3 months of planned expenses. Example: 18М free with 15М/мес planned = 1.2 months runway — that is TIGHT, not comfortable.
 
 ### 5. anomalies
 
@@ -75,10 +109,13 @@ Identify:
 ### 6. recommendations
 
 Generate 3–5 specific, actionable recommendations:
-- Fund status: "Фонды недофинансированы на X₽ — необходимо зарезервировать до N числа"
-- Runway: "Свободные средства покрывают N месяцев операционных расходов"
+- **Runway alert**: "Свободные средства {X}М покрывают {N} месяцев плановых расходов ({Y}М/мес). При N < 3 — зона риска."
+- **Largest upcoming expense**: "В {месяц} запланированы расходы {X}М (из них закупки {Y}М) — убедиться в достаточности средств за 2 недели до"
+- **Fund adequacy**: "Налоговый фонд {X}М покрывает {N} квартальных платежей. ФОТ-фонд {X}М покрывает {N} месяцев."
 - Cost concerns (for groups with significant growth)
 - Cash gap action if any scenario shows gap
+
+NEVER say "ликвидность высокая" based on absolute balance. Always express as months of runway vs planned operations.
 
 For MONTHLY depth, also add:
 - Structural shifts commentary (what grew/fell significantly in shares)
