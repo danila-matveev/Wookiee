@@ -5,6 +5,20 @@ description: "Интерактивный поиск фото бренда в Con
 
 # Content Search — интерактивный поиск фото бренда
 
+### Tool Logging
+
+At start: `ToolLogger('/content-search').start(trigger='manual', user='danila')` → save `RUN_ID`.
+At end: `ToolLogger('/content-search').finish(RUN_ID, status='success', items_processed={RESULTS_COUNT})`.
+
+```bash
+PYTHONPATH=. python3 -c "
+from shared.tool_logger import ToolLogger
+logger = ToolLogger('/content-search')
+run_id = logger.start(trigger='manual', user='danila')
+print(f'RUN_ID={run_id}')
+"
+```
+
 ## Когда вызывать
 
 Автоматически при любом запросе на поиск фото, подбор контента, работу с фотобазой бренда.

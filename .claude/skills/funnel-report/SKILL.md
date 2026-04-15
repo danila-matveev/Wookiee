@@ -86,21 +86,45 @@ Read the output JSON. Save the full JSON as `data_bundle`.
 - If collector fails entirely → report error and STOP
 
 **Data blocks used in this skill:**
+
+WB data:
 - `traffic.wb_total` — brand-level funnel from content_analysis (card_opens, cart, orders, buyouts)
 - `traffic.wb_content_by_model` — **PER-MODEL funnel from content_analysis** (card_opens, cart, orders, buyouts). Columns: [period, model, card_opens, add_to_cart, orders, buyouts]. This is the CORRECT source for CRO calculation.
 - `traffic.wb_by_model` — **ADS-ONLY data from wb_adv** (ad_views, ad_clicks, ad_spend, ad_to_cart, ad_orders). DO NOT use for CRO calculation — it contains only advertising traffic.
 - `traffic.wb_organic_vs_paid` — organic vs paid split
+- `traffic.wb_skleyka_halo` — halo-effect data (склейки): which models are in each cluster, ad spend, ad orders, total cluster orders
 - `advertising` — ad spend, ROMI, DRR by model
 - `finance` — revenue, margin, DRR by model (WB only)
 - `sku_statuses` — model lifecycle statuses (Продается / Выводим / Архив / Запуск)
 
-**CRITICAL: For per-model funnel (CRO), use `traffic.wb_content_by_model`, NOT `traffic.wb_by_model`.** The latter contains only advertising clicks and will produce absurdly high CRO (>30%) because ad clicks are a fraction of total traffic while orders come from all sources.
+OZON data:
+- `traffic.ozon_total` — OZON brand-level ad funnel from adv_stats_daily. Columns: [period, ad_views, ad_clicks, ad_orders, ad_spend, ctr, cpc]
+- `traffic.ozon_ad_funnel_by_model` — OZON per-model ad funnel from ozon_adv_api. Columns: [period, model, views(0), clicks, to_cart, orders, spend, ctr(0), cpc, cpo]
+- `traffic.ozon_organic_estimated` — OZON organic = total_orders(abc_date) - ad_orders(ozon_adv_api). Columns: [period, model, total_orders, ad_orders, organic_orders, total_revenue, ad_spend]
+
+**CRITICAL: For per-model WB funnel (CRO), use `traffic.wb_content_by_model`, NOT `traffic.wb_by_model`.** The latter contains only advertising clicks and will produce absurdly high CRO (>30%) because ad clicks are a fraction of total traffic while orders come from all sources.
+
+**CRITICAL: OZON has no organic funnel data** (no equivalent of WB content_analysis). OZON organic is estimated: organic_orders = total_orders - ad_orders. Always mark as "(расч.)". No CRO for OZON — only ad click→cart→order funnel from ozon_adv_api.
 
 **Data NOT used (other skills handle these):**
 - `external_marketing` → marketing-report
 - `plan_fact` → finance-report
 - `inventory` → finance-report
 - `pricing` → finance-report
+
+### 1.3 Start Tool Logging
+
+```bash
+PYTHONPATH=. python3 -c "
+from shared.tool_logger import ToolLogger
+logger = ToolLogger('/funnel-report')
+run_id = logger.start(trigger='manual', user='danila', version='v1',
+    period_start='{START}', period_end='{END}', depth='{DEPTH}')
+print(f'RUN_ID={run_id}')
+"
+```
+
+Save `RUN_ID`. If `None` — continue, logging is fire-and-forget.
 
 ---
 
@@ -114,7 +138,7 @@ Read prompt: `.claude/skills/funnel-report/prompts/detector.md`
 Read knowledge base: `.claude/skills/analytics-report/references/analytics-kb.md`
 
 Launch Detector as a subagent (Agent tool):
-- **Input data:** `traffic` + `advertising` + `finance` + `sku_statuses` blocks from `data_bundle`
+- **Input data:** `traffic` (all WB + OZON blocks) + `advertising` + `finance` + `sku_statuses` blocks from `data_bundle`
 - **Replace placeholders:**
   - `{{DATA}}` — the 4 data blocks above (JSON)
   - `{{DEPTH}}` — "day" | "week" | "month"
@@ -199,7 +223,7 @@ Launch Verifier as a subagent (Agent tool) with: `model_deep` + `findings_raw` +
 Read prompt: `.claude/skills/funnel-report/prompts/synthesizer.md`
 Read formatting guide: `.claude/skills/analytics-report/templates/notion-formatting-guide.md`
 
-Launch Synthesizer as a subagent (Agent tool) with ALL outputs: `findings_raw` + `diagnostics` + `hypotheses` + `model_deep`.
+Launch Synthesizer as a subagent (Agent tool) with ALL outputs: `findings_raw` + `diagnostics` + `hypotheses` + `model_deep` + OZON data blocks from `data_bundle` (`traffic.ozon_total` + `traffic.ozon_ad_funnel_by_model` + `traffic.ozon_organic_estimated`).
 
 **Output:** ONE `final_document_md` — clean Markdown for Notion.
 
@@ -209,8 +233,22 @@ Launch Synthesizer as a subagent (Agent tool) with ALL outputs: `findings_raw` +
 |---|--------|------------|
 | Title | Воронка WB за {PERIOD_LABEL} | Main heading |
 | I | Общий обзор бренда | Table: переходы, заказы, выкупы*, выручка, маржа, ДРР — тек vs пред + Δ |
-| II-XII | Модель: {Name} — {headline} | Per-model toggle section (воронка + экономика + артикулы + анализ) |
+| I-b | Halo-эффект (склейки WB) | Таблица склеек: модели, артикулы, расход, рекл. заказы, все заказы, halo % |
+| II-XII | Модель: {Name} — {headline} | Per-model WB toggle section (воронка + экономика + артикулы + анализ) |
+| OZON-I | OZON обзор канала | Table: заказы, выручка, орг. доля (расч.), ДРР |
+| OZON-II | OZON рекламная воронка | Table: клики, корзина, заказы, расходы, CTR, CPC (adv_stats_daily) |
+| OZON per-model | OZON: {Name} — заказы {Δ}% | Toggle: заказы+органика + рекламная воронка (если есть клики) |
 | XIII | Выводы и рекомендации | ТОП-3 действия + общий потенциал роста маржи |
+
+**OZON toggle header format:** `## ▶ OZON: {Name} {emoji} — заказы {+/-n}%`
+**OZON per-model subsections:**
+- `### Заказы и органика` — total_orders, organic_orders (расч.), org_share, revenue, ad_spend, DRR
+- `### Рекламная воронка` — clicks, to_cart, orders, CR click→cart, CR click→order, spend, CPC (only if clicks > 0)
+**OZON rules:**
+- NO CRO (no organic funnel data on OZON)
+- NO выкупы / CRP in OZON sections
+- Organic always marked "(расч.)"
+- Skip models with 0 orders in both current and previous
 
 ### Formatting Rules
 
@@ -261,6 +299,21 @@ After publishing — fetch page via `mcp__claude_ai_Notion__notion-fetch` and ve
 - Bold text preserved in table cells
 - Buyout caveats visible
 
+### 5.5 Finish Tool Logging
+
+```bash
+PYTHONPATH=. python3 -c "
+from shared.tool_logger import ToolLogger
+logger = ToolLogger('/funnel-report')
+logger.finish('{RUN_ID}', status='success',
+    result_url='{NOTION_URL}',
+    items_processed={MODEL_COUNT},
+    output_sections=8)
+"
+```
+
+If `RUN_ID` is empty — skip.
+
 ---
 
 ## Completion
@@ -294,6 +347,13 @@ Report to user (5-7 lines):
 ---
 
 ## Changelog
+
+### v2 (2026-04-15)
+- OZON channel added: OZON-I (overview), OZON-II (ad funnel), per-model OZON toggles
+- OZON data blocks: ozon_total, ozon_ad_funnel_by_model, ozon_organic_estimated
+- Synthesizer receives OZON data and generates OZON sections after WB models
+- Verifier check #11: validates OZON sections (no CRO/CRP, organic marked "(расч.)")
+- Detector outputs OZON_OVERVIEW section with channel summary
 
 ### v1 (2026-04-12)
 - Initial release: 3-wave engine + model analyst + verifier + synthesizer

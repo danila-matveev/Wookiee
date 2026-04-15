@@ -6,6 +6,29 @@ description: "Use when user asks for deep product analysis of WB reviews, questi
 # Аналитика отзывов и возвратов WOOKIEE v2 (Wildberries)
 
 Глубокий продуктовый анализ отзывов, вопросов и возвратов на WB.
+
+### Start Tool Logging
+
+```bash
+PYTHONPATH=. python3 -c "
+from shared.tool_logger import ToolLogger
+logger = ToolLogger('/reviews-audit')
+run_id = logger.start(trigger='manual', user='danila')
+print(f'RUN_ID={run_id}')
+"
+```
+
+Save `RUN_ID`. If `None` — continue, logging is fire-and-forget. At the end of the workflow, call:
+
+```bash
+PYTHONPATH=. python3 -c "
+from shared.tool_logger import ToolLogger
+logger = ToolLogger('/reviews-audit')
+logger.finish('{RUN_ID}', status='success',
+    result_url='{NOTION_URL}',
+    items_processed={MODEL_COUNT})
+"
+```
 Карточка каждой активной модели, LLM-кластеризация всех текстов, gap-анализ позиционирования vs восприятия.
 
 Spec: `docs/superpowers/specs/2026-04-07-reviews-audit-v2-design.md`

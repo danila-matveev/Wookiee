@@ -56,6 +56,19 @@ cd /Users/danilamatveev/Desktop/Документы/Cursor/Wookiee && python3 scr
 Ошибки: {meta.errors or "нет"}
 ```
 
+### 1.3 Start Tool Logging
+
+```bash
+PYTHONPATH=. python3 -c "
+from shared.tool_logger import ToolLogger
+logger = ToolLogger('/abc-audit')
+run_id = logger.start(trigger='manual', user='danila', version='v1')
+print(f'RUN_ID={run_id}')
+"
+```
+
+Save `RUN_ID`. If `None` — continue, logging is fire-and-forget.
+
 ---
 
 ## Stage 2: Data Analyst (один агент)
@@ -147,29 +160,69 @@ P2 (месяц): {count_p2}
 
 ---
 
-## Stage 5: Synthesizer (один агент)
+## Stage 5: Synthesizer + Notion Publish
 
 Прочитай промпт: `.claude/skills/abc-audit/prompts/synthesizer.md`
 
+### 5a. Генерация отчёта (Agent)
+
 Запусти Agent:
-- description: "ABC-audit: Synthesizer — MD report assembly"
+- description: "ABC-audit: Synthesizer — Notion Enhanced Markdown report"
 - prompt: содержимое synthesizer.md, где:
   - `{{ARBITER_VERDICTS}}` → ARBITER_VERDICTS
   - `{{ENRICHED_DATA}}` → ENRICHED_DATA
   - `{{QUALITY_FLAGS}}` → quality_flags из meta
 
-Агент должен сохранить отчёт в `docs/reports/{CUT_DATE}_abc_audit.md`.
+Агент должен сохранить отчёт в `docs/reports/{CUT_DATE}_abc_audit.md` в **Notion Enhanced Markdown** формате (таблицы через `<table>` с цветами строк, callout-блоки с иконками, toggle-заголовки).
 
-Прочитай сохранённый файл и убедись, что он непустой и содержит все 13 секций.
+### 5b. Верификация
+
+Прочитай сохранённый файл и проверь:
+1. Содержит все 13 секций (1–13)
+2. Таблицы используют `<table fit-page-width="true">`, а НЕ markdown pipe-формат
+3. Есть callout-блоки с цветами (`<callout icon="..." color="...">`)
+4. Секции 3-11 имеют `{toggle="true"}`
+5. Есть ссылка на Google Sheets в секции 2
+6. P0/P1/P2 таблицы имеют цветные заголовки (red/orange/yellow)
+
+Если любой пункт не выполнен — исправь перед публикацией.
+
+### 5c. Публикация в Notion (MCP)
+
+Используй Notion MCP для публикации:
+
+1. Найти предыдущий отчёт ABC в database "Аналитические отчеты" → перевести в статус "Архив"
+2. Создать новую страницу через `notion-create-pages`:
+   - Parent: database "Аналитические отчеты"
+   - Title: "📊 ABC-аудит v4 — {period_label}"
+   - Icon: 📊
+   - Properties: Тип анализа = "ABC анализ", Статус = "Актуальный", Источник = "Claude Code"
+   - Content: содержимое MD-файла
+3. Прочитать созданную страницу через `notion-fetch` и убедиться что таблицы и callouts отображаются корректно
+
+### Finish Tool Logging
+
+```bash
+PYTHONPATH=. python3 -c "
+from shared.tool_logger import ToolLogger
+logger = ToolLogger('/abc-audit')
+logger.finish('{RUN_ID}', status='success',
+    result_url='{NOTION_URL}',
+    items_processed={ARTICLE_COUNT},
+    output_sections=13)
+"
+```
+
+If `RUN_ID` is empty — skip.
 
 Сообщи пользователю:
 ```
 ABC-аудит завершён
 
-Отчёт: docs/reports/{CUT_DATE}_abc_audit.md
-Секций: 13
-Артикулов проанализировано: {N}
-Время: ~{minutes} мин
+📊 Notion: {page_url}
+📄 MD: docs/reports/{CUT_DATE}_abc_audit.md
+📋 Sheets: {sheets_url}
+Секций: 13 | Артикулов: {N} | Время: ~{minutes} мин
 
 Топ-3 действия:
 1. {P0 action 1}

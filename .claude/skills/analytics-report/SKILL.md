@@ -1,371 +1,245 @@
 ---
 name: analytics-report
-description: Full analytics report for Wookiee brand (WB+OZON) — 12 subagents analyze finance, marketing, traffic, inventory, prices, plan-fact for any period
+description: Meta-orchestrator — runs or reuses finance/marketing/funnel reports, cross-validates, produces unified Executive Summary
 triggers:
   - /analytics-report
   - analytics report
   - аналитический отчёт
-  - финансовый анализ
+  - сводный отчёт
 ---
 
-# Analytics Report Skill
+# Analytics Report — Meta-Orchestrator v2
 
-Generates a verified analytics report for the Wookiee brand using a multi-wave agent architecture: 8 analysts, 3 verifiers, synthesizer.
+Orchestrates the full analytics pipeline for Wookiee brand. Either generates all 3 deep reports from scratch (finance, marketing, funnel) or reuses existing ones, then cross-validates and produces a unified Executive Summary.
 
 ## Quick Start
 
-**Daily report** (1 date = today vs yesterday):
 ```
-/analytics-report 2026-04-06
-```
-
-**Weekly report** (2 dates = week vs previous week):
-```
-/analytics-report 2026-03-31 2026-04-06
+/analytics-report 2026-04-06 2026-04-12
 ```
 
-**Monthly report** (2 dates spanning a full month):
-```
-/analytics-report 2026-03-01 2026-03-31
-```
-
-Skill parses dates automatically — no questions asked, pipeline starts immediately.
-
-**Estimated time:** ~15-25 minutes (collector ~30s, 8 analysts ~8m, 3 verifiers ~5m, synthesizer ~8m, publication ~2m)
+**Estimated time:**
+- With existing reports: ~5 min (read → validate → synthesize → publish)
+- Full pipeline: ~45-60 min (3 skills ~15 min each → validate → synthesize → publish)
 
 **Results:**
 - MD: `docs/reports/{START}_{END}_analytics.md`
 - Notion: page in "Аналитические отчеты" (database `30158a2b-d587-8091-bfc3-000b83c6b747`)
+- Chat: Executive Summary
 
 ---
 
-## Stage 0: Parse Arguments
+## Stage 0: Parse Arguments & Confirm
 
-Parse the user's input — do NOT ask any questions.
+Parse dates from user input:
 
-**1 date** → daily report:
+- **1 date** → `START = END = date`, `DEPTH = "day"`
+- **2 dates** → `START = first`, `END = second`, `DEPTH = "week"` if span ≤ 14, else `"month"`
+
+Compute:
 ```
-START = given date
-END = given date
-DEPTH = "day"
-PREV_START = START - 1 day
-PREV_END = END - 1 day
-MONTH_START = first day of START's month
+PERIOD_LABEL = "DD.MM — DD.MM.YYYY" (or "DD.MM.YYYY" for daily)
 ```
 
-**2 dates** → determine depth by span:
+### Check report availability
+
+Check if reports exist for this period:
 ```
-START = first date
-END = second date
-span = (END - START).days + 1
-DEPTH = "week" if span <= 14 else "month"
-PREV_START = START - span days
-PREV_END = START - 1 day
-MONTH_START = first day of START's month
+docs/reports/{START}_{END}_finance.md
+docs/reports/{START}_{END}_marketing.md
+docs/reports/{START}_{END}_funnel.md
 ```
 
-Compute labels:
+### Confirm with user BEFORE starting
+
+**ALWAYS ask** the user what to do. Show status and options:
+
 ```
-PERIOD_LABEL = "{START} — {END}" (or just "{START}" for daily)
-PREV_PERIOD_LABEL = "{PREV_START} — {PREV_END}" (or just "{PREV_START}" for daily)
+📊 Сводный аналитический отчёт ({DEPTH}) за {PERIOD_LABEL}
+
+Статус отчётов:
+  - finance.md {✅ найден / ❌ отсутствует}
+  - marketing.md {✅ найден / ❌ отсутствует}
+  - funnel.md {✅ найден / ❌ отсутствует}
+
+Варианты:
+1. Использовать готовые отчёты → свести в единый (быстро, ~5 мин)
+2. Сгенерировать недостающие → свести в единый (~15 мин за каждый)
+3. Перегенерировать ВСЕ отчёты заново → свести (~45-60 мин)
+
+Что делаем?
 ```
 
-Show to user:
-```
-Запуск аналитического отчёта ({DEPTH}) за {PERIOD_LABEL}
-Сравнение: {PREV_PERIOD_LABEL}
-```
+If all 3 exist, recommend option 1. If some missing, recommend option 2. Wait for user response before proceeding.
 
 ---
 
-## Stage 1: Data Collection
+### Start Tool Logging
 
-Run the Python collector:
 ```bash
-python scripts/analytics_report/collect_all.py --start {START} --end {END} --output /tmp/analytics-report-{START}_{END}.json
+PYTHONPATH=. python3 -c "
+from shared.tool_logger import ToolLogger
+logger = ToolLogger('/analytics-report')
+run_id = logger.start(trigger='manual', user='danila', version='v2',
+    period_start='{START}', period_end='{END}', depth='{DEPTH}')
+print(f'RUN_ID={run_id}')
+"
 ```
 
-Read the output JSON:
-```bash
-cat /tmp/analytics-report-{START}_{END}.json
-```
+Save `RUN_ID`. If `None` — continue, logging is fire-and-forget.
 
-Save the full JSON as `data_bundle`.
+## Stage 1: Obtain Reports
 
-Check `data_bundle["meta"]["errors"]`:
-- 0-3 errors → proceed, note failed collectors
-- **>3 errors → STOP**, report failures to user
+Based on user's choice in Stage 0:
 
-Extract `quality_flags` from `data_bundle["meta"]["quality_flags"]` (or empty list if absent).
+### Option 1: Use existing reports
+
+Read all 3 files. Save as `finance_report`, `marketing_report`, `funnel_report`.
+
+### Option 2: Generate missing only
+
+For each missing report, invoke the corresponding Skill tool:
+- Missing finance → `Skill("finance-report", "{START} {END}")`
+- Missing marketing → `Skill("marketing-report", "{START} {END}")`
+- Missing funnel → `Skill("funnel-report", "{START} {END}")`
+
+Run missing skills sequentially (each uses significant context). Report progress after each completes. Read existing reports from files.
+
+### Option 3: Regenerate all
+
+Run ALL 3 skills sequentially:
+1. `Skill("finance-report", "{START} {END}")` → report progress
+2. `Skill("marketing-report", "{START} {END}")` → report progress
+3. `Skill("funnel-report", "{START} {END}")` → report progress
+
+After all reports are available, save as `finance_report`, `marketing_report`, `funnel_report`.
 
 ---
 
-## Stage 2: Multi-Wave Analysis
+## Stage 2: Cross-Validation (Agent)
 
-### Prepare Data Slices
+Read prompt: `.claude/skills/analytics-report/prompts/cross-validator.md`
 
-For each analyst, extract their primary data block from `data_bundle` and prepare a 5-10 line summary of other blocks for cross-reference.
+Launch **Cross-Validator** as a subagent (Agent tool):
 
-| Analyst | Primary slice | Cross-reference summary |
-|---|---|---|
-| Financial | `data_bundle["finance"]` | ad totals, inventory risk counts |
-| Internal Ads | `data_bundle["advertising"]` | revenue by model from finance |
-| External Marketing | `data_bundle["external_marketing"]` | total revenue from finance |
-| Traffic Funnel | `data_bundle["traffic"]` | paid spend from advertising |
-| Inventory | `data_bundle["inventory"]` | sales by model from finance |
-| Pricing | `data_bundle["pricing"]` | turnover from inventory, margin from finance |
-| Plan-Fact | `data_bundle["plan_fact"]` | MTD fact from finance |
-| Anomaly Detector | Summary of ALL blocks | quality_flags |
+- `{{FINANCE_REPORT}}` = full finance_report text
+- `{{MARKETING_REPORT}}` = full marketing_report text
+- `{{FUNNEL_REPORT}}` = full funnel_report text
+- `{{PERIOD_LABEL}}` = period label
+- `{{DEPTH}}` = depth
 
-### Wave 1: 8 Analysts (launch ALL 8 in parallel — 8 Agent calls in a SINGLE message)
+The validator checks:
+1. **Number consistency** — same revenue/margin/orders across reports (tolerance ±2%)
+2. **Directional consistency** — if finance says margin↓, marketing shouldn't say margin↑
+3. **Completeness** — each report has its required sections
+4. **Data quality flags** — unified list from all 3 reports
 
-For each analyst: read their prompt file, replace `{{placeholders}}`, launch as Agent subagent.
+Save output as `validation_result`.
 
-**Financial Analyst** — Read `.claude/skills/analytics-report/prompts/analysts/financial.md`
-- `{{DATA_SLICE}}` = `data_bundle["finance"]`
-- `{{SUMMARY}}` = ad totals + inventory risk counts (5-10 lines)
-- `{{DEPTH}}` = DEPTH
-- `{{PERIOD_LABEL}}` = PERIOD_LABEL
-- `{{PREV_PERIOD_LABEL}}` = PREV_PERIOD_LABEL
-- `{{QUALITY_FLAGS}}` = quality_flags
-- Save output as `financial_findings`
+### Verdict Handling
 
-**Internal Ads Analyst** — Read `.claude/skills/analytics-report/prompts/analysts/internal-ads.md`
-- `{{DATA_SLICE}}` = `data_bundle["advertising"]`
-- `{{SUMMARY}}` = revenue by model from finance (5-10 lines)
-- `{{DEPTH}}` = DEPTH
-- `{{PERIOD_LABEL}}` = PERIOD_LABEL
-- `{{PREV_PERIOD_LABEL}}` = PREV_PERIOD_LABEL
-- `{{QUALITY_FLAGS}}` = quality_flags
-- Save output as `ads_findings`
+**PASS** (or minor discrepancies only) → proceed to Stage 3, note discrepancies.
 
-**External Marketing Analyst** — Read `.claude/skills/analytics-report/prompts/analysts/external-marketing.md`
-- `{{DATA_SLICE}}` = `data_bundle["external_marketing"]`
-- `{{SUMMARY}}` = total revenue from finance (5-10 lines)
-- `{{DEPTH}}` = DEPTH
-- `{{PERIOD_LABEL}}` = PERIOD_LABEL
-- `{{PREV_PERIOD_LABEL}}` = PREV_PERIOD_LABEL
-- `{{QUALITY_FLAGS}}` = quality_flags
-- Save output as `external_findings`
-
-**Traffic Funnel Analyst** — Read `.claude/skills/analytics-report/prompts/analysts/traffic-funnel.md`
-- `{{DATA_SLICE}}` = `data_bundle["traffic"]`
-- `{{SUMMARY}}` = paid spend from advertising (5-10 lines)
-- `{{DEPTH}}` = DEPTH
-- `{{PERIOD_LABEL}}` = PERIOD_LABEL
-- `{{PREV_PERIOD_LABEL}}` = PREV_PERIOD_LABEL
-- `{{QUALITY_FLAGS}}` = quality_flags
-- Save output as `traffic_findings`
-
-**Inventory Analyst** — Read `.claude/skills/analytics-report/prompts/analysts/inventory.md`
-- `{{DATA_SLICE}}` = `data_bundle["inventory"]`
-- `{{SUMMARY}}` = sales by model from finance (5-10 lines)
-- `{{DEPTH}}` = DEPTH
-- `{{PERIOD_LABEL}}` = PERIOD_LABEL
-- `{{PREV_PERIOD_LABEL}}` = PREV_PERIOD_LABEL
-- `{{QUALITY_FLAGS}}` = quality_flags
-- Save output as `inventory_findings`
-
-**Pricing Analyst** — Read `.claude/skills/analytics-report/prompts/analysts/pricing.md`
-- `{{DATA_SLICE}}` = `data_bundle["pricing"]`
-- `{{SUMMARY}}` = turnover from inventory + margin from finance (5-10 lines)
-- `{{DEPTH}}` = DEPTH
-- `{{PERIOD_LABEL}}` = PERIOD_LABEL
-- `{{PREV_PERIOD_LABEL}}` = PREV_PERIOD_LABEL
-- `{{QUALITY_FLAGS}}` = quality_flags
-- Save output as `pricing_findings`
-
-**Plan-Fact Analyst** — Read `.claude/skills/analytics-report/prompts/analysts/plan-fact.md`
-- `{{DATA_SLICE}}` = `data_bundle["plan_fact"]`
-- `{{SUMMARY}}` = MTD fact from finance (5-10 lines)
-- `{{DEPTH}}` = DEPTH
-- `{{PERIOD_LABEL}}` = PERIOD_LABEL
-- `{{PREV_PERIOD_LABEL}}` = PREV_PERIOD_LABEL
-- `{{QUALITY_FLAGS}}` = quality_flags
-- Save output as `plan_fact_findings`
-
-**Anomaly Detector** — Read `.claude/skills/analytics-report/prompts/analysts/anomaly-detector.md`
-- `{{DATA_SLICE}}` = Summary of ALL blocks (key totals from each: revenue, orders, spend, stock, etc.)
-- `{{SUMMARY}}` = quality_flags + meta.errors
-- `{{DEPTH}}` = DEPTH
-- `{{PERIOD_LABEL}}` = PERIOD_LABEL
-- `{{PREV_PERIOD_LABEL}}` = PREV_PERIOD_LABEL
-- `{{QUALITY_FLAGS}}` = quality_flags
-- Save output as `anomaly_findings`
-
-Wait for all 8 analysts to complete.
-
-### Concatenate Findings
-
-```
-all_findings = """
-=== FINANCIAL ===
-{financial_findings}
-
-=== INTERNAL ADS ===
-{ads_findings}
-
-=== EXTERNAL MARKETING ===
-{external_findings}
-
-=== TRAFFIC FUNNEL ===
-{traffic_findings}
-
-=== INVENTORY ===
-{inventory_findings}
-
-=== PRICING ===
-{pricing_findings}
-
-=== PLAN-FACT ===
-{plan_fact_findings}
-
-=== ANOMALIES ===
-{anomaly_findings}
-"""
-```
-
-### Wave 2: 3 Verifiers (launch ALL 3 in parallel — 3 Agent calls in a SINGLE message)
-
-**Marketplace Expert** — Read `.claude/skills/analytics-report/prompts/verifiers/marketplace-expert.md`
-- `{{ALL_FINDINGS}}` = all_findings
-- `{{QUALITY_FLAGS}}` = quality_flags
-- `{{DEPTH}}` = DEPTH
-- Save output as `marketplace_review`
-
-**Data Quality Critic** — Read `.claude/skills/analytics-report/prompts/verifiers/data-quality-critic.md`
-- `{{ALL_FINDINGS}}` = all_findings
-- `{{QUALITY_FLAGS}}` = quality_flags
-- `{{DEPTH}}` = DEPTH
-- Save output as `dq_review`
-
-**CFO** — Read `.claude/skills/analytics-report/prompts/verifiers/cfo.md`
-- `{{ALL_FINDINGS}}` = all_findings
-- `{{VERIFIER_FINDINGS}}` = "" (empty on first pass)
-- `{{QUALITY_FLAGS}}` = quality_flags
-- `{{DEPTH}}` = DEPTH
-- Save output as `cfo_verdict`
-
-Wait for all 3 verifiers to complete.
-
-### CFO Verdict Handling
-
-If `cfo_verdict` contains `"verdict": "APPROVE"` or `"verdict": "CORRECT"`:
-- Note any corrections from CFO
-- Proceed to Stage 3
-
-If `cfo_verdict` contains `"verdict": "REJECT"`:
-- Re-run ONLY the analysts listed in `rerun_analysts` from CFO output
-- Re-run Data Quality Critic on the updated findings
-- Re-run CFO with `{{VERIFIER_FINDINGS}}` = `dq_review`
-- **CFO must APPROVE or CORRECT on Pass 2 — no further REJECT allowed**
-- Proceed to Stage 3
+**FAIL** (critical inconsistencies):
+- Report to user which numbers conflict and by how much
+- Proceed to Stage 3 with discrepancy notes included (do not block)
+- The synthesizer will flag inconsistencies in the final report
 
 ---
 
-## Stage 3: Synthesis
+## Stage 3: Executive Synthesis (Agent)
 
-Read all three template files:
-- `.claude/skills/analytics-report/prompts/synthesizer.md`
-- `.claude/skills/analytics-report/templates/report-structure.md`
-- `.claude/skills/analytics-report/templates/notion-formatting-guide.md`
+Read prompt: `.claude/skills/analytics-report/prompts/executive-synthesizer.md`
+Read formatting guide: `.claude/skills/analytics-report/templates/notion-formatting-guide.md`
 
-Launch Synthesizer Agent with all data:
-- `{{ALL_FINDINGS}}` = all_findings (final, after any re-runs)
-- `{{CFO_OUTPUT}}` = cfo_verdict (including corrections)
-- `{{QUALITY_FLAGS}}` = quality_flags
-- `{{DEPTH}}` = DEPTH
-- `{{PERIOD_LABEL}}` = PERIOD_LABEL
-- `{{PREV_PERIOD_LABEL}}` = PREV_PERIOD_LABEL
-- `{{REPORT_STRUCTURE}}` = contents of report-structure.md
+Launch **Executive Synthesizer** as a subagent (Agent tool):
+
+- `{{FINANCE_REPORT}}` = full finance_report text
+- `{{MARKETING_REPORT}}` = full marketing_report text
+- `{{FUNNEL_REPORT}}` = full funnel_report text
+- `{{VALIDATION_RESULT}}` = validation_result
+- `{{PERIOD_LABEL}}` = period label
+- `{{DEPTH}}` = depth
 - `{{NOTION_GUIDE}}` = contents of notion-formatting-guide.md
 
-**The Synthesizer produces TWO outputs:**
-1. `final_document_md` — standard markdown (for git/docs)
-2. `final_document_notion` — Notion-enhanced format (native tables, colors, callouts, toggle headings)
+The synthesizer produces `final_document` — a unified report in pure Markdown (Notion-compatible).
 
-### Document Structure (13 sections)
+### Report Structure (8 sections)
 
-All 13 sections from report-structure.md are mandatory. Skipping a section = error.
+| # | Section | Source |
+|---|---------|--------|
+| I | Паспорт отчёта | All 3 — period, channels, data quality flags |
+| II | Резюме руководителя | Top 5 findings ranked by ₽ impact, cross-linked |
+| III | P&L бренда | Finance — revenue funnel, margin decomposition, plan-fact |
+| IV | Модельная декомпозиция | Finance — model P&L, top/bottom models, margin waterfall |
+| V | Маркетинг и реклама | Marketing — DRR, ROAS, efficiency matrix, external channels |
+| VI | Воронка и конверсия | Funnel — CRO/CRP, model funnels, halo-effect, conversion |
+| VII | Остатки и риски | Finance (inventory/turnover) + risk signals from all 3 |
+| VIII | Рекомендации и прогноз | Merged — prioritized actions, MTD forecast, control metrics |
 
-0. Резюме (callout)
-1. Топ-находки (3-5 findings ranked by ruble impact)
-2. Финансы (P&L brand-level + by model)
-3. Реклама внутренняя (spend, DRR, efficiency by campaign type)
-4. Маркетинг внешний (bloggers, VK, external spend + ROI)
-5. Воронка трафика (views → cart → orders, conversion rates)
-6. Остатки и оборачиваемость (stock days, risk zones)
-7. Ценообразование (price changes, elasticity, SPP)
-8. План-факт (MTD progress vs monthly targets)
-9. Аномалии и data quality (flags, gaps, warnings)
-10. Рекомендации (action items with ruble estimates)
-11. Риски и возможности (prioritized by impact)
-12. Справочно (methodology, data sources — in toggles)
+### Formatting Rules
 
-### Notion Formatting
-
-The Notion version must follow notion-formatting-guide.md EXACTLY:
-- **HTML-таблицы** `<table fit-page-width="true" header-row="true" header-column="true">` — markdown таблицы ЗАПРЕЩЕНЫ
-- Цвета строк: `blue_bg` заголовки, `gray_bg` итоги, `green_bg` позитив, `red_bg` негатив, `yellow_bg` warning
-- Цвета ячеек: `<td color="green_bg">` / `<td color="red_bg">` для Δ значений
-- **Callout-блоки** после ключевых секций: `<callout icon="📊" color="blue_bg">`
-- **Римские номера** секций: I. Резюме, II. Ключевые изменения, III. Декомпозиция...
-- Компактный текст: 1-2 строки между таблицами, без длинных абзацев
-- Итоги через callout-блоки с иконками (📊🔴🟢⚠️💡)
-- Эталонный формат: страница "Wookiee: Q4 2025 vs Q1 2026" в Notion
-
-**КРИТИЧНО:** Публиковать ПОЛНУЮ версию — ВСЕ секции с ПОЛНЫМИ таблицами. Никогда не сокращать для Notion.
+1. **Pure Markdown only** — pipe-tables, `## ▶` toggle headings, `> emoji text` callouts
+2. **NO HTML** — no `<table>`, `<callout>`, `<tr>`, `<td>` tags
+3. **Numbers from source reports** — never recalculate or invent
+4. **Cross-reference** — link findings across reports (e.g., Vuki margin↓ in finance + CRO↓ in funnel)
+5. **Conflict resolution** — if reports show different values, include both with note
+6. **Russian language** — all headers, terminology per analytics-kb.md
+7. **Number format** — `1 234 567 ₽`, `24,1%`, `+3,2 п.п.`
+8. **Model names** — Title Case (Wendy, Vuki, Ruby)
+9. **Callout usage** — `> ⚠️` warnings, `> 🔥` wins, `> 📊` data, `> 🚀` actions
 
 ---
 
 ## Stage 4: Publication
 
 ### 4.1 Save MD file
-```bash
-cat > docs/reports/{START}_{END}_analytics.md << 'EOF'
-{final_document_md}
-EOF
-```
 
-Create the directory if it doesn't exist:
 ```bash
 mkdir -p docs/reports
 ```
 
+Write `final_document` to `docs/reports/{START}_{END}_analytics.md`
+
 ### 4.2 Publish to Notion
 
-Use the Notion MCP tool to create a new page in the analytics reports database:
-- Database ID (data_source_id): `30158a2b-d587-8091-bfc3-000b83c6b747`
-- **CRITICAL: Publish the FULL `final_document_notion` content** — all 13 sections with all tables and data. Do NOT publish a summary or abbreviated version.
-- Properties:
-  - Тип анализа = depth-based title (see below)
+Use `mcp__claude_ai_Notion__notion-create-pages` with `parent.type = "data_source_id"`.
+
+- **Database ID (data_source_id):** `30158a2b-d587-8091-bfc3-000b83c6b747`
+- **Title:** `Сводный анализ за {PERIOD_LABEL}`
+- **Content:** Full `final_document` (all 8 sections, NEVER truncate)
+- **Properties:**
+  - Тип анализа = depth-dependent (see below)
   - Источник = "Claude Code"
   - Статус = "Актуальный"
-  - Период начала = START
-  - Период конца = END
-  - Корректность = "Да"
+  - date:Период начала:start = `{START}` (YYYY-MM-DD)
+  - date:Период конца:start = `{END}` (YYYY-MM-DD)
 
-Title based on DEPTH:
-- `day` → `Ежедневный фин анализ — {PERIOD_LABEL}`
-- `week` → `Еженедельный фин анализ — {PERIOD_LABEL}`
-- `month` → `Ежемесячный фин анализ — {PERIOD_LABEL}`
+**Тип анализа by depth:**
+- `day` → "Ежедневный сводный анализ"
+- `week` → "Еженедельный сводный анализ"
+- `month` → "Ежемесячный сводный анализ"
 
-Use `mcp__claude_ai_Notion__notion-create-pages` tool with `parent.type = "data_source_id"`.
+### 4.3 Chat Summary
 
-### 4.3 Report to User
+Show executive summary in chat (10-15 lines):
 
-Show a chat summary (5-7 lines):
 ```
-Аналитический отчёт ({DEPTH}) за {PERIOD_LABEL} — готов.
+📊 Сводный аналитический отчёт ({DEPTH}) за {PERIOD_LABEL} — готов.
 
 Ключевые цифры:
 - Выручка: X ₽ (Δ Y%)
 - Маржа: X ₽ / Z% (Δ Y п.п.)
-- ДРР: X%
-- Заказы: X шт
+- Заказы: X шт (Δ Y%)
+- ДРР: X% (внутр. A% + внешн. B%)
+- CRO: X% (Δ Y п.п.)
 
-CFO вердикт: {APPROVE/CORRECT} (Pass {1/2})
-Data quality flags: {count} warnings
+Топ-находки:
+1. {Finding — biggest ₽ impact}
+2. {Finding — most actionable}
+3. {Finding — risk or opportunity}
+
+Валидация: {PASS/FAIL} ({count} расхождений)
 
 MD: docs/reports/{START}_{END}_analytics.md
 Notion: {notion_url}
@@ -373,27 +247,49 @@ Notion: {notion_url}
 
 ---
 
+### Finish Tool Logging
+
+```bash
+PYTHONPATH=. python3 -c "
+from shared.tool_logger import ToolLogger
+logger = ToolLogger('/analytics-report')
+logger.finish('{RUN_ID}', status='success',
+    result_url='{NOTION_URL}',
+    output_sections=8)
+"
+```
+
+If `RUN_ID` is empty — skip.
+
 ## Reference Files
 
 | File | Purpose |
 |---|---|
-| `scripts/analytics_report/collect_all.py` | Data collector (8 parallel collectors) |
-| `.claude/skills/analytics-report/prompts/analysts/*.md` | 8 analyst prompt templates |
-| `.claude/skills/analytics-report/prompts/verifiers/*.md` | 3 verifier prompt templates |
-| `.claude/skills/analytics-report/prompts/synthesizer.md` | Synthesizer prompt template |
-| `.claude/skills/analytics-report/templates/report-structure.md` | 13-section report skeleton |
-| `.claude/skills/analytics-report/templates/notion-formatting-guide.md` | Notion formatting rules |
-| `.claude/skills/analytics-report/references/data-sources.md` | Data source documentation |
-| `.claude/skills/analytics-report/references/analytics-kb.md` | Analytics business rules |
+| `prompts/cross-validator.md` | Cross-validates 3 reports |
+| `prompts/executive-synthesizer.md` | Merges 3 reports into 8-section summary |
+| `templates/notion-formatting-guide.md` | Notion Markdown formatting rules |
+| `references/analytics-kb.md` | Analytics business rules |
+| `references/data-sources.md` | Data source documentation |
+
+**Module skills (generate source reports):**
+
+| Skill | Trigger | Output |
+|---|---|---|
+| `/finance-report` | `/finance-report START END` | `docs/reports/{S}_{E}_finance.md` + Notion |
+| `/marketing-report` | `/marketing-report START END` | `docs/reports/{S}_{E}_marketing.md` + Notion |
+| `/funnel-report` | `/funnel-report START END` | `docs/reports/{S}_{E}_funnel.md` + Notion |
 
 ---
 
 ## Changelog
 
+### v2 (2026-04-13)
+- Complete rewrite: meta-orchestrator with 3-module architecture
+- Smart report reuse: uses existing reports or generates missing ones
+- Cross-validation stage for inter-report consistency
+- 8-section unified report (streamlined from v1's 13)
+- Pure Markdown output (fixed v1 HTML rendering issues)
+- ~5 min with existing reports, ~45 min full pipeline
+
 ### v1 (2026-04-07)
-- Initial release: 8 analysts, 3 verifiers, synthesizer
-- Data collector: 8 parallel collectors (finance, ads, external marketing, traffic, inventory, pricing, plan-fact, SKU statuses)
-- 13-section report structure
-- Dual output: MD (git) + Notion-enhanced (native tables, colors, callouts)
-- CFO verdict with 2-pass retry mechanism
-- Auto depth detection: day/week/month from date arguments
+- Deprecated: 12 subagents (8 analysts + 3 verifiers + synthesizer), shallow analysis

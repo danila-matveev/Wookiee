@@ -45,6 +45,19 @@ Store answers as:
 - `month` = "YYYY-MM"
 - `sections` = "categories,our,competitors,models_ours,models_rivals,new_items"
 
+### Start Tool Logging
+
+```bash
+PYTHONPATH=. python3 -c "
+from shared.tool_logger import ToolLogger
+logger = ToolLogger('/market-review')
+run_id = logger.start(trigger='manual', user='danila')
+print(f'RUN_ID={run_id}')
+"
+```
+
+Save `RUN_ID`. If `None` — continue, logging is fire-and-forget.
+
 ## Stage 1: Data Collection
 
 Run the collector orchestrator:
@@ -113,6 +126,19 @@ Tasks:
 4. Write MD report to: docs/reports/YYYY-MM-market-review.md
 5. Publish to Notion page (ID: 2f458a2bd58780648974f98347b2d4d5)
 ```
+
+### Finish Tool Logging
+
+```bash
+PYTHONPATH=. python3 -c "
+from shared.tool_logger import ToolLogger
+logger = ToolLogger('/market-review')
+logger.finish('{RUN_ID}', status='success',
+    result_url='{NOTION_URL}')
+"
+```
+
+If `RUN_ID` is empty — skip.
 
 ## Stage 3: Delivery
 

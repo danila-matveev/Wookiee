@@ -121,6 +121,20 @@ Filter rows by date columns within `[START, END]`.
 
 Save parsed data as `sheets_bloggers`, `sheets_vk`, `sheets_smm`. If a sheet fails — note in quality_flags, proceed with DB data only.
 
+### 1.3 Start Tool Logging
+
+```bash
+PYTHONPATH=. python3 -c "
+from shared.tool_logger import ToolLogger
+logger = ToolLogger('/marketing-report')
+run_id = logger.start(trigger='manual', user='danila', version='v2',
+    period_start='{START}', period_end='{END}', depth='{DEPTH}')
+print(f'RUN_ID={run_id}')
+"
+```
+
+Save `RUN_ID`. If `None` — continue, logging is fire-and-forget.
+
 ---
 
 ## Stage 1.5: Data Validation (MANDATORY)
@@ -362,6 +376,21 @@ After publishing — fetch page via `mcp__claude_ai_Notion__notion-fetch` and ve
 - Callouts render with icons and colors
 - ASCII funnels preserved inside code blocks
 - Bold text preserved in table cells
+
+### 5.5 Finish Tool Logging
+
+```bash
+PYTHONPATH=. python3 -c "
+from shared.tool_logger import ToolLogger
+logger = ToolLogger('/marketing-report')
+logger.finish('{RUN_ID}', status='success',
+    result_url='{NOTION_URL}',
+    items_processed={MODEL_COUNT},
+    output_sections=10)
+"
+```
+
+If `RUN_ID` is empty — skip.
 
 ---
 

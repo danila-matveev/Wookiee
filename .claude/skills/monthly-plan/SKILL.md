@@ -61,6 +61,19 @@ user_context = """
 """
 ```
 
+### Start Tool Logging
+
+```bash
+PYTHONPATH=. python3 -c "
+from shared.tool_logger import ToolLogger
+logger = ToolLogger('/monthly-plan')
+run_id = logger.start(trigger='manual', user='danila')
+print(f'RUN_ID={run_id}')
+"
+```
+
+Save `RUN_ID`. If `None` — continue, logging is fire-and-forget.
+
 ## Stage 1: Data Collection
 
 Run the Python collector:
@@ -240,6 +253,20 @@ gws sheets create-tab "1GRCGSAJESSDvAhoVMmXljXy-qErMKt-n45PV96YBiVY" "📋 Пл�
 ```
 
 Write key metrics from the plan (Revenue, Маржа-1, Маржа-2, DRR by scenario).
+
+### Finish Tool Logging
+
+```bash
+PYTHONPATH=. python3 -c "
+from shared.tool_logger import ToolLogger
+logger = ToolLogger('/monthly-plan')
+logger.finish('{RUN_ID}', status='success',
+    result_url='{NOTION_URL}',
+    items_processed={MODEL_COUNT})
+"
+```
+
+If `RUN_ID` is empty — skip.
 
 ## Completion
 
