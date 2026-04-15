@@ -26,14 +26,14 @@ BEGIN
 
     -- INSERT: записываем факт создания
     IF TG_OP = 'INSERT' THEN
-        INSERT INTO istoriya_izmeneniy (tablica, zapis_id, pole, staroe_znachenie, novoe_znachenie, tip_operacii, polzovatel)
+        INSERT INTO infra.istoriya_izmeneniy (tablica, zapis_id, pole, staroe_znachenie, novoe_znachenie, tip_operacii, polzovatel)
         VALUES (TG_TABLE_NAME, v_zapis_id, NULL, NULL, row_to_json(NEW)::TEXT, 'INSERT', current_user);
         RETURN NEW;
     END IF;
 
     -- DELETE: записываем факт удаления
     IF TG_OP = 'DELETE' THEN
-        INSERT INTO istoriya_izmeneniy (tablica, zapis_id, pole, staroe_znachenie, novoe_znachenie, tip_operacii, polzovatel)
+        INSERT INTO infra.istoriya_izmeneniy (tablica, zapis_id, pole, staroe_znachenie, novoe_znachenie, tip_operacii, polzovatel)
         VALUES (TG_TABLE_NAME, v_zapis_id, NULL, row_to_json(OLD)::TEXT, NULL, 'DELETE', current_user);
         RETURN OLD;
     END IF;
@@ -56,7 +56,7 @@ BEGIN
 
             -- Если значения отличаются - записываем изменение
             IF v_old_value IS DISTINCT FROM v_new_value THEN
-                INSERT INTO istoriya_izmeneniy (tablica, zapis_id, pole, staroe_znachenie, novoe_znachenie, tip_operacii, polzovatel)
+                INSERT INTO infra.istoriya_izmeneniy (tablica, zapis_id, pole, staroe_znachenie, novoe_znachenie, tip_operacii, polzovatel)
                 VALUES (TG_TABLE_NAME, v_zapis_id, v_key, v_old_value, v_new_value, 'UPDATE', current_user);
             END IF;
         END LOOP;

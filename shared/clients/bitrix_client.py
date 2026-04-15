@@ -144,7 +144,7 @@ class BitrixClient:
     def exchange_code(self, code: str) -> dict:
         """Exchange authorization code for tokens (step 2 of OAuth2)."""
         resp = requests.get(
-            f'https://oauth.bitrix.info/oauth/token/',
+            'https://oauth.bitrix.info/oauth/token/',
             params={
                 'grant_type': 'authorization_code',
                 'client_id': self._client_id,
@@ -169,7 +169,7 @@ class BitrixClient:
 
         logger.info('Refreshing Bitrix24 access token...')
         resp = requests.get(
-            f'https://oauth.bitrix.info/oauth/token/',
+            'https://oauth.bitrix.info/oauth/token/',
             params={
                 'grant_type': 'refresh_token',
                 'client_id': self._client_id,

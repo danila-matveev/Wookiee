@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Василий — оптимизация локализации WB (полная схема) — Wookiee Workflow</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #fafbfc;
+            --bg-toolbar: #ffffff;
+            --text: #1a1a2e;
+            --text-muted: #6b7280;
+            --border: #e5e7eb;
+            --accent: #3b82f6;
+            --sidebar-bg: #ffffff;
+            --shadow: 0 1px 3px rgba(0,0,0,0.08);
+            --shadow-lg: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        [data-theme="dark"] {
+            --bg: #0f172a;
+            --bg-toolbar: #1e293b;
+            --text: #e2e8f0;
+            --text-muted: #94a3b8;
+            --border: #334155;
+            --accent: #60a5fa;
+            --sidebar-bg: #1e293b;
+            --shadow: 0 1px 3px rgba(0,0,0,0.3);
+            --shadow-lg: 0 4px 12px rgba(0,0,0,0.4);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .toolbar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 20px;
+            background: var(--bg-toolbar);
+            border-bottom: 1px solid var(--border);
+            box-shadow: var(--shadow);
+            z-index: 100;
+            flex-shrink: 0;
+        }
+        .toolbar h1 {
+            font-size: 16px;
+            font-weight: 600;
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .toolbar .badge {
+            font-size: 11px;
+            font-weight: 500;
+            padding: 2px 8px;
+            border-radius: 9999px;
+            background: var(--accent);
+            color: white;
+            white-space: nowrap;
+        }
+        .btn-group {
+            display: flex;
+            gap: 4px;
+            background: var(--bg);
+            border-radius: 8px;
+            padding: 3px;
+        }
+        .btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            border: none;
+            border-radius: 6px;
+            background: transparent;
+            color: var(--text);
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.15s;
+        }
+        .btn:hover { background: var(--border); }
+        .btn-text {
+            width: auto;
+            padding: 0 10px;
+            font-size: 12px;
+            font-weight: 500;
+            font-family: inherit;
+        }
+        .main {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+            position: relative;
+        }
+        .diagram-viewport {
+            flex: 1;
+            overflow: hidden;
+            cursor: grab;
+            position: relative;
+        }
+        .diagram-viewport:active { cursor: grabbing; }
+        .diagram-canvas {
+            transform-origin: 0 0;
+            transition: transform 0.08s ease-out;
+            padding: 40px;
+            display: inline-block;
+            min-width: 100%;
+            min-height: 100%;
+        }
+        .sidebar {
+            width: 320px;
+            background: var(--sidebar-bg);
+            border-left: 1px solid var(--border);
+            box-shadow: var(--shadow-lg);
+            padding: 20px;
+            overflow-y: auto;
+            transform: translateX(100%);
+            transition: transform 0.25s ease;
+            position: absolute;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            z-index: 50;
+        }
+        .sidebar.open { transform: translateX(0); }
+        .sidebar h2 {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .sidebar .close-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 18px;
+            padding: 4px;
+        }
+        .sidebar .detail-label {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin-top: 16px;
+            margin-bottom: 4px;
+        }
+        .sidebar .detail-value {
+            font-size: 13px;
+            line-height: 1.5;
+            color: var(--text);
+        }
+        .zoom-indicator {
+            position: absolute;
+            bottom: 16px;
+            left: 16px;
+            font-size: 12px;
+            color: var(--text-muted);
+            background: var(--bg-toolbar);
+            padding: 4px 10px;
+            border-radius: 6px;
+            box-shadow: var(--shadow);
+            z-index: 10;
+        }
+        .mermaid { font-family: 'Inter', sans-serif !important; }
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateY(80px);
+            background: var(--text);
+            color: var(--bg);
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            transition: transform 0.3s ease;
+            z-index: 200;
+        }
+        .toast.show { transform: translateX(-50%) translateY(0); }
+        @media (max-width: 768px) {
+            .toolbar h1 { font-size: 14px; }
+            .sidebar { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="toolbar">
+        <h1>Василий — оптимизация локализации WB (полная схема)</h1>
+        <span class="badge">Поток данных + Автоматизация</span>
+        <div class="btn-group">
+            <button class="btn" onclick="zoomIn()" title="Zoom in">+</button>
+            <button class="btn" onclick="zoomOut()" title="Zoom out">−</button>
+            <button class="btn" onclick="zoomReset()" title="Fit to screen">⊡</button>
+        </div>
+        <button class="btn btn-text" onclick="toggleTheme()" id="themeBtn">🌙</button>
+        <button class="btn btn-text" onclick="copySVG()">📋 SVG</button>
+    </div>
+
+    <div class="main">
+        <div class="diagram-viewport" id="viewport">
+            <div class="diagram-canvas" id="canvas">
+                <pre class="mermaid">
+flowchart TD
+    classDef agent fill:#dbeafe,stroke:#3b82f6,stroke-width:2px,color:#1e3a5f
+    classDef database fill:#dcfce7,stroke:#22c55e,stroke-width:2px,color:#14532d
+    classDef api fill:#ffedd5,stroke:#f97316,stroke-width:2px,color:#7c2d12
+    classDef gate fill:#fef3c7,stroke:#f59e0b,stroke-width:2px,color:#78350f
+    classDef output fill:#f3e8ff,stroke:#a855f7,stroke-width:2px,color:#581c87
+    classDef process fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0c4a6e
+    classDef error fill:#fee2e2,stroke:#ef4444,stroke-width:2px,color:#991b1b
+    classDef human fill:#fce7f3,stroke:#ec4899,stroke-width:2px,color:#831843
+
+    subgraph sources["🌐 Откуда берутся данные"]
+        wb_remains["Остатки на складах WB"]:::api
+        wb_orders["Заказы покупателей WB"]:::api
+        moysklad["Остатки на своём складе"]:::api
+        barcodes["Справочник баркодов"]:::database
+        statuses["Статусы артикулов"]:::database
+    end
+
+    subgraph mapping["🗺️ Привязка к регионам"]
+        map_stocks["Распределяем остатки\nпо федеральным округам"]:::process
+        map_orders["Определяем: заказ\nлокальный или нет?"]:::process
+    end
+
+    subgraph analysis["🔍 Анализ локализации"]
+        calc_index["Считаем индекс\nлокализации по SKU"]:::agent
+        find_problems["Находим проблемные\nSKU ниже 75%"]:::gate
+        calc_donors["Определяем доноров\nи защищаем их запасы"]:::process
+    end
+
+    subgraph recommendations["📋 Генерация рекомендаций"]
+        gen_moves["Перемещения между\nскладами WB"]:::agent
+        gen_supplies["Допоставки с\nсобственного склада"]:::agent
+        prioritize["Расставляем приоритеты:\nкритично / важно / остальное"]:::gate
+    end
+
+    subgraph output_layer["📬 Куда приходят результаты"]
+        excel["Детальный отчёт Excel"]:::output
+        sheets["Таблица Google Sheets"]:::output
+        dashboard["Дашборд с историей"]:::output
+        history_db["Локальная история расчётов"]:::database
+    end
+
+    subgraph automation["🤖 Автоматизация исполнения"]
+        check_coeff["Проверка коэффициентов\nприёмки на складах WB"]:::api
+        auto_supply["Авто-создание поставки\nFBW через API"]:::agent
+        manual_move["Ручное создание заявки\nна перераспределение"]:::human
+        create_pass["Создание пропуска\nна склад WB"]:::process
+    end
+
+    subgraph wb_api_block["📡 WB API эндпоинты"]
+        api_coeff["GET acceptance/coefficients\n(коэффициенты приёмки)"]:::api
+        api_supply["POST /api/v3/supplies\n(создание поставки)"]:::api
+        api_trbx["POST .../trbx + stickers\n(коробки + стикеры)"]:::api
+        api_deliver["PATCH .../deliver\n(закрыть и отправить)"]:::api
+        api_pass["POST /api/v3/passes\n(пропуск на склад)"]:::api
+        no_api["❌ API перераспределения\nмежду складами WB\nНЕ СУЩЕСТВУЕТ"]:::error
+    end
+
+    wb_remains -->|"остатки по 40+ складам"| map_stocks
+    wb_orders -->|"заказы за 30 дней"| map_orders
+    moysklad -->|"что есть на своём складе"| gen_supplies
+    barcodes -->|"артикул → баркод"| gen_moves
+    statuses -->|"фильтр: Выводим"| find_problems
+
+    map_stocks -->|"артикул × регион × остаток"| calc_index
+    map_orders -->|"локальный / не локальный"| calc_index
+
+    calc_index -->|"SKU с индексом ниже 75%"| find_problems
+    find_problems -->|"сортировка по impact"| calc_donors
+    calc_donors -->|"доступные излишки\nс защитой буфера"| gen_moves
+
+    gen_moves -->|"откуда → куда × кол-во"| prioritize
+    calc_donors -->|"нехватка у доноров"| gen_supplies
+    gen_supplies -->|"свой склад → WB склад"| prioritize
+
+    prioritize -->|"Excel с 8 листами"| excel
+    prioritize -->|"5 листов на кабинет"| sheets
+    prioritize -->|"сводка + тренд"| dashboard
+    prioritize -->|"сохранение результата"| history_db
+
+    gen_supplies -->|"допоставки\n(автоматизируемо)"| check_coeff
+    gen_moves -->|"перемещения\n(только вручную)"| manual_move
+
+    check_coeff -->|"склады с открытой приёмкой"| auto_supply
+    auto_supply -->|"после создания поставки"| create_pass
+
+    check_coeff -.->|"запрос"| api_coeff
+    auto_supply -.->|"запрос"| api_supply
+    auto_supply -.->|"запрос"| api_trbx
+    auto_supply -.->|"запрос"| api_deliver
+    create_pass -.->|"запрос"| api_pass
+    manual_move -.->|"нет API"| no_api
+                </pre>
+            </div>
+        </div>
+        <div class="sidebar" id="sidebar">
+            <h2>
+                <span id="sidebarTitle">Node Details</span>
+                <button class="close-btn" onclick="closeSidebar()">✕</button>
+            </h2>
+            <div id="sidebarContent"></div>
+        </div>
+        <div class="zoom-indicator" id="zoomLevel">100%</div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+    <script>
+        window.nodeDetails = {
+  "wb_remains": {
+    "name": "Остатки на складах WB",
+    "type": "Источник данных — Wildberries",
+    "description": "Запрашиваем у Wildberries полный список товаров на всех складах. Асинхронный отчёт: скрипт создаёт задачу, ждёт готовности (5-15 минут), потом скачивает. Получаем артикул, размер, склад и количество.",
+    "notes": "Эндпоинт warehouse_remains (POST /api/v1/warehouse_remains). Возвращает данные по 40+ складам WB по всей России и СНГ. Склады-транзиты (В пути до получателей и т.п.) фильтруются."
+  },
+  "wb_orders": {
+    "name": "Заказы покупателей WB",
+    "type": "Источник данных — Wildberries",
+    "description": "Загружаем все заказы за последние 30 дней. Для каждого заказа WB сообщает: с какого склада отгрузили и в какой регион доставили. Это ключевые данные для расчёта — локальный заказ или нет.",
+    "notes": "Эндпоинт supplier/orders (GET /api/v1/supplier/orders). Фильтруем по полю date, а не lastChangeDate. Включаем даже отменённые заказы — WB их учитывает в индексе локализации."
+  },
+  "moysklad": {
+    "name": "Остатки на своём складе",
+    "type": "Источник данных — МойСклад",
+    "description": "Проверяем, сколько товара есть на нашем собственном складе. Эти данные нужны для расчёта допоставок — если на складах WB не хватает товара, а у нас он есть, мы можем довезти.",
+    "notes": "МойСклад API (assortment endpoint). Если токен не задан — скрипт продолжает без данных своего склада, но допоставки не рассчитываются."
+  },
+  "barcodes": {
+    "name": "Справочник баркодов",
+    "type": "Справочные данные",
+    "description": "Файл Спецификации.xlsx с маппингом артикул+размер → баркод. Баркоды добавляются в итоговый отчёт для удобства работы склада при выполнении перемещений.",
+    "notes": "Если файл не найден, скрипт продолжает работу без баркодов — они опциональны."
+  },
+  "statuses": {
+    "name": "Статусы артикулов",
+    "type": "Справочные данные — Supabase",
+    "description": "Загружаем из нашей базы статусы артикулов. Артикулы со статусом «Выводим» исключаются из допоставок — нет смысла довозить товар, который мы хотим распродать и снять с продажи.",
+    "notes": "Supabase (data_layer.get_artikuly_statuses). Если нет подключения — скрипт работает без фильтрации по статусам."
+  },
+  "map_stocks": {
+    "name": "Распределяем остатки по федеральным округам",
+    "type": "Обработка данных",
+    "description": "Каждый склад WB привязывается к своему федеральному округу. Например, Коледино → Центральный, Краснодар → Южный. Итог: для каждого артикула знаем, сколько штук лежит в каждом ФО.",
+    "notes": "Маппинг в wb_localization_mappings.py: 40+ складов → 6 российских ФО + СНГ. Неизвестные склады логируются как warning."
+  },
+  "map_orders": {
+    "name": "Определяем: заказ локальный или нет?",
+    "type": "Обработка данных",
+    "description": "Для каждого заказа сравниваем: откуда отгрузили (склад → ФО) и куда доставили (область → ФО). Если совпадает — заказ локальный. Если нет — нелокальный. Группируем по артикулу × регион.",
+    "notes": "Oblast → ФО маппинг: 285+ вариантов написания регионов. WB возвращает oblastOkrugName (полное название ФО) или oblast (название области). Заказы из СНГ пропускаются."
+  },
+  "calc_index": {
+    "name": "Считаем индекс локализации по SKU",
+    "type": "Ключевой расчёт",
+    "description": "Формула простая: Индекс = Локальные заказы / Все заказы × 100%. Считаем для каждого артикула+размера отдельно. Целевой индекс — 75%. Всё что ниже — проблема, которую нужно решать.",
+    "notes": "Также считаем общий средний и медианный индекс по всему портфелю SKU для сводки."
+  },
+  "find_problems": {
+    "name": "Находим проблемные SKU ниже 75%",
+    "type": "Фильтрация и приоритизация",
+    "description": "Отбираем артикулы с индексом ниже 75% и с реальными заказами. Сортируем по «impact» — чем больше заказов и чем ниже индекс, тем выше приоритет. Артикулы со статусом «Выводим» не попадают в допоставки.",
+    "notes": "Impact = Всего заказов × (75% - текущий индекс). Критичный порог — индекс ниже 50%. Высокие заказы — более 10 штук за период."
+  },
+  "calc_donors": {
+    "name": "Определяем доноров и защищаем их запасы",
+    "type": "Защита доноров",
+    "description": "Склад-донор — это регион, где товара больше, чем нужно. Но нельзя забрать всё: оставляем буфер на 14 дней продаж. Если после изъятия индекс донора упадёт ниже 70% — ограничиваем трансфер.",
+    "notes": "Формула: safe_minimum = ceil(среднедневные заказы × safety_days). Доступно для трансфера = остатки - safe_minimum. Настраиваемые параметры: safety_days (по умолч. 14), min_donor_localization (по умолч. 70%)."
+  },
+  "gen_moves": {
+    "name": "Перемещения между складами WB",
+    "type": "Генерация рекомендаций",
+    "description": "Для каждого проблемного SKU: берём доступные излишки у доноров и распределяем по получателям (регионам с дефицитом). Указываем конкретно: с какого склада, на какой склад, сколько штук переместить.",
+    "notes": "Если у донора несколько складов в регионе — излишки распределяются пропорционально остаткам на каждом складе. Перемещения только между российскими ФО."
+  },
+  "gen_supplies": {
+    "name": "Допоставки с собственного склада",
+    "type": "Генерация рекомендаций",
+    "description": "Если перемещений между складами WB недостаточно — предлагаем довезти товар со своего склада. Учитываем: сколько реально есть на своём складе и ограничение по обороту (не более 100 дней запаса).",
+    "notes": "К допоставке (факт) = min(нужно, макс. по обороту, есть на своём складе). Артикулы со статусом «Выводим» исключаются из допоставок."
+  },
+  "prioritize": {
+    "name": "Расставляем приоритеты",
+    "type": "Классификация",
+    "description": "Каждое перемещение получает приоритет. Критично+ — индекс ниже 50% и много заказов. Критично — индекс ниже 50%. Важно+ — индекс 50-75% и много заказов. Важно — индекс 50-75%. Остальное — OK.",
+    "notes": "Балл приоритета: Критично+=35, Критично=30, Важно+=25, Важно=20, OK=10. Сортировка по баллу, от высшего к низшему."
+  },
+  "excel": {
+    "name": "Детальный отчёт Excel",
+    "type": "Результат",
+    "description": "Файл с 8 листами: Сводка, 1_Критичные, 2_Важные, 3_Остальные, Все перемещения, Анализ_SKU, Защита доноров, Допоставки, Регионы, Динамика. Сохраняется локально.",
+    "notes": "Файл: Отчет_локализация_v3_{кабинет}_{дата}.xlsx в папке Отчеты готовые/"
+  },
+  "sheets": {
+    "name": "Таблица Google Sheets",
+    "type": "Результат",
+    "description": "Для каждого кабинета (ИП / ООО) создаётся 5 листов: Перемещения, Допоставки, Сводка, Регионы, Проблемные SKU. С цветовым форматированием и заморозкой заголовков.",
+    "notes": "Spreadsheet ID задаётся в конфиге (VASILY_SPREADSHEET_ID). Экспорт через gspread + Google Service Account."
+  },
+  "dashboard": {
+    "name": "Дашборд с историей",
+    "type": "Результат",
+    "description": "Лист «Обновление» — сводная панель с метриками обоих кабинетов рядом и историей последних 20 расчётов. Показывает тренд изменения индекса.",
+    "notes": "Также лист «История» — append-only лог каждого запуска с датой, индексом, количеством перемещений и изменением индекса."
+  },
+  "history_db": {
+    "name": "Локальная история расчётов",
+    "type": "Хранилище",
+    "description": "Каждый расчёт сохраняется в локальную базу данных. При следующем запуске сравниваем с предыдущим результатом — показываем, какие регионы улучшились, а какие ухудшились.",
+    "notes": "SQLite: services/wb_localization/data/vasily.db. Автомиграция из старого формата history.json."
+  },
+  "check_coeff": {
+    "name": "Проверка коэффициентов приёмки",
+    "type": "Автоматизация — WB API",
+    "description": "Перед созданием поставки проверяем, принимает ли нужный склад WB товар. Запрашиваем коэффициенты приёмки на 14 дней вперёд. Поставка возможна только если coefficient ≤ 1 и allowUnload = true.",
+    "notes": "GET https://supplies-api.wildberries.ru/api/v1/acceptance/coefficients — возвращает массив с boxDeliveryCoefExpr, boxDeliveryMarketplaceBase, boxStorageCoefExpr. Rate limit: 6 req/min."
+  },
+  "auto_supply": {
+    "name": "Авто-создание поставки FBW",
+    "type": "Автоматизация — WB API",
+    "description": "Полный цикл создания поставки на склад WB: создаём поставку → создаём коробки → добавляем товары → получаем стикеры → получаем QR-код → закрываем и отправляем. Всё через официальный API.",
+    "notes": "Workflow: POST /api/v3/supplies → POST .../trbx → PATCH .../trbx/{id} → POST .../stickers → GET .../barcode → PATCH .../deliver. Base URL: https://marketplace-api.wildberries.ru. Rate limit: 300 req/min."
+  },
+  "manual_move": {
+    "name": "Ручное создание заявки на перераспределение",
+    "type": "Ручная операция — Seller Portal",
+    "description": "API для перераспределения товара между складами WB НЕ СУЩЕСТВУЕТ. Оператор вручную создаёт заявки в Seller Portal на основе данных из Google Sheets. Перераспределение стоит 0.5% оборота и ограничено 5000 шт/день.",
+    "notes": "Seller Portal → Отчёт по остаткам на складах → Перераспределение. Требует включения в Тарифном конструкторе. Нельзя выбрать конкретный размер для мульти-размерных товаров. Сторонние боты (wbcon.ru) используют недокументированные методы — высокий риск блокировки."
+  },
+  "create_pass": {
+    "name": "Создание пропуска на склад WB",
+    "type": "Автоматизация — WB API",
+    "description": "После создания поставки автоматически создаём пропуск на склад: ФИО водителя, номер автомобиля, целевой склад. Пропуск действителен 48 часов.",
+    "notes": "POST https://marketplace-api.wildberries.ru/api/v3/passes — параметры: fullName, carNumber, officeId. Rate limit: 1 создание за 10 минут. GET /api/v3/passes/offices — список складов, требующих пропуск."
+  },
+  "api_coeff": {
+    "name": "GET acceptance/coefficients",
+    "type": "WB API — Supplies",
+    "description": "Возвращает коэффициенты приёмки для всех складов WB на ближайшие 14 дней. Если coefficient = 0 или 1 и allowUnload = true — можно создавать поставку.",
+    "notes": "Base URL: https://supplies-api.wildberries.ru/api/v1/acceptance/coefficients. Также доступен через common-api: https://common-api.wildberries.ru/api/tariffs/v1/acceptance/coefficients (включает тарифы на логистику и хранение)."
+  },
+  "api_supply": {
+    "name": "POST /api/v3/supplies",
+    "type": "WB API — Marketplace",
+    "description": "Создание новой поставки. Возвращает supplyId (формат WB-GI-1234567). К поставке далее привязываются коробки с товарами.",
+    "notes": "Rate limit: 300 req/min (общий для всех Marketplace методов). Требует токен Marketplace."
+  },
+  "api_trbx": {
+    "name": "POST .../trbx + stickers",
+    "type": "WB API — Marketplace",
+    "description": "Создание коробок в поставке и получение QR-стикеров для маркировки. Стикеры доступны в форматах SVG, ZPL, PNG.",
+    "notes": "POST /api/v3/supplies/{id}/trbx — создать коробку. PATCH /api/v3/supplies/{id}/trbx/{trbxId} — добавить заказы. POST /api/v3/supplies/{id}/trbx/stickers — получить стикеры."
+  },
+  "api_deliver": {
+    "name": "PATCH .../deliver",
+    "type": "WB API — Marketplace",
+    "description": "Закрытие поставки и передача в доставку. После этого все заказы в поставке переходят в статус 'В доставке'. Необратимая операция.",
+    "notes": "PATCH /api/v3/supplies/{supplyId}/deliver. После закрытия поставку нельзя изменить."
+  },
+  "api_pass": {
+    "name": "POST /api/v3/passes",
+    "type": "WB API — Marketplace",
+    "description": "Создание пропуска для въезда на склад WB. Указывается ФИО, номер авто и ID склада. Пропуск действует 48 часов.",
+    "notes": "Rate limit: 1 создание за 10 минут. GET /api/v3/passes/offices — список складов, требующих пропуск."
+  },
+  "no_api": {
+    "name": "API перераспределения НЕ СУЩЕСТВУЕТ",
+    "type": "Ограничение WB API",
+    "description": "Wildberries НЕ предоставляет публичный API для перемещения товара между своими складами (FBO → FBO). Это одно из ключевых ограничений для полной автоматизации. Перераспределение доступно только через Seller Portal UI.",
+    "notes": "Подтверждено на WB Developer Forum. Сторонние боты (wbcon.ru и др.) используют недокументированные/нелегальные методы. Риски: блокировка аккаунта, нарушение ToS. Рекомендация: использовать гибридный подход — автоматизировать допоставки через API, перераспределение делать вручную по данным скрипта."
+  }
+};
+
+        const lightTheme = {
+            theme: 'base',
+            themeVariables: {
+                primaryColor: '#dbeafe',
+                primaryBorderColor: '#3b82f6',
+                primaryTextColor: '#1e3a5f',
+                secondaryColor: '#dcfce7',
+                secondaryBorderColor: '#22c55e',
+                secondaryTextColor: '#14532d',
+                tertiaryColor: '#fef3c7',
+                tertiaryBorderColor: '#f59e0b',
+                tertiaryTextColor: '#78350f',
+                lineColor: '#64748b',
+                textColor: '#1a1a2e',
+                mainBkg: '#dbeafe',
+                nodeBorder: '#3b82f6',
+                clusterBkg: '#f0f9ff',
+                clusterBorder: '#bae6fd',
+                titleColor: '#1e3a5f',
+                edgeLabelBackground: '#ffffff',
+                fontFamily: 'Inter, sans-serif',
+                fontSize: '14px'
+            }
+        };
+
+        const darkTheme = {
+            theme: 'base',
+            themeVariables: {
+                primaryColor: '#1e3a5f',
+                primaryBorderColor: '#60a5fa',
+                primaryTextColor: '#e2e8f0',
+                secondaryColor: '#14532d',
+                secondaryBorderColor: '#4ade80',
+                secondaryTextColor: '#dcfce7',
+                tertiaryColor: '#78350f',
+                tertiaryBorderColor: '#fbbf24',
+                tertiaryTextColor: '#fef3c7',
+                lineColor: '#94a3b8',
+                textColor: '#e2e8f0',
+                mainBkg: '#1e3a5f',
+                nodeBorder: '#60a5fa',
+                clusterBkg: '#0f172a',
+                clusterBorder: '#334155',
+                titleColor: '#e2e8f0',
+                edgeLabelBackground: '#1e293b',
+                fontFamily: 'Inter, sans-serif',
+                fontSize: '14px'
+            }
+        };
+
+        function getTheme() {
+            return document.documentElement.dataset.theme === 'dark' ? darkTheme : lightTheme;
+        }
+
+        async function renderDiagram() {
+            const el = document.querySelector('.mermaid');
+            const code = el.textContent.trim();
+            el.removeAttribute('data-processed');
+            el.innerHTML = code;
+            mermaid.initialize({ startOnLoad: false, ...getTheme(), securityLevel: 'loose', flowchart: { curve: 'linear', nodeSpacing: 60, rankSpacing: 80, padding: 20 } });
+            const { svg } = await mermaid.render('mermaid-diagram', code);
+            el.innerHTML = svg;
+            el.querySelectorAll('[id^="flowchart-"], [id^="statediagram-"]').forEach(node => {
+                node.style.cursor = 'pointer';
+                node.addEventListener('click', () => {
+                    const id = node.id.replace(/^(flowchart-|statediagram-)/, '').replace(/-\d+$/, '');
+                    showNodeDetail(id);
+                });
+            });
+            el.querySelectorAll('.node').forEach(node => {
+                node.style.cursor = 'pointer';
+                node.addEventListener('click', () => {
+                    const id = node.id?.replace(/^(flowchart-|statediagram-)/, '').replace(/-\d+$/, '')
+                             || node.getAttribute('data-id');
+                    if (id) showNodeDetail(id);
+                });
+            });
+        }
+
+        window.showNodeDetail = function(nodeId) {
+            const details = window.nodeDetails[nodeId];
+            if (!details) return;
+            const sidebar = document.getElementById('sidebar');
+            const title = document.getElementById('sidebarTitle');
+            const content = document.getElementById('sidebarContent');
+            title.textContent = details.name || nodeId;
+            let html = '';
+            if (details.type) {
+                html += `<div class="detail-label">Роль</div><div class="detail-value">${details.type}</div>`;
+            }
+            if (details.description) {
+                html += `<div class="detail-label">Что делает</div><div class="detail-value">${details.description}</div>`;
+            }
+            if (details.notes) {
+                html += `<div class="detail-label">Подробнее</div><div class="detail-value">${details.notes}</div>`;
+            }
+            content.innerHTML = html;
+            sidebar.classList.add('open');
+        };
+
+        window.closeSidebar = function() {
+            document.getElementById('sidebar').classList.remove('open');
+        };
+
+        let scale = 1, panX = 0, panY = 0, isPanning = false, startX, startY;
+        const canvas = document.getElementById('canvas');
+        const viewport = document.getElementById('viewport');
+
+        function updateTransform() {
+            canvas.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+            document.getElementById('zoomLevel').textContent = Math.round(scale * 100) + '%';
+        }
+
+        window.zoomIn = () => { scale = Math.min(scale * 1.2, 5); updateTransform(); };
+        window.zoomOut = () => { scale = Math.max(scale / 1.2, 0.1); updateTransform(); };
+        window.zoomReset = () => { scale = 1; panX = 0; panY = 0; updateTransform(); };
+
+        viewport.addEventListener('wheel', e => {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? 0.9 : 1.1;
+            const rect = viewport.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+            const newScale = Math.min(Math.max(scale * delta, 0.1), 5);
+            panX = mx - (mx - panX) * (newScale / scale);
+            panY = my - (my - panY) * (newScale / scale);
+            scale = newScale;
+            updateTransform();
+        }, { passive: false });
+
+        viewport.addEventListener('mousedown', e => {
+            if (e.target.closest('.node')) return;
+            isPanning = true; startX = e.clientX - panX; startY = e.clientY - panY;
+        });
+        window.addEventListener('mousemove', e => {
+            if (!isPanning) return;
+            panX = e.clientX - startX; panY = e.clientY - startY;
+            updateTransform();
+        });
+        window.addEventListener('mouseup', () => { isPanning = false; });
+
+        let lastTouchDist = 0;
+        viewport.addEventListener('touchstart', e => {
+            if (e.touches.length === 1) {
+                isPanning = true;
+                startX = e.touches[0].clientX - panX;
+                startY = e.touches[0].clientY - panY;
+            } else if (e.touches.length === 2) {
+                lastTouchDist = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+            }
+        }, { passive: false });
+        viewport.addEventListener('touchmove', e => {
+            e.preventDefault();
+            if (e.touches.length === 1 && isPanning) {
+                panX = e.touches[0].clientX - startX;
+                panY = e.touches[0].clientY - startY;
+                updateTransform();
+            } else if (e.touches.length === 2) {
+                const dist = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+                scale = Math.min(Math.max(scale * (dist / lastTouchDist), 0.1), 5);
+                lastTouchDist = dist;
+                updateTransform();
+            }
+        }, { passive: false });
+        viewport.addEventListener('touchend', () => { isPanning = false; });
+
+        window.toggleTheme = function() {
+            const html = document.documentElement;
+            const isDark = html.dataset.theme === 'dark';
+            html.dataset.theme = isDark ? 'light' : 'dark';
+            document.getElementById('themeBtn').textContent = isDark ? '🌙' : '☀️';
+            renderDiagram();
+        };
+
+        window.copySVG = async function() {
+            const svg = document.querySelector('.mermaid svg');
+            if (!svg) return;
+            try {
+                await navigator.clipboard.writeText(svg.outerHTML);
+                showToast('SVG скопирован в буфер обмена');
+            } catch {
+                showToast('Не удалось скопировать');
+            }
+        };
+
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.classList.add('show');
+            setTimeout(() => t.classList.remove('show'), 2000);
+        }
+
+        renderDiagram();
+    </script>
+</body>
+</html>

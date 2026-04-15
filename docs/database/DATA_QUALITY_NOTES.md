@@ -433,6 +433,35 @@ JOIN (SELECT DISTINCT nmid, vendorcode FROM nomenclature) n ON w.nmid = n.nmid
 
 ---
 
+## 17. OZON revenue_before_spp не вычитала возвраты (CRITICAL — FIXED)
+
+**Проблема:** В `get_ozon_finance()` и `get_ozon_by_model()` поле `revenue_before_spp` считалось как `SUM(price_end)` без вычета возвратов. WB аналогично вычитала `revenue_return_spp`, а OZON — нет.
+
+**Следствие:**
+- OZON выручка завышалась на сумму возвратов (~53К₽/неделю при текущих объёмах)
+- Маржинальность OZON занижалась (20,1% вместо реальных 21,1%)
+- Маржинальность бренда занижалась (19,8% вместо 19,9%)
+- Все отчёты до 13.04.2026 содержат эту ошибку
+
+**Данные (неделя 06-12 апреля 2026):**
+| Метрика | До фикса | После фикса (= OneScreen) |
+|---|---|---|
+| OZON выручка до СПП | 1 120 115 | 1 067 285 |
+| OZON маржинальность | 20,1% | 21,1% |
+| Бренд выручка | 8 474 026 | 8 421 196 |
+| Бренд маржинальность | 19,8% | 19,9% |
+
+**Причина:** Поле `return_end` в OZON `abc_date` хранится как отрицательное число. Для корректного вычета его нужно ПРИБАВЛЯТЬ к `price_end`.
+
+**Исправление (2026-04-13):**
+- `get_ozon_finance()`: `SUM(price_end) + COALESCE(SUM(return_end), 0) as revenue_before_spp`
+- `get_ozon_finance()`: `SUM(price_end_spp) + COALESCE(SUM(return_end_spp), 0) as revenue_after_spp`
+- `get_ozon_finance()`: `SUM(count_end) - COALESCE(SUM(count_return), 0) as sales_count`
+- `get_ozon_by_model()`: аналогичные правки для `revenue_before_spp` и `sales_count`
+- Файл: `shared/data_layer/finance.py`
+
+---
+
 *Создано: 2026-02-09*
 *Обновлено: 2026-02-10 — добавлены п.7, аналитические правила (выкуп-лаг, ДРР-разбивка, реклама-заказы, СПП)*
 *Обновлено: 2026-02-11 — добавлен п.8, критическая уязвимость безопасности Supabase (RLS)*
@@ -442,4 +471,5 @@ JOIN (SELECT DISTINCT nmid, vendorcode FROM nomenclature) n ON w.nmid = n.nmid
 *Обновлено: 2026-02-26 — добавлен п.14, проблемы целостности SKU Database (9 пунктов)*
 *Обновлено: 2026-02-26 — 7 исправлений в Supabase (14.1, 14.3-14.6, 14.10), п.14.10 tip_kollekcii*
 *Обновлено: 2026-02-28 — п.15 fan-out nomenclature JOIN, п.16 несопоставимые метрики органика/платное*
+*Обновлено: 2026-04-13 — п.17 OZON revenue_before_spp не вычитала возвраты (return_end)*
 *Обновлять при обнаружении новых проблем качества данных.*

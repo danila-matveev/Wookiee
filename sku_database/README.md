@@ -101,22 +101,39 @@ sku_database/
 ### Иерархия
 
 ```
-modeli_osnova (Vuki, Moon, Ruby...)      → 22
-    └── modeli (Vuki-ИП, VukiN-ООО...)   → 40
-            └── artikuly (модель + цвет) → 478
-                    └── tovary (SKU)     → 1450
+modeli_osnova (Vuki, Moon, Ruby...)      → 25
+    └── modeli (Vuki-ИП, VukiN-ООО...)   → 58
+            └── artikuly (модель + цвет) → 548
+                    └── tovary (SKU)     → 1473
 ```
 
 ### Основные таблицы
 
 | Таблица | Описание | Записей |
 |---------|----------|---------|
-| `cveta` | Справочник цветов | 137 |
-| `modeli_osnova` | Базовые модели | 22 |
-| `modeli` | Вариации моделей | 40 |
-| `artikuly` | Артикулы | 478 |
-| `tovary` | SKU | 1450 |
+| `cveta` | Справочник цветов | 141 |
+| `modeli_osnova` | Базовые модели | 25 |
+| `modeli` | Вариации моделей | 58 |
+| `artikuly` | Артикулы | 548 |
+| `tovary` | SKU | 1473 |
 | `statusy` | Статусы | 7 |
+
+### Синхронизация Google Sheets → Supabase
+
+Sheets = source of truth. Скрипт `scripts/sync_sheets_to_supabase.py` выполняет smart sync:
+
+```bash
+# Полная синхронизация
+python scripts/sync_sheets_to_supabase.py
+
+# Dry-run (посмотреть что изменится)
+python scripts/sync_sheets_to_supabase.py --dry-run
+
+# Только до уровня modeli
+python scripts/sync_sheets_to_supabase.py --level modeli
+```
+
+Claude Code скилл: `/sync-sheets`
 
 ### Типы коллекций
 

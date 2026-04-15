@@ -14,7 +14,7 @@ from shared.data_layer._connection import (
     to_float,
 )
 from shared.data_layer._sql_fragments import MAX_TURNOVER_DAYS, MIN_DAILY_SALES
-from shared.model_mapping import get_osnova_sql, map_to_osnova
+from shared.model_mapping import map_to_osnova
 
 logger = logging.getLogger(__name__)
 

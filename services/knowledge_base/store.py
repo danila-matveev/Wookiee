@@ -5,10 +5,8 @@ Uses Supabase PostgreSQL with pgvector extension.
 Connection reuses sku_database pattern (psycopg2 + SQLAlchemy-style).
 """
 
-import json
 import logging
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass
 from typing import Optional
 
 import psycopg2

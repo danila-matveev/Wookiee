@@ -12,11 +12,11 @@ from pathlib import Path
 from typing import Optional
 
 from . import config
-from .chunker import chunk_sections, TextChunk
+from .chunker import chunk_sections
 from .embedder import GeminiEmbedder
 from .store import KnowledgeStore, Chunk
 from .parsers.docx_parser import parse_docx
-from .parsers.pdf_parser import parse_pdf, is_image_heavy
+from .parsers.pdf_parser import parse_pdf
 from .parsers.xlsx_parser import parse_xlsx
 
 logger = logging.getLogger(__name__)

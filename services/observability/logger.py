@@ -297,36 +297,12 @@ async def log_agent_run(
     trigger: Optional[str] = None,
     parent_run_id: Optional[str] = None,
 ) -> None:
-    """Fire-and-forget insert to agent_runs table. Never raises."""
-    try:
-        await asyncio.to_thread(
-            _insert_agent_run,
-            run_id=run_id,
-            agent_name=agent_name,
-            agent_type=agent_type,
-            agent_version=agent_version,
-            status=status,
-            started_at=started_at,
-            finished_at=finished_at,
-            duration_ms=duration_ms,
-            error_message=error_message,
-            model=model,
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-            total_tokens=total_tokens,
-            cost_usd=cost_usd,
-            llm_calls=llm_calls,
-            tool_calls=tool_calls,
-            system_prompt_hash=system_prompt_hash,
-            user_input=user_input,
-            output_summary=output_summary,
-            artifact=artifact,
-            task_type=task_type,
-            trigger=trigger,
-            parent_run_id=parent_run_id,
-        )
-    except Exception as exc:
-        logger.warning("log_agent_run failed (run_id=%s): %s", run_id, exc)
+    """Deprecated: agent_runs table is no longer actively used.
+
+    Writes disabled 2026-04-13 (audit remediation).
+    Table preserved in infra schema for historical data.
+    """
+    return
 
 
 async def log_orchestrator_run(
@@ -347,29 +323,12 @@ async def log_orchestrator_run(
     report_format: Optional[str] = None,
     delivered_to: Optional[str] = None,
 ) -> None:
-    """Fire-and-forget insert to orchestrator_runs table. Never raises."""
-    try:
-        await asyncio.to_thread(
-            _insert_orchestrator_run,
-            run_id=run_id,
-            orchestrator=orchestrator,
-            orchestrator_version=orchestrator_version,
-            task_type=task_type,
-            trigger=trigger,
-            status=status,
-            started_at=started_at,
-            agents_called=agents_called,
-            agents_succeeded=agents_succeeded,
-            agents_failed=agents_failed,
-            total_tokens=total_tokens,
-            total_cost_usd=total_cost_usd,
-            finished_at=finished_at,
-            duration_ms=duration_ms,
-            report_format=report_format,
-            delivered_to=delivered_to,
-        )
-    except Exception as exc:
-        logger.warning("log_orchestrator_run failed (run_id=%s): %s", run_id, exc)
+    """Deprecated: orchestrator_runs table is no longer actively used.
+
+    Writes disabled 2026-04-13 (audit remediation).
+    Table preserved in infra schema for historical data.
+    """
+    return
 
 
 async def register_agent_version(

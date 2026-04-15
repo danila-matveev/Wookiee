@@ -7,20 +7,16 @@ Price Tools — инструменты ценовой аналитики для 
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, Any
 
-from agents.oleg.services.time_utils import get_now_msk, get_today_msk
+from agents.oleg.services.time_utils import get_now_msk
 
 from shared.data_layer import (
     get_wb_price_margin_daily,
     get_ozon_price_margin_daily,
     get_wb_price_changes,
     get_ozon_price_changes,
-    get_wb_spp_history_by_model,
     get_wb_price_margin_by_model_period,
     get_ozon_price_margin_by_model_period,
-    get_wb_price_margin_daily_by_article,
-    get_ozon_price_margin_daily_by_article,
     get_wb_turnover_by_model,
     get_ozon_turnover_by_model,
     get_wb_stock_daily_by_model,
@@ -30,14 +26,11 @@ from shared.data_layer import (
 )
 from agents.oleg.services.price_analysis.regression_engine import (
     estimate_price_elasticity,
-    estimate_price_elasticity_quadratic,
     compute_correlation_matrix,
     detect_price_trend,
-    run_full_analysis,
 )
 from agents.oleg.services.price_analysis.recommendation_engine import (
     generate_recommendations,
-    generate_recommendations_batch,
 )
 from agents.oleg.services.price_analysis.scenario_modeler import (
     simulate_price_change,
@@ -871,7 +864,8 @@ async def _handle_test_hypothesis(channel: str, lookback_days: int = 180) -> dic
             turnover = get_wb_turnover_by_model(start_date, end_date)
         else:
             turnover = get_ozon_turnover_by_model(start_date, end_date)
-    except Exception:
+    except Exception as e:
+        logger.warning("Не удалось получить оборачиваемость для %s: %s", channel, e)
         turnover = None
 
     # Дневные остатки
@@ -887,7 +881,8 @@ async def _handle_test_hypothesis(channel: str, lookback_days: int = 180) -> dic
             if model not in stock_daily:
                 stock_daily[model] = []
             stock_daily[model].append(row)
-    except Exception:
+    except Exception as e:
+        logger.warning("Не удалось получить дневные остатки для %s: %s", channel, e)
         stock_daily = None
 
     result = run_all_hypotheses(
@@ -901,8 +896,8 @@ async def _handle_test_hypothesis(channel: str, lookback_days: int = 180) -> dic
         for h_id, h_result in result['results'].items():
             try:
                 _learning_store.save_hypothesis_result(h_id, channel, h_result)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Не удалось сохранить результат гипотезы %s: %s", h_id, e)
 
     return result
 
@@ -963,7 +958,8 @@ async def _handle_optimize_price_for_roi(model: str, channel: str) -> dict:
             turnover = get_wb_turnover_by_model(start_date, end_date)
         else:
             turnover = get_ozon_turnover_by_model(start_date, end_date)
-    except Exception:
+    except Exception as e:
+        logger.warning("Не удалось получить оборачиваемость для optimal_price (%s): %s", model, e)
         return {'error': 'Could not get turnover data', 'model': model}
 
     t_info = turnover.get(model, {})

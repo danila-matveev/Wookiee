@@ -14,7 +14,6 @@
 
 import argparse
 import math
-import os
 import re
 import sys
 import pandas as pd
@@ -42,7 +41,7 @@ except ImportError:
 BASE_PATH = Path(__file__).parent
 
 # Пороги
-TARGET_LOCALIZATION_INDEX = 75  # Целевой индекс %
+TARGET_LOCALIZATION_INDEX = 80  # Целевой индекс %
 CRITICAL_INDEX = 50             # Критичный порог %
 HIGH_ORDERS = 10                # Порог высоких заказов
 

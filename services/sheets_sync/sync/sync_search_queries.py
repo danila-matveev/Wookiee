@@ -14,6 +14,7 @@ import logging
 import time
 from datetime import datetime, timedelta
 
+import gspread.exceptions
 import httpx
 
 from shared.clients.sheets_client import (
@@ -51,6 +52,9 @@ NMID_BATCH_SIZE = 50  # Max nmIds per API request
 SEARCH_LIMIT = {"ООО": 100, "ИП": 30}  # Max search words in response
 RATE_LIMIT_PAUSE = 21  # Seconds between API requests (3 req/min)
 RATE_LIMIT_ERROR_PAUSE = 60  # Seconds on 429
+
+# Google Sheets limits
+GS_MAX_COLS = 18278
 
 
 def sync(start_date: str | None = None, end_date: str | None = None) -> int:
@@ -94,15 +98,17 @@ def _sync_search_words(spreadsheet, start_date: str | None, end_date: str | None
 
     logger.info("Search words period: %s - %s", display_start, display_end)
 
-    # Load search words from column A (A3+)
+    # Load search words from column A (A3+), deduplicate while preserving row order
     col_a = ws.col_values(1)
     search_words: list[str] = []
     row_map: dict[str, int] = {}
+    seen_words: set[str] = set()
     for i, val in enumerate(col_a[2:], start=3):  # Skip rows 1-2
         word = str(val).strip()
-        if word:
+        if word and word not in seen_words:
             search_words.append(word)
             row_map[word] = i
+            seen_words.add(word)
 
     if not search_words:
         logger.warning("No search words found in column A")
@@ -119,7 +125,7 @@ def _sync_search_words(spreadsheet, start_date: str | None, end_date: str | None
     ws_nmids = get_or_create_worksheet(spreadsheet, get_sheet_name(SHEET_NAME_NMIDS))
     cabinet_nmids = _load_nmids_by_cabinet(ws_nmids)
 
-    # Analyze each cabinet
+    # Analyze each cabinet — abort entirely if any batch fails
     combined: dict[str, dict] = {}
     first_cabinet = True
 
@@ -137,16 +143,22 @@ def _sync_search_words(spreadsheet, start_date: str | None, end_date: str | None
         first_cabinet = False
 
         limit = SEARCH_LIMIT.get(cabinet.name, 30)
-        results = _analyze_cabinet(
-            cabinet.wb_api_key,
-            cabinet.name,
-            api_start,
-            api_end,
-            limit,
-            nmids,
-            search_words,
-            podmen_mapping,
-        )
+        try:
+            results = _analyze_cabinet(
+                cabinet.wb_api_key,
+                cabinet.name,
+                api_start,
+                api_end,
+                limit,
+                nmids,
+                search_words,
+                podmen_mapping,
+            )
+        except RuntimeError as e:
+            logger.error(
+                "[%s] Aborting write — API failure: %s", cabinet.name, e
+            )
+            return 0
 
         # Merge into combined
         for word, data in results.items():
@@ -162,10 +174,17 @@ def _sync_search_words(spreadsheet, start_date: str | None, end_date: str | None
             combined[word]["addToCart"] += data["addToCart"]
             combined[word]["orders"] += data["orders"]
 
-    # Find first empty column pair
+    # Preflight: check column limit
     row1 = ws.row_values(1) if ws.row_count >= 1 else []
     row2 = ws.row_values(2) if ws.row_count >= 2 else []
     start_col = max(len(row1), len(row2)) + 1
+    if start_col + 3 > GS_MAX_COLS:
+        logger.error(
+            "Sheet column limit reached (start_col=%d, max=%d). Aborting.",
+            start_col,
+            GS_MAX_COLS,
+        )
+        return 0
 
     # Write headers at row 1
     headers = [["Частота", "Переходы", "Добавления", "Заказы"]]
@@ -223,8 +242,8 @@ def _sync_artikul(spreadsheet, start_date: str | None, end_date: str | None) -> 
     try:
         a2 = ws.acell("A2").value or ""
         b2 = ws.acell("B2").value or ""
-    except Exception:
-        pass
+    except gspread.exceptions.GSpreadException as e:
+        logger.warning("Could not read dates from artikul sheet: %s", e)
 
     if start_date:
         display_start = start_date
@@ -249,11 +268,6 @@ def _sync_artikul(spreadsheet, start_date: str | None, end_date: str | None) -> 
 
     logger.info("Artikul analytics period: %s - %s", display_start, display_end)
 
-    # Clear old data from row 4
-    last_row = ws.row_count
-    if last_row >= 4:
-        ws.batch_clear([f"A4:M{last_row}"])
-
     # Load search words from main sheet to filter results
     ws_main = get_or_create_worksheet(spreadsheet, get_sheet_name(SHEET_NAME))
     col_a = ws_main.col_values(1)
@@ -265,7 +279,7 @@ def _sync_artikul(spreadsheet, start_date: str | None, end_date: str | None) -> 
 
     logger.info("Artikul filter: %d search words loaded", len(search_words_lower))
 
-    # Fetch from both cabinets using all nmIds
+    # Fetch from both cabinets — abort entirely before clearing if any batch fails
     ws_nmids = get_or_create_worksheet(
         spreadsheet, get_sheet_name(SHEET_NAME_NMIDS)
     )
@@ -296,6 +310,14 @@ def _sync_artikul(spreadsheet, start_date: str | None, end_date: str | None) -> 
                 cabinet.wb_api_key, cabinet.name, api_start, api_end, limit, chunk
             )
 
+            if items is None:
+                logger.error(
+                    "[%s] Aborting write — batch %d failed",
+                    cabinet.name,
+                    chunk_idx + 1,
+                )
+                return 0
+
             for item in items:
                 text = item.get("text", "")
                 # Only keep items matching our tracked search words
@@ -325,6 +347,11 @@ def _sync_artikul(spreadsheet, start_date: str | None, end_date: str | None) -> 
         logger.warning("No artikul analytics data")
         return 0
 
+    # Clear old data only after successful fetch
+    last_row = ws.row_count
+    if last_row >= 4:
+        ws.batch_clear([f"A4:M{last_row}"])
+
     write_range(ws, start_row=4, start_col=1, data=all_results)
     logger.info("Artikul analytics: wrote %d rows", len(all_results))
     return len(all_results)
@@ -345,7 +372,10 @@ def _analyze_cabinet(
     search_words: list[str],
     podmen_mapping: dict,
 ) -> dict[str, dict]:
-    """Fetch search data for a cabinet in batches and aggregate by search words."""
+    """Fetch search data for a cabinet in batches and aggregate by search words.
+
+    Raises RuntimeError if any batch returns an API error (None).
+    """
     logger.info(
         "[%s] Analyzing %d nmIds in batches of %d",
         cabinet_name,
@@ -374,7 +404,13 @@ def _analyze_cabinet(
             api_key, cabinet_name, api_start, api_end, limit, chunk
         )
 
+        if items is None:
+            raise RuntimeError(
+                f"batch {chunk_idx + 1}/{len(chunks)} failed — aborting to avoid partial write"
+            )
+
         if not items:
+            successful += 1
             continue
 
         successful += 1
@@ -396,14 +432,15 @@ def _analyze_cabinet(
                         "orders": 0,
                     }
 
+                # Frequency is a keyword-level metric — always count regardless of nmId
                 aggregated[word]["frequency"] += item.get("frequency", 0)
-                aggregated[word]["addToCart"] += item.get("addToCart", 0)
-                aggregated[word]["orders"] += item.get("orders", 0)
 
-                # Filter transitions by mapping
+                # Transitions (openCard), addToCart, orders — only count for own articles
                 nm_id = item.get("nmId", 0)
                 if _should_count_transitions(word, nm_id, podmen_mapping):
                     aggregated[word]["openCard"] += item.get("openCard", 0)
+                    aggregated[word]["addToCart"] += item.get("addToCart", 0)
+                    aggregated[word]["orders"] += item.get("orders", 0)
 
     logger.info(
         "[%s] Done: %d/%d batches successful, %d words matched",
@@ -427,28 +464,38 @@ def _fetch_search_data(
     api_end: str,
     limit: int,
     nmids: list[int],
-    _retry_depth: int = 0,
-) -> list[dict]:
-    """POST to WB search-texts API with specific nmIds."""
-    payload = {
-        "currentPeriod": {"start": api_start, "end": api_end},
-        "nmIds": nmids,
-        "topOrderBy": "openCard",
-        "includeSubstitutedSKUs": True,
-        "includeSearchTexts": True,
-        "orderBy": {"field": "visibility", "mode": "asc"},
-        "limit": limit,
-    }
+) -> list[dict] | None:
+    """POST to WB search-texts API with specific nmIds.
 
-    try:
-        with httpx.Client(
-            headers={
-                "Authorization": api_key,
-                "Content-Type": "application/json",
-            },
-            timeout=120.0,
-        ) as client:
-            resp = client.post(WB_SEARCH_API, json=payload)
+    Returns:
+        list[dict] on success (may be empty if no search items).
+        None on any API error (network, HTTP non-200, unresolvable 403).
+    """
+    current_nmids = list(nmids)
+
+    for attempt in range(10):
+        payload = {
+            "currentPeriod": {"start": api_start, "end": api_end},
+            "nmIds": current_nmids,
+            "topOrderBy": "openCard",
+            "includeSubstitutedSKUs": True,
+            "includeSearchTexts": True,
+            "orderBy": {"field": "visibility", "mode": "asc"},
+            "limit": limit,
+        }
+
+        try:
+            with httpx.Client(
+                headers={
+                    "Authorization": api_key,
+                    "Content-Type": "application/json",
+                },
+                timeout=120.0,
+            ) as client:
+                resp = client.post(WB_SEARCH_API, json=payload)
+        except httpx.RequestError as e:
+            logger.error("[%s] Search API error: %s", cabinet_name, e)
+            return None
 
         if resp.status_code == 429:
             logger.warning(
@@ -457,7 +504,7 @@ def _fetch_search_data(
                 RATE_LIMIT_ERROR_PAUSE,
             )
             time.sleep(RATE_LIMIT_ERROR_PAUSE)
-            return []
+            return None
 
         if resp.status_code == 403:
             detail = ""
@@ -468,27 +515,24 @@ def _fetch_search_data(
 
             # Extract bad nmId from error like "Check correctness of nm id: 123456"
             bad_nmid = _extract_bad_nmid(detail)
-            if bad_nmid and bad_nmid in nmids and _retry_depth < 10:
+            if bad_nmid and bad_nmid in current_nmids:
                 logger.warning(
                     "[%s] nmId %d rejected by API — retrying without it (attempt %d)",
                     cabinet_name,
                     bad_nmid,
-                    _retry_depth + 1,
+                    attempt + 1,
                 )
-                cleaned = [n for n in nmids if n != bad_nmid]
-                if cleaned:
-                    # Pause before retry to respect rate limits
+                current_nmids = [n for n in current_nmids if n != bad_nmid]
+                if current_nmids:
                     time.sleep(RATE_LIMIT_PAUSE)
-                    return _fetch_search_data(
-                        api_key, cabinet_name, api_start, api_end, limit, cleaned,
-                        _retry_depth=_retry_depth + 1,
-                    )
+                    continue
+
             logger.warning(
                 "[%s] Auth error (403): %s — skipping batch",
                 cabinet_name,
                 detail[:200],
             )
-            return []
+            return None
 
         if resp.status_code != 200:
             logger.error(
@@ -497,7 +541,7 @@ def _fetch_search_data(
                 resp.status_code,
                 resp.text[:200],
             )
-            return []
+            return None
 
         data = resp.json()
         items = data.get("data", {}).get("items", [])
@@ -522,13 +566,13 @@ def _fetch_search_data(
             cabinet_name,
             len(result),
             limit,
-            len(nmids),
+            len(current_nmids),
         )
         return result
 
-    except httpx.RequestError as e:
-        logger.error("[%s] Search API error: %s", cabinet_name, e)
-        return []
+    # Exhausted all retry attempts
+    logger.error("[%s] Exhausted all retry attempts for batch", cabinet_name)
+    return None
 
 
 def _extract_bad_nmid(detail: str) -> int | None:
@@ -656,8 +700,8 @@ def _resolve_dates(
         try:
             a1 = ws.acell("A1").value or ""
             b1 = ws.acell("B1").value or ""
-        except Exception:
-            pass
+        except gspread.exceptions.GSpreadException as e:
+            logger.warning("Could not read dates from sheet: %s", e)
 
         if a1.strip() and b1.strip():
             display_start = a1.strip()

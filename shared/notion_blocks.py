@@ -140,7 +140,7 @@ def md_to_notion_blocks(md_text: str) -> list:
             while len(row) < num_cols:
                 row.append('')
             cells_rt = [
-                [{"type": "text", "text": {"content": cell.replace('**', '')[:2000]}}]
+                parse_inline(cell[:2000])
                 for cell in row[:num_cols]
             ]
             notion_rows.append({
@@ -276,6 +276,36 @@ def md_to_notion_blocks(md_text: str) -> list:
                 },
             })
             i += 1
+            continue
+
+        # Callout: > [icon] text  OR  > ⚠️ text  OR  > 💡 text
+        callout_match = re.match(r'^>\s*([^\s])\s+(.+)', line.strip())
+        if callout_match:
+            icon = callout_match.group(1)
+            callout_text = callout_match.group(2)
+            # Collect continuation lines (> text)
+            i += 1
+            while i < len(lines) and lines[i].strip().startswith('>'):
+                cont = lines[i].strip()
+                cont = re.sub(r'^>\s*', '', cont)
+                callout_text += '\n' + cont
+                i += 1
+            # Map common icons to colors
+            color_map = {'⚠️': 'yellow_background', '❌': 'red_background',
+                         '✅': 'green_background', '💡': 'green_background',
+                         '🔥': 'green_background', '📊': 'blue_background',
+                         '🎯': 'green_background', '📉': 'green_background',
+                         '🚀': 'purple_background', '📱': 'yellow_background'}
+            color = color_map.get(icon, 'gray_background')
+            blocks.append({
+                "object": "block",
+                "type": "callout",
+                "callout": {
+                    "rich_text": parse_inline(callout_text),
+                    "icon": {"type": "emoji", "emoji": icon},
+                    "color": color,
+                },
+            })
             continue
 
         # Divider
