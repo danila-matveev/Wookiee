@@ -39,6 +39,10 @@ from .reference_sheet import (
     write_reference_sheet,
     REFERENCE_SHEET_NAME,
 )
+from .scenario_sheet import (
+    write_scenario_sheet,
+    scenario_sheet_name,
+)
 
 # Backward-compat aliases (old underscored names used inside this module
 # historically; kept for any external callers that imported them directly).
@@ -122,9 +126,16 @@ def export_to_sheets(result: dict) -> str:
         _apply_il_formatting(spreadsheet, cabinet, len(il_irp.get("articles", [])))
 
     # --- Module 3: Economic analysis sheet ---
-    economics = result.get("economics")
-    if economics:
-        write_economics_sheet(economics, cabinet, spreadsheet)
+    # Новый scenario_sheet (30-90% градация) имеет приоритет.
+    # Если payload содержит `scenarios` — пишем новый лист.
+    # Иначе fallback на legacy `write_economics_sheet` (3-сценарийный).
+    scenarios_payload = result.get("scenarios")
+    if scenarios_payload:
+        write_scenario_sheet(spreadsheet, cabinet, scenarios_payload)
+    else:
+        economics = result.get("economics")
+        if economics:
+            write_economics_sheet(economics, cabinet, spreadsheet)
 
     # --- Reference sheet (Справочник) — расширенная документация ---
     # Пишется только если payload содержит собранный `reference` блок.
@@ -150,6 +161,8 @@ __all__ = [
     "write_economics_sheet",
     "write_reference_sheet",
     "REFERENCE_SHEET_NAME",
+    "write_scenario_sheet",
+    "scenario_sheet_name",
     "append_history",
     # Backward-compat underscore aliases:
     "_write_moves",
