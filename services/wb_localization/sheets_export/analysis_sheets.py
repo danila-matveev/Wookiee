@@ -120,39 +120,6 @@ def write_il_analysis(il_irp: dict, cabinet: str, spreadsheet) -> None:
     logger.info("Записан лист '%s': %d артикулов", sheet_name, len(articles))
 
 
-def _write_reference_sheet(spreadsheet) -> None:
-    """Write static reference sheet with КТР/КРП tables and formulas."""
-    from services.wb_localization.irp_coefficients import COEFF_TABLE
-
-    ws = get_or_create_worksheet(spreadsheet, "Справочник", rows=40, cols=10)
-
-    data = [
-        ["Таблица КТР (с 23.03.2026)", "", "", "", "Таблица КРП (с 23.03.2026)", "", ""],
-        ["Доля лок., %", "КТР", "Описание", "", "Доля лок., %", "КРП, %", "Описание"],
-    ]
-
-    for min_loc, max_loc, ktr, krp in COEFF_TABLE:
-        ktr_desc = "Скидка" if ktr < 1.0 else ("Базовый" if ktr == 1.0 else "Штраф")
-        krp_desc = "Нет надбавки" if krp == 0 else f"{krp}% от цены"
-        data.append([
-            f"{min_loc:.0f}–{max_loc:.0f}%", ktr, ktr_desc,
-            "", f"{min_loc:.0f}–{max_loc:.0f}%", f"{krp:.2f}%", krp_desc,
-        ])
-
-    _pad = lambda row: row + [""] * (7 - len(row))
-    data.append(_pad([]))
-    data.append(_pad(["Формулы:"]))
-    data.append(_pad(["ИЛ = Σ(заказы × КТР) / Σ(заказы)  — средневзвешенный КТР"]))
-    data.append(_pad(["ИРП = Σ(заказы × КРП%) / (РФ + СНГ заказы)  — СНГ в знаменателе с КРП=0"]))
-    data.append(_pad([]))
-    data.append(_pad(["Статусы:"]))
-    data.append(_pad(["КТР ≤ 0.90 → Отличная | 0.91–1.05 → Нейтральная | 1.06–1.30 → Слабая | ≥ 1.31 → Критическая"]))
-
-    ws.clear()
-    write_range(ws, 1, 1, data)
-    logger.info("Записан лист 'Справочник'")
-
-
 def _apply_il_formatting(spreadsheet, cabinet: str, num_articles: int) -> None:
     """Apply conditional formatting to ИЛ Анализ sheet.
 

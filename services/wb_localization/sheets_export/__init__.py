@@ -31,10 +31,13 @@ from .core_sheets import (
 )
 from .analysis_sheets import (
     write_il_analysis,
-    _write_reference_sheet,
     _apply_il_formatting,
     write_economics_sheet,
     append_history,
+)
+from .reference_sheet import (
+    write_reference_sheet,
+    REFERENCE_SHEET_NAME,
 )
 
 # Backward-compat aliases (old underscored names used inside this module
@@ -116,13 +119,19 @@ def export_to_sheets(result: dict) -> str:
     il_irp = result.get("il_irp")
     if il_irp:
         write_il_analysis(il_irp, cabinet, spreadsheet)
-        _write_reference_sheet(spreadsheet)
         _apply_il_formatting(spreadsheet, cabinet, len(il_irp.get("articles", [])))
 
     # --- Module 3: Economic analysis sheet ---
     economics = result.get("economics")
     if economics:
         write_economics_sheet(economics, cabinet, spreadsheet)
+
+    # --- Reference sheet (Справочник) — расширенная документация ---
+    # Пишется только если payload содержит собранный `reference` блок.
+    # Backward-compat: если отсутствует — просто пропускаем.
+    reference = result.get("reference")
+    if reference:
+        write_reference_sheet(spreadsheet, reference)
 
     url = f"https://docs.google.com/spreadsheets/d/{VASILY_SPREADSHEET_ID}"
     logger.info("Экспорт в Sheets: %s (%s)", cabinet, url)
@@ -139,6 +148,8 @@ __all__ = [
     "write_top_problems",
     "write_il_analysis",
     "write_economics_sheet",
+    "write_reference_sheet",
+    "REFERENCE_SHEET_NAME",
     "append_history",
     # Backward-compat underscore aliases:
     "_write_moves",
