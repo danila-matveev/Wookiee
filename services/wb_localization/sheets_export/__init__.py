@@ -43,6 +43,10 @@ from .scenario_sheet import (
     write_scenario_sheet,
     scenario_sheet_name,
 )
+from .roadmap_sheet import (
+    write_roadmap_sheet,
+    roadmap_sheet_name,
+)
 
 # Backward-compat aliases (old underscored names used inside this module
 # historically; kept for any external callers that imported them directly).
@@ -137,6 +141,13 @@ def export_to_sheets(result: dict) -> str:
         if economics:
             write_economics_sheet(economics, cabinet, spreadsheet)
 
+    # --- Roadmap sheet (Перестановки Roadmap {cabinet}) ---
+    # Пишется только если payload содержит `forecast` (результат
+    # `simulate_roadmap()`). Backward-compat: иначе пропускаем.
+    forecast = result.get("forecast")
+    if forecast:
+        write_roadmap_sheet(spreadsheet, cabinet, forecast)
+
     # --- Reference sheet (Справочник) — расширенная документация ---
     # Пишется только если payload содержит собранный `reference` блок.
     # Backward-compat: если отсутствует — просто пропускаем.
@@ -163,6 +174,8 @@ __all__ = [
     "REFERENCE_SHEET_NAME",
     "write_scenario_sheet",
     "scenario_sheet_name",
+    "write_roadmap_sheet",
+    "roadmap_sheet_name",
     "append_history",
     # Backward-compat underscore aliases:
     "_write_moves",
