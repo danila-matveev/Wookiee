@@ -5,7 +5,9 @@ import json
 import logging
 import shutil
 import sqlite3
+from datetime import date
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +52,20 @@ CREATE TABLE IF NOT EXISTS reports (
 
 CREATE INDEX IF NOT EXISTS idx_reports_cabinet ON reports(cabinet);
 CREATE INDEX IF NOT EXISTS idx_reports_timestamp ON reports(cabinet, timestamp DESC);
+
+CREATE TABLE IF NOT EXISTS weekly_snapshots (
+    cabinet TEXT NOT NULL,
+    week_start DATE NOT NULL,
+    article TEXT NOT NULL,
+    region TEXT NOT NULL,
+    local_orders INTEGER NOT NULL DEFAULT 0,
+    nonlocal_orders INTEGER NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (cabinet, week_start, article, region)
+);
+
+CREATE INDEX IF NOT EXISTS idx_weekly_snapshots_cabinet_week
+ON weekly_snapshots (cabinet, week_start DESC);
 """
 
 
@@ -67,6 +83,11 @@ class History:
         self._init_db()
         self._auto_migrate()
         self._ensure_irp_columns()
+
+    @property
+    def db_path(self) -> Path:
+        """Путь к SQLite-файлу (read-only)."""
+        return self._db_path
 
     def _get_conn(self) -> sqlite3.Connection:
         conn = sqlite3.connect(str(self._db_path), timeout=self._timeout)
@@ -218,6 +239,99 @@ class History:
                 "SELECT * FROM reports ORDER BY timestamp ASC"
             ).fetchall()
         return [self._row_to_dict(r) for r in rows]
+
+    # ------------------------------------------------------------------
+    # Weekly snapshots (для forecast локализации на 13 недель вперёд)
+    # ------------------------------------------------------------------
+
+    def save_weekly_snapshots(
+        self,
+        cabinet: str,
+        week_start: date,
+        snapshots: list[dict[str, Any]],
+    ) -> None:
+        """Сохраняет понедельные снапшоты локализации.
+
+        Idempotent: UPSERT по (cabinet, week_start, article, region).
+
+        Args:
+            cabinet: Идентификатор кабинета.
+            week_start: Начало ISO-недели (понедельник).
+            snapshots: Список с полями article, region, local_orders, nonlocal_orders.
+        """
+        if not snapshots:
+            return
+        week_iso = week_start.isoformat()
+        with self._get_conn() as conn:
+            conn.executemany(
+                """INSERT INTO weekly_snapshots
+                   (cabinet, week_start, article, region,
+                    local_orders, nonlocal_orders, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                   ON CONFLICT(cabinet, week_start, article, region)
+                   DO UPDATE SET
+                       local_orders = excluded.local_orders,
+                       nonlocal_orders = excluded.nonlocal_orders,
+                       updated_at = CURRENT_TIMESTAMP""",
+                [
+                    (
+                        cabinet,
+                        week_iso,
+                        snap["article"],
+                        snap["region"],
+                        int(snap.get("local_orders", 0)),
+                        int(snap.get("nonlocal_orders", 0)),
+                    )
+                    for snap in snapshots
+                ],
+            )
+        logger.info(
+            "Сохранено %d weekly-снапшотов для %s (week_start=%s)",
+            len(snapshots), cabinet, week_iso,
+        )
+
+    def get_weekly_snapshots(
+        self,
+        cabinet: str,
+        weeks_back: int = 13,
+    ) -> list[dict[str, Any]]:
+        """Возвращает снапшоты за последние weeks_back недель.
+
+        Args:
+            cabinet: Идентификатор кабинета.
+            weeks_back: Сколько последних ISO-недель вернуть.
+
+        Returns:
+            Список словарей {cabinet, week_start, article, region,
+            local_orders, nonlocal_orders}. Отсортирован по week_start DESC.
+        """
+        with self._get_conn() as conn:
+            rows = conn.execute(
+                """SELECT cabinet, week_start, article, region,
+                          local_orders, nonlocal_orders
+                   FROM weekly_snapshots
+                   WHERE LOWER(cabinet) = LOWER(?)
+                     AND week_start IN (
+                         SELECT DISTINCT week_start
+                         FROM weekly_snapshots
+                         WHERE LOWER(cabinet) = LOWER(?)
+                         ORDER BY week_start DESC
+                         LIMIT ?
+                     )
+                   ORDER BY week_start DESC, article, region""",
+                (cabinet, cabinet, weeks_back),
+            ).fetchall()
+        return [
+            {
+                "cabinet": row["cabinet"],
+                "week_start": row["week_start"],
+                "article": row["article"],
+                "region": row["region"],
+                "local_orders": row["local_orders"],
+                "nonlocal_orders": row["nonlocal_orders"],
+            }
+            for row in rows
+        ]
 
     @staticmethod
     def _row_to_dict(row: sqlite3.Row) -> dict:
