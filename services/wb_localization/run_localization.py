@@ -55,8 +55,211 @@ from services.wb_localization.wb_localization_mappings import (
 )
 from services.wb_localization.history import History
 from services.wb_localization.calculators.il_irp_analyzer import analyze_il_irp
+from services.wb_localization.calculators.reference_builder import build_reference_content
+from services.wb_localization.calculators.scenario_engine import analyze_scenarios
+from services.wb_localization.calculators.relocation_forecaster import simulate_roadmap
+from services.wb_localization.irp_coefficients import REDISTRIBUTION_LIMITS
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================
+# HELPERS (для интеграции новых калькуляторов)
+# ============================================
+
+def _calculate_turnover_from_orders(orders_df: "pd.DataFrame | list | None") -> float:
+    """Суммарная выручка за период из заказов.
+
+    Принимает либо pandas DataFrame, либо список dict'ов из WB API
+    (supplier/orders). Ищет поля totalPrice, priceWithDisc либо
+    price*quantity.
+    """
+    if orders_df is None:
+        return 0.0
+
+    # Список dict'ов (сырой WB API)
+    if isinstance(orders_df, list):
+        if not orders_df:
+            return 0.0
+        total = 0.0
+        for o in orders_df:
+            if o.get("isCancel"):
+                continue
+            if "totalPrice" in o and o["totalPrice"]:
+                total += float(o["totalPrice"])
+            elif "priceWithDisc" in o and o["priceWithDisc"]:
+                total += float(o["priceWithDisc"])
+            elif "finishedPrice" in o and o["finishedPrice"]:
+                total += float(o["finishedPrice"])
+        return total
+
+    # pandas DataFrame
+    try:
+        if len(orders_df) == 0:
+            return 0.0
+    except TypeError:
+        return 0.0
+
+    if "totalPrice" in orders_df.columns:
+        return float(orders_df["totalPrice"].sum())
+    if "priceWithDisc" in orders_df.columns:
+        return float(orders_df["priceWithDisc"].sum())
+    if "finishedPrice" in orders_df.columns:
+        return float(orders_df["finishedPrice"].sum())
+    if "Цена" in orders_df.columns and "Кол-во" in orders_df.columns:
+        return float((orders_df["Цена"] * orders_df["Кол-во"]).sum())
+    return 0.0
+
+
+def _extract_weekly_snapshots(df_regions: pd.DataFrame, cabinet: str) -> list[dict]:
+    """Агрегирует df_regions в недельные снапшоты.
+
+    df_regions — результат transform_orders_to_df_regions (без колонки Дата),
+    поэтому снапшот привязывается к текущей ISO-неделе (понедельник).
+    """
+    from datetime import date, timedelta
+
+    if df_regions is None or df_regions.empty:
+        return []
+
+    today = date.today()
+    monday = today - timedelta(days=today.weekday())
+
+    snapshots: list[dict] = []
+    required = {
+        "Артикул продавца",
+        "Регион",
+        "Заказы со склада ВБ локально, шт",
+        "Заказы со склада ВБ не локально, шт",
+    }
+    if not required.issubset(set(df_regions.columns)):
+        return []
+
+    grouped = df_regions.groupby(["Артикул продавца", "Регион"], as_index=False).agg(
+        local_orders=("Заказы со склада ВБ локально, шт", "sum"),
+        nonlocal_orders=("Заказы со склада ВБ не локально, шт", "sum"),
+    )
+    for _, row in grouped.iterrows():
+        snapshots.append({
+            "week_start": monday,
+            "article": str(row["Артикул продавца"]),
+            "region": str(row["Регион"]),
+            "local_orders": int(row["local_orders"]),
+            "nonlocal_orders": int(row["nonlocal_orders"]),
+        })
+    return snapshots
+
+
+def _movements_df_to_dicts(moves_df: pd.DataFrame) -> list[dict]:
+    """Преобразует moves_df (v3-формат) в dict'ы для forecast/roadmap.
+
+    Ожидает колонки 'Артикул', 'Кол-во', 'Куда склад', 'Откуда регион',
+    'Куда регион', 'Индекс SKU, %', 'Размер'.
+    """
+    if moves_df is None or moves_df.empty:
+        return []
+    out: list[dict] = []
+    for _, row in moves_df.iterrows():
+        qty = int(row.get("Кол-во", 0) or 0)
+        if qty <= 0:
+            continue
+        out.append({
+            "article": str(row.get("Артикул", "")),
+            "size": str(row.get("Размер", "")),
+            "qty": qty,
+            "to_warehouse": str(row.get("Куда склад", "")),
+            "from_region": str(row.get("Откуда регион", "")),
+            "to_region": str(row.get("Куда регион", "")),
+            "current_loc_pct": float(row.get("Индекс SKU, %", 0) or 0),
+            "from_surplus": int(row.get("Откуда остаток", 0) or 0),
+            "to_deficit": int(row.get("Дефицит", 0) or 0),
+            "impact_il_pp": 0.0,
+        })
+    return out
+
+
+def _enrich_movements_with_impact(
+    movements: list[dict],
+    il_irp: dict,
+    logistics_costs: dict[str, float],
+    period_days: int,
+) -> list[dict]:
+    """Добавляет impact_rub к каждому движению для приоритизации в forecast."""
+    if not movements:
+        return []
+    article_index: dict[str, dict] = {}
+    for a in il_irp.get("articles", []) if il_irp else []:
+        key = a.get("article", "")
+        if isinstance(key, str):
+            article_index[key.lower()] = a
+    enriched: list[dict] = []
+    for mv in movements:
+        article = mv.get("article", "")
+        art_lower = article.lower() if isinstance(article, str) else ""
+        art = article_index.get(art_lower, {})
+        qty = mv.get("qty", 0)
+        krp_pct = art.get("krp_pct", 0.0)
+        price = art.get("price", 0.0)
+        wb_total = max(art.get("wb_total", 1), 1)
+        savings_per_unit = (
+            (price * krp_pct / 100.0) / wb_total if wb_total else 0.0
+        )
+        impact_rub = qty * savings_per_unit * 30 / max(period_days, 1)
+        enriched.append({**mv, "impact_rub": impact_rub, "article": article, "qty": qty})
+    return enriched
+
+
+def _build_movements_plan(
+    movements: list[dict],
+    schedule: dict,
+) -> list[dict]:
+    """Формирует детальный план перестановок (блок 5 roadmap_sheet)."""
+    if not movements:
+        return []
+
+    # Обратный индекс: неделя старта по (article, to_warehouse)
+    week_by_movement: dict[tuple, int] = {}
+    for week_str, movements_in_week in (schedule or {}).items():
+        try:
+            week_num = int(week_str)
+        except (ValueError, TypeError):
+            continue
+        for mv in movements_in_week:
+            key = (mv.get("article"), mv.get("to_warehouse"))
+            week_by_movement.setdefault(key, week_num)
+
+    sorted_movements = sorted(
+        movements, key=lambda m: m.get("impact_rub", 0), reverse=True,
+    )
+    plan: list[dict] = []
+    for rank, mv in enumerate(sorted_movements, 1):
+        start_week = week_by_movement.get(
+            (mv.get("article"), mv.get("to_warehouse")), 0,
+        )
+        impact = mv.get("impact_rub", 0)
+        if impact > 10000:
+            priority = "P1"
+        elif impact > 1000:
+            priority = "P2"
+        else:
+            priority = "P3"
+        plan.append({
+            "rank": rank,
+            "priority": priority,
+            "article": mv.get("article", ""),
+            "size": mv.get("size", ""),
+            "loc_pct_current": mv.get("current_loc_pct", 0),
+            "from_fd": mv.get("from_region", ""),
+            "to_fd": mv.get("to_region", ""),
+            "from_stock_surplus": mv.get("from_surplus", 0),
+            "to_stock_deficit": mv.get("to_deficit", 0),
+            "qty": mv.get("qty", 0),
+            "impact_il_pp": mv.get("impact_il_pp", 0),
+            "savings_monthly": impact,
+            "warehouse_limit_status": "OK",
+            "start_week": start_week,
+        })
+    return plan
 
 
 # ============================================
@@ -110,6 +313,22 @@ def parse_args():
     parser.add_argument(
         '--il-days', type=int, default=91,
         help='Период для ИЛ/ИРП анализа, дней (по умолчанию: 91 = 13 недель, как WB)'
+    )
+    parser.add_argument(
+        '--skip-scenarios', action='store_true', default=False,
+        help='Пропустить расчёт сценариев (градация 30-90 проц.)'
+    )
+    parser.add_argument(
+        '--skip-forecast', action='store_true', default=False,
+        help='Пропустить прогноз перестановок (13-недельный roadmap)'
+    )
+    parser.add_argument(
+        '--realistic-limit-pct', type=float, default=0.3,
+        help='Доля реально получаемых лимитов складов (0.0–1.0), дефолт 0.3'
+    )
+    parser.add_argument(
+        '--only-reference', action='store_true', default=False,
+        help='Обновить только лист «Справочник» (без анализа)'
     )
     return parser.parse_args()
 
@@ -672,6 +891,39 @@ def run_for_cabinet(
     print(f"Кабинет: {cabinet.name}")
     print(f"{'=' * 60}")
 
+    # 0. Only-reference mode: обновляет ТОЛЬКО лист «Справочник»
+    if getattr(args, 'only_reference', False):
+        print("\n[only-reference] Обновление листа «Справочник» без анализа...")
+        reference = build_reference_content()
+        if return_result:
+            return {
+                'cabinet': cabinet.name,
+                'timestamp': datetime.now().isoformat(timespec='seconds'),
+                'mode': 'only-reference',
+                'reference': reference,
+            }
+        # CLI режим: пытаемся обновить Sheets напрямую
+        try:
+            from services.wb_localization.sheets_export import (
+                write_reference_sheet,
+            )
+            from services.wb_localization.config import (
+                GOOGLE_SA_FILE, VASILY_SPREADSHEET_ID,
+            )
+            from shared.clients.sheets_client import get_client
+
+            if VASILY_SPREADSHEET_ID:
+                gc = get_client(GOOGLE_SA_FILE)
+                spreadsheet = gc.open_by_key(VASILY_SPREADSHEET_ID)
+                write_reference_sheet(spreadsheet, reference)
+                print("   Справочник обновлён в Google Sheets.")
+            else:
+                print("   VASILY_SPREADSHEET_ID не задан — пропуск Sheets-экспорта.")
+        except Exception as e:
+            logger.warning("only-reference Sheets update failed: %s", e)
+            print(f"   Не удалось обновить Справочник в Sheets: {e}")
+        return None
+
     # 1. Загрузка данных из WB API
     print("\n1. Загрузка данных из WB API...")
     remains, orders, prices_dict = fetch_wb_data(cabinet, args.days)
@@ -732,6 +984,7 @@ def run_for_cabinet(
     # ИЛ/ИРП считается за 91 день (13 недель) — как WB.
     # Перестановки (Module 1) — за args.days (7 дней).
     il_irp = None
+    il_orders: list[dict] = []
     il_days = getattr(args, 'il_days', 91)
     if not getattr(args, 'skip_il_analysis', False):
         # Загружаем ТОЛЬКО заказы за 91 день (без remains — они не нужны для ИЛ/ИРП)
@@ -764,6 +1017,7 @@ def run_for_cabinet(
 
     # 5. Economic analysis (requires il_irp + actual logistics costs)
     economics = None
+    logistics_costs: dict[str, float] = {}
     if il_irp and not getattr(args, 'skip_il_analysis', False):
         print("\n5. Экономический анализ...")
         logistics_costs = fetch_logistics_costs(cabinet, il_days)
@@ -783,6 +1037,120 @@ def run_for_cabinet(
         else:
             print("   Нет данных по логистике — пропуск экономического анализа")
 
+    # 6. Сценарный анализ (градация локализации 30-90%)
+    scenarios = None
+    if (
+        il_irp
+        and logistics_costs
+        and not getattr(args, 'skip_il_analysis', False)
+        and not getattr(args, 'skip_scenarios', False)
+    ):
+        print("\n6. Сценарный анализ (30-90%)...")
+        try:
+            # Оборот должен быть за тот же период, что logistics_costs (il_days).
+            turnover_source = il_orders if il_orders else orders
+            turnover_rub = _calculate_turnover_from_orders(turnover_source)
+            scenarios = analyze_scenarios(
+                il_irp=il_irp,
+                logistics_costs=logistics_costs,
+                turnover_rub=turnover_rub,
+                period_days=il_days,
+            )
+            re = scenarios.get('relocation_economics', {})
+            print(
+                f"   Оборот (мес): {re.get('turnover_monthly', 0):,.0f} ₽, "
+                f"комиссия: {re.get('commission_monthly', 0):,.0f} ₽, "
+                f"max экономия: {re.get('max_savings_monthly', 0):,.0f} ₽"
+            )
+        except Exception as e:
+            logger.warning("Scenarios calculation failed: %s", e)
+            print(f"   Сценарный анализ не удался: {e}")
+            scenarios = None
+
+    # 7. Forecast (13-недельный roadmap)
+    forecast = None
+    if (
+        il_irp
+        and not getattr(args, 'skip_il_analysis', False)
+        and not getattr(args, 'skip_forecast', False)
+    ):
+        print("\n7. Прогноз перестановок (13 недель)...")
+        try:
+            moves_df = analysis.get('moves_df', pd.DataFrame())
+            raw_movements = _movements_df_to_dicts(moves_df)
+            movements_with_impact = _enrich_movements_with_impact(
+                raw_movements, il_irp, logistics_costs, il_days,
+            )
+
+            # stock_total per article (из df_stocks)
+            stocks_by_article: dict[str, int] = {}
+            if df_stocks is not None and not df_stocks.empty:
+                if 'Артикул продавца' in df_stocks.columns and 'Остатки на текущий день, шт' in df_stocks.columns:
+                    sba = (
+                        df_stocks.groupby('Артикул продавца')['Остатки на текущий день, шт']
+                        .sum().to_dict()
+                    )
+                    stocks_by_article = {
+                        str(k).lower(): int(v) for k, v in sba.items()
+                    }
+
+            articles_with_stock = []
+            for a in il_irp.get('articles', []):
+                key = str(a.get('article', '')).lower()
+                articles_with_stock.append({
+                    **a,
+                    'stock_total': int(stocks_by_article.get(key, 1)),
+                })
+
+            # history — снимки за 13 недель (если history_store есть)
+            weekly_history: list[dict] = []
+            if history_store is not None:
+                try:
+                    weekly_history = history_store.get_weekly_snapshots(
+                        cabinet.name, weeks_back=13,
+                    )
+                except Exception as e:
+                    logger.warning("Failed to fetch weekly snapshots: %s", e)
+
+            forecast = simulate_roadmap(
+                articles=articles_with_stock,
+                movements=movements_with_impact,
+                logistics_costs=logistics_costs,
+                weekly_orders_history=weekly_history,
+                redistribution_limits=REDISTRIBUTION_LIMITS,
+                realistic_limit_pct=getattr(args, 'realistic_limit_pct', 0.3),
+                period_days=il_days,
+            )
+            forecast['movements_plan'] = _build_movements_plan(
+                movements_with_impact, forecast.get('schedule', {}),
+            )
+            milestones = forecast.get('milestones', {})
+            print(
+                f"   Первая неделя >=60%: {milestones.get('week_60pct')}, "
+                f">=80%: {milestones.get('week_80pct')}"
+            )
+        except Exception as e:
+            logger.warning("Forecast simulation failed: %s", e)
+            print(f"   Прогноз не удался: {e}")
+            forecast = None
+
+    # 8. Reference (всегда)
+    reference = build_reference_content()
+
+    # 9. Сохраняем weekly_snapshots в историю (для будущих forecast'ов)
+    if history_store is not None:
+        try:
+            snapshots = _extract_weekly_snapshots(df_regions, cabinet.name)
+            if snapshots:
+                # все снимки в этом вызове — за одну неделю (текущую)
+                week_start = snapshots[0]['week_start']
+                history_store.save_weekly_snapshots(
+                    cabinet.name, week_start, snapshots,
+                )
+                print(f"   Weekly-снапшотов сохранено: {len(snapshots)} (week_start={week_start})")
+        except Exception as e:
+            logger.warning("Weekly snapshots save failed: %s", e)
+
     if return_result:
         result = _build_result_payload(cabinet.name, analysis)
         if history_store is not None:
@@ -791,6 +1159,11 @@ def run_for_cabinet(
             result['il_irp'] = il_irp
         if economics:
             result['economics'] = economics
+        if scenarios:
+            result['scenarios'] = scenarios
+        if forecast:
+            result['forecast'] = forecast
+        result['reference'] = reference
         return result
 
     # 5. Консольная сводка
@@ -831,6 +1204,11 @@ def run_service_report(
         max_turnover_days=max_turnover_days,
         output_dir=output_dir,
         dry_run=False,
+        skip_il_analysis=False,
+        skip_scenarios=False,
+        skip_forecast=False,
+        realistic_limit_pct=0.3,
+        only_reference=False,
     )
 
     result = run_for_cabinet(
