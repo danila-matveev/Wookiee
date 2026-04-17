@@ -221,6 +221,7 @@ def simulate_roadmap(
         week_logistics = 0.0
         week_irp = 0.0
         weighted_ktr_num = 0.0
+        weighted_loc_num = 0.0
         weighted_orders_den = 0
 
         for art in articles:
@@ -244,6 +245,7 @@ def simulate_roadmap(
 
             orders = art.get("wb_total", 0)
             weighted_ktr_num += new_ktr * orders
+            weighted_loc_num += effective_loc * orders
             weighted_orders_den += orders
 
             base = base_costs.get(art_lower, 0.0)
@@ -256,7 +258,10 @@ def simulate_roadmap(
 
         if weighted_orders_den > 0:
             avg_ktr = weighted_ktr_num / weighted_orders_den
-            il_forecast_pct = _ktr_to_loc_pct(avg_ktr)
+            # Используем прямой weighted-avg loc% вместо обратного маппинга
+            # через КТР-бакет — чтобы траектория была плавной, а не ступеньками
+            # по границам таблицы COEFF_TABLE.
+            il_forecast_pct = weighted_loc_num / weighted_orders_den
         else:
             avg_ktr = 1.0
             il_forecast_pct = 0.0

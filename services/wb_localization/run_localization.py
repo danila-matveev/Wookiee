@@ -1042,10 +1042,11 @@ def run_for_cabinet(
             print("   Нет данных по логистике — пропуск экономического анализа")
 
     # 6. Сценарный анализ (градация локализации 30-90%)
+    # Запускается всегда при наличии il_irp — если logistics_costs пустой,
+    # таблица всё равно покажет КТР/КРП на каждом уровне, только ₽ будут 0.
     scenarios = None
     if (
         il_irp
-        and logistics_costs
         and not getattr(args, 'skip_il_analysis', False)
         and not getattr(args, 'skip_scenarios', False)
     ):
