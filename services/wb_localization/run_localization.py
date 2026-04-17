@@ -330,6 +330,10 @@ def parse_args():
         '--only-reference', action='store_true', default=False,
         help='Обновить только лист «Справочник» (без анализа)'
     )
+    parser.add_argument(
+        '--publish-sheets', action='store_true', default=False,
+        help='Опубликовать результаты в Google Sheets (кроме Excel-отчёта)'
+    )
     return parser.parse_args()
 
 
@@ -1151,20 +1155,35 @@ def run_for_cabinet(
         except Exception as e:
             logger.warning("Weekly snapshots save failed: %s", e)
 
-    if return_result:
-        result = _build_result_payload(cabinet.name, analysis)
+    # Собираем полный payload (нужен и для return_result, и для --publish-sheets)
+    result_payload = None
+    if return_result or getattr(args, 'publish_sheets', False):
+        result_payload = _build_result_payload(cabinet.name, analysis)
         if history_store is not None:
-            _attach_comparison_and_save(result, history_store)
+            _attach_comparison_and_save(result_payload, history_store)
         if il_irp:
-            result['il_irp'] = il_irp
+            result_payload['il_irp'] = il_irp
         if economics:
-            result['economics'] = economics
+            result_payload['economics'] = economics
         if scenarios:
-            result['scenarios'] = scenarios
+            result_payload['scenarios'] = scenarios
         if forecast:
-            result['forecast'] = forecast
-        result['reference'] = reference
-        return result
+            result_payload['forecast'] = forecast
+        result_payload['reference'] = reference
+
+    if return_result:
+        return result_payload
+
+    # CLI: опциональная публикация в Google Sheets
+    if getattr(args, 'publish_sheets', False) and result_payload is not None:
+        try:
+            from services.wb_localization.sheets_export import export_to_sheets
+            print("\n8. Публикация в Google Sheets...")
+            export_to_sheets(result_payload)
+            print("   Google Sheets обновлены.")
+        except Exception as e:
+            logger.warning("Publish to Sheets failed: %s", e)
+            print(f"   Не удалось опубликовать в Sheets: {e}")
 
     # 5. Консольная сводка
     _print_summary(report_path)
