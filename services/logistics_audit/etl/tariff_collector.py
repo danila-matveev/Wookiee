@@ -17,6 +17,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from shared.data_layer._connection import _get_supabase_connection
+from shared.tool_logger import ToolLogger
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 load_dotenv(PROJECT_ROOT / ".env")
@@ -24,6 +25,7 @@ load_dotenv(PROJECT_ROOT / ".env")
 from services.logistics_audit.api.wb_tariffs import fetch_tariffs_box
 
 logger = logging.getLogger(__name__)
+tool_logger = ToolLogger("wb-tariffs-collector")
 
 UPSERT_SQL = """
 INSERT INTO wb_tariffs (dt, warehouse_name, delivery_coef, logistics_1l,
@@ -90,11 +92,12 @@ def collect_tariffs(dt: date, api_key: str) -> int:
     return len(rows)
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="WB Tariff Collector → Supabase")
     parser.add_argument("--date", type=str, default=None, help="Date YYYY-MM-DD (default: today)")
     parser.add_argument("--backfill", type=int, default=None, help="Backfill last N days")
     parser.add_argument("--cabinet", type=str, default="OOO", help="WB cabinet: IP or OOO (default: OOO)")
+    parser.add_argument("--trigger", type=str, default="manual", help="Trigger type: cron or manual")
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -104,15 +107,37 @@ def main():
 
     api_key = _get_api_key(args.cabinet)
 
-    if args.backfill:
-        total = 0
-        for i in range(args.backfill):
-            dt = date.today() - timedelta(days=i)
-            total += collect_tariffs(dt, api_key)
-        logger.info("Backfill complete: %d total rows across %d days", total, args.backfill)
-    else:
-        dt = date.fromisoformat(args.date) if args.date else date.today()
-        collect_tariffs(dt, api_key)
+    env = os.getenv("WOOKIEE_ENV", "local")
+    run_id = tool_logger.start(
+        trigger=args.trigger,
+        user="cron" if args.trigger == "cron" else "danila",
+        version="1.0",
+        environment=env,
+    )
+
+    try:
+        if args.backfill:
+            total = 0
+            for i in range(args.backfill):
+                dt = date.today() - timedelta(days=i)
+                total += collect_tariffs(dt, api_key)
+            logger.info("Backfill complete: %d total rows across %d days", total, args.backfill)
+            tool_logger.finish(
+                run_id, status="success",
+                items_processed=total,
+                details={"mode": "backfill", "days": args.backfill, "cabinet": args.cabinet},
+            )
+        else:
+            dt = date.fromisoformat(args.date) if args.date else date.today()
+            rows = collect_tariffs(dt, api_key)
+            tool_logger.finish(
+                run_id, status="success",
+                items_processed=rows,
+                details={"mode": "daily", "date": dt.isoformat(), "cabinet": args.cabinet},
+            )
+    except Exception as exc:
+        tool_logger.error(run_id, stage="collect_tariffs", message=str(exc))
+        raise
 
 
 if __name__ == "__main__":
