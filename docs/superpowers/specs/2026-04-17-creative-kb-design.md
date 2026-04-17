@@ -31,7 +31,9 @@
 
 ```
 Stage 1: PoC на 1 видео
-   Input:   1 видео Wendy "Полина_история про лиф" (топ по охватам 7.2M)
+   Input:   «Полина_история про лиф» Wendy/dark_beige
+            https://disk.yandex.ru/i/f-Z_JiAsy4j_rg
+            (10 767 кликов, 7 200 091 охватов — топ по объединённой метрике)
    Backend: Claude Code subscription (через ffmpeg frames + whisper)
    Cost:    ~$0 (subscription)
    Gate:    JSON распаковки соответствует ожиданиям пользователя
@@ -387,7 +389,7 @@ CREATE TABLE creatives.unmatched_log (
 
 | Скрипт | Источник | Целевая таблица | Примечания |
 |---|---|---|---|
-| `scripts/index_videos.py` | YaDisk `/Wookiee/Контент/**/ВИДЕО/` + `/Wookiee/Блогеры/` | `creatives.videos` | Переиспользует `YaDiskClient` из content_kb, убирает 'видео' из SKIP_PATTERNS. md5 дедупликация. Incremental. |
+| `scripts/index_videos.py` | YaDisk `/Wookiee/Контент/**/ВИДЕО/` + `/Wookiee/Блогеры/` | `creatives.videos` | Переиспользует `YaDiskClient` из content_kb с **собственным списком SKIP_PATTERNS** (например `{'исходники', 'разработка продукта'}`) — не затрагивает скип content_kb. md5 дедупликация. Incremental. |
 | `scripts/ingest_yps_articles.py` | Sheet "Статьи ЯПС" (`1h0NeYw_5Cn7mkI03QxUk_zkvJ7NGV1zFmAtXNW9euSU`) | `creatives.articles` + `creatives.campaigns` | Matching `video_ref` по "Ссылка на видео" column. |
 | `scripts/ingest_ads_texts.py` | Sheet "Креативы АДС" | `creatives.ads_texts` (channel='ads') | |
 | `scripts/ingest_adb_texts.py` | Sheet "Креативы АДБ" | `creatives.ads_texts` (channel='adb') | |
@@ -433,11 +435,12 @@ services/creative_kb/
 ├── store.py                           # DAL для creatives.* схемы
 │
 ├── clients/
-│   ├── yadisk_client.py              # reuse из content_kb
-│   ├── sheets_client.py              # reuse из sheets_sync
+│   ├── yadisk_client.py              # wrapper над services/content_kb/yadisk_client.py
 │   ├── claude_client.py              # subscription + API унифицированный
 │   ├── gemini_client.py              # через OpenRouter
 │   └── whisper_client.py             # транскрипция (локально faster-whisper)
+│   # sheets access — напрямую через shared/clients/sheets_client.py
+│   # openrouter — через shared/clients/openrouter_client.py
 │
 ├── matcher.py                         # match video_ref, campaign linking
 ├── path_parser.py                     # reuse из content_kb
@@ -499,7 +502,7 @@ if spent_usd > config.GEMINI_MONTHLY_BUDGET_USD:
     raise BudgetExceeded(f"Spent ${spent_usd:.2f} > limit ${config.GEMINI_MONTHLY_BUDGET_USD}")
 ```
 
-Telegram-alert через существующий `shared/telegram_notifier.py` при 80% бюджета.
+Alert при 80% бюджета выводится в stderr + `tool_runs.notes` (Telegram-нотификатора сейчас в `shared/` нет; при необходимости добавим в отдельном PR).
 
 ### 7.2 RLS
 
@@ -662,7 +665,7 @@ Phases для передачи в `writing-plans`:
 | 8 | Versioning unpacks | ✅ Append-only (unpack_version + is_current) |
 | 9 | Renaming files YaDisk | ✅ Нет. Только display_slug в БД |
 | 10 | Pilot model | ✅ Wendy |
-| 11 | PoC video | ✅ "Полина_история про лиф" Wendy/dark_beige |
+| 11 | PoC video | ✅ «Полина_история про лиф» Wendy/dark_beige — `https://disk.yandex.ru/i/f-Z_JiAsy4j_rg` |
 | 12 | Budget alert | ✅ $30 (с запасом на итерации) |
 | 13 | Backend LLM | ✅ Claude subscription primary, Gemini fallback (через адаптер) |
 | 14 | Used-in-creatives фильтр | ✅ Default для всех stages 1-3 |
