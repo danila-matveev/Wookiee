@@ -16,7 +16,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
-from shared.data_layer._connection import _get_supabase_connection
+from shared.data_layer.logistics import upsert_wb_tariffs
 from shared.tool_logger import ToolLogger
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -26,20 +26,6 @@ from services.logistics_audit.api.wb_tariffs import fetch_tariffs_box
 
 logger = logging.getLogger(__name__)
 tool_logger = ToolLogger("wb-tariffs-collector")
-
-UPSERT_SQL = """
-INSERT INTO wb_tariffs (dt, warehouse_name, delivery_coef, logistics_1l,
-                        logistics_extra_l, storage_1l_day, acceptance, storage_coef, geo_name)
-VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-ON CONFLICT (dt, warehouse_name) DO UPDATE SET
-    delivery_coef     = EXCLUDED.delivery_coef,
-    logistics_1l      = EXCLUDED.logistics_1l,
-    logistics_extra_l = EXCLUDED.logistics_extra_l,
-    storage_1l_day    = EXCLUDED.storage_1l_day,
-    acceptance        = EXCLUDED.acceptance,
-    storage_coef      = EXCLUDED.storage_coef,
-    geo_name          = EXCLUDED.geo_name
-"""
 
 
 def _get_api_key(cabinet: str) -> str:
@@ -78,18 +64,9 @@ def collect_tariffs(dt: date, api_key: str) -> int:
         return 0
 
     rows = build_tariff_rows(dt, tariffs)
-
-    conn = _get_supabase_connection()
-    try:
-        cur = conn.cursor()
-        cur.executemany(UPSERT_SQL, rows)
-        conn.commit()
-        cur.close()
-    finally:
-        conn.close()
-
-    logger.info("Upserted %d warehouse tariffs for %s", len(rows), date_str)
-    return len(rows)
+    count = upsert_wb_tariffs(rows)
+    logger.info("Upserted %d warehouse tariffs for %s", count, date_str)
+    return count
 
 
 def main() -> None:

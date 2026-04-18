@@ -15,9 +15,11 @@ import re
 import subprocess
 from datetime import date, datetime, timedelta
 
-BLOGGERS_SHEET_ID = "1Y7uxZnrjHLBntoDLkKJBOt5-lmODRJ5QEkE19QBA8xk"
-VK_SHEET_ID = "1h0NeYw_5Cn7mkI03QxUk_zkvJ7NGV1zFmAtXNW9euSU"
-SMM_SHEET_ID = "19NXHQGWSFjeWiPE12R3YAy5u2IsLpTISrECpysPSdPU"
+from shared import config as _cfg
+
+BLOGGERS_SHEET_ID = _cfg.BLOGGERS_SHEET_ID
+VK_SHEET_ID = _cfg.VK_SHEET_ID
+SMM_SHEET_ID = _cfg.SMM_SHEET_ID
 
 
 def _gws_read(sheet_id: str, range_str: str) -> list[list[str]]:
