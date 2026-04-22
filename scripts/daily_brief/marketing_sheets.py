@@ -199,37 +199,89 @@ def collect_vk_window(target: date, past_days: int = 7) -> dict:
 
 
 def collect_smm_week(target: date) -> dict:
-    """СММ: последняя недельная строка из листа 'Понедельный отчёт'."""
-    rows = _gws_read(SMM_SHEET_ID, "'Понедельный отчёт'!A1:Z100")
-    if not rows:
-        return {"error": "sheet_unavailable", "last_row": None}
+    """СММ: последняя недельная колонка из листа 'Понедельный отчёт'.
 
-    # Ищем последнюю строку с непустой датой в первых 3 колонках
-    last_row_with_date = None
-    for row in rows[1:]:
-        if not row:
+    Таблица транспонированная: row 0 = даты недель в колонках, row 1+ = метрики
+    (ИТОГО бюджет, ИТОГО показы, CPV, CPC, CTR, Переходы, затем строки по моделям).
+    Колонки чередуются: значение / дельта%. Берём последнюю колонку со значением
+    на дату <= target.
+    """
+    rows = _gws_read(SMM_SHEET_ID, "'Понедельный отчёт'!A1:BZ100")
+    if not rows or len(rows) < 2:
+        return {"error": "sheet_unavailable", "available": False}
+
+    header = rows[0]
+    metric_rows = {}
+    for r in rows[1:]:
+        if not r:
             continue
-        for cell in row[:3]:
-            d = _parse_date(cell, fallback_year=target.year)
-            if d and d <= target:
-                last_row_with_date = (d, row)
-                break
+        key = (r[0] or "").strip()
+        if key:
+            metric_rows[key] = r
 
-    if not last_row_with_date:
-        return {"last_row": None}
+    # Находим последнюю колонку с реальным бюджетом в ₽ (не дельтой %) и датой <= target
+    # Колонки таблицы чередуются: [значение_в_₽ | дельта_%]. Фильтруем по наличию "₽".
+    budget_row = metric_rows.get("ИТОГО (бюджет)") or []
+    last_col_idx = None
+    last_col_date = None
+    prev_col_idx = None
+    for i in range(len(header) - 1, 0, -1):
+        d = _parse_date(header[i], fallback_year=target.year)
+        if not d or d > target:
+            continue
+        cell = str(budget_row[i] if i < len(budget_row) else "")
+        if "₽" not in cell:
+            continue
+        val = _safe_float(cell)
+        if val <= 0:
+            continue
+        if last_col_idx is None:
+            last_col_idx = i
+            last_col_date = d
+            continue
+        prev_col_idx = i
+        break
 
-    d, row = last_row_with_date
-    # Вытаскиваем все числовые значения
-    numerics = []
-    for cell in row:
-        v = _safe_float(cell)
-        if v > 0:
-            numerics.append(v)
+    if last_col_idx is None:
+        return {"available": False, "reason": "no_data_for_target"}
+
+    def _val(metric_label: str, col_idx: int) -> float:
+        row = metric_rows.get(metric_label) or []
+        return _safe_float(row[col_idx] if col_idx < len(row) else None)
+
+    def _pack(col_idx: int) -> dict:
+        return {
+            "week_date": (_parse_date(header[col_idx], fallback_year=target.year) or date.min).isoformat(),
+            "budget_rub": round(_val("ИТОГО (бюджет)", col_idx)),
+            "impressions": round(_val("ИТОГО (показы)", col_idx)),
+            "cpv_rub": round(_val("CPV", col_idx), 2),
+            "cpc_rub": round(_val("CPC", col_idx), 2),
+            "ctr_pct": round(_val("CTR", col_idx), 2),
+            "clicks": round(_val("Переходы", col_idx)),
+        }
+
+    current = _pack(last_col_idx)
+    previous = _pack(prev_col_idx) if prev_col_idx is not None else None
+
+    def _delta_pct(cur: float, prev: float) -> float | None:
+        if not prev:
+            return None
+        return round((cur - prev) / abs(prev) * 100, 1)
+
+    deltas = {}
+    if previous:
+        for k in ("budget_rub", "impressions", "cpv_rub", "cpc_rub", "ctr_pct", "clicks"):
+            deltas[f"{k}_delta_pct"] = _delta_pct(current[k], previous[k])
+
+    # Актуальность данных — сколько дней от конца недели до target
+    staleness_days = (target - last_col_date).days if last_col_date else None
 
     return {
-        "last_row_date": d.isoformat(),
-        "raw_row": [str(c)[:80] for c in row[:15] if c],
-        "numeric_values": numerics[:10],
+        "available": True,
+        "current": current,
+        "previous": previous,
+        "deltas": deltas,
+        "staleness_days": staleness_days,
     }
 
 

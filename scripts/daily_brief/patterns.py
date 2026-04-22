@@ -457,9 +457,11 @@ def build_marketing_context(marketing_sheets: dict) -> dict:
         ctx["vk"]["items"] = vk.get("recent", [])[:5]
 
     smm = marketing_sheets.get("smm_week") or {}
-    if "error" not in smm and smm.get("last_row_date"):
+    if smm.get("available"):
         ctx["smm"]["available"] = True
-        ctx["smm"]["last_row_date"] = smm["last_row_date"]
-        ctx["smm"]["numeric_values"] = smm.get("numeric_values", [])
+        ctx["smm"]["current"] = smm.get("current", {})
+        ctx["smm"]["previous"] = smm.get("previous")
+        ctx["smm"]["deltas"] = smm.get("deltas", {})
+        ctx["smm"]["staleness_days"] = smm.get("staleness_days")
 
     return ctx

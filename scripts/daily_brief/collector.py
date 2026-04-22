@@ -282,11 +282,11 @@ def _collect_plan(month_start: date, month_end: date) -> dict:
         # row: (МП, ЛК, Артикул, Показатель, Значение)
         indicator = (row[3] or "").strip().lower()
         value = _parse_val(row[4])
-        if "маржин" in indicator:
+        if "маржин" in indicator and "прибыль" in indicator:
             totals["margin"] += value
-        elif "выруч" in indicator:
+        elif "выруч" in indicator or ("сумма продаж" in indicator and "руб" in indicator):
             totals["revenue"] += value
-        elif "заказ" in indicator and "руб" in indicator:
+        elif "сумма заказ" in indicator and "руб" in indicator:
             totals["orders_rub"] += value
         elif "заказ" in indicator and ("шт" in indicator or "кол" in indicator):
             totals["orders_qty"] += value
