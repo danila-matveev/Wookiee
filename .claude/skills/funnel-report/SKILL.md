@@ -267,6 +267,46 @@ Launch Synthesizer as a subagent (Agent tool) with ALL outputs: `findings_raw` +
 
 Save to `docs/reports/{START}_{END}_funnel.md`.
 
+Also save intermediate artefacts to disk (audit trail — helps diagnose future regressions):
+- `/tmp/funnel-{START}_{END}-model_deep.md` — raw `model_deep` output
+- `/tmp/funnel-{START}_{END}-final.md` — raw `final_document_md` before publish
+
+### 5.2.1 Output Gate (HARD STOP)
+
+**Run from project root:**
+
+```bash
+python3 scripts/funnel_report/validate_output.py \
+    docs/reports/{START}_{END}_funnel.md \
+    --depth {DEPTH}
+```
+
+**Behavior:**
+- Exit code `0` → proceed to 5.3 publish.
+- Exit code `1` → **STOP**. Do NOT publish to Notion. Parse stderr failures and
+  branch per the decision table below.
+
+**Failure → Action decision table:**
+
+| Failure keyword in stderr | Action |
+|---|---|
+| `WB per-model toggles N < min` | Re-run Stage 3 Model Analyst with explicit "produce toggle sections for ALL Продается+Запуск models, format `## ▶ Модель: {Name} — {headline}`" prompt. Then re-run Synthesizer. |
+| `OZON per-model toggles` / `OZON overview` missing | Re-run Synthesizer with explicit "include OZON-I, OZON-II, and per-model OZON toggles from ozon_* data blocks" prompt. Do NOT re-run Model Analyst. |
+| `OZON toggles N < … and no disclaimer` | If collector returned empty OZON blocks → add `> ⚠️ OZON данные не собраны: {reason}` callout to synthesizer output. Otherwise → re-run Synthesizer as above. |
+| `missing section '## XIII.'` | Re-run Synthesizer with "append XIII. Выводы и рекомендации from hypotheses block". |
+| `missing halo section '## I-b.'` | Re-run Synthesizer with "include I-b. Halo-эффект from traffic.wb_skleyka_halo". |
+| `banned simplified-template pattern` | Re-run Synthesizer from scratch — orchestrator emitted off-template output. Reject and restart Stage 5.1. |
+| `size … < threshold` alone | Indicates Synthesizer truncated. Re-run Synthesizer. |
+| `catastrophic regression: 0 WB toggles + …` | Full re-run of Stage 3 + Stage 5.1. Stop if fails again. |
+
+- **Max 1 retry per stage.** If gate still fails after retry → STOP, report to
+  user with the full failure list. Do NOT publish a degraded report.
+
+The gate guards against runtime regressions where the orchestrator skips
+Stage 3 (Model Analyst) or Stage 5.1 (Synthesizer) subagents and emits a
+simplified template instead of the full per-model toggle report (see
+Changelog v3 for the 2026-04-22 incident).
+
 ### 5.3 Publish to Notion
 
 Use `shared.notion_client.NotionClient.sync_report()`:
@@ -347,6 +387,23 @@ Report to user (5-7 lines):
 ---
 
 ## Changelog
+
+### v3 (2026-04-22) — output gate
+
+- **Incident:** `/funnel-report 2026-04-13 2026-04-19` (Apr 22 09:45) produced a
+  10 KB report with no per-model toggles, no OZON block, and no XIII section —
+  despite the skill being at a state that previously generated the 42 KB v2
+  etalon (06-12 Apr). Root cause: orchestrator skipped Stage 3 (Model Analyst)
+  and/or Stage 5.1 (Synthesizer) subagent invocations and self-generated a
+  simplified summary (`## III. Воронка по моделям (топ-10)` etc.) that does not
+  appear in any prompt.
+- **Fix:** new `scripts/funnel_report/validate_output.py` hard-gate added in
+  Stage 5.2.1 before Notion publication. Validates min size, presence of
+  `## I.`, `## I-b.`, `## XIII.`, count of `## ▶ Модель:` toggles, count of
+  `## ▶ OZON:` toggles (or explicit disclaimer), and rejects banned simplified-
+  template patterns.
+- **Artefact trail:** intermediate `model_deep` and `final_document_md` now
+  saved to `/tmp/funnel-{START}_{END}-*.md` for post-mortem analysis.
 
 ### v2 (2026-04-15)
 - OZON channel added: OZON-I (overview), OZON-II (ad funnel), per-model OZON toggles
