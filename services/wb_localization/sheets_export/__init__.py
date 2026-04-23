@@ -62,6 +62,21 @@ _append_history = append_history
 logger = logging.getLogger(__name__)
 
 
+def _delete_worksheet_if_exists(spreadsheet, title: str) -> None:
+    """Удалить лист, если он существует. Не падает если листа нет."""
+    from gspread.exceptions import WorksheetNotFound
+
+    try:
+        ws = spreadsheet.worksheet(title)
+    except WorksheetNotFound:
+        return
+    try:
+        spreadsheet.del_worksheet(ws)
+        logger.info("Удалён legacy-лист: %s", title)
+    except Exception as e:
+        logger.warning("Не удалось удалить лист '%s': %s", title, e)
+
+
 def export_to_sheets(result: dict) -> str:
     """Write a single cabinet report to Google Sheets.
 
@@ -131,11 +146,13 @@ def export_to_sheets(result: dict) -> str:
 
     # --- Module 3: Economic analysis sheet ---
     # Новый scenario_sheet (30-90% градация) имеет приоритет.
-    # Если payload содержит `scenarios` — пишем новый лист.
+    # Если payload содержит `scenarios` — пишем новый лист, а старый
+    # legacy-лист «Экономика {cabinet}» удаляем (чтобы не вводить в заблуждение).
     # Иначе fallback на legacy `write_economics_sheet` (3-сценарийный).
     scenarios_payload = result.get("scenarios")
     if scenarios_payload:
         write_scenario_sheet(spreadsheet, cabinet, scenarios_payload)
+        _delete_worksheet_if_exists(spreadsheet, f"Экономика {cabinet}")
     else:
         economics = result.get("economics")
         if economics:

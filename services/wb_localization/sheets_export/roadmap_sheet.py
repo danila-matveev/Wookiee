@@ -1,13 +1,11 @@
 """Запись листа «Перестановки Roadmap {cabinet}».
 
-Структура листа (5 блоков):
+Структура листа (3 блока):
     1. Объяснение механики + ссылка на лист «Справочник»
     2. Паспорт прогноза (параметры симуляции + milestones 60%/80%)
     3. Понедельный roadmap (14 строк = неделя 0 + 13 прогноза),
        подсветка вех: неделя 0 (жёлтый), неделя 60% (светло-зелёный),
        неделя 80% (тёмно-зелёный).
-    4. Chart placeholder (addChart API — вне этого writer'а)
-    5. Детальный план перестановок, отсортированный по экономии
 
 Строки-описания под заголовками таблиц берутся из SHEET_COLUMN_DOCS.
 """
@@ -77,12 +75,12 @@ def write_roadmap_sheet(
     cabinet: str,
     payload: dict[str, Any],
 ) -> None:
-    """Пишет лист «Перестановки Roadmap {cabinet}» с 5 блоками.
+    """Пишет лист «Перестановки Roadmap {cabinet}» с 3 блоками.
 
     Args:
         spreadsheet: gspread Spreadsheet.
         cabinet: Код кабинета.
-        payload: Результат `simulate_roadmap()` + опционально movements_plan:
+        payload: Результат `simulate_roadmap()`:
             - params (dict): realistic_limit_pct, target_localization,
               period_days, total_plan_qty, articles_with_movements
             - roadmap (list[dict]): 14 записей с week, date,
@@ -91,10 +89,6 @@ def write_roadmap_sheet(
               total_monthly, savings_vs_current
             - schedule (dict[str, list])
             - milestones (dict): week_60pct, week_80pct (int|None)
-            - movements_plan (list[dict]): детальный план с rank, priority,
-              article, size, loc_pct_current, from_fd, to_fd,
-              from_stock_surplus, to_stock_deficit, qty, impact_il_pp,
-              savings_monthly, warehouse_limit_status, start_week
     """
     worksheet = _get_or_create_worksheet(spreadsheet, roadmap_sheet_name(cabinet))
     worksheet.clear()
@@ -191,7 +185,9 @@ def write_roadmap_sheet(
         elif w60 is not None and week_num == w60:
             status = "🎯 Порог 60% (КРП→0)"
         else:
-            status = "🟢 В процессе" if savings < 0 else "🟡"
+            # savings_vs_current = current_total_monthly - total_new:
+            # положительное = экономим; отрицательное = платим больше.
+            status = "🟢 В процессе" if savings > 0 else "🔴 Хуже текущего"
 
         rows.append([
             week_num,
@@ -208,63 +204,10 @@ def write_roadmap_sheet(
     rows.append([])
 
     # ------------------------------------------------------------------
-    # БЛОК 4: Chart placeholder
-    # ------------------------------------------------------------------
-    chart_title_row = len(rows)
-    rows.append(["ГРАФИК ПРОГНОЗА"])
-    rows.append([
-        "(ниже вставляется линейный chart: ИЛ% по неделям + reference "
-        "lines 60% и 80%)"
-    ])
-    rows.append([])
-
-    # ------------------------------------------------------------------
-    # БЛОК 5: Детальный план перестановок
-    # ------------------------------------------------------------------
-    plan_title_row = len(rows)
-    rows.append(["ДЕТАЛЬНЫЙ ПЛАН ПЕРЕСТАНОВОК"])
-    rows.append([])
-
-    plan_headers = [
-        "#", "Приоритет", "Артикул", "Размер", "Лок.% текущая",
-        "Откуда (ФО + склад)", "Куда (ФО + склад)", "Кол-во шт",
-        "Импакт на ИЛ (п.п.)", "Экономия ₽/мес", "Склад-лимит",
-        "Неделя старта",
-    ]
-    plan_header_row = len(rows)
-    rows.append(plan_headers)
-    plan_desc_row = len(rows)
-    rows.append([SHEET_COLUMN_DOCS["plan"].get(h, "") for h in plan_headers])
-
-    # Сортировка по экономии (DESC), чтобы приоритет был виден
-    movements_plan = sorted(
-        payload.get("movements_plan", []) or [],
-        key=lambda m: m.get("savings_monthly", 0),
-        reverse=True,
-    )
-    plan_data_start = len(rows)
-    for item in movements_plan:
-        rows.append([
-            item.get("rank", ""),
-            item.get("priority", ""),
-            item.get("article", ""),
-            item.get("size", ""),
-            f"{item.get('loc_pct_current', 0):.0f}%",
-            f"{item.get('from_fd', '')} (избыток {item.get('from_stock_surplus', 0)})",
-            f"{item.get('to_fd', '')} (дефицит {item.get('to_stock_deficit', 0)})",
-            item.get("qty", 0),
-            f"+{item.get('impact_il_pp', 0):.1f}",
-            round(item.get("savings_monthly", 0)),
-            item.get("warehouse_limit_status", ""),
-            item.get("start_week", 0),
-        ])
-    plan_data_end = len(rows)
-
-    # ------------------------------------------------------------------
     # Запись данных одним вызовом
     # ------------------------------------------------------------------
-    max_cols = max((len(r) for r in rows if r), default=12)
-    max_cols = max(max_cols, 12)
+    max_cols = max((len(r) for r in rows if r), default=9)
+    max_cols = max(max_cols, 9)
     normalized = [r + [""] * (max_cols - len(r)) for r in rows]
     worksheet.update(range_name="A1", values=normalized)
 
@@ -273,11 +216,10 @@ def write_roadmap_sheet(
     # ------------------------------------------------------------------
     sid = worksheet.id
 
-    # Ширины колонок (подогнаны под самую широкую таблицу — план)
+    # Ширины колонок (подогнаны под roadmap-таблицу)
     format_requests.extend(_col_widths(sid, [
-        (0, 60), (1, 90), (2, 150), (3, 70), (4, 110),
-        (5, 200), (6, 200), (7, 90), (8, 130), (9, 140),
-        (10, 110), (11, 110),
+        (0, 70), (1, 90), (2, 180), (3, 80), (4, 110),
+        (5, 110), (6, 150), (7, 160), (8, 180),
     ]))
 
     # Подсветка milestone строк roadmap
@@ -317,27 +259,18 @@ def write_roadmap_sheet(
         format_requests.append(_borders(
             sid, roadmap_header_row, roadmap_data_end, 0, len(roadmap_headers),
         ))
-    if plan_data_end > plan_data_start:
-        format_requests.append(_borders(
-            sid, plan_header_row, plan_data_end, 0, len(plan_headers),
-        ))
-        format_requests.append(_banding(
-            sid, plan_data_start, plan_data_end, len(plan_headers),
-        ))
 
     # Freeze верхней строки (чтобы заголовок был виден при прокрутке)
     format_requests.append(_freeze(sid, rows=1, cols=0))
 
-    # Высота строки описания под заголовком roadmap / plan
+    # Высота строки описания под заголовком roadmap
     format_requests.append(_row_height(sid, roadmap_desc_row, roadmap_desc_row + 1, 30))
-    format_requests.append(_row_height(sid, plan_desc_row, plan_desc_row + 1, 30))
 
     if format_requests:
         spreadsheet.batch_update({"requests": format_requests})
 
     logger.info(
-        "Записан лист '%s': %d недель roadmap, %d перестановок",
+        "Записан лист '%s': %d недель roadmap",
         roadmap_sheet_name(cabinet),
         len(roadmap_entries),
-        len(movements_plan),
     )
