@@ -260,7 +260,7 @@ Launch Synthesizer as a subagent (Agent tool) with ALL outputs: `findings_raw` +
 - **Numbers:** `1 234 567 ₽`, `24,1%`, `+3,2 п.п.`, `8,8М`
 - **Terminology:** Russian ONLY
 - **Models:** Title Case (Wendy, not wendy). Only REAL models from sku_statuses
-- **Buyout caveat:** `\*Данные по выкупам неполные (лаг 3-21 день)` after every buyout table row
+- **Buyout caveat:** `∗Данные по выкупам неполные (лаг 3-21 день)` after every buyout table row
 - **CRO = MAIN metric.** Always highlight CRO changes in toggle headlines
 
 ### 5.2 Save MD file
