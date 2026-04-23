@@ -33,7 +33,7 @@ triggers:
 1. Если данные не указаны явно — запросить у пользователя:
    - `display_name` — читаемое название
    - `description` — что делает
-   - `category` — analytics | planning | content | team | infra
+   - `category` — analytics | planning | content | publishing | team | infra
    - `run_command` — как запустить
 2. Записать в Supabase
 
@@ -67,6 +67,16 @@ cur.close(); conn.close()
 print('✅ Tool registered: SLUG')
 "
 ```
+
+### Шаг 3: обновить `docs/TOOLS_CATALOG.md`
+
+Supabase — единственный источник истины, MD — автогенерируемая копия. После любой записи в `tools` **обязательно** запустить:
+
+```bash
+PYTHONPATH=. python3 scripts/generate_tools_catalog.py
+```
+
+Скрипт перерисовывает весь каталог по текущему состоянию Supabase. Ручные правки `docs/TOOLS_CATALOG.md` запрещены — они будут затёрты следующим запуском.
 
 ### Проверка после регистрации
 
