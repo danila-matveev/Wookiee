@@ -27,7 +27,7 @@
 - `services/logistics_audit/` — аудит логистики WB + ETL тарифов складов в Supabase
 - `services/sheets_sync/` — синхронизация Google Sheets
 - `services/wb_localization/` — расчёт локализации WB + экспорт в Sheets
-- `services/vasily_api/` — HTTP trigger для запуска WB localization
+- `services/wb_logistics_api/` — HTTP trigger для запуска WB localization
 - `services/ozon_delivery/` — утилиты по доставке OZON
 
 ### Shared
@@ -190,8 +190,8 @@ python -m services.logistics_audit.etl.tariff_collector --cabinet OOO
 # WB localization dry-run
 python -m services.wb_localization.run_localization --dry-run
 
-# Vasily API
-uvicorn services.vasily_api.app:app --host 0.0.0.0 --port 8000
+# WB Logistics API
+uvicorn services.wb_logistics_api.app:app --host 0.0.0.0 --port 8000
 ```
 
 ## CLI Scripts (`scripts/`)
@@ -212,7 +212,7 @@ uvicorn services.vasily_api.app:app --host 0.0.0.0 --port 8000
 cp .env.example .env
 pip install -r agents/oleg/requirements.txt
 pip install -r services/sheets_sync/requirements.txt
-pip install -r services/vasily_api/requirements.txt
+pip install -r services/wb_logistics_api/requirements.txt
 ```
 
 ## Quality Gates
