@@ -154,7 +154,6 @@ logger.error(run_id, stage="data_collection", message="DB timeout")
 | /monthly-plan | Месячный бизнес-план | skill | planning | testing |
 | /content-search | Поиск фото бренда | skill | content | testing |
 | /bitrix-task | Задачи в Битрикс24 | skill | team | active |
-| /bitrix-analytics | Пульс команды Битрикс | skill | team | active |
 | /finolog | ДДС операции Финолог | skill | infra | active |
 
 ### Сервисы
@@ -202,5 +201,5 @@ logger.error(run_id, stage="data_collection", message="DB timeout")
 
 ### Фаза 3: Масштабирование (по мере готовности)
 - Интегрировать tool_logger в остальные скиллы
-- Скопировать bitrix-task, finolog, bitrix-analytics в репо Wookiee
+- Скопировать bitrix-task, finolog в репо Wookiee
 - Обновить TOOLS_CATALOG.md генерацией из tools таблицы

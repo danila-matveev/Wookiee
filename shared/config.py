@@ -100,6 +100,22 @@ NOTION_TOKEN: str = os.getenv('NOTION_TOKEN', '')
 NOTION_DATABASE_ID: str = os.getenv('NOTION_DATABASE_ID', '')
 
 # ============================================================================
+# Google Sheets IDs (маркетинговые источники для daily-brief)
+# ============================================================================
+BLOGGERS_SHEET_ID: str = os.getenv(
+    'BLOGGERS_SHEET_ID',
+    '1Y7uxZnrjHLBntoDLkKJBOt5-lmODRJ5QEkE19QBA8xk',
+)
+VK_SHEET_ID: str = os.getenv(
+    'VK_SHEET_ID',
+    '1h0NeYw_5Cn7mkI03QxUk_zkvJ7NGV1zFmAtXNW9euSU',
+)
+SMM_SHEET_ID: str = os.getenv(
+    'SMM_SHEET_ID',
+    '19NXHQGWSFjeWiPE12R3YAy5u2IsLpTISrECpysPSdPU',
+)
+
+# ============================================================================
 # Timezone
 # ============================================================================
 TIMEZONE: str = 'Europe/Moscow'
