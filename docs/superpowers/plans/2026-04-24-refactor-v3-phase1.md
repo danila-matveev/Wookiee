@@ -169,7 +169,7 @@ You are audit-code, a read-only auditor for the Wookiee repo refactor.
 GOAL: Write a file-by-file audit of the Python backend — which files are dead code,
 orphaned, duplicated, and which are actively used.
 
-ZONES: agents/, services/, scripts/, shared/, mcp_servers/
+ZONES: agents/, services/, scripts/, shared/, mcp_servers/, tests/
 
 READ FIRST:
 - docs/superpowers/specs/2026-04-24-refactor-v3-design.md (current spec)
@@ -198,6 +198,9 @@ DELIVERABLE: Write to .planning/refactor-audit/code-audit.md with sections:
      (called nowhere) → DELETE candidates
    - services/product_matrix_api/, services/dashboard_api/, services/knowledge_base/,
      services/ozon_delivery/ — confirm active/legacy status
+   - tests/ — any test file that imports from agents/oleg/, agents/finolog_categorizer/,
+     mcp_servers/, services/product_matrix_api/, or other DELETE candidates must be
+     marked DELETE itself (so PR #4 removes them; otherwise CI breaks)
 
 Report total token/time budget: keep under 50k tokens.
 ```
@@ -820,13 +823,23 @@ git rm -f deploy/deploy-v3-migration.sh 2>/dev/null || true
 python -c "import yaml; yaml.safe_load(open('docker-compose.yml'))" && echo OK
 ```
 
-- [ ] **Step 6: Удалить planning-мусор**
+- [ ] **Step 6: Удалить planning-мусор и retired-agent артефакты**
 
 ```bash
+# Planning артефакты
 git rm -rf .planning/archive/ 2>/dev/null || true
 git rm -rf .planning/research/ 2>/dev/null || true
-# + другое из manifest
+
+# Retired agents (из cleanup-v2 §2.5)
+git rm -rf docs/archive/retired_agents/lyudmila/ 2>/dev/null || true
+git rm -rf docs/archive/retired_agents/vasily/ 2>/dev/null || true
+# + другое из manifest — orchestrator должен подтвердить что retired agents
+# действительно больше не нужны (их код остаётся в git history, а docs/archive
+# перестаёт быть местом хранения их артефактов)
 ```
+
+Если orchestrator в manifest подтвердил что некоторые retired-артефакты надо сохранить
+(например, `oleg-v2-architecture.md` из Task 10 Step 3) — их НЕ удалять.
 
 - [ ] **Step 7: Удалить orphan scripts**
 
@@ -1123,14 +1136,12 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 git push -u origin refactor/hub-trim
 ```
 
-- [ ] **Step 9: Открыть PR БЕЗ auto-merge**
+- [ ] **Step 9: Открыть PR через `/pullrequest wait` (БЕЗ auto-merge)**
 
-Вызвать `/pullrequest` — **указать `wait` режим** (не auto-merge). Причина — ручная проверка UI.
+Вызвать skill `/pullrequest` с аргументом `wait` — skill запустит Codex + Copilot review, но **не** сделает auto-merge, а дождётся явного merge-решения пользователя. Это единственный PR в Фазе 1 с ручным gate.
 
-Run:
-```bash
-gh pr create --title "refactor(hub): trim to 2 modules (PR 6/7)" \
-  --body-file <(cat <<'EOF'
+Передать skill'у следующий PR body:
+```markdown
 ## Что изменено
 - Снос 13+ pages + связанных компонентов
 - Меню → 2 пункта: Комьюнити, Агенты
@@ -1148,9 +1159,9 @@ refactor-manifest.md § PR #6
 ## Связанные
 - refactor-manifest.md § PR #6
 - spec: docs/superpowers/specs/2026-04-24-refactor-v3-design.md § 4.1
-EOF
-)
 ```
+
+Если `/pullrequest wait` не поддерживает ручной режим в текущей реализации — fallback на прямой `gh pr create` + `gh pr merge --auto=false` (auto-merge НЕ включён на этом PR).
 
 - [ ] **Step 10: Дождаться ручного одобрения пользователя**
 
