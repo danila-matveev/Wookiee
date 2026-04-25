@@ -8,8 +8,8 @@ FastAPI HTTP-сервис, оборачивающий пайплайн `services
 
 Эндпоинты:
 - `POST /run` — запуск расчёта в фоне (header `x-api-key`)
-- `GET /status` — текущий статус (`idle | running | done | error`)
-- `GET /health` — healthcheck для Docker
+- `GET /status` — текущий статус (`idle | running | done | error`); тоже требует header `x-api-key`
+- `GET /health` — healthcheck для Docker (без авторизации)
 
 Локально:
 ```bash

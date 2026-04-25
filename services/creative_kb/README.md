@@ -6,7 +6,7 @@
 Текущее состояние — MVP/PoC: модуль содержит только промпт-библиотеку (`prompts/video_unpack.md`) и тестовые фикстуры (`tests/fixtures/`). Полная реализация (ETL, embeddings, Notion-публикация) описана в `docs/superpowers/specs/2026-04-17-creative-kb-design.md`.
 
 ## Точка входа / как запускать
-Прямой entry-point ещё не реализован. Для PoC-распаковки видео используется `prompts/video_unpack.md` как системный промпт LLM (через Claude Code subscription / Gemini API).
+Прямой entry-point ещё не реализован. Для PoC-распаковки видео используется `prompts/video_unpack.md` как системный промпт LLM. LLM-вызовы — строго через OpenRouter (по правилу `.claude/rules/economics.md`): MAIN-tier модель (`google/gemini-3-flash-preview`) для распаковки текста, fallback на HEAVY-tier при confidence ниже порога.
 
 ## Зависимости
 - Data: YaDisk (видео-файлы), Google Sheets (usage в АДС/АДБ/ЯПС), Supabase (планируемая таблица `creative_kb` с pgvector)
