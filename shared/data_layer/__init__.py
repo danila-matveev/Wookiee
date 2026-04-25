@@ -14,7 +14,6 @@ from shared.data_layer.finance import *            # noqa: F401,F403
 from shared.data_layer.traffic import *            # noqa: F401,F403
 from shared.data_layer.sku_mapping import *        # noqa: F401,F403
 from shared.data_layer.article import *            # noqa: F401,F403
-from shared.data_layer.quality import *            # noqa: F401,F403
 from shared.data_layer.time_series import *        # noqa: F401,F403
 from shared.data_layer.pricing import *            # noqa: F401,F403
 from shared.data_layer.pricing_article import *    # noqa: F401,F403
