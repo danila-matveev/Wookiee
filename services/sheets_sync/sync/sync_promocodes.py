@@ -181,3 +181,45 @@ def format_analytics_row(
         top3_str,
         updated_at_iso,
     ]
+
+
+def compute_dashboard_summary(
+    week_aggs: dict[str, dict], dictionary: dict[str, dict]
+) -> dict:
+    """Return dashboard metrics for the most recent week (across both cabinets).
+
+    Keys: promocodes_count, sales_total, orders_total,
+          champion_name, champion_sales, unknown_uuids.
+    """
+    if not week_aggs:
+        return {
+            "promocodes_count": 0,
+            "sales_total": 0,
+            "orders_total": 0,
+            "champion_name": "—",
+            "champion_sales": 0,
+            "unknown_uuids": [],
+        }
+
+    sales_total = sum(b["sales_rub"] for b in week_aggs.values())
+    orders_total = sum(b["orders_count"] for b in week_aggs.values())
+
+    champion_uuid, champion = max(
+        week_aggs.items(), key=lambda kv: kv[1]["sales_rub"]
+    )
+    champion_name = (
+        dictionary.get(champion_uuid.lower(), {}).get("name") or "неизвестный"
+    )
+
+    unknown = sorted(
+        uuid for uuid in week_aggs.keys()
+        if uuid.lower() not in dictionary
+    )
+    return {
+        "promocodes_count": len(week_aggs),
+        "sales_total": round(sales_total, 2),
+        "orders_total": orders_total,
+        "champion_name": champion_name,
+        "champion_sales": round(champion["sales_rub"], 2),
+        "unknown_uuids": unknown,
+    }

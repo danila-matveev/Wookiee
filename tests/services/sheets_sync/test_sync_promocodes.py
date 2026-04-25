@@ -148,3 +148,30 @@ def test_format_analytics_row_marks_unknown_when_uuid_missing():
         updated_at_iso="2026-04-25T11:05:00",
     )
     assert row[2] == "неизвестный"
+
+
+from services.sheets_sync.sync.sync_promocodes import compute_dashboard_summary
+
+
+def test_compute_dashboard_summary_picks_champion_by_sales():
+    week_aggs = {
+        "u1": {"sales_rub": 1000, "ppvz_rub": 900, "orders_count": 5,
+               "returns_count": 0, "avg_discount_pct": 5, "top3_models": []},
+        "u2": {"sales_rub": 5000, "ppvz_rub": 4500, "orders_count": 3,
+               "returns_count": 0, "avg_discount_pct": 10, "top3_models": []},
+    }
+    dictionary = {"u2": {"name": "MYALICE5"}}
+    s = compute_dashboard_summary(week_aggs=week_aggs, dictionary=dictionary)
+    assert s["promocodes_count"] == 2
+    assert s["sales_total"] == 6000
+    assert s["orders_total"] == 8
+    assert s["champion_name"] == "MYALICE5"
+    assert s["champion_sales"] == 5000
+    assert s["unknown_uuids"] == ["u1"]
+
+
+def test_compute_dashboard_summary_handles_empty():
+    s = compute_dashboard_summary(week_aggs={}, dictionary={})
+    assert s["promocodes_count"] == 0
+    assert s["sales_total"] == 0
+    assert s["champion_name"] == "—"
