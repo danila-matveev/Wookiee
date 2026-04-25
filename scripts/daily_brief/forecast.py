@@ -6,7 +6,6 @@
 - weighted: 70% trend + 30% baseline
 """
 from __future__ import annotations
-from typing import Any
 
 
 TREND_WINDOW_DAYS = 5
