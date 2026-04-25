@@ -292,3 +292,101 @@ def fetch_report(api_key: str, cabinet_name: str,
             time.sleep(RATE_LIMIT_SLEEP)
     logger.info("[%s] total: %d rows", cabinet_name, len(all_rows))
     return all_rows
+
+
+import os
+
+import gspread
+
+from shared.clients.sheets_client import (
+    get_client,
+    get_or_create_worksheet,
+)
+
+DASHBOARD_HEADER_ROWS = 8     # rows 1-8 reserved for dashboard
+COLUMN_HEADERS_ROW = 9        # row 9 holds column headers
+DATA_START_ROW = 10           # rows 10+ hold data
+
+DEFAULT_DICT_SHEET = "Промокоды_справочник"
+DEFAULT_DATA_SHEET = "Промокоды_аналитика"
+
+
+def _open_spreadsheet():
+    sa_file = os.getenv(
+        "GOOGLE_SERVICE_ACCOUNT_FILE",
+        "services/sheets_sync/credentials/google_sa.json",
+    )
+    sid = os.getenv("PROMOCODES_SPREADSHEET_ID", "")
+    if not sid:
+        raise RuntimeError("PROMOCODES_SPREADSHEET_ID is not set")
+    gc = get_client(sa_file)
+    return gc.open_by_key(sid)
+
+
+def read_dictionary_sheet() -> dict[str, dict]:
+    """Open spreadsheet and parse the dictionary sheet."""
+    sheet_name = os.getenv("PROMOCODES_DICT_SHEET", DEFAULT_DICT_SHEET)
+    ss = _open_spreadsheet()
+    try:
+        ws = ss.worksheet(sheet_name)
+    except gspread.WorksheetNotFound:
+        logger.warning("Dictionary sheet '%s' not found — empty mapping", sheet_name)
+        return {}
+    return parse_dictionary(ws.get_all_values())
+
+
+def ensure_analytics_sheet() -> gspread.Worksheet:
+    """Ensure the analytics sheet exists with dashboard rows + column headers."""
+    sheet_name = os.getenv("PROMOCODES_DATA_SHEET", DEFAULT_DATA_SHEET)
+    ss = _open_spreadsheet()
+    ws = get_or_create_worksheet(ss, sheet_name, rows=2000, cols=len(ANALYTICS_HEADERS))
+    # Write column headers in row 9 if missing
+    current = ws.row_values(COLUMN_HEADERS_ROW)
+    if current[: len(ANALYTICS_HEADERS)] != ANALYTICS_HEADERS:
+        ws.update(
+            range_name=f"A{COLUMN_HEADERS_ROW}",
+            values=[ANALYTICS_HEADERS],
+        )
+    return ws
+
+
+def upsert_rows(ws: gspread.Worksheet, new_rows: list[list]) -> tuple[int, int]:
+    """Upsert rows by key (week_label + cabinet + uuid). Returns (added, updated)."""
+    existing = ws.get_all_values()[DATA_START_ROW - 1:]   # data rows only
+    # Build existing key index: row offset → key
+    key_to_row_idx: dict[tuple[str, str, str], int] = {}
+    for i, row in enumerate(existing):
+        if len(row) < 4:
+            continue
+        key = (row[0], row[1], (row[3] or "").lower())
+        key_to_row_idx[key] = i  # 0-based offset within data range
+
+    updates: list[gspread.Cell] = []
+    appends: list[list] = []
+    added = updated = 0
+
+    for nr in new_rows:
+        key = (nr[0], nr[1], (nr[3] or "").lower())
+        if key in key_to_row_idx:
+            # update in place
+            target_row = DATA_START_ROW + key_to_row_idx[key]
+            for col_idx, value in enumerate(nr, start=1):
+                updates.append(
+                    gspread.Cell(row=target_row, col=col_idx, value=value)
+                )
+            updated += 1
+        else:
+            appends.append(nr)
+            added += 1
+
+    if updates:
+        ws.update_cells(updates, value_input_option="USER_ENTERED")
+    if appends:
+        next_row = DATA_START_ROW + len(existing)
+        ws.update(
+            range_name=f"A{next_row}",
+            values=appends,
+            value_input_option="USER_ENTERED",
+        )
+    logger.info("Upsert: +%d, ~%d", added, updated)
+    return added, updated
