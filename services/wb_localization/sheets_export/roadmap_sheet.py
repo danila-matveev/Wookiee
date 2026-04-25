@@ -22,7 +22,6 @@ from .formatters import (
     _row_height,
     _freeze,
     _borders,
-    _banding,
     _clear_banding,
     SHEET_COLUMN_DOCS,
 )

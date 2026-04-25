@@ -5,10 +5,8 @@ Cross-model groups are flagged for ad attribution analysis.
 """
 from __future__ import annotations
 
-from collections import defaultdict
 
 from shared.data_layer.sku_mapping import get_artikuly_full_info
-from shared.data_layer.finance import get_wb_finance, get_wb_by_model
 from shared.model_mapping import map_to_osnova
 
 

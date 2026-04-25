@@ -6,7 +6,6 @@
 - Аномалии (выброс >2σ от среднего)
 """
 from __future__ import annotations
-from typing import Any
 
 
 # Пороги
