@@ -32,9 +32,10 @@ jobs:
           pip install -r services/content_kb/requirements.txt
           pip install -r services/wb_logistics_api/requirements.txt
           # Tests-only deps that aren't part of any service requirements file yet:
+          # - pytest: previously came from agents/oleg/requirements.txt (deleted in refactor PR #5)
           # - openpyxl: services/logistics_audit (no requirements.txt of its own)
           # - fastapi + httpx: tests/product_matrix_api orphans (deleted in refactor PR #4)
-          pip install openpyxl "fastapi>=0.110" "httpx>=0.27" requests schedule "ruff>=0.15,<0.16"
+          pip install "pytest>=7.4.0" "pytest-asyncio>=0.23.0" openpyxl "fastapi>=0.110" "httpx>=0.27" requests schedule "ruff>=0.15,<0.16"
 
       - name: Lint & security scan (ruff)
         run: ruff check agents services shared scripts
