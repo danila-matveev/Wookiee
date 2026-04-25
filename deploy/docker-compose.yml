@@ -1,16 +1,16 @@
 services:
-  # ── Oleg v2: reporting orchestrator ──
-  wookiee-oleg:
+  # ── Wookiee cron: scheduled jobs (search queries sync + sheets sync) ──
+  wookiee-cron:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
-    container_name: wookiee_oleg
+    container_name: wookiee_cron
     restart: unless-stopped
     entrypoint: ["/bin/bash", "-c"]
     command:
       - |
-        (echo "PATH=/usr/local/bin:/usr/bin:/bin"; echo "PYTHONPATH=/app"; echo "*/30 7-18 * * * cd /app && python scripts/run_report.py --schedule >> /proc/1/fd/1 2>&1"; echo "0 10 * * 1 cd /app && python scripts/run_search_queries_sync.py >> /proc/1/fd/1 2>&1"; echo "0 6 * * * cd /app && python scripts/sync_sheets_to_supabase.py --level all >> /proc/1/fd/1 2>&1"; echo "0 5 * * 0 cd /app && python scripts/retention_cleanup.py >> /proc/1/fd/1 2>&1") | crontab -
-        echo "Wookiee cron installed: report every 30 min 07:00-18:00 MSK + search queries Mon 10:00 + sheets sync daily 06:00 + retention cleanup Sun 05:00"
+        (echo "PATH=/usr/local/bin:/usr/bin:/bin"; echo "PYTHONPATH=/app"; echo "0 10 * * 1 cd /app && python scripts/run_search_queries_sync.py >> /proc/1/fd/1 2>&1"; echo "0 6 * * * cd /app && python scripts/sync_sheets_to_supabase.py --level all >> /proc/1/fd/1 2>&1") | crontab -
+        echo "Wookiee cron installed: search queries Mon 10:00 + sheets sync daily 06:00"
         cron -f
 
     env_file:
@@ -21,7 +21,6 @@ services:
       - TZ=Europe/Moscow
 
     volumes:
-      - ../agents/oleg/data:/app/agents/oleg/data
       - ../services/etl/data:/app/services/etl/data
       - ../reports:/app/reports
       - ../scripts:/app/scripts:ro

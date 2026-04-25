@@ -1,4 +1,4 @@
-# Dockerfile for Wookiee services (Oleg bot/agent, Sheets Sync, etc.)
+# Dockerfile for Wookiee services (cron jobs, Sheets Sync, etc.)
 FROM python:3.11-slim
 
 # Set working directory
@@ -12,22 +12,17 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install (single image used by multiple services)
-COPY agents/oleg/requirements.txt /app/agents/oleg/requirements.txt
 COPY services/sheets_sync/requirements.txt /app/services/sheets_sync/requirements.txt
 RUN pip install --no-cache-dir \
-    -r agents/oleg/requirements.txt \
     -r services/sheets_sync/requirements.txt
 
-# Copy application code (shared libs + all agents + all services + scripts)
+# Copy application code (shared libs + all services + scripts)
 COPY shared/ /app/shared/
-COPY agents/ /app/agents/
 COPY services/ /app/services/
 COPY scripts/ /app/scripts/
-COPY deploy/healthcheck.py /app/deploy/healthcheck.py
-COPY deploy/healthcheck_agent.py /app/deploy/healthcheck_agent.py
 
-# Create data, logs, and reports directories
-RUN mkdir -p /app/agents/oleg/data /app/agents/oleg/logs /app/reports
+# Create reports directory
+RUN mkdir -p /app/reports
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1

@@ -1,18 +1,17 @@
 #!/usr/bin/env bash
 #
-# deploy.sh — деплой Oleg (единый контейнер)
+# deploy.sh — деплой Wookiee cron (единый контейнер)
 #
 # Использование:
 #   bash deploy/deploy.sh
-#   make oleg-deploy
 #
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
-CONTAINER="wookiee_oleg"
-SERVICE="wookiee-oleg"
+CONTAINER="wookiee_cron"
+SERVICE="wookiee-cron"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
