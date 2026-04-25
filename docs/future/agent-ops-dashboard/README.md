@@ -55,10 +55,6 @@ Frontend: React + TypeScript + Tailwind + shadcn/ui
 docs/future/agent-ops-dashboard/
 ├── README.md              ← вы здесь
 ├── SPEC.md                ← полная спецификация (UI/UX + Implementation Plan)
-├── mockups/
-│   ├── agent-dashboard-v2.html         ← актуальный мокап (открыть в браузере)
-│   ├── agent-dashboard-v2-desktop.png  ← скриншот 1440px
-│   └── agent-dashboard-v1.html         ← первая версия (для истории)
 └── reviews/
     ├── 01-ux-critic.md          ← UX-review (5.5/10 → учтено в v2)
     ├── 02-product-manager.md    ← Feature Matrix (MVP/v2/backlog)
@@ -67,11 +63,12 @@ docs/future/agent-ops-dashboard/
     └── 06-agent-expert.md       ← Agent observability рекомендации
 ```
 
+> **Note (refactor v3 phase 1):** the `mockups/` subdirectory was deleted in PR #51 (binary cleanup). The entire `docs/future/agent-ops-dashboard/` directory is scheduled for removal in refactor PR #4 — this README is transitional.
+
 ## Как начать реализацию
 
 1. Прочитать `SPEC.md` — единственный source of truth
-2. Открыть `mockups/agent-dashboard-v2.html` в браузере — визуальный ориентир
-3. Начать с Phase 1A (backend): создать `agents/oleg/api/` и таблицу `event_log`
+2. Начать с Phase 1A (backend): создать `agents/oleg/api/` и таблицу `event_log`
 4. Проверить: `curl http://localhost:8091/api/agents/overview` должен вернуть JSON
 5. Перейти к Phase 1B (frontend): 8 компонентов + страница
 
