@@ -110,3 +110,41 @@ def test_parse_dictionary_uses_uuid_as_key_and_lowercases():
     assert d["abc"]["name"] == "X"
     # broken row dropped
     assert len(d) == 2
+
+
+from services.sheets_sync.sync.sync_promocodes import format_analytics_row
+
+
+def test_format_analytics_row_uses_dictionary_when_uuid_known():
+    metrics = {
+        "sales_rub": 12433.0, "ppvz_rub": 13866.0,
+        "orders_count": 8, "returns_count": 0, "avg_discount_pct": 10.0,
+        "top3_models": [("charlotte/black", 6131.0), ("charlotte/brown", 3200.0)],
+    }
+    dictionary = {"be6900f2": {"name": "CHARLOTTE10", "channel": "Соцсети",
+                               "discount_pct": 10.0, "start": "", "end": "", "note": ""}}
+    row = format_analytics_row(
+        week_start=date(2026, 3, 9), week_end=date(2026, 3, 15),
+        cabinet="ООО", uuid="be6900f2", metrics=metrics, dictionary=dictionary,
+        updated_at_iso="2026-04-25T11:05:00",
+    )
+    assert row[0] == "09.03–15.03.2026"
+    assert row[1] == "ООО"
+    assert row[2] == "CHARLOTTE10"
+    assert row[3] == "be6900f2"
+    assert row[4] == 10.0
+    assert row[5] == 12433.0
+    assert row[7] == 8
+    assert "charlotte/black" in row[10]
+
+
+def test_format_analytics_row_marks_unknown_when_uuid_missing():
+    row = format_analytics_row(
+        week_start=date(2026, 4, 13), week_end=date(2026, 4, 19),
+        cabinet="ИП", uuid="zzzz",
+        metrics={"sales_rub": 100, "ppvz_rub": 90, "orders_count": 1,
+                 "returns_count": 0, "avg_discount_pct": 0, "top3_models": []},
+        dictionary={},
+        updated_at_iso="2026-04-25T11:05:00",
+    )
+    assert row[2] == "неизвестный"
