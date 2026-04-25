@@ -436,3 +436,97 @@ def write_dashboard_header(
         ],
     ]
     ws.update(range_name="A2:E7", values=block, value_input_option="USER_ENTERED")
+
+
+def _resolve_weeks(mode: str, week_from: date | None, week_to: date | None,
+                   weeks_back: int) -> list[tuple[date, date]]:
+    if mode == "last_week":
+        return [last_closed_iso_week()]
+    if mode == "specific":
+        if not (week_from and week_to):
+            raise ValueError("specific mode requires week_from and week_to")
+        return [(week_from, week_to)]
+    if mode == "bootstrap":
+        return iso_weeks_back(weeks_back)
+    raise ValueError(f"Unknown mode: {mode}")
+
+
+def _cabinets_from_env() -> list[tuple[str, str]]:
+    out: list[tuple[str, str]] = []
+    for name, key_env in (("ИП", "WB_API_KEY_IP"), ("ООО", "WB_API_KEY_OOO")):
+        key = os.getenv(key_env, "").strip()
+        if key:
+            out.append((name, key))
+        else:
+            logger.warning("Skip cabinet %s — %s not set", name, key_env)
+    return out
+
+
+def run(
+    mode: str = "last_week",
+    week_from: date | None = None,
+    week_to: date | None = None,
+    weeks_back: int = 12,
+    cabinets: list[tuple[str, str]] | None = None,
+) -> dict:
+    """Main entry. Returns:
+        {status, started_at, finished_at, weeks_processed,
+         cabinets, rows_added, rows_updated, unknown_uuids}
+    """
+    started = get_moscow_now()
+    cabs = cabinets or _cabinets_from_env()
+    if not cabs:
+        return {"status": "error", "error": "No cabinets configured",
+                "started_at": started.isoformat(timespec="seconds")}
+
+    weeks = _resolve_weeks(mode, week_from, week_to, weeks_back)
+    dictionary = read_dictionary_sheet()
+    ws = ensure_analytics_sheet()
+    updated_at_iso = started.strftime("%Y-%m-%d %H:%M")
+    rows_added = rows_updated = 0
+    unknown_set: set[str] = set()
+    last_week_aggs: dict[str, dict] = {}
+
+    for week_start, week_end in weeks:
+        week_sheet_rows: list[list] = []
+        for cab_name, api_key in cabs:
+            api_rows = fetch_report(api_key, cab_name, week_start, week_end)
+            agg = aggregate_by_uuid(api_rows)
+            for uuid, m in agg.items():
+                week_sheet_rows.append(
+                    format_analytics_row(
+                        week_start, week_end, cab_name, uuid, m, dictionary,
+                        updated_at_iso,
+                    )
+                )
+            for uuid in agg:
+                if uuid.lower() not in dictionary:
+                    unknown_set.add(uuid)
+            # Last-week summary uses the chronologically newest week (weeks[0])
+            if (week_start, week_end) == weeks[0]:
+                for uuid, m in agg.items():
+                    cur = last_week_aggs.get(uuid)
+                    if cur is None:
+                        last_week_aggs[uuid] = dict(m)
+                    else:
+                        cur["sales_rub"] += m["sales_rub"]
+                        cur["orders_count"] += m["orders_count"]
+        if week_sheet_rows:
+            a, u = upsert_rows(ws, week_sheet_rows)
+            rows_added += a
+            rows_updated += u
+
+    summary = compute_dashboard_summary(last_week_aggs, dictionary)
+    write_dashboard_header(ws, summary, weeks)
+
+    finished = get_moscow_now()
+    return {
+        "status": "ok",
+        "started_at": started.isoformat(timespec="seconds"),
+        "finished_at": finished.isoformat(timespec="seconds"),
+        "weeks_processed": [(s.isoformat(), e.isoformat()) for s, e in weeks],
+        "cabinets": [c[0] for c in cabs],
+        "rows_added": rows_added,
+        "rows_updated": rows_updated,
+        "unknown_uuids": sorted(unknown_set),
+    }

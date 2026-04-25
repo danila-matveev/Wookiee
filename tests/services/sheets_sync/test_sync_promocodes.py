@@ -175,3 +175,39 @@ def test_compute_dashboard_summary_handles_empty():
     assert s["promocodes_count"] == 0
     assert s["sales_total"] == 0
     assert s["champion_name"] == "—"
+
+
+from unittest.mock import patch, MagicMock
+
+
+def test_run_mode_specific_calls_fetch_for_each_cabinet():
+    fake_rows = [{"uuid_promocode": "u1", "sa_name": "x/y",
+                  "retail_amount": 100, "ppvz_for_pay": 90,
+                  "doc_type_name": "Продажа", "quantity": 1,
+                  "sale_price_promocode_discount_prc": 5}]
+
+    with patch("services.sheets_sync.sync.sync_promocodes.fetch_report",
+               return_value=fake_rows) as mock_fetch, \
+         patch("services.sheets_sync.sync.sync_promocodes.read_dictionary_sheet",
+               return_value={"u1": {"name": "TEST", "channel": "T",
+                                     "discount_pct": 5, "start": "", "end": "", "note": ""}}), \
+         patch("services.sheets_sync.sync.sync_promocodes.ensure_analytics_sheet",
+               return_value=MagicMock()), \
+         patch("services.sheets_sync.sync.sync_promocodes.upsert_rows",
+               return_value=(2, 0)) as mock_upsert, \
+         patch("services.sheets_sync.sync.sync_promocodes.write_dashboard_header"):
+
+        from services.sheets_sync.sync.sync_promocodes import run
+        result = run(
+            mode="specific",
+            week_from=date(2026, 4, 13), week_to=date(2026, 4, 19),
+            cabinets=[("ООО", "k_ooo"), ("ИП", "k_ip")],
+        )
+
+    assert mock_fetch.call_count == 2
+    assert result["status"] == "ok"
+    assert result["rows_added"] == 2
+    assert result["rows_updated"] == 0
+    assert ("2026-04-13", "2026-04-19") in [
+        (s, e) for s, e in result["weeks_processed"]
+    ]
