@@ -19,7 +19,7 @@
 | ETL Pipeline (services/etl) | Активен | [agents/ibrahim.md](agents/ibrahim.md) |
 | WB localization service | Активен | [agents/mp-localization.md](agents/mp-localization.md) |
 | Analytics Engine | Активен | [agents/analytics-engine.md](agents/analytics-engine.md) |
-| Content KB (vector search) | Активен | Spec: [specs/2026-03-21-content-knowledge-base-design.md](superpowers/specs/2026-03-21-content-knowledge-base-design.md) |
+| Content KB (vector search) | Активен | [services/content_kb/README.md](../services/content_kb/README.md) |
 
 ## Guides
 
@@ -47,8 +47,6 @@
 
 | Диаграмма | Тип | Файл |
 |---|---|---|
-| Oleg Report Pipeline | Agent Pipeline | [workflows/oleg-report-pipeline.html](workflows/oleg-report-pipeline.html) |
-| ETL Data Flow | ETL Flow | [workflows/ibrahim-etl-flow.html](workflows/ibrahim-etl-flow.html) |
 | System Architecture | System Overview | [workflows/system-architecture.html](workflows/system-architecture.html) |
 
 Генерация: `/workflow-diagram <описание>` или автоматически при проектировании задач с логической цепочкой.
@@ -57,7 +55,6 @@
 
 | Документ | Статус |
 |---|---|
-| [plans/ibrahim-deploy-and-etl.md](plans/ibrahim-deploy-and-etl.md) | Active |
 | [plans/2026-02-25-db-audit-results.md](plans/2026-02-25-db-audit-results.md) | Completed |
 | [plans/2026-02-25-db-improvement-proposals.md](plans/2026-02-25-db-improvement-proposals.md) | Active |
 | [plans/2026-02-25-dashboard-tz.md](plans/2026-02-25-dashboard-tz.md) | Active |
