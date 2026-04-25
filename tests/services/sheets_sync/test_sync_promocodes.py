@@ -89,3 +89,24 @@ def test_aggregate_average_discount():
         _row(uuid="u1", disc=20),
     ]
     assert aggregate_by_uuid(rows)["u1"]["avg_discount_pct"] == 15.0
+
+
+from services.sheets_sync.sync.sync_promocodes import parse_dictionary
+
+
+def test_parse_dictionary_uses_uuid_as_key_and_lowercases():
+    raw = [
+        ["UUID", "Название", "Канал", "Скидка %", "Старт", "Окончание", "Примечание"],
+        ["BE6900F2-c9e9-4963-9ad1-27d10d9492d6", "CHARLOTTE10",
+         "Соцсети", "10", "02.03.2026", "12.03.2026", "wendy"],
+        ["", "broken row", "", "", "", "", ""],
+        ["abc", "X", "Блогер", "", "", "", ""],   # missing discount ok
+    ]
+    d = parse_dictionary(raw)
+    assert "be6900f2-c9e9-4963-9ad1-27d10d9492d6" in d
+    assert d["be6900f2-c9e9-4963-9ad1-27d10d9492d6"]["name"] == "CHARLOTTE10"
+    assert d["be6900f2-c9e9-4963-9ad1-27d10d9492d6"]["channel"] == "Соцсети"
+    assert d["be6900f2-c9e9-4963-9ad1-27d10d9492d6"]["discount_pct"] == 10.0
+    assert d["abc"]["name"] == "X"
+    # broken row dropped
+    assert len(d) == 2

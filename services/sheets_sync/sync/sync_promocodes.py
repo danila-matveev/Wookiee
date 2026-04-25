@@ -108,3 +108,33 @@ def aggregate_by_uuid(rows: list[dict]) -> dict[str, dict]:
             "top3_models": top3,
         }
     return out
+
+
+def parse_dictionary(raw_rows: list[list[str]]) -> dict[str, dict]:
+    """Parse the справочник sheet into {uuid_lower: {name, channel, discount_pct, ...}}.
+
+    Expects header in row 0; rows with empty UUID are dropped.
+    """
+    if not raw_rows or len(raw_rows) < 2:
+        return {}
+    out: dict[str, dict] = {}
+    for row in raw_rows[1:]:
+        # pad missing cells
+        cells = (row + [""] * 7)[:7]
+        uuid_raw, name, channel, disc, start, end, note = cells
+        uuid = (uuid_raw or "").strip().lower()
+        if not uuid:
+            continue
+        try:
+            disc_pct = float(disc) if disc not in ("", None) else None
+        except ValueError:
+            disc_pct = None
+        out[uuid] = {
+            "name": (name or "").strip(),
+            "channel": (channel or "").strip(),
+            "discount_pct": disc_pct,
+            "start": (start or "").strip(),
+            "end": (end or "").strip(),
+            "note": (note or "").strip(),
+        }
+    return out
