@@ -192,3 +192,48 @@ test-results/
 # Git Worktrees (for isolated feature development)
 # ============================================================================
 .worktrees/
+
+# ============================================================================
+# Refactor v3 phase 1 hardening
+# ============================================================================
+
+# Additional binary extensions
+*.docx
+*.wmv
+*.mp4
+*.mov
+*.xlsm
+
+# Whitelist: logistics audit finalized deliverables (kept in repo as reference)
+!services/logistics_audit/*Итоговый*.xlsx
+!services/logistics_audit/*v2-final*.xlsx
+!services/logistics_audit/*Тарифы*.xlsx
+
+# Shell history at root
+scripts.txt
+scripts*.txt
+
+# Claude Code runtime state
+.claude/scheduled_tasks.lock
+
+# Playwright browser snapshots and console logs
+.playwright-mcp/
+
+# Output / generated test artifacts (root-anchored — preserve services/*/output/ trees)
+/output/
+scratch/
+_scratch/
+.scratch/
+
+# Additional tool caches
+.ruff_cache/
+.pytype/
+.pyre/
+.cache/
+
+# Superpowers per-session artifact caches
+.superpowers/**/artifacts/
+.superpowers/**/*.cache
+
+# GSD debug scratch
+.planning/debug/
