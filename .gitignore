@@ -219,8 +219,8 @@ scripts*.txt
 # Playwright browser snapshots and console logs
 .playwright-mcp/
 
-# Output / generated test artifacts
-output/
+# Output / generated test artifacts (root-anchored — preserve services/*/output/ trees)
+/output/
 scratch/
 _scratch/
 .scratch/
