@@ -325,48 +325,53 @@ rm -rf wookiee-hub/mockups/ wookiee-hub/планы/
 rm -rf .playwright-mcp/*.yml .playwright-mcp/*.log   # untracked ones only
 ```
 
-**Files to DELETE (tracked → `git rm`):**
+> **NOTE — pre-verified at execution.** The orchestrator's original draft of this list was based on cleanup-v2 §2.1–2.3 and an outdated working-tree snapshot. Pre-flight `git ls-files` revealed many of the listed paths are already untracked (logistics_audit binaries, wb_localization reports, POWERBI samples, archive PDFs/PNGs, several wookiee-hub iCloud dupes). The PR #1 commit (`61daf0e` on `refactor/binary-cleanup`) operated on the **verified subset** below. If you re-run this PR from scratch, re-verify with `git ls-files` first.
 
-Root:
-- `2026_Договор купли-продажи Familia -Чернецкая.docx`
-- `scripts.txt`
-- `agent-dashboard-full.png`, `mockup-full-page.png`
-- (iCloud dupes ignored by `* 2.*` pattern — already untracked; disk rm)
-- `scripts 2.txt`, `skills-lock 2.json` → disk rm (untracked)
-- `airtable-templates-search.png`, `google-notion-search.png`, `notion-crm-gallery.png`, `notion-influencer-crm-top.png` → disk rm (untracked)
+**Files to DELETE (tracked → `git rm`) — verified subset:**
 
-Logistics audit binaries (cleanup-v2 §2.2 "УДАЛИТЬ"):
-- `services/logistics_audit/Аудит логистики 2026-01-01 — 2026-03-23.xlsx`
-- `services/logistics_audit/ООО_Вуки_проверка_логистики_05_01_01_02.xlsx`
-- `services/logistics_audit/ООО Wookiee — Перерасчёт логистики (v2).xlsx`
-- `services/logistics_audit/Расчет переплаты по логистике.pdf`
-- `services/logistics_audit/Рекомендации к изменениям в расчете логистики.pdf`
-- `services/logistics_audit/Запись экрана (01.04.2026 15-30-09) (2).wmv`
+```
+2026_Договор купли-продажи Familia -Чернецкая.docx
+scripts.txt
+.playwright-mcp/page-2026-03-31T23-56-07-942Z.yml
+.playwright-mcp/page-2026-03-31T23-56-50-135Z.yml
+.playwright-mcp/page-2026-04-01T00-06-46-413Z.yml
+docs/future/agent-ops-dashboard/mockups/agent-dashboard-v1.html
+docs/future/agent-ops-dashboard/mockups/agent-dashboard-v2.html
+wookiee-hub/mockups/AGENT-DASHBOARD-PLAN.md
+wookiee-hub/mockups/agent-dashboard-v2.html
+wookiee-hub/mockups/agent-dashboard.html
+wookiee-hub/mockups/reviews/01-ux-critic.md
+wookiee-hub/mockups/reviews/02-product-manager.md
+wookiee-hub/mockups/reviews/04-designer.md
+wookiee-hub/mockups/reviews/05-developer.md
+wookiee-hub/mockups/reviews/06-agent-expert.md
+```
 
-wb_localization binaries:
-- `services/wb_localization/data/reports/*.xlsx` (2 files)
-- `services/wb_localization/Отчеты готовые/*` (6 files)
+**Files to DELETE (untracked — `rm -rf` / `rm -f` on disk, NOT git actions):**
 
-Archive + misc binaries:
-- `docs/database/POWERBI DATA SAMPLES/*.xlsx` (2)
-- `docs/archive/agents/vasily/docs/wb_references/*.pdf` (2)
-- `docs/archive/agents/vasily/docs/wb_references/*.png` (2)
+```
+output/wb_promocodes_test/                                   # 577 MB jsonl + small files
+.playwright-mcp/page-*.yml                                    # ~95 untracked browser snapshots
+.playwright-mcp/console-*.log                                 # untracked browser logs
+wookiee-hub/планы/                                            # 1 MB stray refs
+wookiee-hub/mockups/                                          # remaining 5.7 MB after git rm above
+scripts 2.txt
+skills-lock 2.json
+agent-dashboard-full.png
+mockup-full-page.png
+airtable-templates-search.png
+google-notion-search.png
+notion-crm-gallery.png
+notion-influencer-crm-top.png
+```
 
-Playwright-mcp tracked:
-- `.playwright-mcp/page-2026-03-31T23-56-07-942Z.yml`
-- `.playwright-mcp/page-2026-03-31T23-56-50-135Z.yml`
-- `.playwright-mcp/page-2026-04-01T00-06-46-413Z.yml`
+**Originally listed by orchestrator but already untracked at execution time (no action needed):**
 
-Hub iCloud dupes (tracked):
-- `wookiee-hub/index 2.html`
-- `wookiee-hub/package-lock 2.json`
-- `wookiee-hub/tsconfig.temp 2.json`
-- `wookiee-hub/e2e-analytics.png`, `e2e-broadcasts.png`, `e2e-dashboard.png`, `e2e-reviews.png`, `e2e-settings.png`
-- `wookiee-hub/mockups/*` (if tracked)
-- `wookiee-hub/планы/*` (if tracked)
-
-agent-ops-dashboard mockups (from cleanup-v2 §2.3):
-- `docs/future/agent-ops-dashboard/mockups/*.png`
+- `services/logistics_audit/*.xlsx/.pdf/.wmv` (5 files) — already in `.gitignore` or never committed
+- `services/wb_localization/data/reports/*.xlsx` + `Отчеты готовые/*` — same
+- `docs/database/POWERBI DATA SAMPLES/*.xlsx` — same
+- `docs/archive/agents/vasily/docs/wb_references/*` — same
+- `wookiee-hub/index 2.html`, `package-lock 2.json`, `tsconfig.temp 2.json`, `e2e-*.png` — same
 
 **Files to CREATE:** none
 
@@ -787,7 +792,7 @@ Update all imports inside these files to use new paths (sed/grep post-rename).
 - `services/logistics_audit/README.md` — no-op (not in hub; listed here for consistency)
 
 **DB-side dependency (flag for user):**
-- Verify RLS policies on Supabase tables `tools` + `tool_runs`. Hub uses anon key → needs `SELECT` policy with `USING (true)` (read-only internal dashboard). If missing, Orchestrator flags F-DB for user to add before merging PR #6.
+- RLS policies on Supabase `tools` + `tool_runs`: must be **`SELECT … USING (auth.role() = 'authenticated')`** — never `USING (true)` for `anon`. Project baseline (`.claude/rules/infrastructure.md`) keeps the `anon` role blocked, and the existing schema in `sku_database/README.md` matches that. PR #6 must therefore (a) ship a Supabase Auth bootstrap in the Hub (magic-link or pre-shared session) before any data fetch, OR (b) keep the Agents pages on mock data in Phase 1 and defer real data + auth to Phase 1.5. If neither is feasible in time, fall back to a service-role read on a tiny backend proxy — never expose anon SELECT.
 
 **Depends on:** PR #5 (main PRs must land first so manifest reflects active state)
 
@@ -926,7 +931,7 @@ Orchestrator kept this list tight — 3 items:
 
 | # | Flag | Question | Recommendation |
 |---|---|---|---|
-| **F1** | **RLS on `tools` + `tool_runs`** | Hub (PR #6) uses anon key to read these tables. Are SELECT policies in place with `USING (true)` for `anon` role? If not, PR #6 can't merge. | **Verify via Supabase MCP or dashboard before PR #6 starts**. If missing, user adds a one-line policy per table. Small task, not a blocker for PR #1-5. |
+| **F1** | **RLS on `tools` + `tool_runs`** | What auth model does PR #6 Hub use to read these tables? Project baseline keeps `anon` blocked. Options: (a) Supabase Auth in Hub + RLS `USING (auth.role() = 'authenticated')`, (b) mock data for Phase 1, (c) backend proxy with service-role. | **Decide before PR #6 starts.** If (a): user adds `authenticated`-only SELECT policy per table; if (b): PR #6 ships with mocks and real data lands in Phase 1.5; if (c): adds a tiny FastAPI proxy. Default recommendation: (b) for Phase 1 to keep scope tight, then (a) in 1.5. Not a blocker for PR #1-5. |
 | **F2** | **`scripts/familia_eval/`** | Orphan tool — no skill, but memory says project is active. Keep or archive? | **Default: KEEP** in scripts/ (with a `scripts/familia_eval/README.md` stub noting "standalone tool, not yet a skill"). User can override at approval. |
 | **F3** | **Manual edit of `.claude/settings.local.json`** | File is gitignored, so PR #4 can't edit it. The 4 local MCP entries become dead after PR #4 deletes `mcp_servers/` — Claude will fail to start those servers on next launch. | **Post-PR-#4 step for the user**: manually delete the 4 `wookiee-*` entries from `.claude/settings.local.json`. Orchestrator mentions in final summary. |
 

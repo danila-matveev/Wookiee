@@ -163,7 +163,7 @@ function refreshPromocodes() {
 
 ### `GET /promocodes/status`
 
-Текущее состояние именно promocodes-задачи (не путать с `/status` логистики): `idle | running | done | error`, с timestamps и последним результатом. Тот же паттерн, что в [services/wb_logistics_api/app.py](services/wb_logistics_api/app.py), но с собственным namespace в `_state`.
+Текущее состояние именно promocodes-задачи (не путать с `/status` логистики): `idle | running | done | error`, с timestamps и последним результатом. Тот же паттерн, что в [services/wb_logistics_api/app.py](../../../services/wb_logistics_api/app.py), но с собственным namespace в `_state`.
 
 ### `GET /health`
 
@@ -196,7 +196,7 @@ function refreshPromocodes() {
 
 При первом запуске (флаг `--mode bootstrap --weeks-back 12`):
 
-1. **ООО** — читает кеш [output/wb_promocodes_test/rows_2026-04-24.jsonl](output/wb_promocodes_test/rows_2026-04-24.jsonl) (260K строк за 60 дней), разбивает по ISO-неделям, апсёртит в лист. Бесплатно — без API.
+1. **ООО** — читает кеш `output/wb_promocodes_test/rows_2026-04-24.jsonl` (260K строк за 60 дней; cache lives at repo-root `output/`, regenerated on demand — refactor-v3 PR #1 deleted the existing artifact, so the first prod run will populate it from `reportDetailByPeriod`). Разбивает по ISO-неделям, апсёртит в лист. Бесплатно после первой загрузки — без API.
 2. **ИП** — дёргает `reportDetailByPeriod` за 60-90 дней (~5-7 минут).
 3. Если данных за 12 недель не хватает (фича промокодов могла быть включена позже) — пишем меньше недель, не падаем.
 
