@@ -12,6 +12,8 @@
 
 ## Quick Reference (из AGENTS.md)
 
+- Онбординг: `ONBOARDING.md`
+- Скиллы: `docs/skills/`
 - DB-запросы: только `shared/data_layer.py` (шим: `scripts/data_layer.py`)
 - Конфигурация: только `shared/config.py` (шим: `scripts/config.py`, читает из `.env`)
 - GROUP BY по модели: ВСЕГДА с `LOWER()`

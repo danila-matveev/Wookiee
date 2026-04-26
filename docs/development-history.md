@@ -5,6 +5,19 @@
 
 ---
 
+## 2026-04-26 — Refactor v3 Phase 1 (PRs #51-57)
+
+7-PR рефакторинг репозитория:
+- PR #51: Удаление бинарного мусора (604 MB output/, playwright snapshots, docx/png клиппер)
+- PR #52: Hardening .gitignore (output/, .playwright-mcp/, *.docx)
+- PR #53: Коммит активных неотслеживаемых сервисов + READMEs (creative_kb, wb_logistics_api, wb_localization calculators)
+- PR #54: Удаление мёртвого кода (mcp_servers/, finolog_categorizer, knowledge_base, abc_analysis*, stale scripts/docs)
+- PR #55: Retirement Oleg V2 — финансовый AI-агент выведен из продакшена
+- PR #56: Hub trim — 2 модуля (Комьюнити + Агенты), comms→community rename, +supabase-js
+- PR #57: Docs-unification — ONBOARDING, docs/skills/, module READMEs, observability→tool_telemetry
+
+---
+
 ## [2026-04-15] WB Tariffs ETL: bootstrap миграции, исторический импорт и daily cron
 
 ### Что сделано
@@ -202,52 +215,3 @@
 - [x] `scripts/check_data_ready.py` (синхронизация порогов)
 - [x] `docs/database/DATA_QUALITY_NOTES.md` (п.12)
 
----
-
-## [2026-02-16] Уровни автономии, классификация по роли, экономические правила
-
-### Что сделано
-- Добавлены уровни автономии (0-3) в `docs/guides/agent-principles.md` — каждый инструмент агента получает явный уровень
-- Обновлён реестр инструментов — добавлена колонка "Автономия"
-- Добавлена 3-слойная классификация агентов (сенсор/аналитик/исполнитель) в `docs/architecture.md`
-- Добавлены экономические правила в `AGENTS.md` — минимальная достаточность модели, confidence-based routing
-- ADR-006 зафиксирован с backlog будущих улучшений
-
-### Зачем
-Формализация правил из `06-rules-and-templates.md` (Блок 3: агентный проект). При масштабировании системы агентов нужны чёткие правила: что агент делает сам, какую модель использовать, как классифицировать агентов по роли.
-
-### Обновлено
-- [x] `docs/guides/agent-principles.md` (секция 2.5 + реестр)
-- [x] `docs/architecture.md` (классификация по роли)
-- [x] `AGENTS.md` (экономика агентов)
-- [x] `docs/adr.md` (ADR-006)
-
----
-
-## [2026-02-16] Рефрейминг документации: Data Hub → AI Agent System
-
-### Что сделано
-- Обновлено позиционирование проекта: из "Wookiee Analytics — Data Hub" в "Wookiee — AI Agent System"
-- Ключевой принцип: агенты — ядро системы, боты — только интерфейсы
-- Обновлены: `README.md`, `AGENTS.md`, `CLAUDE.md`, `docs/architecture.md`, `docs/agents/README.md`, `docs/index.md`
-- Создана документация агента Ибрагим: `docs/agents/ibrahim.md`
-- Добавлена команда `/update-docs` для регулярной проверки актуальности документации
-- Расширены DoD и PR-шаблон: обязательная проверка документации при архитектурных изменениях
-- Добавлено правило в AGENTS.md: обновление документации при архитектурных изменениях
-- ADR-004 и ADR-005 зафиксированы
-
-### Зачем
-Проект эволюционировал из аналитической платформы в систему AI-агентов для управления бизнесом. Документация не отражала новую концепцию. Также отсутствовал процесс регулярного обновления документации при изменениях проекта.
-
-### Обновлено
-- [x] `README.md`, `AGENTS.md`, `CLAUDE.md` (рефрейминг)
-- [x] `docs/architecture.md` (полная переработка)
-- [x] `docs/agents/README.md`, `docs/index.md` (обновление реестра)
-- [x] `docs/agents/ibrahim.md` (создан)
-- [x] `.claude/commands/update-docs.md` (создан)
-- [x] `docs/guides/dod.md`, `.github/PULL_REQUEST_TEMPLATE.md` (расширены)
-- [x] `docs/adr.md` (ADR-004, ADR-005)
-
-### Следующие шаги
-- Обновить docs/agents/telegram-bot.md (рефрейминг Олега как AI-агента, не бота)
-- Обновить docs/agents/lyudmila-bot.md (аналогично)

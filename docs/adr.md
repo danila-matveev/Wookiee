@@ -112,6 +112,25 @@
 
 ---
 
+## ADR-008 — Refactor v3 Phase 1 (2026-04)
+
+**Статус:** Принято
+
+**Контекст:** Накопленный технический долг после Oleg V2 (200+ файлов), 604 MB бинарных артефактов, stale docs.
+
+**Решение:** 7-PR рефакторинг:
+1. Удаление бинарного мусора
+2. Hardening .gitignore
+3. Коммит неотслеживаемых сервисов
+4. Удаление мёртвого кода (mcp_servers, finolog_categorizer, knowledge_base, stale scripts)
+5. Retirement Oleg V2 (finolog_service экстракция → shared/services/, rename wookiee-oleg → wookiee-cron)
+6. Trim Hub до 2 модулей (Комьюнити + Агенты, comms→community rename)
+7. Унификация документации (ONBOARDING, docs/skills/, module READMEs)
+
+**Последствия:** Репозиторий сократился ~65% по файлам Hub, освободилось ≥780 MB диска. Active runtime чётко документирован.
+
+---
+
 ## [2026-02-09] ADR-001: Переход на структуру 2030ai/project_template
 
 ### Статус
