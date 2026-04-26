@@ -5,9 +5,9 @@
 
 ---
 
-## 2026-04-26 — Refactor v3 Phase 1 (PRs #51-57)
+## 2026-04-26 — Refactor v3 Phase 1 (PRs #51-58)
 
-7-PR рефакторинг репозитория:
+8-PR рефакторинг + Stage C верификация:
 - PR #51: Удаление бинарного мусора (604 MB output/, playwright snapshots, docx/png клиппер)
 - PR #52: Hardening .gitignore (output/, .playwright-mcp/, *.docx)
 - PR #53: Коммит активных неотслеживаемых сервисов + READMEs (creative_kb, wb_logistics_api, wb_localization calculators)
@@ -15,6 +15,11 @@
 - PR #55: Retirement Oleg V2 — финансовый AI-агент выведен из продакшена
 - PR #56: Hub trim — 2 модуля (Комьюнити + Агенты), comms→community rename, +supabase-js
 - PR #57: Docs-unification — ONBOARDING, docs/skills/, module READMEs, observability→tool_telemetry
+- PR #58: Stage C верификация-фиксы — purge `.planning/{archive/v1.0,milestones,phases,research,debug}/` (190 файлов, ~1 MB), +7 docs/config с устаревшими путями (services.observability, agents/oleg, services/marketplace_etl)
+
+Итог: ≥780 MB освобождено на диске, репозиторий очищен от Oleg V2, Hub сокращён ~65% по файлам, чёткий active runtime список (8 сервисов + 14 скиллов).
+
+Ручной post-step (F3): пользователь удаляет 4 `wookiee-*` записи из `.claude/settings.local.json` (gitignored, нельзя автоматизировать через PR).
 
 ---
 
