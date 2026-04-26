@@ -8,11 +8,11 @@
 
 ## Архитектура ETL
 
-- `services/marketplace_etl/` — основной ETL: WB/OZON API → PostgreSQL
-- `services/etl/` — задачи синхронизации, сверки, качества данных
-- `services/sheets_sync/` — синхронизация Google Sheets (fin data, stocks, prices, bundles)
+После выведения `services/marketplace_etl/` (апрель 2026) собственного маркетплейс-ETL в репозитории нет. Загрузка данных — внешний подрядчик (PBI-базы, read-only). Внутренние пайплайны:
+
+- `services/sheets_sync/` — основной ETL: API маркетплейсов / Supabase → Google Sheets (fin data, stocks, prices, bundles, search queries)
 - `services/wb_localization/` — WB локализация (расчёт + экспорт в Sheets)
-- `services/ozon_delivery/` — оптимизация доставки OZON
+- `services/logistics_audit/` — аудит логистики и оборачиваемости
 
 ## Обязательные правила
 
@@ -24,10 +24,10 @@
 
 ## Ключевые файлы
 
-- `services/marketplace_etl/` — WB/OZON ETL
 - `services/sheets_sync/` — Google Sheets sync (runner.py, sync/*.py)
 - `services/sheets_sync/shared_config.py` — конфиг sheets sync
-- `shared/data_layer.py` — DB-утилиты
+- `shared/data_layer.py` — DB-утилиты (PBI + Supabase)
+- `shared/clients/{wb_client,ozon_client}.py` — API-клиенты маркетплейсов
 - `docs/infrastructure.md` — описание серверов
 
 ## Деплой

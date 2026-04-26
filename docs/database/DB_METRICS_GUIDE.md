@@ -1189,8 +1189,7 @@ OpenRouter (LLM)
 - При 429: пауза 60 сек + retry
 
 **Клиенты в коде:**
-- Legacy: `shared/clients/wb_client.py`
-- ETL: `services/marketplace_etl/api_clients/wb_client.py`
+- `shared/clients/wb_client.py` (единственный активный клиент; ETL-пайплайн `services/marketplace_etl/` выведен в апреле 2026)
 
 ### 13.2 OZON Seller API
 
@@ -1234,8 +1233,7 @@ OpenRouter (LLM)
 - CSV: разделитель `;`, UTF-8 BOM, апостроф-префикс ('100 → 100)
 
 **Клиенты в коде:**
-- Legacy: `shared/clients/ozon_client.py`
-- ETL: `services/marketplace_etl/api_clients/ozon_client.py`
+- `shared/clients/ozon_client.py` (единственный активный клиент; ETL-пайплайн `services/marketplace_etl/` выведен в апреле 2026)
 
 ### 13.3 МойСклад API
 
@@ -1358,7 +1356,7 @@ statusy (7 статусов)
 
 **Операции:** создание страниц, обновление, запрос БД, удаление/добавление блоков
 
-**Клиент:** `agents/oleg/services/notion_service.py`
+**Клиент:** интеграция с Notion (модуль `agents/oleg/services/notion_service.py` выведен в апреле 2026; синхронизация отчётов перенесена в скиллы)
 
 ### 13.8 OpenRouter (LLM-провайдер)
 
@@ -1395,9 +1393,9 @@ statusy (7 статусов)
 
 **Клиент:** `shared/data_layer.py` (~78KB, ~30 SQL-функций)
 
-### 13.10 PostgreSQL — Marketplace ETL (Ibrahim)
+### 13.10 PostgreSQL — Marketplace DB (managed)
 
-Managed-БД, заполняемая ETL-пайплайном Ибрагима (WB/OZON API → обработка → БД).
+Managed-БД (внешняя), доступна на чтение. ETL-пайплайн `services/marketplace_etl/` выведен в апреле 2026 — БД остаётся как источник, но собственного загрузчика в репозитории нет.
 
 | Параметр | Env-переменная |
 |----------|----------------|
@@ -1409,11 +1407,9 @@ Managed-БД, заполняемая ETL-пайплайном Ибрагима (
 
 **Переключение источника:** `DATA_SOURCE=legacy|managed`
 - `legacy` → PBI-базы (read-only, подрядчик)
-- `managed` → Marketplace ETL (собственный пайплайн)
+- `managed` → Marketplace DB (read-only, без собственного ETL)
 
-**Расписание ETL:** ежедневно 05:00 МСК, еженедельный анализ воскресенье 03:00
-
-**Клиент:** `services/marketplace_etl/`
+**Клиент:** read-only через `shared/data_layer.py` (см. `docs/infrastructure.md`)
 
 ### 13.11 Двойные кабинеты (ИП + ООО)
 
