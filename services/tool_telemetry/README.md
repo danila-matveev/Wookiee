@@ -12,8 +12,8 @@
 ## Использование
 
 ```python
-from services.tool_telemetry.logger import log_tool_run
-await log_tool_run(tool_name="finance-report", status="success", duration_ms=1234)
+from services.tool_telemetry.logger import log_agent_run
+await log_agent_run(agent_name="finance-report", run_data={...})
 ```
 
 ## Связанное
