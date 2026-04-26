@@ -1,0 +1,38 @@
+{
+  "_comment": "Шаблон MCP-конфигурации Wookiee. Скопируй в .mcp.json и заполни токены. Файл .mcp.json в .gitignore — НЕ коммитить!",
+  "mcpServers": {
+    "wildberries-ip": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["../wildberries-mcp-server/dist/index.js"],
+      "env": {
+        "WB_API_TOKEN": "<your_WB_API_token_for_IP_account>"
+      }
+    },
+    "wildberries-ooo": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["../wildberries-mcp-server/dist/index.js"],
+      "env": {
+        "WB_API_TOKEN": "<your_WB_API_token_for_OOO_account>"
+      }
+    },
+    "finolog": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["../finolog-mcp-server/dist/index.js"],
+      "env": {
+        "FINOLOG_API_TOKEN": "<your_finolog_api_token>"
+      }
+    },
+    "ozon": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["../ozon-mcp-server/dist/index.js"],
+      "env": {
+        "OZON_CLIENT_ID": "<your_ozon_client_id>",
+        "OZON_API_KEY": "<your_ozon_api_key>"
+      }
+    }
+  }
+}
