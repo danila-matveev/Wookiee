@@ -1,9 +1,8 @@
-"""WB Promocodes weekly analytics sync.
+"""WB Promocodes weekly analytics sync — pivot layout.
 
-Pulls reportDetailByPeriod v5 for both cabinets, aggregates by
-uuid_promocode, joins with a manually maintained dictionary sheet,
-and upserts rows into the analytics sheet (idempotent on
-week_start + cabinet + uuid).
+Pulls reportDetailByPeriod v5 for both cabinets, aggregates by uuid_promocode,
+joins with a manually maintained dictionary sheet, and writes into a pivot
+table where rows = promo codes and columns = weeks.
 """
 from __future__ import annotations
 
@@ -11,13 +10,8 @@ from datetime import date, timedelta
 
 
 def last_closed_iso_week(today: date | None = None) -> tuple[date, date]:
-    """Return (Mon, Sun) of the most recent fully-closed ISO week.
-
-    «Fully closed» means today is at least Monday of the next week,
-    so the prior week's Sunday data is final at WB.
-    """
+    """Return (Mon, Sun) of the most recent fully-closed ISO week."""
     today = today or date.today()
-    # Move to today's Monday, then jump back 7 days
     monday_this_week = today - timedelta(days=today.weekday())
     last_mon = monday_this_week - timedelta(days=7)
     last_sun = last_mon + timedelta(days=6)
@@ -43,12 +37,12 @@ def aggregate_by_uuid(rows: list[dict]) -> dict[str, dict]:
 
     Skips rows where uuid_promocode is empty/0/None. Returns:
         {uuid: {
-            'sales_rub': float,         # retail_amount sum, only «Продажа»
-            'ppvz_rub': float,          # ppvz_for_pay sum, only «Продажа»
-            'orders_count': int,        # sum(quantity) for «Продажа»
-            'returns_count': int,       # sum(quantity) for «Возврат»
-            'avg_discount_pct': float,  # mean of sale_price_promocode_discount_prc
-            'top3_models': list[tuple[str, float]],  # by sales_rub desc
+            'sales_rub': float,
+            'ppvz_rub': float,
+            'orders_count': int,
+            'returns_count': int,
+            'avg_discount_pct': float,
+            'top3_models': list[tuple[str, float]],
         }}
     """
     buckets: dict[str, dict] = defaultdict(lambda: {
@@ -63,7 +57,7 @@ def aggregate_by_uuid(rows: list[dict]) -> dict[str, dict]:
 
     for row in rows:
         uuid = row.get("uuid_promocode")
-        if not uuid:                # "", None, 0
+        if not uuid:
             continue
         pid = str(uuid).strip()
         if not pid:
@@ -94,7 +88,6 @@ def aggregate_by_uuid(rows: list[dict]) -> dict[str, dict]:
             except (TypeError, ValueError):
                 pass
 
-    # Finalize
     out: dict[str, dict] = {}
     for pid, b in buckets.items():
         avg_d = (b["_disc_sum"] / b["_disc_n"]) if b["_disc_n"] else 0.0
@@ -119,7 +112,6 @@ def parse_dictionary(raw_rows: list[list[str]]) -> dict[str, dict]:
         return {}
     out: dict[str, dict] = {}
     for row in raw_rows[1:]:
-        # pad missing cells
         cells = (row + [""] * 7)[:7]
         uuid_raw, name, channel, disc, start, end, note = cells
         uuid = (uuid_raw or "").strip().lower()
@@ -140,6 +132,8 @@ def parse_dictionary(raw_rows: list[list[str]]) -> dict[str, dict]:
     return out
 
 
+# ── Legacy flat-format helpers (kept for test compatibility) ─────────────────
+
 ANALYTICS_HEADERS = [
     "Неделя", "Кабинет", "Название", "UUID", "Скидка %",
     "Продажи (retail), ₽", "К перечислению, ₽",
@@ -152,7 +146,7 @@ def format_analytics_row(
     week_start: date, week_end: date, cabinet: str, uuid: str,
     metrics: dict, dictionary: dict[str, dict], updated_at_iso: str,
 ) -> list:
-    """Build one row matching ANALYTICS_HEADERS order."""
+    """Build one flat-format row (legacy, not used by pivot run())."""
     info = dictionary.get(uuid.lower(), {})
     name = info.get("name") or "неизвестный"
     discount = info.get("discount_pct")
@@ -168,29 +162,17 @@ def format_analytics_row(
     ) or "—"
     week_label = f"{week_start.strftime('%d.%m')}–{week_end.strftime('%d.%m.%Y')}"
     return [
-        week_label,
-        cabinet,
-        name,
-        uuid,
-        discount,
-        round(metrics["sales_rub"], 2),
-        round(metrics["ppvz_rub"], 2),
-        metrics["orders_count"],
-        metrics["returns_count"],
-        avg_check,
-        top3_str,
-        updated_at_iso,
+        week_label, cabinet, name, uuid, discount,
+        round(metrics["sales_rub"], 2), round(metrics["ppvz_rub"], 2),
+        metrics["orders_count"], metrics["returns_count"], avg_check,
+        top3_str, updated_at_iso,
     ]
 
 
 def compute_dashboard_summary(
     week_aggs: dict[str, dict], dictionary: dict[str, dict]
 ) -> dict:
-    """Return dashboard metrics for the most recent week (across both cabinets).
-
-    Keys: promocodes_count, sales_total, orders_total,
-          champion_name, champion_sales, unknown_uuids.
-    """
+    """Return dashboard metrics for the most recent week (across both cabinets)."""
     if not week_aggs:
         return {
             "promocodes_count": 0,
@@ -203,18 +185,13 @@ def compute_dashboard_summary(
 
     sales_total = sum(b["sales_rub"] for b in week_aggs.values())
     orders_total = sum(b["orders_count"] for b in week_aggs.values())
-
     champion_uuid, champion = max(
         week_aggs.items(), key=lambda kv: kv[1]["sales_rub"]
     )
     champion_name = (
         dictionary.get(champion_uuid.lower(), {}).get("name") or "неизвестный"
     )
-
-    unknown = sorted(
-        uuid for uuid in week_aggs.keys()
-        if uuid.lower() not in dictionary
-    )
+    unknown = sorted(uuid for uuid in week_aggs if uuid.lower() not in dictionary)
     return {
         "promocodes_count": len(week_aggs),
         "sales_total": round(sales_total, 2),
@@ -303,12 +280,166 @@ from shared.clients.sheets_client import (
     get_or_create_worksheet,
 )
 
-DASHBOARD_HEADER_ROWS = 8     # rows 1-8 reserved for dashboard
-COLUMN_HEADERS_ROW = 9        # row 9 holds column headers
-DATA_START_ROW = 10           # rows 10+ hold data
+# ── Pivot layout constants ────────────────────────────────────────────────────
+
+DASHBOARD_HEADER_ROWS = 8   # rows 1-8: dashboard + GAS button
+WEEK_LABELS_ROW = 9         # merged week date labels (e.g. "06.04–12.04.2026")
+METRIC_HEADERS_ROW = 10     # metric column names per week + fixed column names
+DATA_START_ROW = 11         # data rows start here
+
+FIXED_HEADERS = ["Название", "UUID", "Канал", "Скидка %"]
+FIXED_NCOLS = len(FIXED_HEADERS)  # 4  (cols A-D)
+
+WEEK_METRICS = [
+    "Продажи, ₽", "К перечислению, ₽",
+    "Заказов, шт", "Возвратов, шт", "Ср. чек, ₽", "Топ модель",
+]
+WEEK_NCOLS = len(WEEK_METRICS)  # 6
 
 DEFAULT_DICT_SHEET = "Промокоды_справочник"
 DEFAULT_DATA_SHEET = "Промокоды_аналитика"
+
+
+def _week_label(week_start: date, week_end: date) -> str:
+    return f"{week_start.strftime('%d.%m')}–{week_end.strftime('%d.%m.%Y')}"
+
+
+def _col_letter(col: int) -> str:
+    """Convert 1-based column number to spreadsheet letter (A, B, ..., AA, ...)."""
+    result = ""
+    while col > 0:
+        col, remainder = divmod(col - 1, 26)
+        result = chr(65 + remainder) + result
+    return result
+
+
+def _clear_conditional_formats(ws: gspread.Worksheet) -> None:
+    for _ in range(10):
+        try:
+            ws.spreadsheet.batch_update({
+                "requests": [
+                    {"deleteConditionalFormatRule": {"sheetId": ws.id, "index": 0}}
+                ]
+            })
+        except Exception:
+            break
+
+
+def _read_pivot_state(
+    ws: gspread.Worksheet,
+) -> tuple[dict[str, int], dict[tuple[str, str], int]]:
+    """Read current pivot state from the sheet.
+
+    Returns:
+        week_col_map:  {week_label: first_metric_col_1based}
+        uuid_row_map:  {(uuid, cabinet): row_number_1based}
+    """
+    all_vals = ws.get_all_values()
+
+    week_col_map: dict[str, int] = {}
+    if len(all_vals) >= WEEK_LABELS_ROW:
+        week_row = all_vals[WEEK_LABELS_ROW - 1]
+        for i in range(FIXED_NCOLS, len(week_row)):
+            val = (week_row[i] or "").strip()
+            if val and val not in week_col_map:
+                week_col_map[val] = i + 1  # 1-based
+
+    uuid_row_map: dict[tuple[str, str], int] = {}
+    for row_0 in range(DATA_START_ROW - 1, len(all_vals)):
+        row = all_vals[row_0]
+        uuid = (row[1] if len(row) > 1 else "").strip()
+        cabinet = (row[2] if len(row) > 2 else "").strip()
+        if uuid:
+            key = (uuid, cabinet)
+            if key not in uuid_row_map:
+                uuid_row_map[key] = row_0 + 1  # 1-based
+
+    return week_col_map, uuid_row_map
+
+
+def _add_week_to_sheet(ws: gspread.Worksheet, week_label: str, first_col: int) -> None:
+    """Write week date label (row 9) and metric names (row 10) for a new week block."""
+    col_start = _col_letter(first_col)
+    col_end = _col_letter(first_col + WEEK_NCOLS - 1)
+
+    ws.update(
+        range_name=f"{col_start}{WEEK_LABELS_ROW}:{col_end}{WEEK_LABELS_ROW}",
+        values=[[week_label] + [""] * (WEEK_NCOLS - 1)],
+    )
+    ws.update(
+        range_name=f"{col_start}{METRIC_HEADERS_ROW}:{col_end}{METRIC_HEADERS_ROW}",
+        values=[WEEK_METRICS],
+    )
+    try:
+        from services.sheets_sync.sync.format_promocodes_sheet import format_week_columns
+        format_week_columns(ws, first_col)
+    except Exception as e:
+        logger.warning("Week column formatting failed (data still written): %s", e)
+
+
+def upsert_pivot(
+    ws: gspread.Worksheet,
+    week_start: date,
+    week_end: date,
+    week_data: dict[tuple[str, str], dict],
+    week_col_map: dict[str, int],
+    uuid_row_map: dict[tuple[str, str], int],
+) -> tuple[int, int]:
+    """Write week data into the pivot table. Mutates week_col_map and uuid_row_map.
+
+    week_data key: (uuid, cabinet)
+    week_data value: {metrics, name, channel, discount}
+
+    Returns (rows_added, rows_updated).
+    """
+    label = _week_label(week_start, week_end)
+
+    if label not in week_col_map:
+        n_existing = len(week_col_map)
+        first_col = FIXED_NCOLS + 1 + n_existing * WEEK_NCOLS
+        _add_week_to_sheet(ws, label, first_col)
+        week_col_map[label] = first_col
+
+    week_first_col = week_col_map[label]
+    cells: list[gspread.Cell] = []
+    added = updated = 0
+
+    for (uuid, cabinet), row_data in week_data.items():
+        key = (uuid, cabinet)
+        if key in uuid_row_map:
+            row_n = uuid_row_map[key]
+            updated += 1
+        else:
+            row_n = DATA_START_ROW + len(uuid_row_map)
+            uuid_row_map[key] = row_n
+            added += 1
+            cells.append(gspread.Cell(row_n, 1, row_data["name"]))
+            cells.append(gspread.Cell(row_n, 2, uuid))
+            cells.append(gspread.Cell(row_n, 3, cabinet))
+            cells.append(gspread.Cell(row_n, 4, row_data["discount"]))
+
+        m = row_data["metrics"]
+        avg_check = (
+            round(m["sales_rub"] / m["orders_count"], 2)
+            if m["orders_count"] else 0.0
+        )
+        top1 = m["top3_models"][0][0] if m.get("top3_models") else "—"
+        metric_vals = [
+            round(m["sales_rub"], 2),
+            round(m["ppvz_rub"], 2),
+            m["orders_count"],
+            m["returns_count"],
+            avg_check,
+            top1,
+        ]
+        for i, val in enumerate(metric_vals):
+            cells.append(gspread.Cell(row_n, week_first_col + i, val))
+
+    if cells:
+        ws.update_cells(cells, value_input_option="USER_ENTERED")
+
+    logger.info("Pivot upsert %s: +%d, ~%d", label, added, updated)
+    return added, updated
 
 
 def _open_spreadsheet():
@@ -336,72 +467,31 @@ def read_dictionary_sheet() -> dict[str, dict]:
 
 
 def ensure_analytics_sheet() -> gspread.Worksheet:
-    """Ensure the analytics sheet exists with dashboard rows + column headers.
-
-    On first creation, also applies visual formatting (header colors,
-    currency formats, banding, freeze, conditional yellow for unknown).
-    """
+    """Ensure analytics sheet exists in pivot layout with fixed column headers."""
     sheet_name = os.getenv("PROMOCODES_DATA_SHEET", DEFAULT_DATA_SHEET)
     ss = _open_spreadsheet()
-    ws = get_or_create_worksheet(ss, sheet_name, rows=2000, cols=len(ANALYTICS_HEADERS))
-    # Write column headers in row 9 if missing; apply formatting on first init
-    current = ws.row_values(COLUMN_HEADERS_ROW)
-    is_first_init = current[: len(ANALYTICS_HEADERS)] != ANALYTICS_HEADERS
-    if is_first_init:
+    ws = get_or_create_worksheet(ss, sheet_name, rows=2000, cols=200)
+
+    current_row10 = ws.row_values(METRIC_HEADERS_ROW)
+    needs_init = current_row10[:FIXED_NCOLS] != FIXED_HEADERS
+
+    if needs_init:
+        logger.info("Initialising pivot sheet (clearing old data)...")
+        ws.clear()
+        _clear_conditional_formats(ws)
+
+        end_col = _col_letter(FIXED_NCOLS)
         ws.update(
-            range_name=f"A{COLUMN_HEADERS_ROW}",
-            values=[ANALYTICS_HEADERS],
+            range_name=f"A{METRIC_HEADERS_ROW}:{end_col}{METRIC_HEADERS_ROW}",
+            values=[FIXED_HEADERS],
         )
         try:
-            from services.sheets_sync.sync.format_promocodes_sheet import (
-                apply_visual_formatting,
-            )
-            apply_visual_formatting(ws)
+            from services.sheets_sync.sync.format_promocodes_sheet import apply_base_formatting
+            apply_base_formatting(ws)
         except Exception as e:
-            logger.warning("Visual formatting failed (sheet still usable): %s", e)
+            logger.warning("Base formatting failed (sheet still usable): %s", e)
+
     return ws
-
-
-def upsert_rows(ws: gspread.Worksheet, new_rows: list[list]) -> tuple[int, int]:
-    """Upsert rows by key (week_label + cabinet + uuid). Returns (added, updated)."""
-    existing = ws.get_all_values()[DATA_START_ROW - 1:]   # data rows only
-    # Build existing key index: row offset → key
-    key_to_row_idx: dict[tuple[str, str, str], int] = {}
-    for i, row in enumerate(existing):
-        if len(row) < 4:
-            continue
-        key = (row[0], row[1], (row[3] or "").lower())
-        key_to_row_idx[key] = i  # 0-based offset within data range
-
-    updates: list[gspread.Cell] = []
-    appends: list[list] = []
-    added = updated = 0
-
-    for nr in new_rows:
-        key = (nr[0], nr[1], (nr[3] or "").lower())
-        if key in key_to_row_idx:
-            # update in place
-            target_row = DATA_START_ROW + key_to_row_idx[key]
-            for col_idx, value in enumerate(nr, start=1):
-                updates.append(
-                    gspread.Cell(row=target_row, col=col_idx, value=value)
-                )
-            updated += 1
-        else:
-            appends.append(nr)
-            added += 1
-
-    if updates:
-        ws.update_cells(updates, value_input_option="USER_ENTERED")
-    if appends:
-        next_row = DATA_START_ROW + len(existing)
-        ws.update(
-            range_name=f"A{next_row}",
-            values=appends,
-            value_input_option="USER_ENTERED",
-        )
-    logger.info("Upsert: +%d, ~%d", added, updated)
-    return added, updated
 
 
 from shared.clients.sheets_client import get_moscow_now
@@ -412,7 +502,7 @@ def write_dashboard_header(
     summary: dict,
     weeks_processed: list[tuple[date, date]],
 ) -> None:
-    """Render dashboard rows 1-8 with timestamp, status, and last-week metrics."""
+    """Render dashboard rows 2-7 with timestamp, status, and last-week metrics."""
     now_str = get_moscow_now().strftime("%Y-%m-%d %H:%M:%S МСК")
     weeks_label = "—" if not weeks_processed else (
         f"{weeks_processed[-1][0].strftime('%d.%m')}–"
@@ -431,7 +521,6 @@ def write_dashboard_header(
         f"{last_week[0].strftime('%d.%m')}–{last_week[1].strftime('%d.%m')}"
         if last_week else "—"
     )
-
     block = [
         ["Последнее обновление:", now_str, "", "", ""],
         ["Статус полноты:", status_line, "", "", ""],
@@ -481,10 +570,7 @@ def run(
     weeks_back: int = 12,
     cabinets: list[tuple[str, str]] | None = None,
 ) -> dict:
-    """Main entry. Returns:
-        {status, started_at, finished_at, weeks_processed,
-         cabinets, rows_added, rows_updated, unknown_uuids}
-    """
+    """Main entry point. Returns status dict."""
     started = get_moscow_now()
     cabs = cabinets or _cabinets_from_env()
     if not cabs:
@@ -494,39 +580,47 @@ def run(
     weeks = _resolve_weeks(mode, week_from, week_to, weeks_back)
     dictionary = read_dictionary_sheet()
     ws = ensure_analytics_sheet()
-    updated_at_iso = started.strftime("%Y-%m-%d %H:%M")
+    week_col_map, uuid_row_map = _read_pivot_state(ws)
+
     rows_added = rows_updated = 0
     unknown_set: set[str] = set()
     last_week_aggs: dict[str, dict] = {}
 
-    for week_start, week_end in weeks:
-        week_sheet_rows: list[list] = []
+    # Process oldest week first so columns grow left→right chronologically
+    for week_start, week_end in reversed(weeks):
+        week_data: dict[tuple[str, str], dict] = {}
+
         for cab_name, api_key in cabs:
             api_rows = fetch_report(api_key, cab_name, week_start, week_end)
             agg = aggregate_by_uuid(api_rows)
             for uuid, m in agg.items():
-                week_sheet_rows.append(
-                    format_analytics_row(
-                        week_start, week_end, cab_name, uuid, m, dictionary,
-                        updated_at_iso,
-                    )
-                )
-            for uuid in agg:
                 if uuid.lower() not in dictionary:
                     unknown_set.add(uuid)
-            # Last-week summary uses the chronologically newest week (weeks[0])
+                info = dictionary.get(uuid.lower(), {})
+                week_data[(uuid, cab_name)] = {
+                    "metrics": m,
+                    "name": info.get("name") or "неизвестный",
+                    "channel": cab_name,
+                    "discount": (
+                        info["discount_pct"]
+                        if info.get("discount_pct") is not None
+                        else round(m["avg_discount_pct"], 2)
+                    ),
+                }
+
+            # Accumulate latest-week summary (weeks[0] is the most recent)
             if (week_start, week_end) == weeks[0]:
                 for uuid, m in agg.items():
-                    cur = last_week_aggs.get(uuid)
-                    if cur is None:
+                    if uuid not in last_week_aggs:
                         last_week_aggs[uuid] = dict(m)
                     else:
-                        cur["sales_rub"] += m["sales_rub"]
-                        cur["orders_count"] += m["orders_count"]
-        if week_sheet_rows:
-            a, u = upsert_rows(ws, week_sheet_rows)
-            rows_added += a
-            rows_updated += u
+                        last_week_aggs[uuid]["sales_rub"] += m["sales_rub"]
+                        last_week_aggs[uuid]["orders_count"] += m["orders_count"]
+
+        a, u = upsert_pivot(ws, week_start, week_end, week_data,
+                            week_col_map, uuid_row_map)
+        rows_added += a
+        rows_updated += u
 
     summary = compute_dashboard_summary(last_week_aggs, dictionary)
     write_dashboard_header(ws, summary, weeks)

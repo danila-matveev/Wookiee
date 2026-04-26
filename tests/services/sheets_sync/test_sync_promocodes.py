@@ -193,7 +193,9 @@ def test_run_mode_specific_calls_fetch_for_each_cabinet():
                                      "discount_pct": 5, "start": "", "end": "", "note": ""}}), \
          patch("services.sheets_sync.sync.sync_promocodes.ensure_analytics_sheet",
                return_value=MagicMock()), \
-         patch("services.sheets_sync.sync.sync_promocodes.upsert_rows",
+         patch("services.sheets_sync.sync.sync_promocodes._read_pivot_state",
+               return_value=({}, {})), \
+         patch("services.sheets_sync.sync.sync_promocodes.upsert_pivot",
                return_value=(2, 0)) as mock_upsert, \
          patch("services.sheets_sync.sync.sync_promocodes.write_dashboard_header"):
 
