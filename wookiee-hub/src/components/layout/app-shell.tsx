@@ -26,22 +26,15 @@ function AppShell() {
   // Sync active nav group from current URL (without toggling sidebar)
   useEffect(() => {
     const path = location.pathname
-    let targetGroup: string | null = null
+    const segment = path.split("/")[1]
+    const group = segment
+      ? navigationGroups.find((g) => g.items.some((item) => item.path.startsWith(`/${segment}`)))
+      : navigationGroups[0]
 
-    if (path === "/" || path.startsWith("/dashboard")) {
-      targetGroup = "home"
-    } else {
-      const segment = path.split("/")[1]
-      const group = navigationGroups.find((g) =>
-        g.items.some((item) => item.path.startsWith(`/${segment}`))
-      )
-      if (group) targetGroup = group.id
-    }
-
-    if (targetGroup) {
+    if (group) {
       const { activeGroup } = useNavigationStore.getState()
-      if (activeGroup !== targetGroup) {
-        useNavigationStore.setState({ activeGroup: targetGroup })
+      if (activeGroup !== group.id) {
+        useNavigationStore.setState({ activeGroup: group.id })
       }
     }
   }, [location.pathname])

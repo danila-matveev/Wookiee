@@ -11,7 +11,7 @@ function TopBar() {
 
   // Build breadcrumb from current pathname
   const breadcrumbs = buildBreadcrumbs(location.pathname)
-  const pageTitle = breadcrumbs[breadcrumbs.length - 1] || "Главная"
+  const pageTitle = breadcrumbs[breadcrumbs.length - 1] ?? "Wookiee Hub"
 
   return (
     <header
@@ -96,29 +96,18 @@ function TopBar() {
 }
 
 function buildBreadcrumbs(pathname: string): string[] {
-  const crumbs: string[] = ["Главная"]
-
-  if (pathname === "/" || pathname === "/dashboard") {
-    return crumbs
-  }
-
   const segments = pathname.split("/").filter(Boolean)
+  if (segments.length === 0) return []
 
-  // Find matching group
+  // Find matching group by first segment
   const group = navigationGroups.find((g) =>
     g.items.some((item) => item.path.startsWith(`/${segments[0]}`))
   )
+  if (!group) return []
 
-  if (group) {
-    crumbs.push(group.label)
-
-    // Find matching item
-    const item = group.items.find((i) => i.path === pathname)
-    if (item) {
-      crumbs.push(item.label)
-    }
-  }
-
+  const crumbs: string[] = [group.label]
+  const item = group.items.find((i) => i.path === pathname)
+  if (item) crumbs.push(item.label)
   return crumbs
 }
 

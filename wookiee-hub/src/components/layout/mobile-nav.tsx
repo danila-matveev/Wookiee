@@ -1,12 +1,11 @@
 import { useNavigate, useLocation } from "react-router-dom"
-import { LayoutDashboard, Package, Truck, MoreHorizontal } from "lucide-react"
+import { MessageSquare, Bot, MoreHorizontal } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useNavigationStore } from "@/stores/navigation"
 
 const tabs = [
-  { id: "home", label: "Главная", icon: LayoutDashboard, path: "/dashboard" },
-  { id: "product", label: "Продукт", icon: Package, path: "/product/catalog" },
-  { id: "operations", label: "Операции", icon: Truck, path: "/operations/shipments" },
+  { id: "community", label: "Комьюнити", icon: MessageSquare, path: "/community/reviews" },
+  { id: "agents", label: "Агенты", icon: Bot, path: "/agents/skills" },
   { id: "more", label: "Ещё", icon: MoreHorizontal, path: null },
 ] as const
 
@@ -17,7 +16,6 @@ function MobileNav() {
 
   function isActive(tab: (typeof tabs)[number]) {
     if (!tab.path) return false
-    if (tab.id === "home") return location.pathname === "/" || location.pathname.startsWith("/dashboard")
     const segment = tab.path.split("/")[1]
     return location.pathname.startsWith(`/${segment}`)
   }
