@@ -336,17 +336,29 @@ def read_dictionary_sheet() -> dict[str, dict]:
 
 
 def ensure_analytics_sheet() -> gspread.Worksheet:
-    """Ensure the analytics sheet exists with dashboard rows + column headers."""
+    """Ensure the analytics sheet exists with dashboard rows + column headers.
+
+    On first creation, also applies visual formatting (header colors,
+    currency formats, banding, freeze, conditional yellow for unknown).
+    """
     sheet_name = os.getenv("PROMOCODES_DATA_SHEET", DEFAULT_DATA_SHEET)
     ss = _open_spreadsheet()
     ws = get_or_create_worksheet(ss, sheet_name, rows=2000, cols=len(ANALYTICS_HEADERS))
-    # Write column headers in row 9 if missing
+    # Write column headers in row 9 if missing; apply formatting on first init
     current = ws.row_values(COLUMN_HEADERS_ROW)
-    if current[: len(ANALYTICS_HEADERS)] != ANALYTICS_HEADERS:
+    is_first_init = current[: len(ANALYTICS_HEADERS)] != ANALYTICS_HEADERS
+    if is_first_init:
         ws.update(
             range_name=f"A{COLUMN_HEADERS_ROW}",
             values=[ANALYTICS_HEADERS],
         )
+        try:
+            from services.sheets_sync.sync.format_promocodes_sheet import (
+                apply_visual_formatting,
+            )
+            apply_visual_formatting(ws)
+        except Exception as e:
+            logger.warning("Visual formatting failed (sheet still usable): %s", e)
     return ws
 
 
