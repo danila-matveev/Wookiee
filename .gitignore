@@ -182,6 +182,10 @@ agents/v3/data/
 reports/
 test-results/
 
+# Whitelist: wookiee-hub source-level mock data (bundled with the SPA)
+!wookiee-hub/src/data/
+!wookiee-hub/src/data/**
+
 # ============================================================================
 # Large reference files (ingested into KB vector DB)
 # ============================================================================
