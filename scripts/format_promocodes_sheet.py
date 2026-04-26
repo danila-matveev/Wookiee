@@ -18,12 +18,18 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 
 
 def main() -> int:
-    from services.sheets_sync.sync.sync_promocodes import ensure_analytics_sheet
-    from services.sheets_sync.sync.format_promocodes_sheet import apply_base_formatting
+    from services.sheets_sync.sync.sync_promocodes import ensure_analytics_sheet, _read_pivot_state
+    from services.sheets_sync.sync.format_promocodes_sheet import apply_base_formatting, format_week_columns
 
-    ws = ensure_analytics_sheet()   # makes sure the sheet + headers exist
+    ws = ensure_analytics_sheet()
     apply_base_formatting(ws)
-    print(f"OK: base formatting applied to '{ws.title}'")
+
+    week_col_map, _ = _read_pivot_state(ws)
+    for label, first_col in sorted(week_col_map.items(), key=lambda x: x[1]):
+        format_week_columns(ws, first_col)
+        print(f"  formatted week {label} (col {first_col})")
+
+    print(f"OK: formatting applied to '{ws.title}' ({len(week_col_map)} week columns)")
     return 0
 
 
