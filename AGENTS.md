@@ -7,25 +7,28 @@
 
 **Wookiee** — система AI-агентов для управления бизнесом бренда Wookiee. Данные поступают из маркетплейсов, CRM, Google Sheets, МойСклад, Telegram. Каждый агент автономно решает конкретную бизнес-задачу. Боты (Telegram) — это интерфейсы для взаимодействия с агентами, а не сами агенты.
 
-AI-агенты:
-- `agents/oleg/` — **Олег**, финансовый AI-агент (multi-agent orchestrator: Reporter + Researcher + Quality, интерфейс: Telegram, scheduler: ежедневные/недельные отчёты)
+Скиллы (Claude Code CLI):
+- `docs/skills/` — документация всех активных скиллов (`/finance-report`, `/daily-brief`, и др.)
 
 Инфраструктура:
 - `shared/` — общая библиотека (data_layer, API-клиенты, конфиг)
-- `services/marketplace_etl/` — ETL-пайплайн WB/OZON API → PostgreSQL
-- `services/etl/` — ETL-задачи (синхронизация, сверка, качество данных, анализ API/схем)
-- `services/sheets_sync/` — синхронизация Google Sheets
+- `services/logistics_audit/` — аудит логистики WB + ETL тарифов складов → Supabase
+- `services/sheets_sync/` — синхронизация Google Sheets ↔ Supabase
 - `services/wb_localization/` — WB-утилита локализации (расчёт + экспорт в Sheets)
-- `services/ozon_delivery/` — оптимизация доставки OZON
+- `services/wb_logistics_api/` — HTTP-эндпоинт для wb_localization
+- `services/content_kb/` — векторный поиск по фото (pgvector)
+- `services/creative_kb/` — KB для контент-задач
+- `services/tool_telemetry/` — логирование запусков инструментов
 - `sku_database/` — товарная матрица (Supabase)
-- `scripts/` — CLI-скрипты аналитики (ABC analysis, Notion sync)
+- `scripts/` — CLI-скрипты аналитики
 
 ## Старт работы
 
-1. Прочитай описание проекта выше
-2. Прочитай `docs/index.md` — карта навигации по документации
-3. Прочитай `docs/development-history.md` — последние изменения
-4. Читай только те документы, которые релевантны твоей задаче
+1. Прочитай `ONBOARDING.md` — быстрый старт и обзор проекта
+2. Прочитай описание проекта выше
+3. Прочитай `docs/index.md` — карта навигации по документации
+4. Прочитай `docs/development-history.md` — последние изменения
+5. Читай только те документы, которые релевантны твоей задаче
 
 ## Обязательные правила
 
@@ -34,7 +37,7 @@ AI-агенты:
 - При добавлении нового скрипта — добавь его описание в README
 - При изменении CLI-флагов — обнови примеры использования в README
 - При изменении структуры проекта — обнови секцию "Структура проекта" в README
-- **При архитектурных изменениях** (новый агент, новый сервис, новый источник данных) — обязательно обновить: `README.md`, `docs/agents/README.md`, `docs/index.md`, `docs/architecture.md`
+- **При архитектурных изменениях** (новый сервис, новый скилл, новый источник данных) — обязательно обновить: `README.md`, `docs/skills/`, `docs/index.md`, `docs/architecture.md`
 
 ### Код
 - Все DB-запросы и утилиты живут в `shared/data_layer.py` (shim `scripts/data_layer.py` существует для обратной совместимости). Не дублировать в других скриптах.
@@ -60,15 +63,15 @@ AI-агенты:
 - Рекомендации должны содержать "что если" сценарии с расчётом эффекта в рублях.
 
 ### Экономика агентов
-- **Единый провайдер: OpenRouter.** Все LLM-вызовы проходят через OpenRouter API. Нет прямых подключений к z.ai, Anthropic и др.
-- **4 тира моделей:**
-  - **LIGHT** (`z-ai/glm-4.7-flash`, $0.07/$0.30 за 1M) — классификация, intent detection, роутинг
-  - **MAIN** (`z-ai/glm-4.7`, $0.06/$0.40 за 1M) — аналитика, tool-use, отчёты, структурирование
-  - **HEAVY** (`google/gemini-3-flash-preview`, $0.50/$3.00 за 1M) — сложный reasoning, fallback при ошибках MAIN
-  - **FREE** (`openrouter/free`, $0) — last-resort fallback, авто-роутер бесплатных моделей
-- **Стратегия ошибок:** MAIN → retry 1x → HEAVY → FREE; LIGHT → retry 1x → MAIN → FREE.
-- **Confidence-based routing:** если confidence > 0.8 на дешёвой модели — не эскалировать на дорогую.
-- При добавлении нового агента — оценить стоимость на 1000 запросов и зафиксировать в AGENT_SPEC.md.
+- **Единый провайдер: OpenRouter.** Все LLM-вызовы проходят через OpenRouter API. Нет прямых подключений к Anthropic, Google и др.
+- **3 тира моделей:**
+  - **LIGHT** (`google/gemini-3-flash-preview`, $0.50/$3.00 за 1M) — классификация, intent detection, роутинг
+  - **MAIN** (`google/gemini-3-flash-preview`, $0.50/$3.00 за 1M) — аналитика, tool-use, отчёты, структурирование
+  - **HEAVY** (`anthropic/claude-sonnet-4-6`, $3/$15 за 1M) — сложный reasoning, fallback при ошибках MAIN
+  - **FREE** (`openrouter/free`, $0) — last-resort fallback
+- **Стратегия ошибок:** MAIN → retry 1x → HEAVY → FREE.
+- **Confidence-based routing:** если confidence > 0.8 на MAIN — не эскалировать на HEAVY.
+- При добавлении нового скилла/агента — оценить стоимость на 1000 запросов и зафиксировать в AGENT_SPEC.md.
 
 ### Wildberries MCP Server — обязательный инструмент
 - В проекте установлен **MCP-сервер Wildberries API** (`wildberries-mcp-server/`). Он доступен всем AI-агентам через два экземпляра:

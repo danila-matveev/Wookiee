@@ -242,18 +242,16 @@ def create_agent_graph():
 
 Все инструменты живут в:
 - `shared/tools/` — общие инструменты (доступ к БД, API клиенты)
-- `agents/<name>/tools/` — специфичные для агента
+- `scripts/*/` — CLI-скиллы (запускаются из Claude Code)
 
-| Инструмент | Назначение | Агенты | Автономия |
+| Инструмент | Назначение | Скилл | Автономия |
 |-----------|-----------|--------|-----------|
-| `get_channel_finance()` | Финансовые метрики канала | Олег | 0 (read-only) |
-| `get_margin_levers()` | 5 рычагов маржи | Олег | 0 (read-only) |
-| `get_model_breakdown()` | Декомпозиция по моделям | Олег | 0 (read-only) |
-| `get_traffic_data()` | Данные трафика (content_analysis) | Олег | 0 (read-only) |
-| `verify_against_onescreen()` | Сверка с OneScreen | Олег | 0 (read-only) |
-| `generate_localization_report()` | Отчёт индексации WB | Василий | 2 (предложение) |
-| `get_bitrix_deals()` | Список сделок CRM | Людмила | 0 (read-only) |
-| `update_bitrix_deal()` | Обновление сделки | Людмила | 1 (уведомление) |
+| `get_channel_finance()` | Финансовые метрики канала | /finance-report | 0 (read-only) |
+| `get_margin_levers()` | 5 рычагов маржи | /finance-report | 0 (read-only) |
+| `get_model_breakdown()` | Декомпозиция по моделям | /analytics-report | 0 (read-only) |
+| `get_traffic_data()` | Данные трафика (content_analysis) | /analytics-report | 0 (read-only) |
+| `generate_localization_report()` | Отчёт индексации WB | /logistics-report | 0 (read-only) |
+| `log_tool_run()` | Запись запуска инструмента | /tool-status | 0 (write to Supabase) |
 
 ### 2.4 Memory (Память)
 
@@ -687,61 +685,17 @@ agents/<agent_name>/
 
 ---
 
-## 10. Эволюция текущих агентов: Roadmap
+## 10. Эволюция: Roadmap Фазы 2
 
-### Олег (финансовый аналитик)
+**Текущий статус (Фаза 1):** Автоматизация реализована через скиллы (CLI) и сервисы. Нет Telegram-агентов в продакшене.
 
-**Текущий статус:** Уровень 6 (Agentic Workflow с self-verification)
+**Фаза 2 (планируется):**
+1. Новые AI-агенты в `agents/` — на основе накопленного опыта скиллов
+2. Skill → Agent promotion: скилл с высокой частотой использования → оформить как автономного агента
+3. Multi-agent: оркестратор + специализированные агенты (финансы, логистика, маркетинг)
+4. Hygiene-агент: автоматическая проверка здоровья репозитория (см. `.claude/skills/hygiene/`)
 
-**Roadmap:**
-1. **Q1 2026:** Добавить predictive analytics
-   - Инструмент `forecast_margin(horizon_days=7)` — прогноз маржи
-   - Playbook правило: "Если прогноз показывает падение > 10% → проактивная рекомендация"
-
-2. **Q2 2026:** Multi-agent: Олег + Experimental Analyst
-   - Production Олег (стабильный, для ежедневных отчётов)
-   - Experimental (тестируем новые промпты, инструменты)
-   - A/B тест: какой даёт лучший quality_score
-
-3. **Q3 2026:** Автоматизация обновления playbook
-   - LLM анализирует feedback_log.md → предлагает изменения в playbook
-   - Человек ревьюит → применяет
-   - Цель: сократить время на обновление playbook с 30 мин до 5 мин
-
-### Людмила (CRM-ассистент)
-
-**Текущий статус:** Уровень 5 (ReAct + Memory)
-
-**Roadmap:**
-1. **Q1 2026:** Интеграция с WhatsApp Business API
-   - Текущая: только Bitrix24
-   - Новая: прямые ответы клиентам через WhatsApp (под контролем менеджера)
-
-2. **Q2 2026:** Sentiment analysis
-   - Инструмент `analyze_customer_sentiment(message)` → ["positive", "neutral", "negative", "urgent"]
-   - Playbook правило: "Если urgent → немедленно эскалация менеджеру"
-
-3. **Q3 2026:** Автогенерация коммерческих предложений
-   - Инструмент `generate_proposal(customer_id, products)` → PDF с КП
-   - Шаблоны в `prompts/templates/proposal_*.md`
-
-### Василий (оптимизация логистики)
-
-**Текущий статус:** Уровень 3 (Single-shot agent)
-
-**Roadmap:**
-1. **Q1 2026:** Интерактивный режим (→ уровень 4)
-   - Пользователь: "Оптимизируй индексацию для wendy"
-   - Василий: вызывает инструменты, анализирует, уточняет
-   - До этого: только batch-режим (один запуск = один отчёт)
-
-2. **Q2 2026:** OZON delivery optimization
-   - Инструмент `optimize_ozon_delivery(model)` — минимизация хранения + быстрая доставка
-   - Playbook правило: "Баланс между скоростью доставки и стоимостью хранения"
-
-3. **Q3 2026:** Multi-agent: Manager → Василий (WB) + Vasily_OZON
-   - Специализация: WB логистика vs OZON логистика (разные правила)
-   - Manager объединяет рекомендации → единый план перемещений
+Критерий перехода от скилла к агенту: частота > 2x/день, нужна persistent memory или реакция на события.
 
 ---
 
