@@ -331,7 +331,7 @@ MCP-сервер для прямой интеграции с Claude.
 
 Fire-and-forget логирование запусков агентов в Supabase (таблица agent_runs). Пишет метрики: duration_ms, prompt/completion_tokens, cost_usd, status, error_message, artifact. Не выбрасывает ошибки наружу, не блокирует основной поток. Сейчас в проде — 650+ записей.
 
-**Как работает:** services/observability/logger.py — AgentLogger class с start()/finish() методами. Пишет асинхронно в agent_runs. Интегрируется во все analytics-скиллы через одну строку импорта.
+**Как работает:** services/tool_telemetry/logger.py — AgentLogger class с start()/finish() методами. Пишет асинхронно в agent_runs. Интегрируется во все analytics-скиллы через одну строку импорта.
 
 | Поле | Значение |
 |---|---|
@@ -339,7 +339,7 @@ Fire-and-forget логирование запусков агентов в Supaba
 | Источники данных | агентные запуски |
 | Зависимости | — |
 | Результат идёт в | PostgreSQL agent_runs |
-| Команда запуска | `from services.observability import AgentLogger` |
+| Команда запуска | `from services.tool_telemetry import AgentLogger` |
 | Запусков (всего) | 0 |
 | Последний запуск | — |
 

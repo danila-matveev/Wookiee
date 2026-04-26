@@ -38,5 +38,5 @@
 
 - `wildberries-mcp-server/` — код MCP-сервера
 - `.mcp.json` — конфигурация MCP
-- `services/marketplace_etl/` — ETL из WB API
+- `shared/clients/wb_client.py` — клиент WB API (используется в `services/sheets_sync/`)
 - `shared/data_layer.py` — DB-утилиты для данных WB
