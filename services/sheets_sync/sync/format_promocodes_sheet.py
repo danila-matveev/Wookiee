@@ -10,14 +10,16 @@ from __future__ import annotations
 
 import gspread
 
-from services.sheets_sync.sync.sync_promocodes import (
-    DATA_START_ROW,
-    FIXED_NCOLS,
-    METRIC_HEADERS_ROW,
-    WEEK_LABELS_ROW,
-    WEEK_METRICS,
-    WEEK_NCOLS,
-)
+# Mirror of sync_promocodes layout constants — hardcoded to avoid circular import
+WEEK_LABELS_ROW = 9
+METRIC_HEADERS_ROW = 10
+DATA_START_ROW = 11
+FIXED_NCOLS = 4
+WEEK_NCOLS = 6
+WEEK_METRICS = [
+    "Продажи, ₽", "К перечислению, ₽",
+    "Заказов, шт", "Возвратов, шт", "Ср. чек, ₽", "Топ модель",
+]
 
 # ── Color palette (RGB 0..1) ─────────────────────────────────────────────────
 _HEADER_BG = {"red": 0.098, "green": 0.325, "blue": 0.647}      # dark blue
