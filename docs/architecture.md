@@ -47,8 +47,8 @@
 
 | Модуль | Путь | Назначение |
 |---|---|---|
-| Комьюнити | `wookiee-hub/src/modules/community/` | Страница отзывов и общения с покупателями |
-| Агенты | `wookiee-hub/src/modules/agents/` | Управление AI-агентами и инструментами |
+| Комьюнити | `wookiee-hub/src/pages/community/` + `wookiee-hub/src/components/community/` | Страница отзывов и общения с покупателями |
+| Агенты | `wookiee-hub/src/pages/agents/` + `wookiee-hub/src/components/agents/` | Управление AI-агентами и инструментами |
 
 Stack: React + Vite + TypeScript + Supabase JS
 

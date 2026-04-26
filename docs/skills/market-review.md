@@ -19,4 +19,4 @@
 
 - MPStats API (`MPSTATS_API_KEY`)
 - Notion API (`NOTION_TOKEN`)
-- `shared/clients/mpstats.py`
+- `shared/clients/mpstats_client.py`

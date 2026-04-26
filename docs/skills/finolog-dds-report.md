@@ -19,4 +19,4 @@
 
 - Finolog API (`FINOLOG_API_KEY`)
 - Notion API (`NOTION_TOKEN`)
-- `shared/clients/finolog.py`
+- `shared/services/finolog_service.py`

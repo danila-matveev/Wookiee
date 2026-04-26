@@ -20,8 +20,10 @@ Install dependencies for the service you need:
 ```bash
 pip install -r services/sheets_sync/requirements.txt
 pip install -r services/wb_logistics_api/requirements.txt
-pip install -r services/logistics_audit/requirements.txt
+pip install -r services/content_kb/requirements.txt
 ```
+
+(`services/logistics_audit/` shares its deps with `services/sheets_sync/` — no separate requirements file.)
 
 ## Environment Variables
 
