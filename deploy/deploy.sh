@@ -1,18 +1,17 @@
 #!/usr/bin/env bash
 #
-# deploy.sh — деплой Oleg (единый контейнер)
+# deploy.sh — деплой Wookiee cron (единый контейнер)
 #
 # Использование:
 #   bash deploy/deploy.sh
-#   make oleg-deploy
 #
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
-CONTAINER="wookiee_oleg"
-SERVICE="wookiee-oleg"
+CONTAINER="wookiee_cron"
+SERVICE="wookiee-cron"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -24,6 +23,17 @@ warn()  { echo -e "${YELLOW}[deploy]${NC} $*"; }
 error() { echo -e "${RED}[deploy]${NC} $*"; }
 
 # ─── 1. Остановить старый контейнер ───────────────────────
+# Legacy cleanup: до refactor v3 PR #5 контейнер назывался wookiee_oleg.
+# На уже задеплоенных хостах он может быть запущен — без явного удаления
+# первый деплой оставит его рядом с новым wookiee_cron, и cron-задачи
+# выполнятся дважды.
+LEGACY_CONTAINER="wookiee_oleg"
+if docker ps -aq -f name="^${LEGACY_CONTAINER}$" | grep -q .; then
+    warn "Удаляю legacy-контейнер $LEGACY_CONTAINER (rename → $CONTAINER)..."
+    docker stop "$LEGACY_CONTAINER" 2>/dev/null || true
+    docker rm -f "$LEGACY_CONTAINER" 2>/dev/null || true
+fi
+
 log "Останавливаю $CONTAINER..."
 if docker ps -q -f name="$CONTAINER" | grep -q .; then
     docker compose -f "$COMPOSE_FILE" stop "$SERVICE"

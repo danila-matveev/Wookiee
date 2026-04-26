@@ -42,7 +42,7 @@ jobs:
             docker ps --format "table {{.Names}}\t{{.Status}}\t{{.RunningFor}}"
 
             echo "=== Healthcheck status ==="
-            for container in wookiee_oleg wookiee_sheets_sync; do
+            for container in wookiee_cron wookiee_sheets_sync; do
               status=$(docker inspect "$container" --format='{{.State.Health.Status}}' 2>/dev/null || echo "no-healthcheck")
               echo "$container: $status"
             done

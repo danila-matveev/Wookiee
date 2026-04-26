@@ -76,7 +76,7 @@ def _group_transactions(txns: list[dict], cat_map: dict[int, str], cat_to_group:
 
 async def _collect(start_date: str, end_date: str) -> dict:
     """Collect all Finolog data blocks for DDS report."""
-    from agents.oleg.services.finolog_service import (
+    from shared.services.finolog_service import (
         FinologService,
         _CAT_TO_GROUP,
         COMPANY_ORDER,
