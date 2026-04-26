@@ -472,12 +472,17 @@ def ensure_analytics_sheet() -> gspread.Worksheet:
     ss = _open_spreadsheet()
     ws = get_or_create_worksheet(ss, sheet_name, rows=2000, cols=200)
 
+    # get_or_create_worksheet only sets cols at creation; existing sheets keep original count
+    if getattr(ws, "col_count", 0) < 200:
+        ws.resize(rows=2000, cols=200)
+
     current_row10 = ws.row_values(METRIC_HEADERS_ROW)
     needs_init = current_row10[:FIXED_NCOLS] != FIXED_HEADERS
 
     if needs_init:
         logger.info("Initialising pivot sheet (clearing old data)...")
         ws.clear()
+        ws.resize(rows=2000, cols=200)
         _clear_conditional_formats(ws)
 
         end_col = _col_letter(FIXED_NCOLS)
