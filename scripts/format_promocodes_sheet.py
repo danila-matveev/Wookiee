@@ -25,9 +25,9 @@ def main() -> int:
     apply_base_formatting(ws)
 
     week_col_map, _ = _read_pivot_state(ws)
-    for label, first_col in sorted(week_col_map.items(), key=lambda x: x[1]):
-        format_week_columns(ws, first_col)
-        print(f"  formatted week {label} (col {first_col})")
+    for idx, (label, first_col) in enumerate(sorted(week_col_map.items(), key=lambda x: x[1])):
+        format_week_columns(ws, first_col, week_index=idx)
+        print(f"  formatted week {label} (col {first_col}, idx={idx})")
 
     print(f"OK: formatting applied to '{ws.title}' ({len(week_col_map)} week columns)")
     return 0

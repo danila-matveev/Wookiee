@@ -357,7 +357,9 @@ def _read_pivot_state(
     return week_col_map, uuid_row_map
 
 
-def _add_week_to_sheet(ws: gspread.Worksheet, week_label: str, first_col: int) -> None:
+def _add_week_to_sheet(
+    ws: gspread.Worksheet, week_label: str, first_col: int, week_index: int = 0
+) -> None:
     """Write week date label (row 9) and metric names (row 10) for a new week block."""
     col_start = _col_letter(first_col)
     col_end = _col_letter(first_col + WEEK_NCOLS - 1)
@@ -372,7 +374,7 @@ def _add_week_to_sheet(ws: gspread.Worksheet, week_label: str, first_col: int) -
     )
     try:
         from services.sheets_sync.sync.format_promocodes_sheet import format_week_columns
-        format_week_columns(ws, first_col)
+        format_week_columns(ws, first_col, week_index=week_index)
     except Exception as e:
         logger.warning("Week column formatting failed (data still written): %s", e)
 
@@ -397,7 +399,7 @@ def upsert_pivot(
     if label not in week_col_map:
         n_existing = len(week_col_map)
         first_col = FIXED_NCOLS + 1 + n_existing * WEEK_NCOLS
-        _add_week_to_sheet(ws, label, first_col)
+        _add_week_to_sheet(ws, label, first_col, week_index=n_existing)
         week_col_map[label] = first_col
 
     week_first_col = week_col_map[label]

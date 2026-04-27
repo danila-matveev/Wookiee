@@ -29,6 +29,12 @@ _DASHBOARD_BG = {"red": 0.937, "green": 0.937, "blue": 0.937}   # light grey
 _BUTTON_BG = {"red": 0.918, "green": 0.961, "blue": 0.918}      # light green
 _YELLOW_BG = {"red": 1.0,   "green": 0.972, "blue": 0.847}      # soft yellow
 
+# Alternating week-block backgrounds for data rows (pastel cream / pastel blue)
+_WEEK_ALT_BG = [
+    {"red": 1.000, "green": 0.953, "blue": 0.882},  # peachy cream (even weeks)
+    {"red": 0.882, "green": 0.937, "blue": 0.984},  # pastel blue (odd weeks)
+]
+
 
 def apply_base_formatting(ws: gspread.Worksheet) -> None:
     """Apply base formatting: dashboard, fixed column headers, freeze, column widths.
@@ -140,20 +146,32 @@ def apply_base_formatting(ws: gspread.Worksheet) -> None:
     ws.spreadsheet.batch_update({"requests": requests})
 
 
-def format_week_columns(ws: gspread.Worksheet, first_col: int) -> None:
-    """Apply formatting to a newly added week block (first_col is 1-based).
+def format_week_columns(ws: gspread.Worksheet, first_col: int, week_index: int = 0) -> None:
+    """Apply formatting to a week block (first_col is 1-based, week_index is 0-based).
 
     Formats:
       - Row 9 (merged week date label): dark blue bg, white bold, centered
       - Row 10 (metric names): medium blue bg, white bold, centered
-      - Data rows: currency/integer number formats per metric type
+      - Data rows: currency/integer number formats + alternating pastel bg per week
       - Column width: 110px each
+
+    week_index is used to alternate data-row background (cream / pastel blue).
     """
     sid = ws.id
     c0 = first_col - 1               # 0-based start
     c1 = first_col - 1 + WEEK_NCOLS  # 0-based end (exclusive)
+    block_bg = _WEEK_ALT_BG[week_index % 2]
 
     requests: list[dict] = []
+
+    # Data-row alternating background for this entire week block
+    requests.append({
+        "repeatCell": {
+            "range": _range(sid, DATA_START_ROW - 1, 1000, c0, c1),
+            "cell": {"userEnteredFormat": {"backgroundColor": block_bg}},
+            "fields": "userEnteredFormat.backgroundColor",
+        }
+    })
 
     # Merge week date label across all metric columns in row 9
     requests.append({
