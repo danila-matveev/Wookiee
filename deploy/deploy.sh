@@ -43,21 +43,23 @@ else
     log "Контейнер не запущен, пропускаю"
 fi
 
-# ─── 2. Проверить .env ───────────────────────────────────
-if [ ! -f "$PROJECT_ROOT/.env" ]; then
-    error "Файл .env не найден в $PROJECT_ROOT"
-    exit 1
-fi
-
-for var in TELEGRAM_BOT_TOKEN OPENROUTER_API_KEY DB_HOST DB_PASSWORD; do
-    if ! grep -q "^${var}=" "$PROJECT_ROOT/.env"; then
-        error "Переменная $var не найдена в .env"
+# ─── 2. Pre-deploy guard ───────────────────────────────────
+PREDEPLOY="$PROJECT_ROOT/scripts/server_predeploy_check.sh"
+if [ -x "$PREDEPLOY" ]; then
+    log "Запускаю pre-deploy guard..."
+    if ! REPO="$PROJECT_ROOT" "$PREDEPLOY"; then
+        error "Pre-deploy guard упал. Деплой остановлен."
         exit 1
     fi
-done
-log "Конфигурация .env валидна"
+else
+    warn "$PREDEPLOY не найден или не executable — пропускаю pre-deploy check"
+fi
 
 # ─── 3. Собрать образ ────────────────────────────────────
+# Idempotent symlink на .env — wb-mcp-* и bitrix24-mcp в compose используют
+# ${VAR} подстановку, которая требует .env в директории compose-файла.
+[ -e "$SCRIPT_DIR/.env" ] || ln -sf ../.env "$SCRIPT_DIR/.env"
+
 log "Собираю Docker-образ..."
 docker compose -f "$COMPOSE_FILE" build "$SERVICE"
 log "Образ собран"
