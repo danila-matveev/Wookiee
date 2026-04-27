@@ -103,31 +103,79 @@ def aggregate_by_uuid(rows: list[dict]) -> dict[str, dict]:
     return out
 
 
-def parse_dictionary(raw_rows: list[list[str]]) -> dict[str, dict]:
-    """Parse the справочник sheet into {uuid_lower: {name, channel, discount_pct, ...}}.
+def _truthy(val) -> bool:
+    """TRUE if cell looks like a checked checkbox / 'yes' / 'да' / 1."""
+    s = str(val or "").strip().lower()
+    return s in ("true", "1", "yes", "y", "да", "д", "✓", "✔")
 
-    Expects header in row 0; rows with empty UUID are dropped.
+
+def parse_dictionary(raw_rows: list[list[str]]) -> dict[str, dict]:
+    """Parse the справочник sheet into {uuid_lower: {name, channel, discount_pct, cabinets, ...}}.
+
+    Expected header (any column may be missing, gracefully degrades):
+        UUID | Название | Канал | Скидка % | ИП | ООО | Старт | Окончание | Примечание
+
+    `cabinets` is a list like ["ИП", "ООО"]; empty list means "no cabinets flagged"
+    in which case the script falls back to both cabinets (legacy behaviour).
+    Rows with empty UUID are dropped.
     """
     if not raw_rows or len(raw_rows) < 2:
         return {}
+
+    header = [(c or "").strip().lower() for c in raw_rows[0]]
+    # Resolve column positions by header name (so users can reorder columns)
+    def _idx(*aliases: str) -> int | None:
+        for a in aliases:
+            if a in header:
+                return header.index(a)
+        return None
+
+    col_uuid    = _idx("uuid")
+    col_name    = _idx("название", "name")
+    col_channel = _idx("канал", "channel")
+    col_disc    = _idx("скидка %", "скидка")
+    col_ip      = _idx("ип", "ip")
+    col_ooo     = _idx("ооо", "ooo")
+    col_start   = _idx("старт", "start")
+    col_end     = _idx("окончание", "end")
+    col_note    = _idx("примечание", "note")
+
+    if col_uuid is None:
+        # Fallback to legacy positional layout
+        col_uuid, col_name, col_channel, col_disc = 0, 1, 2, 3
+        col_start, col_end, col_note = 4, 5, 6
+        col_ip = col_ooo = None
+
+    def _cell(row: list, idx: int | None) -> str:
+        if idx is None or idx >= len(row):
+            return ""
+        return str(row[idx] or "").strip()
+
     out: dict[str, dict] = {}
     for row in raw_rows[1:]:
-        cells = (row + [""] * 7)[:7]
-        uuid_raw, name, channel, disc, start, end, note = cells
-        uuid = (uuid_raw or "").strip().lower()
+        uuid = _cell(row, col_uuid).lower()
         if not uuid:
             continue
         try:
-            disc_pct = float(disc) if disc not in ("", None) else None
+            disc_str = _cell(row, col_disc)
+            disc_pct = float(disc_str) if disc_str else None
         except ValueError:
             disc_pct = None
+
+        cabinets: list[str] = []
+        if col_ip is not None and _truthy(_cell(row, col_ip)):
+            cabinets.append("ИП")
+        if col_ooo is not None and _truthy(_cell(row, col_ooo)):
+            cabinets.append("ООО")
+
         out[uuid] = {
-            "name": (name or "").strip(),
-            "channel": (channel or "").strip(),
+            "name": _cell(row, col_name),
+            "channel": _cell(row, col_channel),
             "discount_pct": disc_pct,
-            "start": (start or "").strip(),
-            "end": (end or "").strip(),
-            "note": (note or "").strip(),
+            "cabinets": cabinets,
+            "start": _cell(row, col_start),
+            "end": _cell(row, col_end),
+            "note": _cell(row, col_note),
         }
     return out
 
@@ -379,6 +427,39 @@ def _add_week_to_sheet(
         logger.warning("Week column formatting failed (data still written): %s", e)
 
 
+def ensure_analytics_dict_rows(
+    ws: gspread.Worksheet,
+    dictionary: dict[str, dict],
+    uuid_row_map: dict[tuple[str, str], int],
+) -> int:
+    """Pre-create analytics rows for every (UUID, cabinet) declared in dictionary.
+
+    Rows are appended below the last existing data row. uuid_row_map is mutated
+    in-place so subsequent upsert_pivot() calls reuse the new row numbers.
+    Returns count of rows added.
+    """
+    cells: list[gspread.Cell] = []
+    added = 0
+    for uuid, info in dictionary.items():
+        cabinets = info.get("cabinets") or []
+        for cab in cabinets:
+            key = (uuid, cab)
+            if key in uuid_row_map:
+                continue
+            row_n = DATA_START_ROW + len(uuid_row_map)
+            uuid_row_map[key] = row_n
+            disc = info.get("discount_pct")
+            cells.append(gspread.Cell(row_n, 1, info.get("name") or "неизвестный"))
+            cells.append(gspread.Cell(row_n, 2, uuid))
+            cells.append(gspread.Cell(row_n, 3, cab))
+            cells.append(gspread.Cell(row_n, 4, disc if disc is not None else ""))
+            added += 1
+    if cells:
+        ws.update_cells(cells, value_input_option="USER_ENTERED")
+        logger.info("Pre-populated %d analytics rows from dictionary", added)
+    return added
+
+
 def upsert_pivot(
     ws: gspread.Worksheet,
     week_start: date,
@@ -589,21 +670,36 @@ def run(
     ws = ensure_analytics_sheet()
     week_col_map, uuid_row_map = _read_pivot_state(ws)
 
-    rows_added = rows_updated = 0
+    # Pre-create rows for every (UUID, cabinet) declared in dictionary
+    rows_added = ensure_analytics_dict_rows(ws, dictionary, uuid_row_map)
+    rows_updated = 0
     unknown_set: set[str] = set()
     last_week_aggs: dict[str, dict] = {}
+
+    # Skip cabinets entirely if no UUID in dictionary uses them
+    declared_cabs = {c for info in dictionary.values() for c in info.get("cabinets") or []}
+    active_cabs = [c for c in cabs if c[0] in declared_cabs] if declared_cabs else cabs
+    if declared_cabs and len(active_cabs) < len(cabs):
+        skipped = [c[0] for c in cabs if c[0] not in declared_cabs]
+        logger.info("Skipping cabinets with no dictionary entries: %s", skipped)
 
     # Process oldest week first so columns grow left→right chronologically
     for week_start, week_end in reversed(weeks):
         week_data: dict[tuple[str, str], dict] = {}
 
-        for cab_name, api_key in cabs:
+        for cab_name, api_key in active_cabs:
             api_rows = fetch_report(api_key, cab_name, week_start, week_end)
             agg = aggregate_by_uuid(api_rows)
             for uuid, m in agg.items():
-                if uuid.lower() not in dictionary:
+                info = dictionary.get(uuid.lower())
+                if info is None:
                     unknown_set.add(uuid)
-                info = dictionary.get(uuid.lower(), {})
+                    continue  # Dictionary-driven mode: skip unknown UUIDs
+                # Only update rows for cabinets the dictionary flagged for this UUID.
+                # Empty `cabinets` = legacy entry → fall back to "any cabinet".
+                cab_filter = info.get("cabinets") or []
+                if cab_filter and cab_name not in cab_filter:
+                    continue
                 week_data[(uuid, cab_name)] = {
                     "metrics": m,
                     "name": info.get("name") or "неизвестный",
@@ -618,6 +714,8 @@ def run(
             # Accumulate latest-week summary (weeks[0] is the most recent)
             if (week_start, week_end) == weeks[0]:
                 for uuid, m in agg.items():
+                    if uuid.lower() not in dictionary:
+                        continue
                     if uuid not in last_week_aggs:
                         last_week_aggs[uuid] = dict(m)
                     else:

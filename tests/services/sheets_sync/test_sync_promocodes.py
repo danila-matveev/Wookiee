@@ -107,9 +107,37 @@ def test_parse_dictionary_uses_uuid_as_key_and_lowercases():
     assert d["be6900f2-c9e9-4963-9ad1-27d10d9492d6"]["name"] == "CHARLOTTE10"
     assert d["be6900f2-c9e9-4963-9ad1-27d10d9492d6"]["channel"] == "Соцсети"
     assert d["be6900f2-c9e9-4963-9ad1-27d10d9492d6"]["discount_pct"] == 10.0
+    # Legacy header (no ИП/ООО columns) → cabinets defaults to []
+    assert d["be6900f2-c9e9-4963-9ad1-27d10d9492d6"]["cabinets"] == []
     assert d["abc"]["name"] == "X"
     # broken row dropped
     assert len(d) == 2
+
+
+def test_parse_dictionary_reads_cabinet_flags():
+    raw = [
+        ["UUID", "Название", "Канал", "Скидка %", "ИП", "ООО", "Старт", "Окончание", "Примечание"],
+        ["u-both", "BOTH",  "Соцсети", "10", "TRUE",  "TRUE",  "", "", ""],
+        ["u-ooo",  "OOO",   "Корп",    "25", "FALSE", "TRUE",  "", "", ""],
+        ["u-ip",   "IP",    "Блогер",  "10", "да",    "",      "", "", ""],
+        ["u-none", "NONE",  "TG",      "5",  "",      "",      "", "", ""],
+    ]
+    d = parse_dictionary(raw)
+    assert d["u-both"]["cabinets"] == ["ИП", "ООО"]
+    assert d["u-ooo"]["cabinets"] == ["ООО"]
+    assert d["u-ip"]["cabinets"] == ["ИП"]
+    assert d["u-none"]["cabinets"] == []  # no flags = legacy fallback
+
+
+def test_parse_dictionary_handles_reordered_columns():
+    raw = [
+        ["Название", "UUID", "ООО", "ИП", "Скидка %"],
+        ["TEST", "u1", "TRUE", "FALSE", "15"],
+    ]
+    d = parse_dictionary(raw)
+    assert d["u1"]["name"] == "TEST"
+    assert d["u1"]["discount_pct"] == 15.0
+    assert d["u1"]["cabinets"] == ["ООО"]
 
 
 from services.sheets_sync.sync.sync_promocodes import format_analytics_row
@@ -190,13 +218,16 @@ def test_run_mode_specific_calls_fetch_for_each_cabinet():
                return_value=fake_rows) as mock_fetch, \
          patch("services.sheets_sync.sync.sync_promocodes.read_dictionary_sheet",
                return_value={"u1": {"name": "TEST", "channel": "T",
-                                     "discount_pct": 5, "start": "", "end": "", "note": ""}}), \
+                                     "discount_pct": 5, "cabinets": ["ИП", "ООО"],
+                                     "start": "", "end": "", "note": ""}}), \
          patch("services.sheets_sync.sync.sync_promocodes.ensure_analytics_sheet",
                return_value=MagicMock()), \
          patch("services.sheets_sync.sync.sync_promocodes._read_pivot_state",
                return_value=({}, {})), \
+         patch("services.sheets_sync.sync.sync_promocodes.ensure_analytics_dict_rows",
+               return_value=2), \
          patch("services.sheets_sync.sync.sync_promocodes.upsert_pivot",
-               return_value=(2, 0)) as mock_upsert, \
+               return_value=(0, 2)) as mock_upsert, \
          patch("services.sheets_sync.sync.sync_promocodes.write_dashboard_header"):
 
         from services.sheets_sync.sync.sync_promocodes import run
@@ -208,8 +239,9 @@ def test_run_mode_specific_calls_fetch_for_each_cabinet():
 
     assert mock_fetch.call_count == 2
     assert result["status"] == "ok"
+    # Pre-population added 2 rows; week upsert then updated those same 2 rows
     assert result["rows_added"] == 2
-    assert result["rows_updated"] == 0
+    assert result["rows_updated"] == 2
     assert ("2026-04-13", "2026-04-19") in [
         (s, e) for s, e in result["weeks_processed"]
     ]

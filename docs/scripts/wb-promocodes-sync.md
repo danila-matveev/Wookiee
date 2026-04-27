@@ -2,6 +2,17 @@
 
 **Purpose:** weekly Google Sheets sync of WB promocode metrics for ООО + ИП.
 
+## Workflow (dictionary-driven)
+
+1. **Manual step (любая команда):** заполняем справочник `Промокоды_справочник`.
+   Колонки: `UUID | Название | Канал | Скидка % | ИП | ООО | Старт | Окончание | Примечание`.
+   `ИП` и `ООО` — чекбоксы; ставим галочку в кабинете(ах), где промокод реально работает.
+2. **Скрипт каждую неделю** читает справочник, создаёт строки на листе аналитики
+   (по одной на каждую пару `(UUID, кабинет с галочкой)`), фетчит метрики из WB API
+   и обновляет ячейки. Промокоды, которых нет в справочнике, **в аналитику не попадают** —
+   их UUID пишутся в лог как warning.
+3. **Cron** запускает CLI каждый понедельник в 12:00 МСК (см. ниже).
+
 ## Components
 - Core: `services/sheets_sync/sync/sync_promocodes.py`
 - HTTP: `services/wb_logistics_api/app.py` → `POST /promocodes/run`, `GET /promocodes/status`
@@ -43,12 +54,27 @@ docker restart wb-logistics-api
 
 ## Cron (host crontab on Timeweb)
 
+Server runs in Europe/Moscow TZ — schedule fires at **Monday 12:00 МСК**, when
+the previous full ISO week (Mon-Sun) is already closed.
+
 ```cron
-0 9 * * 2  curl -sS -X POST http://localhost:8092/promocodes/run \
-           -H "X-API-Key: $(grep PROMOCODES_API_KEY /app/.env | cut -d= -f2)" \
-           -H "Content-Type: application/json" \
-           -d '{"mode":"last_week"}' \
-           >> /var/log/wb-promocodes-cron.log 2>&1
+0 12 * * 1  curl -sS -X POST http://localhost:8092/promocodes/run \
+            -H "X-API-Key: $(grep PROMOCODES_API_KEY /app/.env | cut -d= -f2)" \
+            -H "Content-Type: application/json" \
+            -d '{"mode":"last_week"}' \
+            >> /var/log/wb-promocodes-cron.log 2>&1
+```
+
+Install:
+
+```bash
+ssh timeweb
+crontab -l | grep -v promocodes > /tmp/cron.txt   # drop any old entry
+cat >> /tmp/cron.txt <<'EOF'
+0 12 * * 1  curl -sS -X POST http://localhost:8092/promocodes/run -H "X-API-Key: $(grep PROMOCODES_API_KEY /app/.env | cut -d= -f2)" -H "Content-Type: application/json" -d '{"mode":"last_week"}' >> /var/log/wb-promocodes-cron.log 2>&1
+EOF
+crontab /tmp/cron.txt
+crontab -l | grep promocodes        # verify
 ```
 
 ## GAS button
