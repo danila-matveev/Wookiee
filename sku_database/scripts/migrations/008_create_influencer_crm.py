@@ -60,20 +60,15 @@ CRM_TABLES = [
 def existing_crm_tables(cur) -> list[str]:
     cur.execute(
         "SELECT table_name FROM information_schema.tables "
-        "WHERE table_schema='public' AND table_name = ANY(%s)",
+        "WHERE table_schema='crm' AND table_name = ANY(%s)",
         (CRM_TABLES,),
     )
     return [row[0] for row in cur.fetchall()]
 
 
 def drop_crm_objects(cur) -> None:
-    """Drop tables in reverse order; CASCADE handles FK chains."""
-    for tbl in reversed(CRM_TABLES):
-        cur.execute(f'DROP TABLE IF EXISTS public."{tbl}" CASCADE')
-    cur.execute("DROP MATERIALIZED VIEW IF EXISTS public.v_blogger_totals")
-    cur.execute("DROP FUNCTION IF EXISTS public.trg_audit_log() CASCADE")
-    cur.execute("DROP FUNCTION IF EXISTS public.trg_integration_stage_history() CASCADE")
-    cur.execute("DROP FUNCTION IF EXISTS public.trg_set_updated_at() CASCADE")
+    """Drop the entire crm schema; CASCADE handles all FK/trigger/view chains."""
+    cur.execute("DROP SCHEMA IF EXISTS crm CASCADE")
 
 
 def apply_migration(dry_run: bool, force: bool) -> int:

@@ -2,6 +2,8 @@
 
 Run AFTER migration is applied to verify the schema is healthy.
 Connects via service_role pooler (same as application code and existing migrations).
+
+All CRM objects live in the `crm` Postgres schema.
 """
 from __future__ import annotations
 
@@ -21,6 +23,7 @@ SUPABASE_CONFIG = {
     "user": os.getenv("POSTGRES_USER"),
     "password": os.getenv("POSTGRES_PASSWORD"),
     "sslmode": "require",
+    "options": "-csearch_path=crm,public",
 }
 
 INFLUENCER_CRM_TABLES = [
@@ -49,7 +52,7 @@ def test_22_tables_exist(conn):
         cur.execute(
             """
             SELECT table_name FROM information_schema.tables
-            WHERE table_schema = 'public' AND table_name = ANY(%s)
+            WHERE table_schema = 'crm' AND table_name = ANY(%s)
             """,
             (INFLUENCER_CRM_TABLES,),
         )
@@ -76,7 +79,7 @@ EXPECTED_INDEXES = {
 def test_critical_indexes_exist(conn):
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT indexname FROM pg_indexes WHERE schemaname='public' "
+            "SELECT indexname FROM pg_indexes WHERE schemaname='crm' "
             "AND indexname = ANY(%s)",
             (list(EXPECTED_INDEXES),),
         )
@@ -88,7 +91,7 @@ def test_critical_indexes_exist(conn):
 def test_rls_enabled_on_all_tables(conn):
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT tablename FROM pg_tables WHERE schemaname='public' "
+            "SELECT tablename FROM pg_tables WHERE schemaname='crm' "
             "AND tablename = ANY(%s) AND rowsecurity = true",
             (INFLUENCER_CRM_TABLES,),
         )
@@ -104,7 +107,7 @@ def test_audit_triggers_attached_to_core_tables(conn):
     with conn.cursor() as cur:
         cur.execute(
             "SELECT event_object_table, trigger_name FROM information_schema.triggers "
-            "WHERE event_object_schema='public' AND trigger_name LIKE %s",
+            "WHERE event_object_schema='crm' AND trigger_name LIKE %s",
             ("%_audit_%",),
         )
         rows = cur.fetchall()
@@ -120,7 +123,7 @@ def test_audit_triggers_attached_to_core_tables(conn):
 
 def test_marketers_seed_5_rows(conn):
     with conn.cursor() as cur:
-        cur.execute("SELECT name FROM marketers ORDER BY id")
+        cur.execute("SELECT name FROM crm.marketers ORDER BY id")
         names = [row[0] for row in cur.fetchall()]
     assert names == ["Александра", "Саша", "Лиля", "Алина", "Лера"], f"Got: {names}"
 
@@ -128,15 +131,15 @@ def test_marketers_seed_5_rows(conn):
 def test_total_cost_generated_handles_nulls(conn):
     """Insert integration with NULL costs — total_cost must be 0, not NULL."""
     with conn.cursor() as cur:
-        cur.execute("SELECT id FROM marketers LIMIT 1")
+        cur.execute("SELECT id FROM crm.marketers LIMIT 1")
         marketer_id = cur.fetchone()[0]
         cur.execute(
-            "INSERT INTO bloggers (display_handle) VALUES (%s) RETURNING id",
+            "INSERT INTO crm.bloggers (display_handle) VALUES (%s) RETURNING id",
             ("__test_total_cost__",),
         )
         blogger_id = cur.fetchone()[0]
         cur.execute(
-            """INSERT INTO integrations
+            """INSERT INTO crm.integrations
                (blogger_id, marketer_id, publish_date, channel, ad_format, marketplace, stage)
                VALUES (%s, %s, '2026-04-01', 'instagram', 'short_video', 'wb', 'lead')
                RETURNING total_cost""",
@@ -150,7 +153,7 @@ def test_total_cost_generated_handles_nulls(conn):
 def test_v_blogger_totals_materialized_view(conn):
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT matviewname FROM pg_matviews WHERE schemaname='public' "
+            "SELECT matviewname FROM pg_matviews WHERE schemaname='crm' "
             "AND matviewname='v_blogger_totals'"
         )
         assert cur.fetchone() is not None, "v_blogger_totals MV missing"

@@ -23,7 +23,11 @@
 
 BEGIN;
 
-SET search_path = public;
+-- Influencer CRM lives in its own schema for logical isolation.
+-- Cross-schema FK to public.artikuly works via search_path resolution
+-- (crm first; falls through to public for upstream tables).
+CREATE SCHEMA IF NOT EXISTS crm;
+SET search_path = crm, public;
 
 -- -----------------------------------------------------------------------------
 -- Pre-flight: required upstream tables must exist in public schema
@@ -140,16 +144,17 @@ CREATE TABLE bloggers (
 CREATE INDEX idx_bloggers_marketer ON bloggers (default_marketer_id) WHERE archived_at IS NULL;
 CREATE INDEX idx_bloggers_status ON bloggers (status) WHERE archived_at IS NULL;
 
--- Full-text search across display_handle + real_name + notes
-ALTER TABLE bloggers ADD COLUMN search_tsv tsvector
-    GENERATED ALWAYS AS (
+-- Full-text search across display_handle + real_name + notes.
+-- Expression GIN index avoids the STORED-generated-column requirement that
+-- the expression be IMMUTABLE (to_tsvector is STABLE, not IMMUTABLE).
+CREATE INDEX idx_bloggers_search ON bloggers
+    USING gin (
         to_tsvector('russian',
             coalesce(display_handle,'') || ' ' ||
             coalesce(real_name,'') || ' ' ||
             coalesce(notes,'')
         )
-    ) STORED;
-CREATE INDEX idx_bloggers_search ON bloggers USING gin (search_tsv);
+    );
 
 
 -- =============================================================================
@@ -536,18 +541,21 @@ CREATE TABLE integration_stage_history (
 CREATE INDEX idx_ish_int ON integration_stage_history (integration_id, entered_at DESC);
 
 -- Trigger: capture stage transitions
-CREATE OR REPLACE FUNCTION trg_integration_stage_history() RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION trg_integration_stage_history() RETURNS TRIGGER
+    LANGUAGE plpgsql
+    SET search_path = crm, public
+AS $$
 BEGIN
     IF TG_OP = 'INSERT' THEN
-        INSERT INTO integration_stage_history (integration_id, from_stage, to_stage, entered_at)
+        INSERT INTO crm.integration_stage_history (integration_id, from_stage, to_stage, entered_at)
         VALUES (NEW.id, NULL, NEW.stage, COALESCE(NEW.created_at, now()));
     ELSIF TG_OP = 'UPDATE' AND OLD.stage IS DISTINCT FROM NEW.stage THEN
-        INSERT INTO integration_stage_history (integration_id, from_stage, to_stage, entered_at)
+        INSERT INTO crm.integration_stage_history (integration_id, from_stage, to_stage, entered_at)
         VALUES (NEW.id, OLD.stage, NEW.stage, now());
     END IF;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
 CREATE TRIGGER integrations_stage_history_trg
     AFTER INSERT OR UPDATE OF stage ON integrations
@@ -602,7 +610,9 @@ CREATE TABLE branded_queries (
     status           TEXT NOT NULL DEFAULT 'active',
     notes            TEXT,
     created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-    query_normalized TEXT GENERATED ALWAYS AS (LOWER(unaccent(query))) STORED,
+    -- LOWER is IMMUTABLE; unaccent dropped (was STABLE, not allowed in STORED).
+    -- For Wookiee branded search queries (RU + WB) unaccent adds little value.
+    query_normalized TEXT GENERATED ALWAYS AS (LOWER(query)) STORED,
     CONSTRAINT chk_bq_status CHECK (status IN ('active','paused','archived'))
 );
 
@@ -679,22 +689,25 @@ END$$;
 -- FOR EACH STATEMENT with transition tables = one INSERT per statement, not per row.
 -- During bulk import: SET LOCAL session_replication_role = replica; -- bypasses triggers.
 -- =============================================================================
-CREATE OR REPLACE FUNCTION trg_audit_log() RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION trg_audit_log() RETURNS TRIGGER
+    LANGUAGE plpgsql
+    SET search_path = crm, public
+AS $$
 BEGIN
     IF TG_OP = 'INSERT' THEN
-        INSERT INTO audit_log (table_name, record_id, action, new_data)
+        INSERT INTO crm.audit_log (table_name, record_id, action, new_data)
         SELECT TG_TABLE_NAME, n.id, 'insert', to_jsonb(n) FROM new_table n;
     ELSIF TG_OP = 'UPDATE' THEN
-        INSERT INTO audit_log (table_name, record_id, action, old_data, new_data)
+        INSERT INTO crm.audit_log (table_name, record_id, action, old_data, new_data)
         SELECT TG_TABLE_NAME, n.id, 'update', to_jsonb(o), to_jsonb(n)
         FROM old_table o JOIN new_table n USING (id);
     ELSIF TG_OP = 'DELETE' THEN
-        INSERT INTO audit_log (table_name, record_id, action, old_data)
+        INSERT INTO crm.audit_log (table_name, record_id, action, old_data)
         SELECT TG_TABLE_NAME, o.id, 'delete', to_jsonb(o) FROM old_table o;
     END IF;
     RETURN NULL;
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
 DO $$
 DECLARE t TEXT;
@@ -830,7 +843,7 @@ DECLARE expected_tables INT := 22; actual_tables INT;
 BEGIN
     SELECT COUNT(*) INTO actual_tables
     FROM information_schema.tables
-    WHERE table_schema = 'public'
+    WHERE table_schema = 'crm'
       AND table_name IN (
         'marketers','tags','bloggers','blogger_channels','blogger_tags',
         'content_brief_templates','briefs','brief_versions',
