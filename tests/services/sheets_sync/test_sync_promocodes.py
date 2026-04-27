@@ -245,3 +245,41 @@ def test_run_mode_specific_calls_fetch_for_each_cabinet():
     assert ("2026-04-13", "2026-04-19") in [
         (s, e) for s, e in result["weeks_processed"]
     ]
+
+
+def test_run_auto_adds_unknown_uuids_from_api():
+    """Unknown UUIDs (not in dictionary) must be appended to analytics, not skipped."""
+    fake_rows = [
+        {"uuid_promocode": "u-known", "sa_name": "x/y", "retail_amount": 100,
+         "ppvz_for_pay": 90, "doc_type_name": "Продажа", "quantity": 1,
+         "sale_price_promocode_discount_prc": 5},
+        {"uuid_promocode": "u-mystery", "sa_name": "a/b", "retail_amount": 200,
+         "ppvz_for_pay": 180, "doc_type_name": "Продажа", "quantity": 2,
+         "sale_price_promocode_discount_prc": 15},
+    ]
+    with patch("services.sheets_sync.sync.sync_promocodes.fetch_report",
+               return_value=fake_rows), \
+         patch("services.sheets_sync.sync.sync_promocodes.read_dictionary_sheet",
+               return_value={"u-known": {"name": "KNOWN", "channel": "T",
+                                          "discount_pct": 5, "cabinets": ["ООО"],
+                                          "start": "", "end": "", "note": ""}}), \
+         patch("services.sheets_sync.sync.sync_promocodes.ensure_analytics_sheet",
+               return_value=MagicMock()), \
+         patch("services.sheets_sync.sync.sync_promocodes._read_pivot_state",
+               return_value=({}, {})), \
+         patch("services.sheets_sync.sync.sync_promocodes.ensure_analytics_dict_rows",
+               return_value=1), \
+         patch("services.sheets_sync.sync.sync_promocodes.upsert_pivot",
+               return_value=(1, 1)), \
+         patch("services.sheets_sync.sync.sync_promocodes.write_dashboard_header"):
+
+        from services.sheets_sync.sync.sync_promocodes import run
+        result = run(
+            mode="specific",
+            week_from=date(2026, 4, 13), week_to=date(2026, 4, 19),
+            cabinets=[("ООО", "k_ooo")],
+        )
+
+    assert result["status"] == "ok"
+    assert "u-mystery" in result["unknown_uuids"]
+    assert "u-known" not in result["unknown_uuids"]

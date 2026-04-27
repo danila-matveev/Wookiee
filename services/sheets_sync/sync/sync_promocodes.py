@@ -676,27 +676,20 @@ def run(
     unknown_set: set[str] = set()
     last_week_aggs: dict[str, dict] = {}
 
-    # Skip cabinets entirely if no UUID in dictionary uses them
-    declared_cabs = {c for info in dictionary.values() for c in info.get("cabinets") or []}
-    active_cabs = [c for c in cabs if c[0] in declared_cabs] if declared_cabs else cabs
-    if declared_cabs and len(active_cabs) < len(cabs):
-        skipped = [c[0] for c in cabs if c[0] not in declared_cabs]
-        logger.info("Skipping cabinets with no dictionary entries: %s", skipped)
-
     # Process oldest week first so columns grow left→right chronologically
     for week_start, week_end in reversed(weeks):
         week_data: dict[tuple[str, str], dict] = {}
 
-        for cab_name, api_key in active_cabs:
+        for cab_name, api_key in cabs:
             api_rows = fetch_report(api_key, cab_name, week_start, week_end)
             agg = aggregate_by_uuid(api_rows)
             for uuid, m in agg.items():
-                info = dictionary.get(uuid.lower())
-                if info is None:
+                info = dictionary.get(uuid.lower()) or {}
+                if not info:
                     unknown_set.add(uuid)
-                    continue  # Dictionary-driven mode: skip unknown UUIDs
-                # Only update rows for cabinets the dictionary flagged for this UUID.
-                # Empty `cabinets` = legacy entry → fall back to "any cabinet".
+                # If the dictionary flags specific cabinets, skip rows that
+                # come from a non-flagged cabinet. Unknown UUIDs (no info) and
+                # legacy entries with empty `cabinets` fall through to "any cabinet".
                 cab_filter = info.get("cabinets") or []
                 if cab_filter and cab_name not in cab_filter:
                     continue
@@ -714,8 +707,6 @@ def run(
             # Accumulate latest-week summary (weeks[0] is the most recent)
             if (week_start, week_end) == weeks[0]:
                 for uuid, m in agg.items():
-                    if uuid.lower() not in dictionary:
-                        continue
                     if uuid not in last_week_aggs:
                         last_week_aggs[uuid] = dict(m)
                     else:
