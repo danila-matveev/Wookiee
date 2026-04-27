@@ -36,11 +36,46 @@ _WEEK_ALT_BG = [
 ]
 
 
+def _clear_column_groups(ws: gspread.Worksheet) -> None:
+    """Remove all existing column groups so re-formatting doesn't stack depths."""
+    try:
+        meta = ws.spreadsheet._spreadsheets_get(
+            params={"fields": "sheets(properties.sheetId,columnGroups)"}
+        )
+    except Exception:
+        return
+    delete_reqs: list[dict] = []
+    for sh in meta.get("sheets", []):
+        if sh["properties"]["sheetId"] != ws.id:
+            continue
+        groups = sh.get("columnGroups", []) or []
+        for g in sorted(groups, key=lambda x: -x.get("depth", 1)):
+            r = g["range"]
+            delete_reqs.append({
+                "deleteDimensionGroup": {
+                    "range": {
+                        "sheetId": ws.id,
+                        "dimension": "COLUMNS",
+                        "startIndex": r["startIndex"],
+                        "endIndex": r["endIndex"],
+                    }
+                }
+            })
+    if delete_reqs:
+        try:
+            ws.spreadsheet.batch_update({"requests": delete_reqs})
+        except Exception:
+            pass
+
+
 def apply_base_formatting(ws: gspread.Worksheet) -> None:
     """Apply base formatting: dashboard, fixed column headers, freeze, column widths.
 
     Does NOT touch week-column areas — those are handled by format_week_columns().
+    Also clears existing column groups so format_week_columns can re-add them cleanly.
     """
+    _clear_column_groups(ws)
+
     sid = ws.id
     requests: list[dict] = []
 
@@ -163,6 +198,18 @@ def format_week_columns(ws: gspread.Worksheet, first_col: int, week_index: int =
     block_bg = _WEEK_ALT_BG[week_index % 2]
 
     requests: list[dict] = []
+
+    # Collapsible column group for this week — allows users to hide/show whole week
+    requests.append({
+        "addDimensionGroup": {
+            "range": {
+                "sheetId": sid,
+                "dimension": "COLUMNS",
+                "startIndex": c0,
+                "endIndex": c1,
+            }
+        }
+    })
 
     # Data-row alternating background for this entire week block
     requests.append({
