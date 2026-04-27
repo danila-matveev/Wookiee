@@ -683,16 +683,13 @@ def run(
         for cab_name, api_key in cabs:
             api_rows = fetch_report(api_key, cab_name, week_start, week_end)
             agg = aggregate_by_uuid(api_rows)
+            # Always record everything the API returns — dictionary cabinet
+            # flags only drive pre-population, not API filtering. Unknown
+            # UUIDs are tracked separately so the team can add them later.
             for uuid, m in agg.items():
                 info = dictionary.get(uuid.lower()) or {}
                 if not info:
                     unknown_set.add(uuid)
-                # If the dictionary flags specific cabinets, skip rows that
-                # come from a non-flagged cabinet. Unknown UUIDs (no info) and
-                # legacy entries with empty `cabinets` fall through to "any cabinet".
-                cab_filter = info.get("cabinets") or []
-                if cab_filter and cab_name not in cab_filter:
-                    continue
                 week_data[(uuid, cab_name)] = {
                     "metrics": m,
                     "name": info.get("name") or "неизвестный",
