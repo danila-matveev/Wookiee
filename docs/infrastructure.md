@@ -43,8 +43,12 @@ ssh -i ~/.ssh/id_ed25519_timeweb root@77.233.212.61
 |-----------|-----------|--------------|
 | `n8n-docker-caddy-caddy-1` | Reverse proxy + автоматический SSL (Let's Encrypt) | порты 80, 443 |
 | `n8n-docker-caddy-n8n-1` | N8N автоматизация | `n8n.matveevdanila.com` |
-| `wookiee-cron` | Cron-диспетчер: `search_queries_sync` + `sync_sheets_to_supabase` | — |
+| `wookiee_cron` | Cron-диспетчер: `search_queries_sync` + `sync_sheets_to_supabase` | — |
+| `wookiee_sheets_sync` | Sheets sync runner (`services.sheets_sync.control_panel`) | — |
 | `wb-logistics-api` | FastAPI для WB localization расчётов | — |
+| `wb_mcp_ip` | Wildberries MCP server (кабинет ИП) | — |
+| `wb_mcp_ooo` | Wildberries MCP server (кабинет ООО) | — |
+| `bitrix24_mcp` | Bitrix24 MCP server | — |
 
 ## Ключевые пути на сервере
 
@@ -64,6 +68,41 @@ ssh -i ~/.ssh/id_ed25519_timeweb root@77.233.212.61
 4. `git pull` → `docker compose build` → `docker compose up -d`
 5. Проверка healthcheck-статусов
 
+### Server is deploy-only — НЕ редактировать код на сервере
+
+`/home/danila/projects/wookiee/` на app-сервере — это рабочая копия для деплоя, **не для разработки**. Любая правка кода:
+
+```
+локально → PR → merge в main → CI green → GH Actions deploy.yml → сервер
+```
+
+Если кто-то правит файлы прямо на сервере (`vim`, `nano`, ручной `git commit`), это создаёт drift — на сервере появляются сиротские коммиты или uncommitted-правки, а GH Actions deploy `git pull` падает на конфликтах. **Уже было** в апреле 2026 (см. backup-tag `backup/server-before-cleanup-2026-04-27`).
+
+Защитные механизмы (все три на месте):
+
+1. **Autopull cron** под `deploy` (`*/5 * * * *` → `scripts/server_autopull.sh`):
+   - При drift `main` vs `origin/main` — hard-reset на origin/main + (если изменён код контейнеров) `docker compose up -d --build --remove-orphans`
+   - При **dirty working tree** ничего не reset-ит, шлёт Telegram alert через `TELEGRAM_BOT_TOKEN`/`TELEGRAM_ALERT_CHAT_ID`
+   - Логи: `logs/autopull/YYYY-MM.log`
+2. **Pre-deploy guard** (`scripts/server_predeploy_check.sh`):
+   - Валидирует `.env` (required vars), существование скриптов, syntax docker-compose, python compileall
+   - Запускается из autopull перед `git reset` и (потенциально) из GH Actions deploy.yml перед `docker compose build`
+3. **Git config `core.sharedRepository=group`** в `.git/config`: новые объекты создаются с group-write битом, чтобы и `deploy`, и `danila`, и (если когда-нибудь) `root` могли писать в `.git/objects/` без конфликтов permissions.
+
+Cron-jobs (host-уровень):
+
+| Что | Кто | Когда |
+|---|---|---|
+| `services/logistics_audit/etl/cron_tariff_collector.sh` | `deploy` | `0 8 * * *` (daily 08:00 UTC) |
+| `scripts/server_autopull.sh` | `deploy` | `*/5 * * * *` (каждые 5 мин) |
+
+Cron-jobs внутри контейнера `wookiee_cron` (см. `deploy/docker-compose.yml`):
+
+| Что | Когда |
+|---|---|
+| `python scripts/run_search_queries_sync.py` | `0 10 * * 1` (понедельник 10:00 МСК) |
+| `python scripts/sync_sheets_to_supabase.py --level all` | `0 6 * * *` (daily 06:00 МСК) |
+
 ### Ручной деплой (резервный)
 
 ```bash
@@ -71,6 +110,8 @@ ssh timeweb
 cd /home/danila/projects/wookiee/deploy
 bash deploy.sh --build
 ```
+
+Или через autopull (имитация cron-вызова): `ssh timeweb 'sudo -u deploy /home/danila/projects/wookiee/scripts/server_autopull.sh'`.
 
 ### GitHub Secrets (Settings → Secrets → Actions)
 
