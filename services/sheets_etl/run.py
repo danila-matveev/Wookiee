@@ -9,8 +9,10 @@ import argparse
 import sys
 from typing import Any
 
+from services.sheets_etl.article_resolver import ArticleResolver
 from services.sheets_etl.config import SPREADSHEET_ID
 from services.sheets_etl.fetch import read_range
+from services.sheets_etl.hash import sheet_row_id
 from services.sheets_etl.loader import get_conn, insert_junction, upsert
 from services.sheets_etl.transformers import (
     bloggers as t_bloggers,
@@ -61,21 +63,47 @@ def run_bloggers(conn) -> tuple[int, int]:
     return n_b, n_c
 
 
-def run_substitute_articles(conn) -> tuple[int, int]:
+def _ensure_substitute_article(conn, code: str, artikul_id: int, purpose: str = "creators") -> int:
+    """Find or create crm.substitute_articles row by artikul_id. Returns id."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT id FROM crm.substitute_articles WHERE artikul_id = %s LIMIT 1",
+            (artikul_id,),
+        )
+        row = cur.fetchone()
+        if row:
+            return row[0]
+        srid = sheet_row_id([code, str(artikul_id)])
+        cur.execute(
+            """
+            INSERT INTO crm.substitute_articles
+                (code, artikul_id, purpose, status, sheet_row_id)
+            VALUES (%s, %s, %s, 'active', %s)
+            ON CONFLICT (sheet_row_id) DO UPDATE SET artikul_id = EXCLUDED.artikul_id
+            RETURNING id
+            """,
+            (code, artikul_id, purpose, srid),
+        )
+        new_id = cur.fetchone()[0]
+    conn.commit()
+    return new_id
+
+
+def run_substitute_articles(conn) -> tuple[int, int, int]:
     articles, metrics = t_subs.transform(
         read_range(SPREADSHEET_ID, "Подменные!A1:HZ1500")
     )
+    resolver = ArticleResolver(conn)
+
     matched: list[dict[str, Any]] = []
-    with conn.cursor() as cur:
-        for a in articles:
-            cur.execute(
-                "SELECT id FROM public.artikuly WHERE LOWER(artikul) = LOWER(%s) LIMIT 1",
-                (a["code"],),
-            )
-            r = cur.fetchone()
-            if r:
-                a["artikul_id"] = r[0]
-                matched.append(a)
+    unmatched: list[str] = []
+    for a in articles:
+        art_id = resolver.resolve_one(a["code"])
+        if art_id is not None:
+            a["artikul_id"] = art_id
+            matched.append(a)
+        else:
+            unmatched.append(a["code"])
     n_a = upsert(conn, "crm.substitute_articles", matched)
 
     code_to_id: dict[str, int] = {}
@@ -101,23 +129,72 @@ def run_substitute_articles(conn) -> tuple[int, int]:
         metric_rows,
         conflict_cols=("substitute_article_id", "week_start"),
     )
-    return n_a, n_m
+    print(f"  unmatched substitute codes: {len(unmatched)}")
+    if unmatched:
+        print(f"  sample: {unmatched[:5]}")
+    return n_a, n_m, len(unmatched)
 
 
-def run_integrations(conn) -> tuple[int, int]:
+def _ensure_blogger(conn, display_handle: str) -> int:
+    """Find or create crm.bloggers row. Returns id."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT id FROM crm.bloggers WHERE LOWER(display_handle) = LOWER(%s) LIMIT 1",
+            (display_handle,),
+        )
+        row = cur.fetchone()
+        if row:
+            return row[0]
+        srid = sheet_row_id([display_handle])
+        cur.execute(
+            """
+            INSERT INTO crm.bloggers (display_handle, status, sheet_row_id)
+            VALUES (%s, 'active', %s)
+            ON CONFLICT (sheet_row_id) DO UPDATE SET display_handle = EXCLUDED.display_handle
+            RETURNING id
+            """,
+            (display_handle, srid),
+        )
+        new_id = cur.fetchone()[0]
+    conn.commit()
+    return new_id
+
+
+def run_integrations(conn) -> tuple[int, int, int]:
     integrations, sub_links = t_integrations.transform(
         read_range(SPREADSHEET_ID, "Блогеры!A1:CL2000")
     )
+
+    # Step 1: marketers map
     with conn.cursor() as cur:
         cur.execute("SELECT id, name FROM crm.marketers")
         marketers = {n: i for i, n in cur.fetchall()}
+
+    # Step 2: ensure every blogger from integrations exists in crm.bloggers
+    unique_handles = {r["blogger_handle_ref"] for r in integrations}
+    created_bloggers = 0
+    handle_to_id: dict[str, int] = {}
+    with conn.cursor() as cur:
         cur.execute("SELECT id, LOWER(display_handle) FROM crm.bloggers")
-        bloggers_by_handle = {h: i for i, h in cur.fetchall()}
-    matched = []
+        existing = {h: i for i, h in cur.fetchall()}
+    for h in unique_handles:
+        h_lower = h.lower()
+        if h_lower in existing:
+            handle_to_id[h_lower] = existing[h_lower]
+            continue
+        new_id = _ensure_blogger(conn, h)
+        handle_to_id[h_lower] = new_id
+        created_bloggers += 1
+
+    # Step 3: load integrations
+    matched, miss_marketer = [], 0
     for r in integrations:
         m_id = marketers.get(r["marketer_name"])
-        b_id = bloggers_by_handle.get(r["blogger_handle_ref"].lower())
-        if not m_id or not b_id:
+        b_id = handle_to_id.get(r["blogger_handle_ref"].lower())
+        if not m_id:
+            miss_marketer += 1
+            continue
+        if not b_id:
             continue
         clean = {k: v for k, v in r.items()
                  if k not in ("blogger_handle_ref", "marketer_name")}
@@ -126,6 +203,7 @@ def run_integrations(conn) -> tuple[int, int]:
         matched.append(clean)
     n_i = upsert(conn, "crm.integrations", matched)
 
+    # Step 4: resolve sub-links via ArticleResolver (handles SKU, OZON, model name)
     matched_srids = [m["sheet_row_id"] for m in matched]
     with conn.cursor() as cur:
         cur.execute(
@@ -133,27 +211,38 @@ def run_integrations(conn) -> tuple[int, int]:
             (matched_srids,),
         )
         srid_to_id = {s: i for i, s in cur.fetchall()}
-        cur.execute("SELECT id, code FROM crm.substitute_articles")
-        code_to_sub = {c.lower(): i for i, c in cur.fetchall()}
+
+    resolver = ArticleResolver(conn)
     junction_rows = []
+    seen_pairs: set[tuple[int, int]] = set()
     for sl in sub_links:
         i_id = srid_to_id.get(sl["integration_sheet_row_id"])
-        s_id = code_to_sub.get(sl["sub_code"].lower())
-        if not i_id or not s_id:
+        if not i_id:
             continue
-        junction_rows.append({
-            "integration_id": i_id,
-            "substitute_article_id": s_id,
-            "display_order": sl["display_order"],
-            "tracking_url": sl.get("tracking_url"),
-        })
+        artikul_ids = resolver.resolve_many(sl["sub_code"])
+        if not artikul_ids:
+            continue
+        for idx, art_id in enumerate(artikul_ids, start=1):
+            sub_id = _ensure_substitute_article(conn, sl["sub_code"], art_id, "creators")
+            pair = (i_id, sub_id)
+            if pair in seen_pairs:
+                continue
+            seen_pairs.add(pair)
+            junction_rows.append({
+                "integration_id": i_id,
+                "substitute_article_id": sub_id,
+                "display_order": min(sl["display_order"] * 100 + idx, 999),
+                "tracking_url": sl.get("tracking_url"),
+            })
     n_j = insert_junction(
         conn,
         "crm.integration_substitute_articles",
         junction_rows,
         conflict_cols=("integration_id", "substitute_article_id"),
     )
-    return n_i, n_j
+    print(f"  auto-created bloggers from integrations: {created_bloggers}")
+    print(f"  missing marketer (skipped): {miss_marketer}")
+    return n_i, n_j, created_bloggers
 
 
 def run_candidates(conn) -> int:
