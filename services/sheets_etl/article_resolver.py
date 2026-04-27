@@ -4,7 +4,7 @@ Sheets reference articles in 4 formats. We try them in order:
   1. SKU with size:    "Wendy/black_S"   → match on artikul_ozon
   2. SKU without size: "Wendy/white"     → match on artikul
   3. WB nm-id:         "175569270"       → match on nomenklatura_wb
-  4. Model name:       "Wendy"           → match on modeli.name
+  4. Model name:       "Wendy"           → match on modeli.nazvanie / nazvanie_en
                                             → returns ALL artikuly of that model
 
 Cached on first call so we don't hammer the DB inside loops.
@@ -30,19 +30,22 @@ class ArticleResolver:
         with self.conn.cursor() as cur:
             cur.execute("""
                 SELECT a.id, a.artikul, a.artikul_ozon, a.nomenklatura_wb,
-                       LOWER(m.name) AS model_name
+                       LOWER(m.nazvanie) AS model_ru,
+                       LOWER(m.nazvanie_en) AS model_en
                 FROM public.artikuly a
                 LEFT JOIN public.modeli m ON m.id = a.model_id
             """)
-            for art_id, artikul, art_ozon, nm_wb, model_name in cur.fetchall():
+            for art_id, artikul, art_ozon, nm_wb, model_ru, model_en in cur.fetchall():
                 if artikul:
                     self._by_artikul[artikul.strip().lower()] = art_id
                 if art_ozon:
                     self._by_artikul_ozon[art_ozon.strip().lower()] = art_id
                 if nm_wb is not None:
                     self._by_nm_wb[str(nm_wb)] = art_id
-                if model_name:
-                    self._by_model[model_name].append(art_id)
+                if model_ru:
+                    self._by_model[model_ru].append(art_id)
+                if model_en and model_en != model_ru:
+                    self._by_model[model_en].append(art_id)
         self._loaded = True
 
     def resolve_one(self, value: str) -> int | None:
