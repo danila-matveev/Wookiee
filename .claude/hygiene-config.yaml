@@ -1,3 +1,64 @@
-# Hygiene checks config — Phase 2 placeholder
-version: 1
-checks: []
+# Hygiene config — drives the /hygiene skill
+# Spec: docs/superpowers/specs/2026-04-27-hygiene-skill-design.md
+version: 2
+
+schedule:
+  runner: github_actions     # see .github/workflows/hygiene-daily.yml
+  cron: "0 3 * * *"          # 03:00 UTC = 00:00 São Paulo (UTC-3, no DST since 2019)
+  workflow_timeout_minutes: 30
+
+cost_caps:
+  soft_tokens: 50000          # warning, continue
+  hard_tokens: 150000         # abort + Telegram alert
+
+protected_zones:
+  never_modify:
+    - shared/**
+    - sku_database/**
+    - .env
+    - .env.*
+    - services/*/data/**
+    - .github/workflows/**
+
+whitelist:
+  binaries_keep:
+    - services/logistics_audit/*Итоговый*.xlsx
+    - services/logistics_audit/*final*.xlsx
+    - services/logistics_audit/*Тарифы*.xlsx
+    - docs/images/**
+
+  unpushed_paths:
+    - docs/superpowers/plans/**
+    - docs/superpowers/specs/**
+    - docs/skills/**
+    - docs/database/**
+
+checks:
+  unpushed_work:           { default: auto_commit_push }
+  stray_binaries:          { default: auto_delete }
+  icloud_dupes:            { default: auto_delete }
+  pycache_committed:       { default: auto_untrack }
+  gitignore_violations:    { default: auto_ignore }
+  skill_registry_drift:    { default: auto_sync }
+  cross_platform_skill_prep: { default: auto_sync, via: /ecosystem-sync }
+  empty_directories:       { default: mixed }
+  orphan_imports:          { default: ask_user, no_reference_days: 60 }
+  orphan_docs:             { default: ask_user, no_reference_days: 60 }
+  broken_doc_links:        { default: ask_user }
+  missing_readme:          { default: ask_user, applies_to: services/* }
+  stale_branches:          { default: ask_user, threshold_days: 14 }
+  structure_conventions:   { default: ask_user }
+  obsolete_tracked_files:  { default: ask_user, no_reference_days: 60 }
+  security_scan:           { default: flag_immediate, telegram_alert: true }
+
+notifications:
+  cloudflare:
+    always_publish: true
+    title_format: "Wookiee Hygiene Run {date} — {summary}"
+    project_name_format: "wookiee-hygiene-{date}"
+
+  telegram:
+    bot_env: TELEGRAM_MANAGER_BOT_TOKEN
+    chat_env: HYGIENE_TELEGRAM_CHAT_ID
+    only_if_ask_user_or_security: true
+    message_prefix: "🧹 Wookiee Hygiene"
