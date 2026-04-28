@@ -1,0 +1,62 @@
+/*
+ * Wookiee Influencer CRM — design tokens
+ *
+ * Values lifted byte-for-byte from .crm-mockups/content/prototype.html :root (lines 11-40).
+ * Source-var names use the --wk-* namespace so Tailwind 4's @theme inline (in globals.css)
+ * can reference them without colliding with the theme keys it generates.
+ * (Self-reference like `--color-bg: var(--color-bg)` inside @theme inline causes Tailwind 4
+ * to throw "Cannot convert undefined or null to object" at compile time.)
+ */
+:root {
+  /* Brand */
+  --wk-color-bg: #F8FAFC;
+  --wk-color-fg: #111827;
+  --wk-color-card: #FFFFFF;
+  --wk-color-primary: #F97316;
+  --wk-color-primary-hover: #EA580C;
+  --wk-color-primary-light: #FFF7ED;
+  --wk-color-primary-muted: #FDBA74;
+  --wk-color-bg-warm: #FFFBF5;
+
+  /* Neutrals */
+  --wk-color-secondary: #F3F4F6;
+  --wk-color-muted: #F9FAFB;
+  --wk-color-muted-fg: #6B7280;
+  --wk-color-accent: #FFF7ED;
+  --wk-color-border: #F3F4F6;
+  --wk-color-border-strong: #E5E7EB;
+
+  /* Status */
+  --wk-color-success: #22C55E;
+  --wk-color-warning: #F59E0B;
+  --wk-color-danger: #EF4444;
+  --wk-color-info: #8B5CF6;
+  --wk-color-pink: #EC4899;
+  --wk-color-blue: #3B82F6;
+  --wk-color-green: #10B981;
+
+  /* Radii */
+  --wk-radius-sm: 8px;
+  --wk-radius-md: 12px;
+  --wk-radius-lg: 16px;
+
+  /* Shadows */
+  --wk-shadow-warm: 0 1px 3px rgba(249, 115, 22, 0.08), 0 1px 2px rgba(249, 115, 22, 0.04);
+  --wk-shadow-warm-md: 0 4px 6px -1px rgba(249, 115, 22, 0.08), 0 2px 4px -2px rgba(249, 115, 22, 0.04);
+  --wk-shadow-warm-lg: 0 10px 15px -3px rgba(249, 115, 22, 0.08), 0 4px 6px -4px rgba(249, 115, 22, 0.04);
+  --wk-shadow-drawer: -16px 0 60px -12px rgba(0, 0, 0, 0.18);
+
+  /* Z-index scale (lifted from ui-ux-pro-max guideline) */
+  --wk-z-dropdown: 10;
+  --wk-z-sticky: 20;
+  --wk-z-drawer: 40;
+  --wk-z-modal: 50;
+  --wk-z-toast: 60;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
