@@ -1,8 +1,6 @@
 """Engine connects + uses search_path = crm,public."""
 from __future__ import annotations
 
-import os
-
 import pytest
 
 
