@@ -6,8 +6,7 @@ import { STAGES } from '@/api/integrations';
 import { useIntegrations, useUpdateIntegrationStage } from '@/hooks/use-integrations';
 import { PageHeader } from '@/layout/PageHeader';
 import { Button } from '@/ui/Button';
-import { EmptyState } from '@/ui/EmptyState';
-import { Skeleton } from '@/ui/Skeleton';
+import { QueryStatusBoundary } from '@/ui/QueryStatusBoundary';
 import { IntegrationEditDrawer } from './IntegrationEditDrawer';
 import { KanbanColumn } from './KanbanColumn';
 
@@ -21,7 +20,7 @@ function emptyGroups(): StageGroups {
 }
 
 export function IntegrationsKanbanPage() {
-  const { data, isLoading, isError } = useIntegrations({ limit: 200 });
+  const { data, isLoading, error } = useIntegrations({ limit: 200 });
   const updateStage = useUpdateIntegrationStage();
   // Drawer state: undefined = closed, 0 = open in create mode, >0 = open in edit mode for that id.
   const [activeId, setActiveId] = useState<number | undefined>(undefined);
@@ -62,19 +61,13 @@ export function IntegrationsKanbanPage() {
           </Button>
         }
       />
-      {isLoading ? (
-        <Skeleton className="h-96" />
-      ) : isError ? (
-        <EmptyState
-          title="Не удалось загрузить интеграции"
-          description="Попробуйте обновить страницу."
-        />
-      ) : items.length === 0 ? (
-        <EmptyState
-          title="Интеграций пока нет"
-          description="Создайте первую интеграцию из карточки блогера."
-        />
-      ) : (
+      <QueryStatusBoundary
+        isLoading={isLoading}
+        error={error}
+        isEmpty={items.length === 0}
+        emptyTitle="Интеграций пока нет"
+        emptyDescription="Создайте первую интеграцию из карточки блогера."
+      >
         <DndContext sensors={sensors} onDragEnd={onDragEnd}>
           <div className="-mx-2 flex gap-4 overflow-x-auto px-2 pb-4">
             {STAGES.map((stage) => (
@@ -87,7 +80,7 @@ export function IntegrationsKanbanPage() {
             ))}
           </div>
         </DndContext>
-      )}
+      </QueryStatusBoundary>
       <IntegrationEditDrawer
         open={activeId !== undefined}
         id={activeId !== undefined && activeId > 0 ? activeId : undefined}

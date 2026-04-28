@@ -4,10 +4,9 @@ import type { ProductOut } from '@/api/products';
 import { useProducts } from '@/hooks/use-products';
 import { PageHeader } from '@/layout/PageHeader';
 import { Button } from '@/ui/Button';
-import { EmptyState } from '@/ui/EmptyState';
 import { FilterPill } from '@/ui/FilterPill';
 import { Input } from '@/ui/Input';
-import { Skeleton } from '@/ui/Skeleton';
+import { QueryStatusBoundary } from '@/ui/QueryStatusBoundary';
 import { ProductSliceCard } from './ProductSliceCard';
 
 function toCents(value: string | null | undefined): bigint {
@@ -97,7 +96,7 @@ export function ProductsPage() {
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
-  const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useProducts();
+  const { data, isLoading, error, fetchNextPage, hasNextPage, isFetchingNextPage } = useProducts();
   const allItems = useMemo(() => data?.pages.flatMap((p) => p.items) ?? [], [data?.pages]);
 
   // Client-side filter only — the BFF /products endpoint doesn't currently
@@ -140,18 +139,17 @@ export function ProductsPage() {
         />
       </div>
 
-      {isLoading ? (
-        <Skeleton className="h-64" />
-      ) : items.length === 0 ? (
-        <EmptyState
-          title="Моделей не нашлось"
-          description={
-            search
-              ? 'Уберите часть поискового запроса.'
-              : 'У моделей пока нет интеграций — каталог пуст.'
-          }
-        />
-      ) : (
+      <QueryStatusBoundary
+        isLoading={isLoading}
+        error={error}
+        isEmpty={items.length === 0}
+        emptyTitle="Моделей не нашлось"
+        emptyDescription={
+          search
+            ? 'Уберите часть поискового запроса.'
+            : 'У моделей пока нет интеграций — каталог пуст.'
+        }
+      >
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {items.map((p) => (
             <ProductCard
@@ -164,7 +162,7 @@ export function ProductsPage() {
             />
           ))}
         </div>
-      )}
+      </QueryStatusBoundary>
 
       {hasNextPage && (
         <div className="flex justify-center mt-4">

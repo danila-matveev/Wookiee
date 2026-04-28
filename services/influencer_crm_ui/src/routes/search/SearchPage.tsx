@@ -8,7 +8,7 @@ import { PageHeader } from '@/layout/PageHeader';
 import { Avatar } from '@/ui/Avatar';
 import { Badge, type BadgeProps } from '@/ui/Badge';
 import { EmptyState } from '@/ui/EmptyState';
-import { Skeleton } from '@/ui/Skeleton';
+import { QueryStatusBoundary } from '@/ui/QueryStatusBoundary';
 import { Tabs } from '@/ui/Tabs';
 
 const STATUS_TONE: Record<BloggerStatus, NonNullable<BadgeProps['tone']>> = {
@@ -104,7 +104,7 @@ function ResultsStack({ children }: { children: ReactNode }) {
 export function SearchPage() {
   const [params] = useSearchParams();
   const q = params.get('q') ?? '';
-  const { data, isLoading } = useSearch(q);
+  const { data, isLoading, error } = useSearch(q);
 
   const bloggers = data?.bloggers ?? [];
   const integrations = data?.integrations ?? [];
@@ -114,6 +114,9 @@ export function SearchPage() {
     ? `по запросу «${q}»`
     : 'Введите запрос в поиске наверху, чтобы найти блогеров и интеграции.';
 
+  // Empty-query state: don't kick the QueryStatusBoundary at all — `useSearch`
+  // is disabled until q has 2+ chars, so isLoading would never flip and the
+  // boundary's empty branch would conflate "type something" with "no results".
   if (!q) {
     return (
       <>
@@ -121,27 +124,6 @@ export function SearchPage() {
         <EmptyState
           title="Введите запрос в поиске наверху"
           description="Глобальный поиск по блогерам и интеграциям. Минимум 2 символа."
-        />
-      </>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <>
-        <PageHeader title="Поиск" sub={sub} />
-        <Skeleton className="h-64" />
-      </>
-    );
-  }
-
-  if (total === 0) {
-    return (
-      <>
-        <PageHeader title="Поиск" sub={sub} />
-        <EmptyState
-          title="Ничего не нашлось"
-          description={`По запросу «${q}» нет ни блогеров, ни интеграций. Попробуйте другую формулировку.`}
         />
       </>
     );
@@ -183,13 +165,21 @@ export function SearchPage() {
   return (
     <>
       <PageHeader title="Поиск" sub={sub} />
-      <Tabs
-        tabs={[
-          { label: 'Все', count: total, content: allContent },
-          { label: 'Блогеры', count: bloggers.length, content: bloggersContent },
-          { label: 'Интеграции', count: integrations.length, content: integrationsContent },
-        ]}
-      />
+      <QueryStatusBoundary
+        isLoading={isLoading}
+        error={error}
+        isEmpty={total === 0}
+        emptyTitle="Ничего не нашлось"
+        emptyDescription={`По запросу «${q}» нет ни блогеров, ни интеграций. Попробуйте другую формулировку.`}
+      >
+        <Tabs
+          tabs={[
+            { label: 'Все', count: total, content: allContent },
+            { label: 'Блогеры', count: bloggers.length, content: bloggersContent },
+            { label: 'Интеграции', count: integrations.length, content: integrationsContent },
+          ]}
+        />
+      </QueryStatusBoundary>
     </>
   );
 }

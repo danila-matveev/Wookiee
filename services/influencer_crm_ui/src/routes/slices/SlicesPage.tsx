@@ -10,8 +10,8 @@ import {
 import { useIntegrations } from '@/hooks/use-integrations';
 import { PageHeader } from '@/layout/PageHeader';
 import { Button } from '@/ui/Button';
-import { EmptyState } from '@/ui/EmptyState';
 import { KpiCard } from '@/ui/KpiCard';
+import { QueryStatusBoundary } from '@/ui/QueryStatusBoundary';
 import { Skeleton } from '@/ui/Skeleton';
 import { SlicesFilters, type SlicesFilterValue } from './SlicesFilters';
 
@@ -147,7 +147,7 @@ export function SlicesPage() {
 
   // Large limit: T16 is read-only analytics — we want the whole window in memory
   // for client-side aggregation. The BFF caps at 1000.
-  const { data, isLoading, isError } = useIntegrations({
+  const { data, isLoading, error } = useIntegrations({
     marketplace: filters.marketplace,
     date_from: filters.date_from,
     date_to: filters.date_to,
@@ -193,18 +193,16 @@ export function SlicesPage() {
         />
       </div>
 
-      {isLoading ? (
-        <Skeleton className="h-64" />
-      ) : isError ? (
-        <EmptyState title="Не удалось загрузить срез" description="Попробуйте обновить страницу." />
-      ) : items.length === 0 ? (
-        <EmptyState
-          title="Нет интеграций под фильтр"
-          description="Уберите часть фильтров или расширьте период."
-        />
-      ) : (
+      <QueryStatusBoundary
+        isLoading={isLoading}
+        error={error}
+        isEmpty={items.length === 0}
+        loadingFallback={<Skeleton className="h-64" />}
+        emptyTitle="Нет интеграций под фильтр"
+        emptyDescription="Уберите часть фильтров или расширьте период."
+      >
         <ResultsTable rows={items} />
-      )}
+      </QueryStatusBoundary>
     </>
   );
 }
@@ -217,6 +215,9 @@ function ResultsTable({ rows }: ResultsTableProps) {
   return (
     <div className="bg-card border border-border-strong rounded-lg shadow-warm overflow-hidden">
       <table className="w-full">
+        <caption className="sr-only">
+          Список интеграций с метриками по дате, блогеру, маркетплейсу и каналу
+        </caption>
         <thead>
           <tr>
             <Th>Дата</Th>

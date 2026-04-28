@@ -5,9 +5,8 @@ import { useBriefs } from '@/hooks/use-briefs';
 import { PageHeader } from '@/layout/PageHeader';
 import { Badge } from '@/ui/Badge';
 import { Button } from '@/ui/Button';
-import { EmptyState } from '@/ui/EmptyState';
 import { FilterPill } from '@/ui/FilterPill';
-import { Skeleton } from '@/ui/Skeleton';
+import { QueryStatusBoundary } from '@/ui/QueryStatusBoundary';
 import { BriefCard } from './BriefCard';
 import { BriefEditorDrawer } from './BriefEditorDrawer';
 
@@ -21,7 +20,7 @@ function emptyGroups(): BriefGroups {
 }
 
 export function BriefsPage() {
-  const { data, isLoading, isError } = useBriefs({ limit: 200 });
+  const { data, isLoading, error } = useBriefs({ limit: 200 });
   // undefined = drawer closed; 0 = create mode; >0 = edit mode for that id.
   const [activeId, setActiveId] = useState<number | undefined>(undefined);
   const [statusFilter, setStatusFilter] = useState<BriefStatus | 'all'>('all');
@@ -64,14 +63,7 @@ export function BriefsPage() {
         ))}
       </div>
 
-      {isLoading ? (
-        <Skeleton className="h-96" />
-      ) : isError ? (
-        <EmptyState
-          title="Не удалось загрузить брифы"
-          description="Попробуйте обновить страницу."
-        />
-      ) : (
+      <QueryStatusBoundary isLoading={isLoading} error={error}>
         <div
           className={
             statusFilter === 'all'
@@ -105,7 +97,7 @@ export function BriefsPage() {
             </section>
           ))}
         </div>
-      )}
+      </QueryStatusBoundary>
 
       <BriefEditorDrawer
         open={activeId !== undefined}

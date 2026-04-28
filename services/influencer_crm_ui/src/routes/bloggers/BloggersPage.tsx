@@ -2,15 +2,15 @@ import { useState } from 'react';
 import { useBloggers } from '@/hooks/use-bloggers';
 import { PageHeader } from '@/layout/PageHeader';
 import { Button } from '@/ui/Button';
-import { EmptyState } from '@/ui/EmptyState';
-import { Skeleton } from '@/ui/Skeleton';
+import { QueryStatusBoundary } from '@/ui/QueryStatusBoundary';
 import { BloggerEditDrawer } from './BloggerEditDrawer';
 import { BloggersFilters, type BloggersFilterValue } from './BloggersFilters';
 import { BloggersTable } from './BloggersTable';
 
 export function BloggersPage() {
   const [filters, setFilters] = useState<BloggersFilterValue>({ status: 'active' });
-  const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useBloggers(filters);
+  const { data, isLoading, error, fetchNextPage, hasNextPage, isFetchingNextPage } =
+    useBloggers(filters);
   const items = data?.pages.flatMap((p) => p.items) ?? [];
 
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -33,11 +33,13 @@ export function BloggersPage() {
         }
       />
       <BloggersFilters value={filters} onChange={setFilters} />
-      {isLoading ? (
-        <Skeleton className="h-96" />
-      ) : items.length === 0 ? (
-        <EmptyState title="Никого не нашлось" description="Снимите фильтр или создайте нового." />
-      ) : (
+      <QueryStatusBoundary
+        isLoading={isLoading}
+        error={error}
+        isEmpty={items.length === 0}
+        emptyTitle="Никого не нашлось"
+        emptyDescription="Снимите фильтр или создайте нового."
+      >
         <BloggersTable
           bloggers={items}
           onEdit={(id) => {
@@ -45,7 +47,7 @@ export function BloggersPage() {
             setDrawerOpen(true);
           }}
         />
-      )}
+      </QueryStatusBoundary>
       {hasNextPage && (
         <div className="flex justify-center mt-4">
           <Button onClick={() => fetchNextPage()} loading={isFetchingNextPage}>

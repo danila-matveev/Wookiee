@@ -4,8 +4,8 @@ import { useIntegrations } from '@/hooks/use-integrations';
 import { PageHeader } from '@/layout/PageHeader';
 import { IntegrationEditDrawer } from '@/routes/integrations/IntegrationEditDrawer';
 import { Button } from '@/ui/Button';
-import { EmptyState } from '@/ui/EmptyState';
 import { FilterPill } from '@/ui/FilterPill';
+import { QueryStatusBoundary } from '@/ui/QueryStatusBoundary';
 import { Skeleton } from '@/ui/Skeleton';
 import { CalendarMonthGrid, toIsoDate } from './CalendarMonthGrid';
 
@@ -35,7 +35,7 @@ export function CalendarPage() {
     return { dateFrom: toIsoDate(start), dateTo: toIsoDate(end) };
   }, [monthDate]);
 
-  const { data, isLoading, isError } = useIntegrations({
+  const { data, isLoading, error } = useIntegrations({
     date_from: dateFrom,
     date_to: dateTo,
     limit: 500,
@@ -118,21 +118,18 @@ export function CalendarPage() {
         </span>
       </div>
 
-      {isLoading ? (
-        <Skeleton className="h-[600px]" />
-      ) : isError ? (
-        <EmptyState
-          title="Не удалось загрузить календарь"
-          description="Попробуйте обновить страницу."
-        />
-      ) : (
+      <QueryStatusBoundary
+        isLoading={isLoading}
+        error={error}
+        loadingFallback={<Skeleton className="h-[600px]" />}
+      >
         <CalendarMonthGrid
           monthDate={monthDate}
           integrations={integrations}
           onEventClick={openEditDrawer}
           onCellClick={openCreateDrawer}
         />
-      )}
+      </QueryStatusBoundary>
 
       <IntegrationEditDrawer
         open={drawerOpen}

@@ -29,6 +29,9 @@ export function BloggersTable({ bloggers, onEdit }: Props) {
   return (
     <div className="bg-card border border-border-strong rounded-lg shadow-warm overflow-hidden">
       <table className="w-full">
+        <caption className="sr-only">
+          Список блогеров с их статусом и количеством интеграций
+        </caption>
         <thead>
           <tr>
             <Th>Блогер</Th>
