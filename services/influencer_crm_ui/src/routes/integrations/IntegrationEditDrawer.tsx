@@ -145,13 +145,19 @@ interface IntegrationEditDrawerProps {
   onClose: () => void;
   /** When provided AND > 0, drawer opens in edit mode. Otherwise create mode. */
   id?: number;
+  /**
+   * Seed `publish_date` in create mode. Ignored when `id` is set (edit mode loads
+   * `publish_date` from the BFF detail). Used by CalendarPage's "click empty cell"
+   * flow to prefill the date for a new integration.
+   */
+  initialDate?: string;
 }
 
-function defaultsFromDetail(detail?: IntegrationDetailOut): FormInput {
+function defaultsFromDetail(detail?: IntegrationDetailOut, initialDate?: string): FormInput {
   return {
     blogger_id: detail?.blogger_id != null ? String(detail.blogger_id) : '',
     marketer_id: detail?.marketer_id != null ? String(detail.marketer_id) : '',
-    publish_date: detail?.publish_date ?? '',
+    publish_date: detail?.publish_date ?? initialDate ?? '',
     channel: detail?.channel ?? 'instagram',
     ad_format: detail?.ad_format ?? 'story',
     marketplace: detail?.marketplace ?? 'wb',
@@ -169,24 +175,30 @@ function defaultsFromDetail(detail?: IntegrationDetailOut): FormInput {
   };
 }
 
-export function IntegrationEditDrawer({ open, onClose, id }: IntegrationEditDrawerProps) {
+export function IntegrationEditDrawer({
+  open,
+  onClose,
+  id,
+  initialDate,
+}: IntegrationEditDrawerProps) {
   const isEdit = id !== undefined && id > 0;
   const detailQuery = useIntegration(isEdit ? id : undefined);
   const detail = isEdit ? detailQuery.data : undefined;
 
   const form = useForm<FormInput, unknown, FormOutput>({
     resolver: zodResolver(formSchema),
-    defaultValues: defaultsFromDetail(detail),
+    defaultValues: defaultsFromDetail(detail, isEdit ? undefined : initialDate),
   });
 
   // Sync form on open / detail change. Reset only when drawer opens or a *different*
-  // integration is loaded — same pattern as BloggerEditDrawer.
+  // integration is loaded — same pattern as BloggerEditDrawer. `initialDate` only
+  // matters in create mode; in edit mode the BFF detail wins.
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentional reset trigger
   useEffect(() => {
     if (open) {
-      form.reset(defaultsFromDetail(detail));
+      form.reset(defaultsFromDetail(detail, isEdit ? undefined : initialDate));
     }
-  }, [open, detail?.id, detail?.updated_at]);
+  }, [open, detail?.id, detail?.updated_at, initialDate, isEdit]);
 
   const upsert = useUpsertIntegration();
 
