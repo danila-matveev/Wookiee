@@ -13,7 +13,7 @@ from sqlalchemy.exc import IntegrityError
 
 from services.influencer_crm.config import LOG_LEVEL
 from services.influencer_crm.etag import ETagMiddleware
-from services.influencer_crm.routers import bloggers, briefs, health, integrations, metrics, products, promos, search, tags
+from services.influencer_crm.routers import bloggers, briefs, health, integrations, metrics, ops, products, promos, search, tags
 
 logging.basicConfig(
     level=LOG_LEVEL,
@@ -38,6 +38,7 @@ def create_app() -> FastAPI:
     app.include_router(briefs.router)
     app.include_router(metrics.router)
     app.include_router(search.router)
+    app.include_router(ops.router)
 
     @app.exception_handler(IntegrityError)
     def _pg_integrity_handler(request, exc: IntegrityError):
