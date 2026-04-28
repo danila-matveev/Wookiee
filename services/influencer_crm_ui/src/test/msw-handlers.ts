@@ -233,6 +233,53 @@ export const handlers = [
       updated_at: now,
     });
   }),
+  // --- Global search (T18) ---------------------------------------------------
+  // Mirrors GET /search?q=...&limit=... from services/influencer_crm/routers/search.py.
+  // Returns a flat dict { bloggers, integrations } — both lists, no pagination.
+  // Test fixture is intentionally tiny (1 blogger + 1 integration) to keep the
+  // smoke test deterministic without coupling to other handlers' fixtures.
+  http.get('/api/search', () =>
+    HttpResponse.json({
+      bloggers: [
+        {
+          id: 11,
+          display_handle: '_anna.blog',
+          real_name: 'Anna Search',
+          status: 'active',
+          default_marketer_id: 7,
+          price_story_default: null,
+          price_reels_default: null,
+          created_at: '2026-04-01T10:00:00Z',
+          updated_at: '2026-04-28T10:00:00Z',
+        },
+      ],
+      integrations: [
+        {
+          id: 91,
+          blogger_id: 11,
+          marketer_id: 7,
+          brief_id: null,
+          publish_date: '2026-05-12',
+          channel: 'instagram',
+          ad_format: 'story',
+          marketplace: 'wb',
+          stage: 'lead',
+          outcome: null,
+          is_barter: false,
+          cost_placement: '15000',
+          cost_delivery: null,
+          cost_goods: null,
+          total_cost: '15000',
+          erid: null,
+          fact_views: null,
+          fact_orders: null,
+          fact_revenue: null,
+          created_at: '2026-04-20T10:00:00Z',
+          updated_at: '2026-04-20T10:00:00Z',
+        },
+      ],
+    }),
+  ),
   // --- Products (T17) --------------------------------------------------------
   // Two model_osnova fixtures cover the page test ("Wendy" + "Joy" must both
   // appear) and exercise expand-on-click against the detail handler.
