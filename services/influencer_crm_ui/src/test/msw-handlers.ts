@@ -233,4 +233,139 @@ export const handlers = [
       updated_at: now,
     });
   }),
+  // --- Briefs (T15) ----------------------------------------------------------
+  // The real BFF currently only ships POST /briefs, POST /briefs/{id}/versions,
+  // GET /briefs/{id}/versions. The list/detail/PATCH endpoints used by the UI
+  // are anticipated — handlers here echo fixtures to keep the page testable.
+  ...(() => {
+    const briefsFixture = [
+      {
+        id: 101,
+        title: 'ТЗ для Анны / WB / сторис',
+        status: 'draft',
+        current_version: 1,
+        current_version_id: 5001,
+        blogger_id: 11,
+        blogger_handle: '_anna.blog',
+        integration_id: null,
+        scheduled_at: '2026-05-12',
+        budget: '15000',
+        created_at: '2026-04-20T10:00:00Z',
+        updated_at: '2026-04-20T10:00:00Z',
+      },
+      {
+        id: 102,
+        title: 'OZON интеграция / Telegram',
+        status: 'on_review',
+        current_version: 2,
+        current_version_id: 5002,
+        blogger_id: 12,
+        blogger_handle: 'tg_blogger',
+        integration_id: null,
+        scheduled_at: '2026-05-15',
+        budget: '8000',
+        created_at: '2026-04-21T10:00:00Z',
+        updated_at: '2026-04-22T10:00:00Z',
+      },
+      {
+        id: 103,
+        title: 'TikTok бартер',
+        status: 'signed',
+        current_version: 3,
+        current_version_id: 5003,
+        blogger_id: 13,
+        blogger_handle: 'tiktok_blogger',
+        integration_id: 3,
+        scheduled_at: '2026-05-18',
+        budget: null,
+        created_at: '2026-04-22T10:00:00Z',
+        updated_at: '2026-04-23T10:00:00Z',
+      },
+      {
+        id: 104,
+        title: 'YouTube long-form',
+        status: 'completed',
+        current_version: 4,
+        current_version_id: 5004,
+        blogger_id: 14,
+        blogger_handle: 'yt_blogger',
+        integration_id: 4,
+        scheduled_at: '2026-04-30',
+        budget: '50000',
+        created_at: '2026-04-10T10:00:00Z',
+        updated_at: '2026-04-25T10:00:00Z',
+      },
+    ];
+
+    return [
+      http.get('/api/briefs', () => HttpResponse.json({ items: briefsFixture, next_cursor: null })),
+      http.get('/api/briefs/:id', ({ params }) => {
+        const id = Number(params.id);
+        const base = briefsFixture.find((b) => b.id === id) ?? briefsFixture[0];
+        return HttpResponse.json({
+          ...base,
+          id,
+          content_md: `# ${base.title}\n\n- Пункт 1\n- Пункт 2`,
+          versions: [
+            {
+              id: base.current_version_id,
+              brief_id: id,
+              version: base.current_version,
+              content_md: `# ${base.title}\n\n- Пункт 1\n- Пункт 2`,
+              created_at: base.updated_at,
+            },
+          ],
+        });
+      }),
+      http.post('/api/briefs', async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        const now = new Date().toISOString();
+        return HttpResponse.json(
+          {
+            id: 999,
+            title: body.title ?? '',
+            status: 'draft',
+            current_version: 1,
+            current_version_id: 5999,
+            blogger_id: body.blogger_id ?? null,
+            blogger_handle: null,
+            integration_id: body.integration_id ?? null,
+            scheduled_at: null,
+            budget: null,
+            created_at: now,
+            updated_at: now,
+          },
+          { status: 201 },
+        );
+      }),
+      http.post('/api/briefs/:id/versions', async ({ params, request }) => {
+        const body = (await request.json()) as { content_md?: string };
+        const briefId = Number(params.id);
+        const now = new Date().toISOString();
+        // Echo back: simulate a freshly-created version row.
+        return HttpResponse.json(
+          {
+            id: 6000 + briefId,
+            brief_id: briefId,
+            version: 2,
+            content_md: body.content_md ?? '',
+            created_at: now,
+          },
+          { status: 201 },
+        );
+      }),
+      http.patch('/api/briefs/:id', async ({ params, request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        const id = Number(params.id);
+        const existing = briefsFixture.find((b) => b.id === id) ?? briefsFixture[0];
+        const now = new Date().toISOString();
+        return HttpResponse.json({
+          ...existing,
+          ...body,
+          id,
+          updated_at: now,
+        });
+      }),
+    ];
+  })(),
 ];
