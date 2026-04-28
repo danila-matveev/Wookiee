@@ -1,15 +1,38 @@
 import { api } from '@/lib/api';
 
+export type BloggerStatus = 'active' | 'in_progress' | 'new' | 'paused';
+
 export interface BloggerOut {
   id: number;
+  display_handle: string;
+  real_name: string | null;
+  status: BloggerStatus;
+  default_marketer_id: number | null;
+  price_story_default: string | null;
+  price_reels_default: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface BloggerChannelOut {
+  id: number;
+  channel: string;
   handle: string;
-  display_name: string | null;
-  status: 'active' | 'paused' | 'archived';
-  marketer_id: number | null;
-  tags: { id: number; name: string }[];
-  channels_count: number;
+  url: string | null;
+}
+
+export interface BloggerDetailOut extends BloggerOut {
+  channels: BloggerChannelOut[];
   integrations_count: number;
-  updated_at: string;
+  integrations_done: number;
+  last_integration_at: string | null;
+  total_spent: string;
+  avg_cpm_fact: string | null;
+  contact_tg: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  notes: string | null;
+  geo_country: string[] | null;
 }
 
 export interface BloggersPage {
@@ -18,7 +41,7 @@ export interface BloggersPage {
 }
 
 export interface BloggerListParams {
-  status?: 'active' | 'paused' | 'archived';
+  status?: BloggerStatus;
   marketer_id?: number;
   tag_id?: number;
   q?: string;
@@ -33,4 +56,8 @@ export function listBloggers(params: BloggerListParams = {}): Promise<BloggersPa
   }
   const q = search.toString();
   return api.get<BloggersPage>(`/bloggers${q ? `?${q}` : ''}`);
+}
+
+export function getBlogger(id: number): Promise<BloggerDetailOut> {
+  return api.get<BloggerDetailOut>(`/bloggers/${id}`);
 }

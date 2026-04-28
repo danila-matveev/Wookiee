@@ -13,6 +13,6 @@ describe('useBloggers', () => {
       ),
     });
     await waitFor(() => expect(result.current.data).toBeDefined());
-    expect(result.current.data?.pages[0]?.items[0]?.handle).toBe('_anna.blog');
+    expect(result.current.data?.pages[0]?.items[0]?.display_handle).toBe('_anna.blog');
   });
 });
