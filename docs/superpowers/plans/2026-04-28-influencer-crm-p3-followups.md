@@ -242,6 +242,28 @@
 
 ---
 
+## FU-20 — Color-contrast pass по дизайн-системе (UI a11y)
+
+**Контекст (обнаружено в P4 Gap 1, axe-spec):** axe находит реальные WCAG-нарушения по color-contrast на бренд-цветах прототипа:
+- `text-success` (#22C55E) на `bg-success/10` (#E9F9EF) → 2.08:1 (требуется 4.5:1) — Badge
+- `text-white` на `bg-primary` (#F97316) → 2.8:1 (требуется 4.5:1) — primary buttons, sidebar active state
+- `text-primary-hover` (#EA580C) на `bg-primary-light` (#FFF7ED) → 3.35:1 — FilterPill active state
+- `text-primary` (#F97316) на `bg-bg` (#F8FAFC) → 2.67:1 — KPI values на slices/products
+
+В axe-spec правило `color-contrast` сейчас disabled с reference на FU-20. **Не блокирует production**, но при production cutover для b2b-маркетологов с потенциальными accessibility-требованиями стоит провести design pass.
+
+**Что сделать:**
+- [ ] Заказать у дизайнера или сгенерировать через `gstack-design-consultation` ревизию палитры с поддержкой WCAG AA на всех контрастах:
+  - Тёмные варианты `text-success-strong` / `text-warning-strong` / `text-info-strong` для использования над цветными светлыми bg.
+  - Альтернатива: `bg-success-{darker}` (e.g., #15803D) с `text-white` для Badge — нарушает «warm minimalism» прототипа, но WCAG-чистый.
+  - Primary button: либо `text-white` на более тёмном `bg-primary-darker` (e.g., #C2410C), либо использование `border + text-primary` инверсии.
+- [ ] После замены color tokens — снять `disableRules(['color-contrast'])` в `e2e/golden-a11y.spec.ts` и убедиться что 7/7 routes снова PASS.
+- [ ] Прокатать визуально дизайнером — не сломалась ли «refined orange minimalism» эстетика прототипа.
+
+**Effort:** 4-6 часов на дизайн-итерацию + 2 часа на token replacement + verification.
+
+---
+
 ## FU-7 — 400 guard для cursor + q combo
 
 **Контекст:** В T8 docstring отмечает "list_bloggers + q + cursor: undefined behavior — use /search". Сейчас комбинация молча возвращает что-то. Лучше явный 400 вместо surprise-результатов.

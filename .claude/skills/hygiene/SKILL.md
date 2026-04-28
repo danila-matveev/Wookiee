@@ -7,7 +7,7 @@ triggers:
   - hygiene check
 metadata:
   category: infra
-  version: 1.0.0
+  version: 1.1.0
   owner: danila
 ---
 
@@ -26,8 +26,23 @@ Single-pass repo maintenance routine. Spec: `docs/superpowers/specs/2026-04-27-h
 ## Pre-conditions (skill aborts if missing)
 
 - Repo working directory clean OR all uncommitted changes are inside whitelisted `unpushed_paths` (see config).
-- `.env` contains `TELEGRAM_ALERTS_BOT_TOKEN` (общий бот системных уведомлений), `HYGIENE_TELEGRAM_CHAT_ID`, `CLOUDFLARE_API_TOKEN`, `POSTGRES_*` (Supabase).
+- Required env vars present **either in shell environment OR in `.env`**: `TELEGRAM_ALERTS_BOT_TOKEN` (общий бот системных уведомлений), `HYGIENE_TELEGRAM_CHAT_ID`, `CLOUDFLARE_API_TOKEN`, `POSTGRES_*` (Supabase). On GitHub Actions runner only shell env is set (no `.env` file) — that's expected, do **not** abort if `.env` is missing as long as the variables are exported.
 - Branch `main` is reachable (`git fetch origin main` works).
+
+**Concrete check (use this exact logic, do not invent your own):**
+```bash
+for var in TELEGRAM_ALERTS_BOT_TOKEN HYGIENE_TELEGRAM_CHAT_ID CLOUDFLARE_API_TOKEN; do
+  if [ -z "${!var}" ]; then
+    # not in shell env — try .env (local dev path)
+    if [ -f .env ] && grep -q "^${var}=" .env; then
+      export "${var}=$(grep "^${var}=" .env | head -1 | cut -d= -f2-)"
+    else
+      echo "ABORT: $var not in shell env and not in .env" >&2
+      exit 1
+    fi
+  fi
+done
+```
 
 If preconditions fail, the skill emits a single error message + Telegram alert (treated as `security_count=0, ask_count=0, error=1`), and exits.
 
@@ -142,11 +157,15 @@ curl -sf -X POST "https://api.telegram.org/bot$TELEGRAM_ALERTS_BOT_TOKEN/sendMes
 
 After security alerts, continue to Phase 4 (PR still opens for non-security findings).
 
-## Phase 4 — PR
+## Phase 4 — PR / Issue
 
-If both `auto` and `ask` buckets are empty: skip this phase entirely.
+Three sub-cases based on bucket sizes:
 
-Otherwise:
+### 4a. Both auto and ask buckets empty
+Skip entirely. Continue to Phase 5.
+
+### 4b. Auto bucket has commits (regardless of ask bucket)
+Auto-fixes were committed on `chore/hygiene-$RUN_ID` in Phase 3a. Now:
 1. Push the branch: `git push -u origin "chore/hygiene-$RUN_ID"`.
 2. Build PR body from `/tmp/hygiene-followup-<run_id>.md` + summary of auto-fixed groups.
 3. Invoke the `pullrequest` skill (project version):
@@ -156,13 +175,32 @@ Otherwise:
 
 PR title: `chore(hygiene): {auto_count} auto-fixed, {ask_count} need review — {YYYY-MM-DD}`.
 
+### 4c. Auto bucket empty BUT ask bucket has findings
+Branch has no commits, so a PR cannot be opened. Open a GitHub issue instead — that way ask findings stay discoverable on the project board:
+
+```bash
+gh issue create \
+  --title "hygiene followups — $(date -u +%Y-%m-%d)" \
+  --label "hygiene,followup" \
+  --body-file /tmp/hygiene-followup-$RUN_ID.md
+```
+
+Capture the issue URL → save as `PR_URL` for Phase 6/7 logging (the field name stays `pr_url` for schema stability; downstream consumers should treat it as "discussion URL"). Mention in NOTIFY message that this is an issue, not a PR.
+
+If `gh issue create` fails or `gh` not available → fall back to listing followups in the Cloudflare report only (Phase 5 already covers this).
+
 ## Phase 5 — PUBLISH (always)
 
 Render `prompts/publish.md` with run data → markdown.
-Invoke `cloudflare-pub` skill:
+
+Use the **project-level** `cloudflare-pub` skill (`.claude/skills/cloudflare-pub/`) so this works on GitHub Actions runners (where `~/.claude/skills/` is empty):
 
 ```bash
-python3 ~/.claude/skills/cloudflare-pub/scripts/publish.py \
+PUBLISH_SCRIPT=".claude/skills/cloudflare-pub/scripts/publish.py"
+# Local-dev fallback if run from outside repo root:
+[ ! -f "$PUBLISH_SCRIPT" ] && PUBLISH_SCRIPT="$HOME/.claude/skills/cloudflare-pub/scripts/publish.py"
+
+python3 "$PUBLISH_SCRIPT" \
   /tmp/hygiene-report-$RUN_ID.md \
   --name "wookiee-hygiene-$RUN_DATE" \
   --title "Wookiee Hygiene Run $RUN_DATE"

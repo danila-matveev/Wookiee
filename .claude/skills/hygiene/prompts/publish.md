@@ -108,7 +108,7 @@ Telegram плохо рендерит markdown — пишем обычным те
 {Иначе строку не выводить.}
 
 {Если ask_count > 0:}
-Оставил тебе на ревью: {ask_count_words} — открыл PR.
+Оставил тебе на ревью: {ask_count_words} — {если auto_count > 0: открыл PR | иначе: завёл issue (auto-бакет был пустой, коммитить нечего)}.
 {Иначе строку не выводить.}
 
 {Если security_count > 0:}
@@ -116,7 +116,8 @@ Telegram плохо рендерит markdown — пишем обычным те
 {Иначе строку не выводить.}
 
 Полный отчёт: {cloudflare_url}
-{Если pr_url:}PR: {pr_url}
+{Если pr_url начинается с github.com/.../pull/:}PR: {pr_url}
+{Если pr_url начинается с github.com/.../issues/:}Issue: {pr_url}
 ```
 
 ### Алерт об аварийной остановке
