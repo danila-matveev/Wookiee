@@ -7,7 +7,7 @@ triggers:
   - hygiene check
 metadata:
   category: infra
-  version: 1.1.0
+  version: 1.1.1
   owner: danila
 ---
 
@@ -43,6 +43,8 @@ for var in TELEGRAM_ALERTS_BOT_TOKEN HYGIENE_TELEGRAM_CHAT_ID CLOUDFLARE_API_TOK
   fi
 done
 ```
+
+**Do NOT add format/placeholder checks of your own** (no regex on `0000000000:AA...`, no length checks, no "looks like a placeholder" heuristics). Trust that if the variable is set and non-empty, it's the real value. Telegram and Cloudflare APIs themselves will reject bad tokens with clear error codes — that's where you'd surface a problem, not in a pre-flight pattern match. Inventing your own validation produces false negatives that silently swallow real notifications.
 
 If preconditions fail, the skill emits a single error message + Telegram alert (treated as `security_count=0, ask_count=0, error=1`), and exits.
 
@@ -229,6 +231,8 @@ curl -sf -X POST "https://api.telegram.org/bot$TELEGRAM_ALERTS_BOT_TOKEN/sendMes
   -d "chat_id=$HYGIENE_TELEGRAM_CHAT_ID" \
   --data-urlencode "text=$MSG"
 ```
+
+**Не делай предварительной валидации токена** — никаких regex-проверок формата, никаких "looks like a placeholder" эвристик, никаких сравнений с шаблонами из `.env.example`. Если переменная установлена и непустая (это уже проверено в Pre-conditions) — просто отправляй. Если токен битый, Telegram вернёт `ok: false` с понятным `description` — это и логируй в `details.warnings`. Самопридуманные проверки приводят к молчаливому пропуску реальных уведомлений.
 
 Никаких английских лейблов (`Auto-fixed:`, `Needs review:`), никаких таблиц, никаких `RUN_ID` — Telegram это не рендерит, читателю выглядит как мусор.
 
