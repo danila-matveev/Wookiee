@@ -35,8 +35,10 @@ def _set_search_path(dbapi_conn, connection_record) -> None:
     reliable way to ensure unqualified table names resolve to the crm schema.
     """
     cursor = dbapi_conn.cursor()
-    cursor.execute("SET search_path TO crm, public")
-    cursor.close()
+    try:
+        cursor.execute("SET search_path TO crm, public")
+    finally:
+        cursor.close()
 
 
 _Session = sessionmaker(bind=_engine, expire_on_commit=False, future=True)
