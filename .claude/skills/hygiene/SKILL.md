@@ -1,6 +1,6 @@
 ---
 name: hygiene
-description: "Daily repo hygiene — push ready work, delete garbage, sync skills cross-platform, security tripwire. Reuse @matveevos_head_bot for Telegram alerts (only on ask-user/security). Cloudflare report every run. Designed for GitHub Actions cron at 00:00 São Paulo. Triggers: /hygiene, проверь репо, hygiene check."
+description: "Daily repo hygiene — push ready work, delete garbage, sync skills cross-platform, security tripwire. Сообщения в общий @wookiee_alerts_bot (TELEGRAM_ALERTS_BOT_TOKEN), только при ask-user/security. Cloudflare report every run. GitHub Actions cron 00:00 São Paulo. Triggers: /hygiene, проверь репо, hygiene check."
 triggers:
   - /hygiene
   - проверь репо
@@ -26,7 +26,7 @@ Single-pass repo maintenance routine. Spec: `docs/superpowers/specs/2026-04-27-h
 ## Pre-conditions (skill aborts if missing)
 
 - Repo working directory clean OR all uncommitted changes are inside whitelisted `unpushed_paths` (see config).
-- `.env` contains `TELEGRAM_MANAGER_BOT_TOKEN`, `HYGIENE_TELEGRAM_CHAT_ID`, `CLOUDFLARE_API_TOKEN`, `POSTGRES_*` (Supabase).
+- `.env` contains `TELEGRAM_ALERTS_BOT_TOKEN` (общий бот системных уведомлений), `HYGIENE_TELEGRAM_CHAT_ID`, `CLOUDFLARE_API_TOKEN`, `POSTGRES_*` (Supabase).
 - Branch `main` is reachable (`git fetch origin main` works).
 
 If preconditions fail, the skill emits a single error message + Telegram alert (treated as `security_count=0, ask_count=0, error=1`), and exits.
@@ -124,20 +124,21 @@ Build a markdown section that will land in the PR description:
 Save to `/tmp/hygiene-followup-<run_id>.md` for Phase 4.
 
 ### 3c. security bucket — IMMEDIATE
-For each security finding, send Telegram alert NOW:
+For each security finding, send Telegram alert NOW. Сообщение — на простом русском, по шаблону из `prompts/publish.md → Алерт о подозрительном файле`. Никогда не включать само значение секрета — только путь и человекочитаемую причину.
 
 ```bash
-SECURITY_MSG="🚨 Wookiee Hygiene SECURITY [$RUN_DATE]
-Check: $check
-Path: $path
-Reason: $reason
-Action required: review immediately."
-curl -sf -X POST "https://api.telegram.org/bot$TELEGRAM_MANAGER_BOT_TOKEN/sendMessage" \
+SECURITY_MSG="🚨 Hygiene нашёл подозрительный файл в репозитории Wookiee.
+
+Файл: $path
+Что не так: $reason_human
+
+Глянь и убери, если это реальный секрет. Само содержимое не присылаю — оно может быть опасным."
+curl -sf -X POST "https://api.telegram.org/bot$TELEGRAM_ALERTS_BOT_TOKEN/sendMessage" \
   -d "chat_id=$HYGIENE_TELEGRAM_CHAT_ID" \
   --data-urlencode "text=$SECURITY_MSG"
 ```
 
-Do NOT include the leaked secret value in the message — only the path and reason.
+`$reason_human` — это `reason` из finding, переписанный по-человечески (например, `"похоже на API-ключ"`, `"в трекинге .env"`, `"в .env.example лежит реальное значение"`).
 
 After security alerts, continue to Phase 4 (PR still opens for non-security findings).
 
@@ -173,20 +174,25 @@ Capture the Permanent URL from output → save as `CLOUDFLARE_URL` for Phase 6 +
 
 Skip if `ask_count = 0 AND security_count = 0`. (Security already sent in 3c.)
 
-Otherwise:
+Otherwise — собрать сообщение по шаблону «Сводка по итогам уборки» из `prompts/publish.md`. Числа выводить словами для согласованности (один файл / два файла / пять файлов / одну ветку / две ветки).
+
+Псевдокод:
+
 ```bash
-MSG="🧹 Wookiee Hygiene $RUN_DATE
-Auto-fixed: $auto_count
-Needs review: $ask_count
-Security flags: $security_count
+# Соберите $MSG_BODY из шаблона «Сводка» в prompts/publish.md.
+# Строки выводите только если соответствующий счётчик > 0.
 
-Full report: $CLOUDFLARE_URL
-PR: $PR_URL"
+MSG="🧹 Hygiene убрался в репозитории Wookiee.
 
-curl -sf -X POST "https://api.telegram.org/bot$TELEGRAM_MANAGER_BOT_TOKEN/sendMessage" \
+${LINE_AUTO}${LINE_ASK}${LINE_SECURITY}
+Полный отчёт: ${CLOUDFLARE_URL}${LINE_PR}"
+
+curl -sf -X POST "https://api.telegram.org/bot$TELEGRAM_ALERTS_BOT_TOKEN/sendMessage" \
   -d "chat_id=$HYGIENE_TELEGRAM_CHAT_ID" \
   --data-urlencode "text=$MSG"
 ```
+
+Никаких английских лейблов (`Auto-fixed:`, `Needs review:`), никаких таблиц, никаких `RUN_ID` — Telegram это не рендерит, читателю выглядит как мусор.
 
 ## Phase 7 — LOG
 

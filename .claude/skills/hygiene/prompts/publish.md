@@ -1,136 +1,166 @@
 # Hygiene — Publish (Phase 5 + 6 templates)
 
-## Cloudflare article template
+Стиль всех сообщений и отчётов — как репорт сотрудника тимлиду:
+- по-русски, простыми словами
+- без английских лейблов, без `RUN_ID`, без `bucket`, без markdown-таблиц в Telegram
+- структура: что сделано → какой функционал затронут → что нашёл → что предлагаю улучшить
+- если всё чисто — короткое «всё в порядке, ничего не делал»
 
-Render to `/tmp/hygiene-report-$RUN_ID.md`, then publish via `cloudflare-pub`.
+## Cloudflare-отчёт
+
+Рендерится в `/tmp/hygiene-report-$RUN_ID.md` и публикуется через `cloudflare-pub`.
+Переменные в `{...}` подставляются скиллом из данных запуска.
 
 ```markdown
-# Wookiee Hygiene Run — {YYYY-MM-DD}
+# Уборка репозитория — {DD месяца YYYY}
 
-**Status:** {clean | N auto-fixed | N need review | security flag}
-**Run ID:** `{RUN_ID}`
-**Triggered by:** {github_actions | manual | workflow_dispatch}
-**Duration:** {DURATION}s
-**Tokens used:** ~{TOKENS}
+Привет. Это автоматический отчёт по утренней уборке репозитория Wookiee.
 
----
+## Коротко
 
-## Summary
+{Если auto_count=0, ask_count=0, security_count=0:}
+Всё чисто. Ничего не трогал, ничего подозрительного не нашёл.
 
-| Bucket | Count |
+{Иначе:}
+Сегодня я починил {auto_count_words} сам, {ask_count_words} оставил тебе на ревью{, и нашёл {security_count_words} | (без точки, ничего опасного нет)}.
+
+## Что я сделал сам
+
+{Только если auto_count > 0. Группируется по типу проверки. Каждая группа — короткий человеческий абзац, не таблица. Пример:}
+
+**Удалил {N} дублей из iCloud.** Это файлы вида `что-то 2.xlsx`, `что-то 3.pdf` — обычно остаются от синхронизации Mac. На репозиторий не влияют, безопасно удалить:
+- `services/.../отчёт 2.xlsx`
+- `services/.../выгрузка 3.pdf`
+- ...
+
+**Убрал из git кэши Python.** {N} директорий `__pycache__` лежали в коммитах — это служебные файлы интерпретатора, должны быть в `.gitignore`. Добавил их в `.gitignore` и убрал из истории.
+
+**Сделал push готовых документов.** Нашёл {N} файла под `docs/superpowers/plans/`, которые лежали локально без коммита больше дня. Закоммитил и запушил.
+
+{Можно добавить и другие группы по тому же шаблону — без таблиц, абзацем.}
+
+## Что оставил тебе на ревью
+
+{Только если ask_count > 0. Тоже абзацами, не таблицей.}
+
+**Старые ветки (`{check: stale-branches}`).** Нашёл {N} веток на origin, которые не двигались больше двух недель. Удалять автоматически нельзя — вдруг чья-то долгая работа. Список:
+- `origin/feat/...` — последний коммит {время назад}
+- ...
+
+**Сиротские документы.** Нашёл {N} `.md`-файла в `docs/`, на которые никто не ссылается и которые не правились больше 60 дней. Возможно, протухли и пора удалить, но решение за тобой:
+- `docs/...` — последняя правка {время назад}
+- ...
+
+**Сервисы без README.** В {N} папках `services/*/` нет `README.md`. Не критично, но полезно завести хотя бы заглушку, чтобы новый человек понимал, что это за сервис:
+- `services/...`
+- ...
+
+{Аналогично для остальных типов проверок.}
+
+## Что я нашёл подозрительного
+
+{Только если security_count > 0. Каждый случай — отдельный абзац.}
+
+**В файле `{path}` похоже лежит секрет.** Скан нашёл строку, которая выглядит как реальный API-ключ или токен (содержимое не привожу — оно опасное). Проверь и убери из репозитория. Я уже отправил тебе алерт в Telegram сразу как нашёл, не дожидался конца уборки.
+
+{Если security_count = 0 — раздел вообще не выводить.}
+
+## Что предлагаю улучшить
+
+{Опционально, если есть наблюдения за несколько запусков. На первом запуске можно опустить.}
+
+- Например: «Каждый день нахожу одни и те же `__pycache__` — стоит добавить pre-commit хук, чтобы они не попадали в коммит вообще.»
+- Например: «За последние 7 запусков в `docs/skills/` накопилось {N} незакоммиченных файлов — может, стоит расширить whitelist или ввести правило „коммитить в день написания“.»
+
+## Технические детали
+
+(Это для протокола, можно не читать.)
+
+- Когда запускался: {YYYY-MM-DD HH:MM} UTC
+- Сколько проработал: {DURATION}
+- Что запустило: {github_actions | руками}
+- Pull Request: {если открыт — ссылка, иначе «не открывал, чинить нечего»}
+- Текущий коммит main: `{git_sha_short}`
+```
+
+## Telegram-сообщения
+
+Telegram плохо рендерит markdown — пишем обычным текстом, без таблиц, без бэктиков на длинные блоки. Эмодзи использовать умеренно — один в начале строки максимум.
+
+### Алерт о подозрительном файле (Phase 3c, отправляется сразу как нашли)
+
+```
+🚨 Hygiene нашёл подозрительный файл в репозитории Wookiee.
+
+Файл: {path}
+Что не так: {reason на простом русском, например «похоже на API-ключ»}
+
+Глянь и убери, если это реальный секрет. Само содержимое не присылаю — оно может быть опасным.
+```
+
+### Сводка по итогам уборки (Phase 6, только если есть что сказать)
+
+```
+🧹 Hygiene убрался в репозитории Wookiee.
+
+{Если auto_count > 0:}
+Сам починил: {auto_count_words}.
+{Иначе строку не выводить.}
+
+{Если ask_count > 0:}
+Оставил тебе на ревью: {ask_count_words} — открыл PR.
+{Иначе строку не выводить.}
+
+{Если security_count > 0:}
+Подозрительных файлов: {security_count_words}. (Алерт уже прислал отдельно.)
+{Иначе строку не выводить.}
+
+Полный отчёт: {cloudflare_url}
+{Если pr_url:}PR: {pr_url}
+```
+
+### Алерт об аварийной остановке
+
+```
+⚠️ Hygiene не доработал до конца.
+
+Причина: {reason на простом русском, например «упёрся в лимит токенов» или «не смог достучаться до Telegram»}
+Что успел сделать: {краткий список или «ничего, упал на старте»}
+
+Подробности: {cloudflare_url или «отчёта нет»}
+```
+
+## Числа словами
+
+Чтобы сообщения читались естественно, выводи числа словами для маленьких значений:
+
+| Число | Слово |
 |---|---|
-| Auto-fixed | {auto_count} |
-| Needs review | {ask_count} |
-| Security flags | {security_count} |
-| Skipped | {skip_count} |
+| 0 | ничего / ничего не нашёл |
+| 1 | один файл / один пункт |
+| 2 | два файла |
+| 3 | три файла |
+| 4 | четыре файла |
+| 5–10 | {N} файлов |
+| 11+ | {N} файлов |
 
-PR: [{pr_branch}]({pr_url}) — {merged | open — needs review | not opened}
+Согласовывать слова по падежу: «один файл», «два файла», «пять файлов», «одну ветку», «две ветки», «пять веток».
 
----
+## Подстановки
 
-## Auto-fixed
-
-(Only present if auto_count > 0.)
-
-For each auto finding (grouped by check):
-
-### `{check}` — {N items}
-
-- `{path}` — {reason}. Action: {auto_action_command}.
-
----
-
-## Needs review
-
-(Only present if ask_count > 0.)
-
-For each ask finding:
-
-### `{check}`: {short label}
-
-**Paths:**
-- `{path1}`
-- `{path2}`
-
-**Reason:** {reason}
-**Suggested action:** {suggested_action}
-**Evidence:** {evidence}
-
----
-
-## Security flags
-
-(Only present if security_count > 0.)
-
-For each security finding:
-
-### 🚨 `{check}` — {severity}
-
-- Path: `{path}`
-- Reason: {reason}
-- Telegram alert sent at: {timestamp}
-
-(Secret values are never published — only paths.)
-
----
-
-## Stats
-
-- Phase durations: scan={t1}s, classify={t2}s, act={t3}s, pr={t4}s, publish={t5}s.
-- Cron run number: {N} (counted from `tool_runs`).
-- Repo state hash (post-run): `{git rev-parse HEAD}`.
-```
-
-## Telegram message templates
-
-### Security alert (sent immediately during Phase 3c)
-
-```
-🚨 Wookiee Hygiene SECURITY [{YYYY-MM-DD}]
-Check: {check}
-Path: {path}
-Reason: {reason}
-Action required: review immediately.
-```
-
-### Run summary (Phase 6, only if ask_count > 0 OR security_count > 0)
-
-```
-🧹 Wookiee Hygiene {YYYY-MM-DD}
-Auto-fixed: {auto_count}
-Needs review: {ask_count}
-Security flags: {security_count}
-
-Full report: {cloudflare_url}
-PR: {pr_url}
-```
-
-### Abort alert (cost cap or precondition fail)
-
-```
-⚠️ Wookiee Hygiene ABORTED [{YYYY-MM-DD}]
-Reason: {reason}
-Partial state: {what got done before abort}
-
-Investigate: {cloudflare_url or "no report"}
-```
-
-## Constants for templating
-
-| Variable | Source |
+| Переменная | Откуда |
 |---|---|
-| `{YYYY-MM-DD}` | `date -u +%Y-%m-%d` |
-| `{RUN_ID}` | `date -u +%Y%m%dT%H%M%SZ` (set at start of run, propagated everywhere) |
-| `{cloudflare_url}` | output of `cloudflare-pub` Permanent URL |
-| `{pr_url}` | output of `gh pr view --json url` |
-| `{auto_count}/{ask_count}/{security_count}/{skip_count}` | from classify Phase 2 |
-| `{DURATION}` | `date +%s` end - start |
-| `{TOKENS}` | from Anthropic API response usage block |
+| `{DD месяца YYYY}` | дата запуска, по-русски (например «28 апреля 2026») |
+| `{RUN_ID}` | `date -u +%Y%m%dT%H%M%SZ` — только для технических деталей в подвале |
+| `{auto_count}/{ask_count}/{security_count}` | из Phase 2 |
+| `{cloudflare_url}` | вывод `cloudflare-pub` |
+| `{pr_url}` | `gh pr view --json url` |
+| `{git_sha_short}` | `git rev-parse --short HEAD` |
+| `{DURATION}` | конец − начало, формат «3 минуты», «12 минут» |
 
-## Important formatting rules
+## Правила оформления
 
-- Always use Markdown headings (Cloudflare-pub renders them).
-- No raw HTML — `cloudflare-pub` strips/escapes some tags.
-- Code blocks use triple-backtick + language hint.
-- Telegram messages: plain text, no Markdown (Telegram interprets some chars).
-- Truncate any field longer than 500 chars to "…(truncated, see Cloudflare report)".
+- Cloudflare-отчёт: markdown, заголовки уровней 1–2, абзацы вместо таблиц где это естественно.
+- Telegram-сообщения: plain text, без markdown.
+- Если значение длиннее 500 символов — обрезать до «…(подробнее в полном отчёте)».
+- Никогда не выводить содержимое секретов — только путь к файлу и общую формулировку.

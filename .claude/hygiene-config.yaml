@@ -60,7 +60,8 @@ notifications:
     project_name_format: "wookiee-hygiene-{date}"
 
   telegram:
-    bot_env: TELEGRAM_MANAGER_BOT_TOKEN
+    bot_env: TELEGRAM_ALERTS_BOT_TOKEN  # общий @wookiee_alerts_bot
     chat_env: HYGIENE_TELEGRAM_CHAT_ID
     only_if_ask_user_or_security: true
-    message_prefix: "🧹 Wookiee Hygiene"
+    language: ru                          # сообщения на простом русском
+    style: peer-report                    # как отчёт сотрудника тимлиду
