@@ -6,6 +6,7 @@ import { BriefsPage } from '@/routes/briefs/BriefsPage';
 import { CalendarPage } from '@/routes/calendar/CalendarPage';
 import { IntegrationsKanbanPage } from '@/routes/integrations/IntegrationsKanbanPage';
 import { NotFound } from '@/routes/NotFound';
+import { OpsPage } from '@/routes/ops/OpsPage';
 import { ProductsPage } from '@/routes/products/ProductsPage';
 import { SearchPage } from '@/routes/search/SearchPage';
 import { SlicesPage } from '@/routes/slices/SlicesPage';
@@ -23,6 +24,7 @@ export const router = createBrowserRouter([
       { path: 'slices', element: <SlicesPage /> },
       { path: 'products', element: <ProductsPage /> },
       { path: 'search', element: <SearchPage /> },
+      { path: 'ops', element: <OpsPage /> },
       { path: '*', element: <NotFound /> },
     ],
   },

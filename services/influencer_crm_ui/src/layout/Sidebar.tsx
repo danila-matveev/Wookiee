@@ -1,4 +1,13 @@
-import { Calendar, FileText, Layers, type LucideIcon, Package, Search, Users } from 'lucide-react';
+import {
+  Activity,
+  Calendar,
+  FileText,
+  Layers,
+  type LucideIcon,
+  Package,
+  Search,
+  Users,
+} from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { cn } from '@/lib/cn';
 
@@ -15,6 +24,7 @@ const items: NavItem[] = [
   { to: '/briefs', icon: FileText, label: 'Брифы' },
   { to: '/products', icon: Package, label: 'Продукты' },
   { to: '/search', icon: Search, label: 'Поиск' },
+  { to: '/ops', icon: Activity, label: 'Ops' },
 ];
 
 export function Sidebar() {
