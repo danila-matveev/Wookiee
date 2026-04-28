@@ -206,7 +206,11 @@ log.finish(run_id, status='${STATUS}', result_url='${CLOUDFLARE_URL}', details=j
 "
 ```
 
-Set `STATUS=success` if all phases completed, `partial` if any check timed out or 1-2 phases failed, `failed` if hygiene aborted before Phase 5.
+Set `STATUS=success` if all phases completed (record warnings in `details.warnings`).
+Set `STATUS=timeout` if hygiene hit the 30-min wall-clock or 1-2 checks exceeded their 60s budget.
+Set `STATUS=error` if hygiene aborted before Phase 5 (precondition fail, hard-cap hit, unrecoverable error).
+
+Allowed `tool_runs.status` values (DB CHECK constraint): `running | success | error | timeout | data_not_ready`. Do NOT use `partial` or `failed` — they will fail the constraint.
 
 ## Hard rules — DO NOT VIOLATE
 
