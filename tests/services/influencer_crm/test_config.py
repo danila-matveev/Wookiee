@@ -1,8 +1,17 @@
 """Config loads required env vars."""
 from __future__ import annotations
 
-import os
+import sys
+
 import pytest
+
+
+def _evict_config() -> None:
+    """Remove cached config module so the next import re-executes its body."""
+    sys.modules.pop("services.influencer_crm.config", None)
+    pkg = sys.modules.get("services.influencer_crm")
+    if pkg is not None:
+        pkg.__dict__.pop("config", None)
 
 
 def test_config_loads_api_key(monkeypatch):
@@ -11,10 +20,9 @@ def test_config_loads_api_key(monkeypatch):
     monkeypatch.setenv("POSTGRES_USER", "u")
     monkeypatch.setenv("POSTGRES_PASSWORD", "p")
 
-    # Force reload — config caches at import time
-    import importlib
+    _evict_config()
+
     from services.influencer_crm import config
-    importlib.reload(config)
 
     assert config.API_KEY == "test-secret"
     assert config.DB_DSN.startswith("postgresql+psycopg2://u:p@h:")
@@ -26,7 +34,7 @@ def test_config_raises_on_missing_api_key(monkeypatch):
     monkeypatch.setenv("POSTGRES_USER", "u")
     monkeypatch.setenv("POSTGRES_PASSWORD", "p")
 
-    import importlib
-    from services.influencer_crm import config
+    _evict_config()
+
     with pytest.raises(RuntimeError, match="INFLUENCER_CRM_API_KEY"):
-        importlib.reload(config)
+        from services.influencer_crm import config  # noqa: F401
