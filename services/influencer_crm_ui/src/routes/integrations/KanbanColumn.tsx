@@ -8,9 +8,10 @@ import { KanbanCard } from './KanbanCard';
 interface KanbanColumnProps {
   stage: Stage;
   items: IntegrationOut[];
+  onOpenCard?: (id: number) => void;
 }
 
-export function KanbanColumn({ stage, items }: KanbanColumnProps) {
+export function KanbanColumn({ stage, items, onOpenCard }: KanbanColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: stage });
 
   return (
@@ -32,7 +33,7 @@ export function KanbanColumn({ stage, items }: KanbanColumnProps) {
             Пусто
           </p>
         ) : (
-          items.map((it) => <KanbanCard key={it.id} integration={it} />)
+          items.map((it) => <KanbanCard key={it.id} integration={it} onOpen={onOpenCard} />)
         )}
       </div>
     </div>

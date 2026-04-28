@@ -99,6 +99,25 @@ export const handlers = [
   http.get('/api/integrations', () =>
     HttpResponse.json({ items: integrationsFixture, next_cursor: null }),
   ),
+  http.get('/api/integrations/:id', ({ params }) => {
+    const id = Number(params.id);
+    const base = integrationsFixture.find((i) => i.id === id) ?? integrationsFixture[0];
+    return HttpResponse.json({
+      ...base,
+      id,
+      blogger_handle: '_anna.blog',
+      marketer_name: 'Маркетолог Иван',
+      substitutes: [],
+      posts: [],
+      contract_url: null,
+      post_url: null,
+      tz_url: null,
+      post_content: null,
+      notes: null,
+      has_marking: null,
+      has_contract: null,
+    });
+  }),
   http.patch('/api/integrations/:id', async ({ params, request }) => {
     const body = (await request.json()) as Record<string, unknown>;
     const existing = integrationsFixture.find((i) => i.id === Number(params.id));
@@ -108,6 +127,36 @@ export const handlers = [
       id: Number(params.id),
       updated_at: new Date().toISOString(),
     });
+  }),
+  http.post('/api/integrations', async ({ request }) => {
+    const body = (await request.json()) as Record<string, unknown>;
+    const now = new Date().toISOString();
+    return HttpResponse.json(
+      {
+        id: 999,
+        blogger_id: body.blogger_id ?? 0,
+        marketer_id: body.marketer_id ?? 0,
+        brief_id: null,
+        publish_date: body.publish_date ?? '2026-05-01',
+        channel: body.channel ?? 'instagram',
+        ad_format: body.ad_format ?? 'story',
+        marketplace: body.marketplace ?? 'wb',
+        stage: body.stage ?? 'lead',
+        outcome: null,
+        is_barter: body.is_barter ?? false,
+        cost_placement: body.cost_placement ?? null,
+        cost_delivery: body.cost_delivery ?? null,
+        cost_goods: body.cost_goods ?? null,
+        total_cost: '0',
+        erid: body.erid ?? null,
+        fact_views: null,
+        fact_orders: null,
+        fact_revenue: null,
+        created_at: now,
+        updated_at: now,
+      },
+      { status: 201 },
+    );
   }),
   http.get('/api/bloggers', () =>
     HttpResponse.json({

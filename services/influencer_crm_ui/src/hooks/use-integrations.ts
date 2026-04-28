@@ -1,9 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  createIntegration,
   getIntegration,
+  type IntegrationInput,
   type IntegrationListParams,
   type IntegrationOut,
   type IntegrationsPage,
+  type IntegrationUpdate,
   listIntegrations,
   type Stage,
   updateIntegration,
@@ -31,6 +34,26 @@ interface StageVars {
 
 interface MutationContext {
   snapshots: Array<[readonly unknown[], IntegrationsPage | undefined]>;
+}
+
+export interface UpsertIntegrationArgs {
+  id?: number;
+  body: IntegrationInput | IntegrationUpdate;
+}
+
+export function useUpsertIntegration() {
+  const qc = useQueryClient();
+  return useMutation<IntegrationOut, Error, UpsertIntegrationArgs>({
+    mutationFn: ({ id, body }) =>
+      id
+        ? updateIntegration(id, body as IntegrationUpdate)
+        : createIntegration(body as IntegrationInput),
+    onSuccess: (saved) => {
+      qc.invalidateQueries({ queryKey: ['integrations'] });
+      qc.invalidateQueries({ queryKey: ['integration', saved.id] });
+      qc.setQueryData(['integration', saved.id], saved);
+    },
+  });
 }
 
 export function useUpdateIntegrationStage() {

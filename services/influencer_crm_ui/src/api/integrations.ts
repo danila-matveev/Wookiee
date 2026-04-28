@@ -149,6 +149,36 @@ export interface IntegrationUpdate {
   fact_revenue?: string | null;
 }
 
+/**
+ * Mirrors `IntegrationCreate` on the BFF — a strict superset of `IntegrationUpdate`
+ * where blogger_id/marketer_id/publish_date/channel/ad_format/marketplace are required.
+ * Used by the upsert form: when no id is set we POST this; when id is set we PATCH the
+ * partial slice. We type as a shared shape and let the runtime pick which endpoint to hit.
+ */
+export interface IntegrationInput {
+  blogger_id: number;
+  marketer_id: number;
+  publish_date: string;
+  channel: Channel;
+  ad_format: AdFormat;
+  marketplace: Marketplace;
+  stage?: Stage;
+  outcome?: Outcome | null;
+  is_barter?: boolean;
+  cost_placement?: string | null;
+  cost_delivery?: string | null;
+  cost_goods?: string | null;
+  erid?: string | null;
+  notes?: string | null;
+  fact_views?: number | null;
+  fact_orders?: number | null;
+  fact_revenue?: string | null;
+}
+
+export function createIntegration(body: IntegrationInput): Promise<IntegrationOut> {
+  return api.post<IntegrationOut>('/integrations', body);
+}
+
 export function updateIntegration(id: number, body: IntegrationUpdate): Promise<IntegrationOut> {
   return api.patch<IntegrationOut>(`/integrations/${id}`, body);
 }

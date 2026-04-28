@@ -41,9 +41,10 @@ function formatCost(value: string): string {
 
 interface KanbanCardProps {
   integration: IntegrationOut;
+  onOpen?: (id: number) => void;
 }
 
-export function KanbanCard({ integration }: KanbanCardProps) {
+export function KanbanCard({ integration, onOpen }: KanbanCardProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: String(integration.id),
   });
@@ -59,16 +60,29 @@ export function KanbanCard({ integration }: KanbanCardProps) {
   const channel = integration.channel;
   const showPill = SUPPORTED_PILL_CHANNELS.has(channel);
 
+  // Click vs drag coexistence: dnd-kit's PointerSensor with activationConstraint.distance=5
+  // only consumes pointer events as a drag once the pointer has moved >= 5px. Below that
+  // threshold the synthetic click fires normally — so we can attach onClick directly. The
+  // explicit isDragging guard is cheap insurance in case dnd-kit ever lets a stray click slip.
+  function handleClick() {
+    if (isDragging) return;
+    onOpen?.(integration.id);
+  }
+
   return (
-    <div
+    <button
       ref={setNodeRef}
+      type="button"
       style={style}
       {...attributes}
       {...listeners}
+      onClick={handleClick}
       data-testid={`kanban-card-${integration.id}`}
       className={cn(
+        'block w-full text-left',
         'cursor-grab touch-none select-none rounded-lg border border-border bg-surface p-3 shadow-sm',
         'hover:border-primary-light hover:shadow',
+        'focus:outline-none focus:ring-2 focus:ring-primary/30',
         isDragging && 'border-primary outline outline-2 outline-primary-light/60 opacity-90',
       )}
     >
@@ -90,7 +104,7 @@ export function KanbanCard({ integration }: KanbanCardProps) {
         </span>
         <Badge tone="orange">{MARKETPLACE_LABEL[integration.marketplace]}</Badge>
       </div>
-    </div>
+    </button>
   );
 }
 
