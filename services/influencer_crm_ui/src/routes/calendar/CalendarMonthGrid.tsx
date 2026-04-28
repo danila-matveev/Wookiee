@@ -110,6 +110,7 @@ export function CalendarMonthGrid({
         {Array.from({ length: 6 }, (_, weekIdx) => (
           // biome-ignore lint/a11y/useSemanticElements: ARIA row is required as gridcell parent.
           // biome-ignore lint/suspicious/noArrayIndexKey: weekIdx is stable for the visible 6-row layout.
+          // biome-ignore lint/a11y/useFocusableInteractive: row is a non-interactive landmark; gridcell children carry tabIndex.
           <div key={`week-${weekIdx}`} role="row" className="contents">
             {cells.slice(weekIdx * 7, weekIdx * 7 + 7).map((date, colIdx) => {
               const idx = weekIdx * 7 + colIdx;
@@ -145,45 +146,48 @@ export function CalendarMonthGrid({
                   tabIndex={0}
                   aria-label={`${date.getDate()} ${date.toLocaleDateString('ru-RU', { month: 'long' })}${isToday ? ' (сегодня)' : ''}`}
                 >
-              <span
-                className={cn(
-                  'text-xs font-semibold',
-                  inMonth ? 'text-fg' : 'text-muted-fg/60',
-                  isToday && 'text-primary-hover',
-                )}
-              >
-                {date.getDate()}
-              </span>
-              <div className="flex flex-col gap-1">
-                {visible.map((ev) => (
-                  <button
-                    key={ev.id}
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onEventClick(ev.id);
-                    }}
-                    onKeyDown={(e) => e.stopPropagation()}
-                    className="flex items-center gap-1.5 rounded-md border border-border bg-card px-1.5 py-1 text-left text-xs hover:border-primary-muted hover:bg-primary-light"
+                  <span
+                    className={cn(
+                      'text-xs font-semibold',
+                      inMonth ? 'text-fg' : 'text-muted-fg/60',
+                      isToday && 'text-primary-hover',
+                    )}
                   >
-                    <span
-                      className={cn('size-1.5 shrink-0 rounded-full', stageMarkerClass(ev.stage))}
-                      aria-hidden="true"
-                    />
-                    <PlatformPill
-                      channel={asPlatformChannel(ev.channel)}
-                      className="!size-[14px] !text-[7px]"
-                    />
-                    <span className="truncate text-muted-fg">Блогер #{ev.blogger_id}</span>
-                  </button>
-                ))}
-                {overflow > 0 && (
-                  <span className="self-start rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-fg">
-                    +{overflow}
+                    {date.getDate()}
                   </span>
-                )}
-              </div>
-            </div>
+                  <div className="flex flex-col gap-1">
+                    {visible.map((ev) => (
+                      <button
+                        key={ev.id}
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onEventClick(ev.id);
+                        }}
+                        onKeyDown={(e) => e.stopPropagation()}
+                        className="flex items-center gap-1.5 rounded-md border border-border bg-card px-1.5 py-1 text-left text-xs hover:border-primary-muted hover:bg-primary-light"
+                      >
+                        <span
+                          className={cn(
+                            'size-1.5 shrink-0 rounded-full',
+                            stageMarkerClass(ev.stage),
+                          )}
+                          aria-hidden="true"
+                        />
+                        <PlatformPill
+                          channel={asPlatformChannel(ev.channel)}
+                          className="!size-[14px] !text-[7px]"
+                        />
+                        <span className="truncate text-muted-fg">Блогер #{ev.blogger_id}</span>
+                      </button>
+                    ))}
+                    {overflow > 0 && (
+                      <span className="self-start rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-fg">
+                        +{overflow}
+                      </span>
+                    )}
+                  </div>
+                </div>
               );
             })}
           </div>

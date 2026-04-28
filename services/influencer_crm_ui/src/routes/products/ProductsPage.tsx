@@ -1,6 +1,7 @@
 import { useId, useMemo, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import type { ProductOut } from '@/api/products';
+import { formatRub } from '@/lib/format';
 import { useProducts } from '@/hooks/use-products';
 import { PageHeader } from '@/layout/PageHeader';
 import { Button } from '@/ui/Button';
@@ -8,25 +9,6 @@ import { FilterPill } from '@/ui/FilterPill';
 import { Input } from '@/ui/Input';
 import { QueryStatusBoundary } from '@/ui/QueryStatusBoundary';
 import { ProductSliceCard } from './ProductSliceCard';
-
-function toCents(value: string | null | undefined): bigint {
-  if (!value) return 0n;
-  const trimmed = value.trim();
-  if (trimmed === '') return 0n;
-  const negative = trimmed.startsWith('-');
-  const unsigned = negative ? trimmed.slice(1) : trimmed;
-  const [whole, frac = ''] = unsigned.split('.');
-  const fracPadded = `${frac}00`.slice(0, 2);
-  const digits = (whole || '0') + fracPadded;
-  if (!/^\d+$/.test(digits)) return 0n;
-  const n = BigInt(digits);
-  return negative ? -n : n;
-}
-
-function formatRub(cents: bigint): string {
-  const rubles = cents / 100n;
-  return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(Number(rubles));
-}
 
 // Stable per-model placeholder color. Real thumbnails would be image URLs from
 // modeli_osnova; the BFF doesn't ship those yet, so we hash the name into a hue
@@ -79,13 +61,11 @@ function ProductCard({ product, selected, onSelect }: ProductCardProps) {
         </div>
         <div>
           <dt className="text-muted-fg uppercase tracking-wider text-[10px]">Расход</dt>
-          <dd className="font-mono text-sm text-fg">{formatRub(toCents(product.total_spent))} ₽</dd>
+          <dd className="font-mono text-sm text-fg">{formatRub(product.total_spent)}</dd>
         </div>
         <div>
           <dt className="text-muted-fg uppercase tracking-wider text-[10px]">Выручка</dt>
-          <dd className="font-mono text-sm text-fg">
-            {formatRub(toCents(product.total_revenue_fact))} ₽
-          </dd>
+          <dd className="font-mono text-sm text-fg">{formatRub(product.total_revenue_fact)}</dd>
         </div>
       </dl>
     </button>
