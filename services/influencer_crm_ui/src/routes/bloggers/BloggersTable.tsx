@@ -51,7 +51,7 @@ export function BloggersTable({ bloggers, onEdit }: Props) {
                     isExpanded ? 'bg-primary-light' : 'hover:bg-bg-warm'
                   }`}
                   onClick={() => setExpandedId(isExpanded ? null : b.id)}
-                  aria-expanded={isExpanded}
+                  data-expanded={isExpanded}
                 >
                   <td className="px-3.5 py-3">
                     <div className="flex items-center gap-3">

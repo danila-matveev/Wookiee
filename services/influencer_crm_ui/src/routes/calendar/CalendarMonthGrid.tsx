@@ -102,44 +102,49 @@ export function CalendarMonthGrid({
         ))}
       </div>
 
-      {/* Body — 6 rows × 7 cols. We use ARIA grid roles (not <table>) because each
-          cell behaves like an interactive day-button in the calendar pattern, and the
-          spec requires role="gridcell" on each cell. */}
+      {/* Body — 6 rows × 7 cols. ARIA grid pattern: each <div role="grid"> contains
+          <div role="row"> children, each holding 7 <div role="gridcell"> cells.
+          axe-core's aria-required-children/parent rules enforce this hierarchy. */}
       {/* biome-ignore lint/a11y/useSemanticElements: ARIA grid is the correct role for a calendar widget — see WAI ARIA Grid Pattern. */}
       <div role="grid" aria-label="Календарь публикаций" className="grid grid-cols-7">
-        {cells.map((date, idx) => {
-          const iso = toIsoDate(date);
-          const inMonth = date.getMonth() === currentMonth;
-          const isToday = iso === todayIso;
-          const events = eventsByDate.get(iso) ?? [];
-          const visible = events.slice(0, MAX_VISIBLE_EVENTS);
-          const overflow = events.length - visible.length;
-          const isLastCol = (idx + 1) % 7 === 0;
-          const isLastRow = idx >= 35;
+        {Array.from({ length: 6 }, (_, weekIdx) => (
+          // biome-ignore lint/a11y/useSemanticElements: ARIA row is required as gridcell parent.
+          // biome-ignore lint/suspicious/noArrayIndexKey: weekIdx is stable for the visible 6-row layout.
+          <div key={`week-${weekIdx}`} role="row" className="contents">
+            {cells.slice(weekIdx * 7, weekIdx * 7 + 7).map((date, colIdx) => {
+              const idx = weekIdx * 7 + colIdx;
+              const iso = toIsoDate(date);
+              const inMonth = date.getMonth() === currentMonth;
+              const isToday = iso === todayIso;
+              const events = eventsByDate.get(iso) ?? [];
+              const visible = events.slice(0, MAX_VISIBLE_EVENTS);
+              const overflow = events.length - visible.length;
+              const isLastCol = (idx + 1) % 7 === 0;
+              const isLastRow = idx >= 35;
 
-          return (
-            // biome-ignore lint/a11y/useSemanticElements: ARIA gridcell is required by the calendar contract.
-            <div
-              key={iso}
-              role="gridcell"
-              className={cn(
-                'flex min-h-24 cursor-pointer flex-col gap-1 px-2 py-1.5 text-left',
-                'transition-colors hover:bg-primary-light/40 focus-within:bg-primary-light',
-                !isLastCol && 'border-r border-border',
-                !isLastRow && 'border-b border-border',
-                !inMonth && 'bg-muted/30',
-                isToday && 'bg-primary-light',
-              )}
-              onClick={() => onCellClick(iso)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  onCellClick(iso);
-                }
-              }}
-              tabIndex={0}
-              aria-label={`${date.getDate()} ${date.toLocaleDateString('ru-RU', { month: 'long' })}${isToday ? ' (сегодня)' : ''}`}
-            >
+              return (
+                // biome-ignore lint/a11y/useSemanticElements: ARIA gridcell is required by the calendar contract.
+                <div
+                  key={iso}
+                  role="gridcell"
+                  className={cn(
+                    'flex min-h-24 cursor-pointer flex-col gap-1 px-2 py-1.5 text-left',
+                    'transition-colors hover:bg-primary-light/40 focus-within:bg-primary-light',
+                    !isLastCol && 'border-r border-border',
+                    !isLastRow && 'border-b border-border',
+                    !inMonth && 'bg-muted/30',
+                    isToday && 'bg-primary-light',
+                  )}
+                  onClick={() => onCellClick(iso)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      onCellClick(iso);
+                    }
+                  }}
+                  tabIndex={0}
+                  aria-label={`${date.getDate()} ${date.toLocaleDateString('ru-RU', { month: 'long' })}${isToday ? ' (сегодня)' : ''}`}
+                >
               <span
                 className={cn(
                   'text-xs font-semibold',
@@ -179,8 +184,10 @@ export function CalendarMonthGrid({
                 )}
               </div>
             </div>
-          );
-        })}
+              );
+            })}
+          </div>
+        ))}
       </div>
     </div>
   );
