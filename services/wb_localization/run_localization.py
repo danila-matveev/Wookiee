@@ -912,17 +912,17 @@ def run_for_cabinet(
                 write_reference_sheet,
             )
             from services.wb_localization.config import (
-                GOOGLE_SA_FILE, VASILY_SPREADSHEET_ID,
+                GOOGLE_SA_FILE, WB_LOGISTICS_SPREADSHEET_ID,
             )
             from shared.clients.sheets_client import get_client
 
-            if VASILY_SPREADSHEET_ID:
+            if WB_LOGISTICS_SPREADSHEET_ID:
                 gc = get_client(GOOGLE_SA_FILE)
-                spreadsheet = gc.open_by_key(VASILY_SPREADSHEET_ID)
+                spreadsheet = gc.open_by_key(WB_LOGISTICS_SPREADSHEET_ID)
                 write_reference_sheet(spreadsheet, reference)
                 print("   Справочник обновлён в Google Sheets.")
             else:
-                print("   VASILY_SPREADSHEET_ID не задан — пропуск Sheets-экспорта.")
+                print("   WB_LOGISTICS_SPREADSHEET_ID не задан — пропуск Sheets-экспорта.")
         except Exception as e:
             logger.warning("only-reference Sheets update failed: %s", e)
             print(f"   Не удалось обновить Справочник в Sheets: {e}")

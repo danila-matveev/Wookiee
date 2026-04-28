@@ -20,11 +20,8 @@ from fastapi.responses import JSONResponse
 
 load_dotenv()
 
-API_KEY = os.getenv("WB_LOGISTICS_API_KEY") or os.getenv("VASILY_API_KEY", "")
-VASILY_SPREADSHEET_ID = (
-    os.getenv("WB_LOGISTICS_SPREADSHEET_ID")
-    or os.getenv("VASILY_SPREADSHEET_ID", "")
-)
+API_KEY = os.getenv("WB_LOGISTICS_API_KEY", "")
+WB_LOGISTICS_SPREADSHEET_ID = os.getenv("WB_LOGISTICS_SPREADSHEET_ID", "")
 
 app = FastAPI(title="WB Logistics API", version="1.0.0")
 logger = logging.getLogger("wb_logistics_api")
@@ -94,14 +91,14 @@ def _verify_key(x_api_key: str = Header(...)) -> None:
 # ── Sheets status indicator ──────────────────────────────────────────────────
 def _write_sheets_status(status: str) -> None:
     """Write calculation status to the «Обновление» sheet (cell F3)."""
-    if not VASILY_SPREADSHEET_ID:
+    if not WB_LOGISTICS_SPREADSHEET_ID:
         return
     try:
         from shared.clients.sheets_client import get_client
         from services.wb_localization.config import GOOGLE_SA_FILE
 
         gc = get_client(GOOGLE_SA_FILE)
-        spreadsheet = gc.open_by_key(VASILY_SPREADSHEET_ID)
+        spreadsheet = gc.open_by_key(WB_LOGISTICS_SPREADSHEET_ID)
         ws = spreadsheet.worksheet("Обновление")
         ws.update_acell("F3", status)
     except Exception as e:
@@ -111,7 +108,7 @@ def _write_sheets_status(status: str) -> None:
 # ── Background worker ────────────────────────────────────────────────────────
 def _run_reports() -> None:
     """Run WB Logistics reports for all cabinets (blocking, runs in thread)."""
-    from services.wb_localization.config import CABINETS, REPORT_PERIOD_DAYS, VASILY_SPREADSHEET_ID
+    from services.wb_localization.config import CABINETS, REPORT_PERIOD_DAYS, WB_LOGISTICS_SPREADSHEET_ID
     from services.wb_localization.history import History
     from services.wb_localization.run_localization import run_service_report
     from services.wb_localization.sheets_export import export_to_sheets, export_dashboard
@@ -137,7 +134,7 @@ def _run_reports() -> None:
             result["summary"]["movements_count"],
         )
 
-        if VASILY_SPREADSHEET_ID:
+        if WB_LOGISTICS_SPREADSHEET_ID:
             export_to_sheets(result)
             logger.info("Экспорт в Sheets: %s", result["cabinet"])
 
@@ -152,7 +149,7 @@ def _run_reports() -> None:
         })
 
     # Dashboard on «Обновление» sheet
-    if VASILY_SPREADSHEET_ID and all_results:
+    if WB_LOGISTICS_SPREADSHEET_ID and all_results:
         try:
             export_dashboard(all_results, REPORT_PERIOD_DAYS)
         except Exception as e:

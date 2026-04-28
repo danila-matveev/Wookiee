@@ -18,7 +18,7 @@ from shared.clients.sheets_client import (
     get_client,
     get_moscow_datetime,
 )
-from services.wb_localization.config import GOOGLE_SA_FILE, VASILY_SPREADSHEET_ID
+from services.wb_localization.config import GOOGLE_SA_FILE, WB_LOGISTICS_SPREADSHEET_ID
 
 from .core_sheets import (
     write_moves,
@@ -93,8 +93,8 @@ def export_to_sheets(result: dict) -> str:
     """
     import pandas as pd
 
-    if not VASILY_SPREADSHEET_ID:
-        logger.warning("VASILY_SPREADSHEET_ID не задан — пропуск экспорта в Sheets")
+    if not WB_LOGISTICS_SPREADSHEET_ID:
+        logger.warning("WB_LOGISTICS_SPREADSHEET_ID не задан — пропуск экспорта в Sheets")
         return ""
 
     cabinet = result.get("cabinet", "?")
@@ -107,7 +107,7 @@ def export_to_sheets(result: dict) -> str:
     supply_df: pd.DataFrame = result.get("_supply_df", pd.DataFrame())
 
     gc = get_client(GOOGLE_SA_FILE)
-    spreadsheet = gc.open_by_key(VASILY_SPREADSHEET_ID)
+    spreadsheet = gc.open_by_key(WB_LOGISTICS_SPREADSHEET_ID)
     date_str, time_str = get_moscow_datetime()
 
     meta = [
@@ -172,7 +172,7 @@ def export_to_sheets(result: dict) -> str:
     if reference:
         write_reference_sheet(spreadsheet, reference)
 
-    url = f"https://docs.google.com/spreadsheets/d/{VASILY_SPREADSHEET_ID}"
+    url = f"https://docs.google.com/spreadsheets/d/{WB_LOGISTICS_SPREADSHEET_ID}"
     logger.info("Экспорт в Sheets: %s (%s)", cabinet, url)
     return url
 

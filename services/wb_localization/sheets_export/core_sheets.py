@@ -18,7 +18,7 @@ from shared.clients.sheets_client import (
     get_moscow_datetime,
     to_number,
 )
-from services.wb_localization.config import GOOGLE_SA_FILE, VASILY_SPREADSHEET_ID, REPORT_PERIOD_DAYS
+from services.wb_localization.config import GOOGLE_SA_FILE, WB_LOGISTICS_SPREADSHEET_ID, REPORT_PERIOD_DAYS
 
 from .formatters import (
     _HEADER_BG,
@@ -326,14 +326,14 @@ def export_dashboard(results: list[dict], period_days: int | None = None) -> Non
         results: List of full result dicts from VasilyService.run_report().
         period_days: Report period in days (for display).
     """
-    if not VASILY_SPREADSHEET_ID:
+    if not WB_LOGISTICS_SPREADSHEET_ID:
         return
 
     if period_days is None:
         period_days = REPORT_PERIOD_DAYS
 
     gc = get_client(GOOGLE_SA_FILE)
-    spreadsheet = gc.open_by_key(VASILY_SPREADSHEET_ID)
+    spreadsheet = gc.open_by_key(WB_LOGISTICS_SPREADSHEET_ID)
     ws = get_or_create_worksheet(spreadsheet, "Обновление")
 
     # Clear data cells (preserves drawings/images)
