@@ -29,9 +29,7 @@ from .promocodes.sheet_io import (
     ensure_analytics_sheet,
     read_dictionary_sheet,
 )
-from .promocodes.wb_api import (
-    fetch_report,
-)
+from .promocodes.wb_api import fetch_report
 from .promocodes.weeks import iso_weeks_back, last_closed_iso_week
 
 __all__ = [
