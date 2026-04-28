@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { encodeCursor, decodeCursor } from './cursor';
+import { decodeCursor, encodeCursor } from './cursor';
 
 describe('cursor', () => {
   it('encode/decode round-trips', () => {
