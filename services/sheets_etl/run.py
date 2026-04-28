@@ -13,6 +13,7 @@ from services.sheets_etl.article_resolver import ArticleResolver
 from services.sheets_etl.config import SPREADSHEET_ID
 from services.sheets_etl.fetch import read_range
 from services.sheets_etl.hash import sheet_row_id
+from services.sheets_etl.incremental import existing_sheet_row_ids, filter_new_rows
 from services.sheets_etl.loader import get_conn, insert_junction, upsert
 from services.sheets_etl.transformers import (
     bloggers as t_bloggers,
@@ -31,15 +32,21 @@ from services.sheets_etl.transformers import (
 )
 
 
-def run_promo_codes(conn) -> int:
+def run_promo_codes(conn, incremental: bool = False) -> int:
     rows = t_promo.transform(read_range(SPREADSHEET_ID, "Промокоды_справочник!A1:G1000"))
+    if incremental:
+        existing = existing_sheet_row_ids(conn, "crm.promo_codes")
+        rows = filter_new_rows(rows, existing)
     return upsert(conn, "crm.promo_codes", rows)
 
 
-def run_bloggers(conn) -> tuple[int, int]:
+def run_bloggers(conn, incremental: bool = False) -> tuple[int, int]:
     bloggers, channels = t_bloggers.transform(
         read_range(SPREADSHEET_ID, "БД БЛОГЕРЫ!A1:G2000")
     )
+    if incremental:
+        existing = existing_sheet_row_ids(conn, "crm.bloggers")
+        bloggers = filter_new_rows(bloggers, existing)
     n_b = upsert(conn, "crm.bloggers", bloggers)
     handle_to_id = _resolve_handles(conn)
     ch_rows = []
@@ -89,7 +96,7 @@ def _ensure_substitute_article(conn, code: str, artikul_id: int, purpose: str = 
     return new_id
 
 
-def run_substitute_articles(conn) -> tuple[int, int, int]:
+def run_substitute_articles(conn, incremental: bool = False) -> tuple[int, int, int]:
     articles, metrics = t_subs.transform(
         read_range(SPREADSHEET_ID, "Подменные!A1:HZ1500")
     )
@@ -104,6 +111,9 @@ def run_substitute_articles(conn) -> tuple[int, int, int]:
             matched.append(a)
         else:
             unmatched.append(a["code"])
+    if incremental:
+        existing = existing_sheet_row_ids(conn, "crm.substitute_articles")
+        matched = filter_new_rows(matched, existing)
     n_a = upsert(conn, "crm.substitute_articles", matched)
 
     code_to_id: dict[str, int] = {}
@@ -160,7 +170,7 @@ def _ensure_blogger(conn, display_handle: str) -> int:
     return new_id
 
 
-def run_integrations(conn) -> tuple[int, int, int]:
+def run_integrations(conn, incremental: bool = False) -> tuple[int, int, int]:
     integrations, sub_links = t_integrations.transform(
         read_range(SPREADSHEET_ID, "Блогеры!A1:CL2000")
     )
@@ -201,6 +211,9 @@ def run_integrations(conn) -> tuple[int, int, int]:
         clean["blogger_id"] = b_id
         clean["marketer_id"] = m_id
         matched.append(clean)
+    if incremental:
+        existing = existing_sheet_row_ids(conn, "crm.integrations")
+        matched = filter_new_rows(matched, existing)
     n_i = upsert(conn, "crm.integrations", matched)
 
     # Step 4: resolve sub-links via ArticleResolver (handles SKU, OZON, model name)
@@ -245,8 +258,11 @@ def run_integrations(conn) -> tuple[int, int, int]:
     return n_i, n_j, created_bloggers
 
 
-def run_candidates(conn) -> int:
+def run_candidates(conn, incremental: bool = False) -> int:
     rows = t_candidates.transform(read_range(SPREADSHEET_ID, "inst на проверку!A1:N1000"))
+    if incremental:
+        existing = existing_sheet_row_ids(conn, "crm.blogger_candidates")
+        rows = filter_new_rows(rows, existing)
     return upsert(conn, "crm.blogger_candidates", rows)
 
 
@@ -268,6 +284,11 @@ SHEETS = {
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Sheets ETL → crm.* tables")
     parser.add_argument("--sheet", choices=list(SHEETS.keys()), help="Run a single sheet")
+    parser.add_argument(
+        "--incremental",
+        action="store_true",
+        help="Skip rows whose sheet_row_id is already present in the target table",
+    )
     args = parser.parse_args(argv)
 
     sheets = [args.sheet] if args.sheet else list(SHEETS.keys())
@@ -275,7 +296,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         for s in sheets:
             print(f"=== {s} ===")
-            result = SHEETS[s](conn)
+            result = SHEETS[s](conn, incremental=args.incremental)
             print(f"  loaded: {result}")
     finally:
         conn.close()
