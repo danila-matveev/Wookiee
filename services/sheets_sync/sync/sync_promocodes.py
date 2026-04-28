@@ -26,30 +26,10 @@ from .promocodes.pivot import (
     upsert_pivot,
 )
 from .promocodes.sheet_io import (
-    _clear_conditional_formats,
-    _open_spreadsheet,
     ensure_analytics_sheet,
     read_dictionary_sheet,
 )
-from .promocodes.sheet_layout import (
-    DASHBOARD_HEADER_ROWS,
-    DATA_START_ROW,
-    DEFAULT_DATA_SHEET,
-    DEFAULT_DICT_SHEET,
-    FIXED_HEADERS,
-    FIXED_NCOLS,
-    METRIC_HEADERS_ROW,
-    WEEK_LABELS_ROW,
-    WEEK_METRICS,
-    WEEK_NCOLS,
-)
-from .promocodes.wb_api import (
-    MAX_RETRIES,
-    PAGE_LIMIT,
-    RATE_LIMIT_SLEEP,
-    WB_REPORT_URL,
-    fetch_report,
-)
+from .promocodes.wb_api import fetch_report
 from .promocodes.weeks import iso_weeks_back, last_closed_iso_week
 
 __all__ = [
