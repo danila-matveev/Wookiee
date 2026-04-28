@@ -10,7 +10,7 @@ import logging
 from fastapi import FastAPI
 
 from services.influencer_crm.config import LOG_LEVEL
-from services.influencer_crm.routers import health
+from services.influencer_crm.routers import bloggers, health
 
 logging.basicConfig(
     level=LOG_LEVEL,
@@ -26,6 +26,7 @@ def create_app() -> FastAPI:
         version="0.1.0",
     )
     app.include_router(health.router)
+    app.include_router(bloggers.router)
     return app
 
 
