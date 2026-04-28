@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import type { BloggerListParams, BloggerStatus } from '@/api/bloggers';
 import { FilterPill } from '@/ui/FilterPill';
 import { Input } from '@/ui/Input';
@@ -25,6 +26,7 @@ const statuses: StatusOption[] = [
 ];
 
 export function BloggersFilters({ value, onChange }: Props) {
+  const searchId = useId();
   return (
     <div className="bg-card border border-border rounded-lg shadow-warm px-3.5 py-3 mb-5 flex items-center gap-2.5 flex-wrap">
       <span className="text-[11px] uppercase tracking-wider text-muted-fg font-semibold">
@@ -39,7 +41,11 @@ export function BloggersFilters({ value, onChange }: Props) {
           {s.label}
         </FilterPill>
       ))}
+      <label htmlFor={searchId} className="sr-only">
+        Поиск блогеров
+      </label>
       <Input
+        id={searchId}
         className="ml-auto max-w-xs"
         placeholder="Поиск по handle / имени"
         value={value.q ?? ''}

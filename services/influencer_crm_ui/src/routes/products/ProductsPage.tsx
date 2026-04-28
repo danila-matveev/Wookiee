@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import type { ProductOut } from '@/api/products';
 import { useProducts } from '@/hooks/use-products';
@@ -95,6 +95,7 @@ function ProductCard({ product, selected, onSelect }: ProductCardProps) {
 export function ProductsPage() {
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const searchId = useId();
 
   const { data, isLoading, error, fetchNextPage, hasNextPage, isFetchingNextPage } = useProducts();
   const allItems = useMemo(() => data?.pages.flatMap((p) => p.items) ?? [], [data?.pages]);
@@ -128,10 +129,14 @@ export function ProductsPage() {
       </div>
 
       <div className="bg-card border border-border rounded-lg shadow-warm px-3.5 py-3 mb-5 flex items-center gap-2.5 flex-wrap">
-        <span className="text-[11px] uppercase tracking-wider text-muted-fg font-semibold">
+        <label
+          htmlFor={searchId}
+          className="text-[11px] uppercase tracking-wider text-muted-fg font-semibold"
+        >
           Поиск
-        </span>
+        </label>
         <Input
+          id={searchId}
           className="ml-auto max-w-xs"
           placeholder="Поиск по названию модели"
           value={search}

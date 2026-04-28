@@ -21,6 +21,12 @@
   /* Neutrals */
   --wk-color-secondary: #F3F4F6;
   --wk-color-muted: #F9FAFB;
+  /*
+   * #6B7280 over the warm cream surface (#FFFBF5) and the neutral muted (#F9FAFB)
+   * measures 4.6:1 contrast (WebAIM check, 2026-04-28) — passes WCAG AA for
+   * normal text. If we ever darken bg-warm or use muted-fg below 14px regular
+   * weight, re-test before approving.
+   */
   --wk-color-muted-fg: #6B7280;
   --wk-color-accent: #FFF7ED;
   --wk-color-border: #F3F4F6;

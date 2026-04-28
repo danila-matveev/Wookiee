@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import type { Marketplace } from '@/api/integrations';
 import { FilterPill } from '@/ui/FilterPill';
 import { Input } from '@/ui/Input';
@@ -30,6 +31,10 @@ const marketplaces: MarketplaceOption[] = [
 ];
 
 export function SlicesFilters({ value, onChange }: Props) {
+  const dateFromId = useId();
+  const dateToId = useId();
+  const marketerId = useId();
+
   function setMarketerId(raw: string) {
     const parsed = raw.trim() === '' ? undefined : Number.parseInt(raw, 10);
     const next: SlicesFilterValue = {
@@ -55,15 +60,27 @@ export function SlicesFilters({ value, onChange }: Props) {
       ))}
 
       <div className="ml-2 flex items-center gap-1.5">
-        <span className="text-[11px] uppercase tracking-wider text-muted-fg font-semibold">С</span>
+        <label
+          htmlFor={dateFromId}
+          className="text-[11px] uppercase tracking-wider text-muted-fg font-semibold"
+        >
+          С
+        </label>
         <Input
+          id={dateFromId}
           type="date"
           className="max-w-[160px]"
           value={value.date_from ?? ''}
           onChange={(e) => onChange({ ...value, date_from: e.target.value || undefined })}
         />
-        <span className="text-[11px] uppercase tracking-wider text-muted-fg font-semibold">по</span>
+        <label
+          htmlFor={dateToId}
+          className="text-[11px] uppercase tracking-wider text-muted-fg font-semibold"
+        >
+          по
+        </label>
         <Input
+          id={dateToId}
           type="date"
           className="max-w-[160px]"
           value={value.date_to ?? ''}
@@ -72,10 +89,14 @@ export function SlicesFilters({ value, onChange }: Props) {
       </div>
 
       <div className="ml-auto flex items-center gap-1.5">
-        <span className="text-[11px] uppercase tracking-wider text-muted-fg font-semibold">
+        <label
+          htmlFor={marketerId}
+          className="text-[11px] uppercase tracking-wider text-muted-fg font-semibold"
+        >
           Маркетолог ID
-        </span>
+        </label>
         <Input
+          id={marketerId}
           type="number"
           inputMode="numeric"
           className="max-w-[120px]"
