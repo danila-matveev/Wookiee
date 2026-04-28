@@ -122,6 +122,126 @@
 
 ---
 
+## FU-8 — Денормализовать `blogger_handle` на `/integrations` list
+
+**Контекст (обнаружено в P4 T12):** Фронтовый Kanban показывает карточки интеграций в виде `Блогер #N` вместо `_anna.blog`, потому что `IntegrationOut` (list payload) не содержит `blogger_handle` — он только в detail. Делать batch-fetch блогеров из UI неэффективно (N+1).
+
+**Что сделать:**
+- [ ] В `services/influencer_crm/schemas/integration.py` добавить `blogger_handle: str` в `IntegrationOut`.
+- [ ] В `shared/data_layer/influencer_crm/integrations.py` SQL-запрос `list_integrations` JOIN с `crm.bloggers` и SELECT `b.display_handle AS blogger_handle`.
+- [ ] Обновить тесты (smoke gap — нет проверки на denormalized handle).
+- [ ] UI автоматически подхватит — снять `Блогер #${blogger_id}` placeholder в `KanbanCard.tsx`.
+
+**Effort:** 30 минут.
+
+---
+
+## FU-9 — Добавить агрегаты на `/bloggers` list payload
+
+**Контекст (обнаружено в P4 T10):** `BloggerOut` (list) не содержит `channels_count`/`integrations_count` — они только в `BloggerDetailOut`. Таблица блогеров на фронте показывает `—` в этих колонках.
+
+**Что сделать:**
+- [ ] В `services/influencer_crm/schemas/blogger.py` добавить `channels_count: int`, `integrations_count: int`, `last_integration_at: date | None` в `BloggerOut`.
+- [ ] В `shared/data_layer/influencer_crm/bloggers.py` `list_bloggers` SQL — LEFT JOIN с `crm.v_blogger_totals` MV (есть с P1) или с `(SELECT count(*) FROM crm.blogger_channels WHERE blogger_id = b.id)` подзапросом.
+- [ ] Тест: создать блогера с 2 каналами и 5 интеграциями, GET `/bloggers` → проверить counts.
+
+**Effort:** 1 час.
+
+---
+
+## FU-10 — Расширить `/briefs` router
+
+**Контекст (обнаружено в P4 T15):** Сейчас доступны только `POST /briefs`, `POST /briefs/:id/versions`, `GET /briefs/:id/versions`. Отсутствуют:
+- `GET /briefs` (list with status filter) — нужен для Kanban-страницы брифов.
+- `GET /briefs/:id` (detail с status, blogger, integration_id, current content_md) — нужен для open-existing-brief.
+- `PATCH /briefs/:id` (status transitions: draft → on_review → signed → completed) — нужен для перевода стадий.
+
+**Что сделать:**
+- [ ] Добавить эндпоинты в `services/influencer_crm/routers/briefs.py`.
+- [ ] Расширить `BriefOut` schema полями: `status, blogger_id, integration_id, scheduled_at, budget, updated_at`.
+- [ ] Добавить тесты на каждый эндпоинт.
+- [ ] UI MSW-моки сменить на real wiring.
+
+**Effort:** 2-3 часа.
+
+---
+
+## FU-11 — `/products/:id` → вернуть `substitute_articles[]` halo
+
+**Контекст (обнаружено в P4 T17):** ProductSliceCard на фронте показывает halo placeholder ("ожидает расширения BFF"), потому что `/products/:id` не возвращает связанные `substitute_articles`. Сейчас они доступны только через отдельный (несуществующий) `/substitute-articles?model_osnova_id=X` фильтр.
+
+**Что сделать:**
+- [ ] Расширить `ProductDetailOut` полем `substitute_articles: list[SubstituteArticleOut]`.
+- [ ] В data layer добавить subquery/JOIN с `crm.substitute_articles`.
+- [ ] UI снимет placeholder.
+
+**Effort:** 30-60 минут.
+
+---
+
+## FU-12 — Добавить `tag_id` фильтр на `/integrations`
+
+**Контекст (обнаружено в P4 T16):** Slices analytics page планировался с фильтром по тегу, но `/integrations` не принимает `tag_id`. Сейчас фильтрация по тегам возможна только через `/bloggers?tag_id=X` → `blogger_id` → `/integrations?blogger_id=...` (N+1).
+
+**Что сделать:**
+- [ ] Добавить параметр `tag_id: int | None` в `list_integrations` (data layer + router + schema).
+- [ ] SQL: JOIN `crm.bloggers` с `crm.blogger_tags` (junction).
+- [ ] UI добавить `tag_id` в `SlicesFilterValue`.
+
+**Effort:** 30 минут.
+
+---
+
+## FU-13 — Channel `rutube` в `PlatformPill` (UI-only)
+
+**Контекст (обнаружено в P4 T12):** `Channel` enum в BFF включает `rutube`, но `services/influencer_crm_ui/src/ui/PlatformPill.tsx` его не поддерживает (нет gradient/label). Карточки RuTube-интеграций отображаются без platform-pill (или с YouTube-стилем как fallback в T14).
+
+**Что сделать:**
+- [ ] В `PlatformPill.tsx` добавить `rutube: 'bg-[#000]'` или RuTube-цвет (#000 + красный акцент); label `'RT'`.
+- [ ] Чисто визуальная задача, не блокирует функциональность.
+
+**Effort:** 5 минут.
+
+---
+
+## FU-14 — Toast notifications system (UI-only)
+
+**Контекст (отложено в P4 T11/T19):** Mutations в drawer'ах показывают inline-ошибки, но нет глобальных toast'ов для подтверждения "сохранено успешно" или "ошибка сети". Drawers закрываются после успешной мутации — пользователю не очевидно, что произошло.
+
+**Что сделать:**
+- [ ] Добавить `react-hot-toast` или собственный лёгкий toast context в `src/ui/Toast.tsx`.
+- [ ] Wire через `useUpsertBlogger`, `useUpsertIntegration`, `useCreateBrief`, `useUpdateBriefStatus` — `onSuccess: () => toast.success('...')`, `onError: (e) => toast.error(...)`.
+
+**Effort:** 1-2 часа (с кастомным компонентом — 2 часа; с lib — 30 мин).
+
+---
+
+## FU-15 — Combobox для blogger_id в IntegrationEditDrawer (UI polish)
+
+**Контекст (отложено в P4 T13):** Сейчас `blogger_id` в drawer'е интеграции — numeric input. Это плохой UX: маркетолог должен помнить ID блогера. Нужен searchable combobox.
+
+**Что сделать:**
+- [ ] Добавить `cmdk` или `downshift`.
+- [ ] Создать `<BloggerCombobox value onChange />` который под капотом использует `useBloggers({ q })` с debounce 300ms.
+- [ ] То же для `marketer_id` (использовать `/marketers` если есть, иначе hardcoded список из 5 маркетологов).
+
+**Effort:** 2-3 часа.
+
+---
+
+## FU-16 — Code-splitting (UI build optimization)
+
+**Контекст (обнаружено в P4 T22):** `pnpm build` выдаёт warning "chunk size > 500 KB" — главный bundle 528 KB (gzip 164 KB). Не критично, но при 3G гениальное first-load.
+
+**Что сделать:**
+- [ ] В `vite.config.ts` настроить `build.rollupOptions.output.manualChunks`: разделить `vendor-react`, `vendor-tanstack`, `vendor-dnd-kit`, `vendor-headlessui`.
+- [ ] Lazy-load каждый route: `const BloggersPage = React.lazy(() => import('./routes/bloggers/BloggersPage'))`.
+- [ ] Suspense fallback на route-level.
+
+**Effort:** 1 час.
+
+---
+
 ## FU-7 — 400 guard для cursor + q combo
 
 **Контекст:** В T8 docstring отмечает "list_bloggers + q + cursor: undefined behavior — use /search". Сейчас комбинация молча возвращает что-то. Лучше явный 400 вместо surprise-результатов.
