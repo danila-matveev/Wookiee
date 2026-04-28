@@ -185,3 +185,21 @@ def update_blogger(
         f"WHERE id = :id AND archived_at IS NULL"
     )
     session.execute(text(sql), {**fields, "id": blogger_id})
+
+
+def search_bloggers(session: Session, q: str, limit: int = 10) -> list[BloggerOut]:
+    """Trigram search on display_handle + real_name + notes via idx_bloggers_search."""
+    rows = session.execute(
+        text(
+            "SELECT id, display_handle, real_name, status, default_marketer_id, "
+            "       price_story_default, price_reels_default, created_at, updated_at "
+            "FROM crm.bloggers "
+            "WHERE archived_at IS NULL AND ("
+            "    display_handle ILIKE '%' || :q || '%' "
+            " OR COALESCE(real_name, '') ILIKE '%' || :q || '%' "
+            " OR COALESCE(notes, '') ILIKE '%' || :q || '%'"
+            ") ORDER BY updated_at DESC LIMIT :limit"
+        ),
+        {"q": q, "limit": limit},
+    ).mappings().all()
+    return [BloggerOut(**dict(r)) for r in rows]
