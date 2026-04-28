@@ -73,11 +73,34 @@ If `bucket=security` for ANY finding → fork an immediate Telegram task **befor
 ### 3a. auto bucket
 ```bash
 RUN_DATE=$(date -u +%Y-%m-%d)
-git checkout -b "chore/hygiene-$RUN_DATE" 2>/dev/null || git checkout "chore/hygiene-$RUN_DATE"
+# Use $RUN_ID for branch name to avoid collisions across same-day runs.
+git checkout -b "chore/hygiene-$RUN_ID"
+```
+
+**Defensive guard — MUST run before every commit:** verify each path is allowed.
+
+```bash
+# Build a regex from config: protected_zones (deny) + per-check whitelist (allow).
+# A path passes only if it does NOT match any protected_zone glob AND
+# (for unpushed-work specifically) DOES match whitelist.unpushed_paths.
+guard_path() {
+  local path="$1" check="$2"
+  for proto in shared/ sku_database/ .env services/*/data/ .github/workflows/ .claude/skills/hygiene/ .claude/hygiene-config.yaml; do
+    case "$path" in $proto*) echo "BLOCKED: $path matches protected_zone $proto" >&2; return 1;; esac
+  done
+  if [ "$check" = "unpushed-work" ]; then
+    case "$path" in
+      docs/superpowers/plans/*|docs/superpowers/specs/*|docs/skills/*|docs/database/*) ;;
+      *) echo "BLOCKED: $path not in whitelist.unpushed_paths" >&2; return 1;;
+    esac
+  fi
+  return 0
+}
 ```
 
 For each finding in `auto`:
-- Apply the suggested action (delete file, `git rm`, `git add` to gitignore, etc.).
+- Run `guard_path <each-path> <check>` — if any fails, drop that finding from auto, move to ask bucket with reason `protected_zone_or_not_whitelisted`.
+- Apply the suggested action (delete file, `git rm`, `git add` to gitignore, etc.) ONLY for paths that passed the guard.
 - Group by check name.
 - One commit per group: `chore(hygiene): <check> — <count> items`.
 
@@ -123,9 +146,12 @@ After security alerts, continue to Phase 4 (PR still opens for non-security find
 If both `auto` and `ask` buckets are empty: skip this phase entirely.
 
 Otherwise:
-1. Push the branch: `git push -u origin "chore/hygiene-$RUN_DATE"`.
+1. Push the branch: `git push -u origin "chore/hygiene-$RUN_ID"`.
 2. Build PR body from `/tmp/hygiene-followup-<run_id>.md` + summary of auto-fixed groups.
-3. Invoke the `pullrequest` skill (project version) — auto-merge if no findings need user review; `wait` mode if `ask_count > 0`.
+3. Invoke the `pullrequest` skill (project version):
+   - **Use `wait` mode if `ask_count > 0`** — user must merge manually.
+   - **Default (auto-merge) only if `ask_count = 0` AND CI checks pass.** Before merging, poll `gh pr checks <pr_number>` until all required checks report `success`. If any check is `failure` / `cancelled` / `pending` >10min → switch to `wait` mode and notify user.
+   - Never auto-merge if hygiene PR touched anything outside the auto bucket's expected blast radius (sanity check: `git diff main..HEAD --name-only` should match files referenced in `auto` findings only).
 
 PR title: `chore(hygiene): {auto_count} auto-fixed, {ask_count} need review — {YYYY-MM-DD}`.
 

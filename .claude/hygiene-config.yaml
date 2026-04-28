@@ -19,6 +19,8 @@ protected_zones:
     - .env.*
     - services/*/data/**
     - .github/workflows/**
+    - .claude/skills/hygiene/**       # self-protection: hygiene must not auto-fix itself
+    - .claude/hygiene-config.yaml     # self-protection: config tweaks need human review
 
 whitelist:
   binaries_keep:
