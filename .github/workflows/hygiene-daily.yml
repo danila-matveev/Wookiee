@@ -16,6 +16,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      id-token: write
 
     steps:
       - name: Checkout (full history for git ops)
@@ -47,9 +48,9 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: "/hygiene"
-          allowed_tools: "Bash,Read,Edit,Write,Skill"
+          claude_args: "--allowed-tools Bash,Read,Edit,Write,Skill"
         env:
-          TELEGRAM_MANAGER_BOT_TOKEN: ${{ secrets.TELEGRAM_MANAGER_BOT_TOKEN }}
+          TELEGRAM_ALERTS_BOT_TOKEN: ${{ secrets.TELEGRAM_ALERTS_BOT_TOKEN }}
           HYGIENE_TELEGRAM_CHAT_ID: ${{ secrets.HYGIENE_TELEGRAM_CHAT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
