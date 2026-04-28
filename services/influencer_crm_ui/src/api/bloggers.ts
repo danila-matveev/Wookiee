@@ -61,3 +61,24 @@ export function listBloggers(params: BloggerListParams = {}): Promise<BloggersPa
 export function getBlogger(id: number): Promise<BloggerDetailOut> {
   return api.get<BloggerDetailOut>(`/bloggers/${id}`);
 }
+
+export interface BloggerInput {
+  display_handle: string;
+  real_name?: string | null;
+  status?: BloggerStatus;
+  default_marketer_id?: number | null;
+  price_story_default?: string | null;
+  price_reels_default?: string | null;
+  contact_tg?: string | null;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+  notes?: string | null;
+}
+
+export function createBlogger(body: BloggerInput): Promise<BloggerOut> {
+  return api.post<BloggerOut>('/bloggers', body);
+}
+
+export function updateBlogger(id: number, body: Partial<BloggerInput>): Promise<BloggerOut> {
+  return api.patch<BloggerOut>(`/bloggers/${id}`, body);
+}

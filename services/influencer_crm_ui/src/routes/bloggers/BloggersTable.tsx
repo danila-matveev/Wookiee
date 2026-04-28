@@ -20,9 +20,10 @@ const statusLabel: Record<BloggerStatus, string> = {
 
 interface Props {
   bloggers: BloggerOut[];
+  onEdit?: (id: number) => void;
 }
 
-export function BloggersTable({ bloggers }: Props) {
+export function BloggersTable({ bloggers, onEdit }: Props) {
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
   return (
@@ -67,7 +68,7 @@ export function BloggersTable({ bloggers }: Props) {
                 {isExpanded && (
                   <tr>
                     <td colSpan={4} className="bg-bg-warm p-0">
-                      <BloggerExpandedRow id={b.id} />
+                      <BloggerExpandedRow id={b.id} onEdit={onEdit} />
                     </td>
                   </tr>
                 )}

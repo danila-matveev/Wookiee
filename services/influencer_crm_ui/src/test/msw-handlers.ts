@@ -43,4 +43,37 @@ export const handlers = [
       geo_country: null,
     }),
   ),
+  http.post('/api/bloggers', async ({ request }) => {
+    const body = (await request.json()) as Record<string, unknown>;
+    const now = new Date().toISOString();
+    return HttpResponse.json(
+      {
+        id: 999,
+        display_handle: body.display_handle ?? '',
+        real_name: body.real_name ?? null,
+        status: body.status ?? 'new',
+        default_marketer_id: body.default_marketer_id ?? null,
+        price_story_default: body.price_story_default ?? null,
+        price_reels_default: body.price_reels_default ?? null,
+        created_at: now,
+        updated_at: now,
+      },
+      { status: 201 },
+    );
+  }),
+  http.patch('/api/bloggers/:id', async ({ params, request }) => {
+    const body = (await request.json()) as Record<string, unknown>;
+    const now = new Date().toISOString();
+    return HttpResponse.json({
+      id: Number(params.id),
+      display_handle: body.display_handle ?? '_anna.blog',
+      real_name: body.real_name ?? null,
+      status: body.status ?? 'active',
+      default_marketer_id: body.default_marketer_id ?? null,
+      price_story_default: body.price_story_default ?? null,
+      price_reels_default: body.price_reels_default ?? null,
+      created_at: '2026-04-01T10:00:00Z',
+      updated_at: now,
+    });
+  }),
 ];

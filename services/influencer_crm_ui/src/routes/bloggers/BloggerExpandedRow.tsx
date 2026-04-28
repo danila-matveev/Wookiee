@@ -2,6 +2,7 @@ import type { BloggerChannelOut, BloggerDetailOut } from '@/api/bloggers';
 import { useBlogger } from '@/hooks/use-bloggers';
 import { Avatar } from '@/ui/Avatar';
 import { Badge, type BadgeProps } from '@/ui/Badge';
+import { Button } from '@/ui/Button';
 import { Skeleton } from '@/ui/Skeleton';
 
 const statusTone: Record<BloggerDetailOut['status'], NonNullable<BadgeProps['tone']>> = {
@@ -18,7 +19,7 @@ const statusLabel: Record<BloggerDetailOut['status'], string> = {
   new: 'Новый',
 };
 
-export function BloggerExpandedRow({ id }: { id: number }) {
+export function BloggerExpandedRow({ id, onEdit }: { id: number; onEdit?: (id: number) => void }) {
   const { data, isLoading, error } = useBlogger(id);
 
   if (isLoading) {
@@ -42,13 +43,19 @@ export function BloggerExpandedRow({ id }: { id: number }) {
 
   return (
     <div className="grid grid-cols-[320px_1fr] gap-6 p-6">
-      <ProfileCard blogger={data} />
+      <ProfileCard blogger={data} onEdit={onEdit} />
       <ChannelsList channels={data.channels} totalIntegrations={data.integrations_count} />
     </div>
   );
 }
 
-function ProfileCard({ blogger }: { blogger: BloggerDetailOut }) {
+function ProfileCard({
+  blogger,
+  onEdit,
+}: {
+  blogger: BloggerDetailOut;
+  onEdit?: (id: number) => void;
+}) {
   const displayName = blogger.real_name ?? blogger.display_handle;
   const meta: { label: string; value: string }[] = [];
   if (blogger.contact_phone) meta.push({ label: 'Телефон', value: blogger.contact_phone });
@@ -64,6 +71,17 @@ function ProfileCard({ blogger }: { blogger: BloggerDetailOut }) {
         <div className="text-sm text-muted-fg">@{blogger.display_handle}</div>
       </div>
       <Badge tone={statusTone[blogger.status]}>{statusLabel[blogger.status]}</Badge>
+      {onEdit && (
+        <Button
+          variant="secondary"
+          onClick={(e) => {
+            e.stopPropagation();
+            onEdit(blogger.id);
+          }}
+        >
+          ✏ Редактировать
+        </Button>
+      )}
       {meta.length > 0 && (
         <dl className="mt-2 grid w-full grid-cols-[max-content_1fr] gap-x-3 gap-y-1.5 text-xs">
           {meta.map((m) => (
