@@ -18,5 +18,6 @@ class MarketerOut(BaseModel):
 
 
 class TimestampMixin(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     created_at: datetime
     updated_at: datetime

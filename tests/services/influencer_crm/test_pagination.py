@@ -43,3 +43,19 @@ def test_page_model_serializes_cursor():
     d = p.model_dump()
     assert d["items"] == [1, 2, 3]
     assert d["next_cursor"] == "abc"
+
+
+def test_cursor_aware_non_utc_normalizes_to_utc():
+    from datetime import timedelta
+    from services.influencer_crm.pagination import encode_cursor, decode_cursor
+
+    msk = timezone(timedelta(hours=3))
+    aware = datetime(2026, 1, 15, 13, 30, 45, tzinfo=msk)
+    cursor = encode_cursor(aware, 7)
+
+    decoded_ts, decoded_id = decode_cursor(cursor)
+    # 13:30 MSK == 10:30 UTC
+    assert decoded_ts == aware  # same instant
+    assert decoded_ts.tzinfo == timezone.utc  # but normalized
+    assert decoded_ts.hour == 10
+    assert decoded_id == 7

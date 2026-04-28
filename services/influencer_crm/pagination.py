@@ -12,9 +12,14 @@ T = TypeVar("T")
 
 
 def encode_cursor(updated_at: datetime, item_id: int) -> str:
-    """Encode a (updated_at, id) pair as a URL-safe base64 string."""
+    """Encode a (updated_at, id) pair as a URL-safe base64 string.
+
+    Naive datetimes are treated as UTC; tz-aware values are normalized to UTC.
+    """
     if updated_at.tzinfo is None:
         updated_at = updated_at.replace(tzinfo=timezone.utc)
+    else:
+        updated_at = updated_at.astimezone(timezone.utc)
     payload = json.dumps([updated_at.isoformat(), item_id])
     return base64.urlsafe_b64encode(payload.encode("utf-8")).decode("ascii")
 
