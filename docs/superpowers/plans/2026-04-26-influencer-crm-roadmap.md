@@ -284,6 +284,7 @@ These decisions, locked from v4.1 schema design + Codex review, propagate throug
 - `tool_telemetry` integration (`tool-register` skill registers ETL as tool, `tool-status` skill shows runs)
 - Notion entry on completed cutover
 - Lightweight ops dashboard
+- Cutover playbook (Sheets → CRM): [`docs/runbooks/influencer-crm-cutover.md`](../../runbooks/influencer-crm-cutover.md)
 
 ---
 
