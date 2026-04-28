@@ -7,6 +7,13 @@ import os
 import pytest
 from fastapi.testclient import TestClient
 
+# Force a known API key BEFORE test modules import config.
+# `_set_api_key` fixture below still runs (and force-overrides if a dev
+# shell pre-set a different value) — this top-level line just guarantees
+# config.py can import successfully during collection, even on CI / fresh
+# checkouts where the .env has no INFLUENCER_CRM_API_KEY.
+os.environ.setdefault("INFLUENCER_CRM_API_KEY", "test-key-123")
+
 
 @pytest.fixture(scope="session", autouse=True)
 def _set_api_key():
