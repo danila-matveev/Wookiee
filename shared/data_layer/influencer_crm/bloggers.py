@@ -41,7 +41,13 @@ def list_bloggers(
     marketer_id: int | None = None,
     q: str | None = None,
 ) -> tuple[list[BloggerOut], str | None]:
-    """Return (rows, next_cursor). Rows length ≤ limit."""
+    """Return (rows, next_cursor). Rows length ≤ limit.
+
+    Note: combining ``q`` with ``cursor`` has undefined pagination behavior
+    because ``q`` filters post-fetch (after has_more is computed). Use the
+    dedicated full-text search endpoint (T18) for query-driven listings;
+    ``q`` here is convenience-only for the unfiltered first page.
+    """
     params: dict[str, Any] = {"limit": limit + 1}  # one extra to detect "more"
 
     status_filter = ""
@@ -172,6 +178,7 @@ def update_blogger(
     fields = {k: v for k, v in fields.items() if k in allowed}
     if not fields:
         return
+    # k comes from the `allowed` whitelist above — not user-controlled.
     set_clause = ", ".join(f"{k} = :{k}" for k in fields)
     sql = (
         f"UPDATE crm.bloggers SET {set_clause}, updated_at = now() "

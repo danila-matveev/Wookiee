@@ -72,3 +72,20 @@ def test_update_changes_field(session: Session):
     bloggers_repo.update_blogger(session, blogger_id, {"notes": "marker-12345"})
     refreshed = bloggers_repo.get_blogger(session, blogger_id)
     assert refreshed.notes == "marker-12345"
+
+
+def test_list_cursor_round_trip(session: Session):
+    """Page 1 → next_cursor → page 2 yields disjoint, correctly-ordered rows."""
+    page1, cursor = bloggers_repo.list_bloggers(session, limit=3)
+    if cursor is None:
+        pytest.skip("Need >3 bloggers to exercise pagination")
+
+    page2, _ = bloggers_repo.list_bloggers(session, limit=3, cursor=cursor)
+
+    page1_ids = {r.id for r in page1}
+    page2_ids = {r.id for r in page2}
+    assert page1_ids.isdisjoint(page2_ids), "page 2 must not repeat page 1 rows"
+
+    # page 1 last row strictly newer than page 2 first row (DESC order on
+    # updated_at, then id)
+    assert (page1[-1].updated_at, page1[-1].id) > (page2[0].updated_at, page2[0].id)

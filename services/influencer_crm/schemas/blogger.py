@@ -36,6 +36,7 @@ class BloggerChannelOut(BaseModel):
 
 class BloggerDetailOut(BloggerOut):
     """Drawer payload — includes channels, recent integrations, totals."""
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
     channels: list[BloggerChannelOut] = Field(default_factory=list)
     integrations_count: int = 0
     integrations_done: int = 0
