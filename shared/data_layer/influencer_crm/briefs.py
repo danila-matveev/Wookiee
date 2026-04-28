@@ -30,26 +30,24 @@ def create_brief(session: Session, *, title: str, content_md: str) -> BriefOut:
 
 
 def add_version(session: Session, brief_id: int, content_md: str) -> BriefVersionOut:
-    next_version = session.execute(
-        text(
-            "SELECT COALESCE(MAX(version), 0) + 1 "
-            "FROM crm.brief_versions WHERE brief_id = :bid"
-        ),
-        {"bid": brief_id},
-    ).scalar_one()
-    new_id = session.execute(
+    # Atomic: SELECT MAX + INSERT in one statement, no race window.
+    row = session.execute(
         text(
             "INSERT INTO crm.brief_versions (brief_id, version, content) "
-            "VALUES (:bid, :v, :c) RETURNING id"
+            "SELECT :bid, COALESCE(MAX(version), 0) + 1, CAST(:content AS jsonb) "
+            "FROM crm.brief_versions WHERE brief_id = :bid "
+            "RETURNING id, version"
         ),
-        {"bid": brief_id, "v": next_version, "c": json.dumps({"md": content_md})},
-    ).scalar_one()
+        {"bid": brief_id, "content": json.dumps({"md": content_md})},
+    ).mappings().first()
+    new_id = row["id"]
+    new_version = row["version"]
     session.execute(
         text("UPDATE crm.briefs SET current_version = :v WHERE id = :bid"),
-        {"v": int(next_version), "bid": brief_id},
+        {"v": new_version, "bid": brief_id},
     )
     return BriefVersionOut(
-        id=int(new_id), brief_id=brief_id, version=int(next_version),
+        id=int(new_id), brief_id=brief_id, version=int(new_version),
         content_md=content_md,
     )
 

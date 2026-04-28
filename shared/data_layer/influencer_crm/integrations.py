@@ -182,3 +182,24 @@ def transition_stage(
             ),
             {"note": note, "id": integration_id},
         )
+
+
+def search_integrations(session: Session, q: str, limit: int = 10) -> list[IntegrationOut]:
+    """ILIKE search on notes + post_content."""
+    rows = session.execute(
+        text(
+            "SELECT id, blogger_id, marketer_id, brief_id, "
+            "       publish_date, channel, ad_format, marketplace, "
+            "       stage, outcome, is_barter, "
+            "       cost_placement, cost_delivery, cost_goods, total_cost, "
+            "       erid, fact_views, fact_orders, fact_revenue, "
+            "       created_at, updated_at "
+            "FROM crm.integrations "
+            "WHERE archived_at IS NULL AND ("
+            "    COALESCE(notes, '') ILIKE '%' || :q || '%' "
+            " OR COALESCE(post_content, '') ILIKE '%' || :q || '%'"
+            ") ORDER BY updated_at DESC LIMIT :limit"
+        ),
+        {"q": q, "limit": limit},
+    ).mappings().all()
+    return [IntegrationOut(**dict(r)) for r in rows]

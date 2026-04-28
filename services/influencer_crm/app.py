@@ -8,6 +8,8 @@ from __future__ import annotations
 import logging
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
 
 from services.influencer_crm.config import LOG_LEVEL
 from services.influencer_crm.etag import ETagMiddleware
@@ -36,6 +38,22 @@ def create_app() -> FastAPI:
     app.include_router(briefs.router)
     app.include_router(metrics.router)
     app.include_router(search.router)
+
+    @app.exception_handler(IntegrityError)
+    def _pg_integrity_handler(request, exc: IntegrityError):
+        # Postgres unique-violation SQLSTATE = 23505
+        orig = getattr(exc, "orig", None)
+        sqlstate = getattr(orig, "pgcode", None) if orig is not None else None
+        if sqlstate == "23505":
+            return JSONResponse(
+                {"detail": "Unique constraint violation"},
+                status_code=409,
+            )
+        return JSONResponse(
+            {"detail": "Database integrity error"},
+            status_code=500,
+        )
+
     return app
 
 
