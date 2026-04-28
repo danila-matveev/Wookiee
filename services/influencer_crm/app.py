@@ -10,6 +10,7 @@ import logging
 from fastapi import FastAPI
 
 from services.influencer_crm.config import LOG_LEVEL
+from services.influencer_crm.etag import ETagMiddleware
 from services.influencer_crm.routers import bloggers, briefs, health, integrations, metrics, products, promos, search, tags
 
 logging.basicConfig(
@@ -25,6 +26,7 @@ def create_app() -> FastAPI:
                     "except /health require X-API-Key.",
         version="0.1.0",
     )
+    app.add_middleware(ETagMiddleware)
     app.include_router(health.router)
     app.include_router(bloggers.router)
     app.include_router(integrations.router)
