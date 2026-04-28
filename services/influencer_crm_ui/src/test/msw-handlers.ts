@@ -233,6 +233,96 @@ export const handlers = [
       updated_at: now,
     });
   }),
+  // --- Products (T17) --------------------------------------------------------
+  // Two model_osnova fixtures cover the page test ("Wendy" + "Joy" must both
+  // appear) and exercise expand-on-click against the detail handler.
+  ...(() => {
+    const productsFixture = [
+      {
+        model_osnova_id: 1001,
+        model_name: 'Wendy',
+        integrations_count: 3,
+        integrations_done: 1,
+        last_publish_date: '2026-04-20',
+        total_spent: '23000.00',
+        total_revenue_fact: '0.00',
+      },
+      {
+        model_osnova_id: 1002,
+        model_name: 'Joy',
+        integrations_count: 1,
+        integrations_done: 0,
+        last_publish_date: '2026-04-22',
+        total_spent: '3000.00',
+        total_revenue_fact: '0.00',
+      },
+    ];
+    const detailIntegrationsFixture: Record<
+      number,
+      Array<{
+        integration_id: number;
+        blogger_handle: string;
+        publish_date: string;
+        stage: string;
+        total_cost: string;
+        fact_views: number | null;
+        fact_orders: number | null;
+        fact_revenue: string | null;
+      }>
+    > = {
+      1001: [
+        {
+          integration_id: 1,
+          blogger_handle: '_anna.blog',
+          publish_date: '2026-04-20',
+          stage: 'published',
+          total_cost: '15000.00',
+          fact_views: 12000,
+          fact_orders: null,
+          fact_revenue: null,
+        },
+        {
+          integration_id: 2,
+          blogger_handle: 'tg_blogger',
+          publish_date: '2026-03-15',
+          stage: 'done',
+          total_cost: '8000.00',
+          fact_views: 4000,
+          fact_orders: null,
+          fact_revenue: null,
+        },
+      ],
+      1002: [
+        {
+          integration_id: 3,
+          blogger_handle: 'tiktok_blogger',
+          publish_date: '2026-04-22',
+          stage: 'scheduled',
+          total_cost: '3000.00',
+          fact_views: null,
+          fact_orders: null,
+          fact_revenue: null,
+        },
+      ],
+    };
+
+    return [
+      http.get('/api/products', () =>
+        HttpResponse.json({ items: productsFixture, next_cursor: null }),
+      ),
+      http.get('/api/products/:id', ({ params }) => {
+        const id = Number(params.id);
+        const head = productsFixture.find((p) => p.model_osnova_id === id);
+        if (!head) {
+          return HttpResponse.json({ detail: 'Product not found' }, { status: 404 });
+        }
+        return HttpResponse.json({
+          ...head,
+          integrations: detailIntegrationsFixture[id] ?? [],
+        });
+      }),
+    ];
+  })(),
   // --- Briefs (T15) ----------------------------------------------------------
   // The real BFF currently only ships POST /briefs, POST /briefs/{id}/versions,
   // GET /briefs/{id}/versions. The list/detail/PATCH endpoints used by the UI
