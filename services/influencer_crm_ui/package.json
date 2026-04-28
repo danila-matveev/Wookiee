@@ -10,6 +10,7 @@
     "test": "vitest",
     "test:run": "vitest run",
     "e2e": "playwright test",
+    "e2e:install": "playwright install chromium",
     "lint": "biome check src",
     "fix": "biome check --write src",
     "typecheck": "tsc -b"
