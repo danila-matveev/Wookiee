@@ -1,9 +1,15 @@
 import type { Page } from '@playwright/test';
 
+const USE_LIVE_BFF = process.env.PLAYWRIGHT_LIVE_BFF === '1';
+
 /**
  * Routes all /api/** calls to fake responses. Mirrors the MSW handlers used in
  * unit tests, but lives in the Playwright runtime so we don't need MSW worker
  * registration in the browser.
+ *
+ * When `PLAYWRIGHT_LIVE_BFF=1`, this becomes a no-op and the browser hits the
+ * real BFF via Vite's /api proxy on :8082 — useful for contract testing against
+ * a real database before production cutover.
  *
  * Order matters: Playwright matches routes in REVERSE registration order
  * (last-registered wins). So we register the catch-all FIRST, the broad
@@ -11,6 +17,10 @@ import type { Page } from '@playwright/test';
  * they win the match.
  */
 export async function mockApi(page: Page) {
+  if (USE_LIVE_BFF) {
+    // Live mode: requests pass through to /api → http://localhost:8082.
+    return;
+  }
   // Catch-all (lowest priority — registered first so it loses every overlap).
   await page.route('http://api.test/api/**', async (route) => {
     await route.fulfill({

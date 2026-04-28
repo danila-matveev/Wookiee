@@ -50,16 +50,23 @@ pnpm dev
 
 ```bash
 pnpm test         # vitest watch mode
-pnpm test:run     # vitest run, 19 unit-тестов
-pnpm e2e          # Playwright, 4 golden paths против mocked-API
+pnpm test:run     # vitest run, ≥19 unit-тестов
+pnpm e2e          # Playwright, mocked API (4 golden + 7 a11y) — BFF не нужен
+pnpm e2e:live     # Playwright против live BFF на :8082 (нужен INFLUENCER_CRM_API_KEY)
 pnpm lint         # biome check
 pnpm typecheck    # tsc -b
 ```
 
 - **Unit (vitest + MSW)** — purity-функции (cursor, tag-format), хуки TanStack
   Query с замоканной сетью через MSW, ETag/304-кеш.
-- **E2E (Playwright)** — 4 спеки (bloggers list, integrations kanban DnD,
-  briefs CRUD, search). Поднимают приложение в режиме `?mock=1`, BFF не нужен.
+- **E2E (Playwright, mock mode)** — 4 golden specs (bloggers list, integrations
+  kanban DnD, briefs CRUD, search) + 7 a11y specs через `@axe-core/playwright`
+  (WCAG 2 AA, без color-contrast — design tradeoff). Браузер шлёт на синтетический
+  `http://api.test/api`, Playwright `page.route()` ловит. BFF не нужен.
+- **E2E (Playwright, live mode)** — те же спеки против реального BFF на :8082
+  через Vite-прокси. Запуск: `INFLUENCER_CRM_API_KEY=xxx pnpm e2e:live`.
+  Mock-функция `mockApi(page)` становится no-op; для контракт-тестов перед
+  production cutover.
 
 ## Сборка
 
