@@ -37,7 +37,11 @@ def run_promo_codes(conn, incremental: bool = False) -> int:
     if incremental:
         existing = existing_sheet_row_ids(conn, "crm.promo_codes")
         rows = filter_new_rows(rows, existing)
-    return upsert(conn, "crm.promo_codes", rows)
+    # `code` — business key. Stable across hash-algo changes; if Sheets row
+    # moves and gets a new sheet_row_id, the same code still maps to the same
+    # DB row. Avoids UniqueViolation on uq_promo_code when telemetry hashing
+    # evolves between phases.
+    return upsert(conn, "crm.promo_codes", rows, conflict_col="code")
 
 
 def run_bloggers(conn, incremental: bool = False) -> tuple[int, int]:
@@ -114,7 +118,8 @@ def run_substitute_articles(conn, incremental: bool = False) -> tuple[int, int, 
     if incremental:
         existing = existing_sheet_row_ids(conn, "crm.substitute_articles")
         matched = filter_new_rows(matched, existing)
-    n_a = upsert(conn, "crm.substitute_articles", matched)
+    # See run_promo_codes — same uq_<entity>_code constraint exists here.
+    n_a = upsert(conn, "crm.substitute_articles", matched, conflict_col="code")
 
     code_to_id: dict[str, int] = {}
     with conn.cursor() as cur:
