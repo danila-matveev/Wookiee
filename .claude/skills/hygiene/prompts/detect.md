@@ -177,13 +177,24 @@ DOCS = pathlib.Path('docs')
 # Markdown link with target ending in a known internal-ref extension OR a trailing slash (directory).
 LINK_RE = re.compile(r'\[[^\]]*\]\(([^)]+?(?:\.(?:md|py|sh|ya?ml|json|toml|txt)|/))(?:#[^)]*)?\)')
 
+FENCE_RE = re.compile(r'^```', re.MULTILINE)
+
+def fenced_ranges(text):
+    """Return [(start, end), ...] byte offsets of fenced code blocks (inclusive opening fence, exclusive of trailing newline)."""
+    fences = [m.start() for m in FENCE_RE.finditer(text)]
+    return [(fences[i], fences[i+1]) for i in range(0, len(fences) - 1, 2)]
+
 broken = []
 for src in DOCS.rglob('*.md'):
     try:
         text = src.read_text()
     except Exception:
         continue
+    skips = fenced_ranges(text)
     for m in LINK_RE.finditer(text):
+        # Skip links inside fenced code blocks — those are illustrative content, not real refs.
+        if any(s <= m.start() < e for s, e in skips):
+            continue
         link = m.group(1)
         # Skip URLs, mail, anchor-only and absolute filesystem paths.
         if link.startswith(('http://','https://','mailto:','#','/')) or not link:

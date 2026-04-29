@@ -7,7 +7,7 @@ triggers:
   - hygiene check
 metadata:
   category: infra
-  version: 1.1.1
+  version: 1.1.2
   owner: danila
 ---
 
