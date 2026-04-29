@@ -27,7 +27,7 @@ def _attach_counter():
 def test_list_bloggers_query_count(client, auth):
     counter, listener = _attach_counter()
     try:
-        r = client.get("/bloggers", headers=auth, params={"limit": 50})
+        r = client.get("/api/bloggers", headers=auth, params={"limit": 50})
         assert r.status_code == 200
     finally:
         event.remove(get_engine(), "before_cursor_execute", listener)
@@ -37,7 +37,7 @@ def test_list_bloggers_query_count(client, auth):
 def test_list_integrations_query_count(client, auth):
     counter, listener = _attach_counter()
     try:
-        r = client.get("/integrations", headers=auth, params={"limit": 50})
+        r = client.get("/api/integrations", headers=auth, params={"limit": 50})
         assert r.status_code == 200
     finally:
         event.remove(get_engine(), "before_cursor_execute", listener)
@@ -46,14 +46,14 @@ def test_list_integrations_query_count(client, auth):
 
 def test_get_blogger_detail_query_count(client, auth):
     """Detail = main SELECT + channels SELECT = 2 queries."""
-    list_resp = client.get("/bloggers", headers=auth, params={"limit": 1}).json()
+    list_resp = client.get("/api/bloggers", headers=auth, params={"limit": 1}).json()
     if not list_resp["items"]:
         import pytest
         pytest.skip("DB empty")
     bid = list_resp["items"][0]["id"]
     counter, listener = _attach_counter()
     try:
-        r = client.get(f"/bloggers/{bid}", headers=auth)
+        r = client.get(f"/api/bloggers/{bid}", headers=auth)
         assert r.status_code == 200
     finally:
         event.remove(get_engine(), "before_cursor_execute", listener)
@@ -62,14 +62,14 @@ def test_get_blogger_detail_query_count(client, auth):
 
 def test_get_integration_detail_query_count(client, auth):
     """Detail = main SELECT + subs SELECT + posts SELECT = 3 queries."""
-    list_resp = client.get("/integrations", headers=auth, params={"limit": 1}).json()
+    list_resp = client.get("/api/integrations", headers=auth, params={"limit": 1}).json()
     if not list_resp["items"]:
         import pytest
         pytest.skip("DB empty")
     iid = list_resp["items"][0]["id"]
     counter, listener = _attach_counter()
     try:
-        r = client.get(f"/integrations/{iid}", headers=auth)
+        r = client.get(f"/api/integrations/{iid}", headers=auth)
         assert r.status_code == 200
     finally:
         event.remove(get_engine(), "before_cursor_execute", listener)

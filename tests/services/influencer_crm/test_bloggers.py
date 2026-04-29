@@ -30,12 +30,12 @@ def test_blogger_create_requires_handle():
 
 
 def test_list_bloggers_requires_auth(client):
-    r = client.get("/bloggers")
+    r = client.get("/api/bloggers")
     assert r.status_code == 403
 
 
 def test_list_bloggers_returns_page(client, auth):
-    r = client.get("/bloggers", headers=auth, params={"limit": 5})
+    r = client.get("/api/bloggers", headers=auth, params={"limit": 5})
     assert r.status_code == 200
     body = r.json()
     assert "items" in body
@@ -44,17 +44,17 @@ def test_list_bloggers_returns_page(client, auth):
 
 
 def test_get_blogger_404_for_missing(client, auth):
-    r = client.get("/bloggers/999999999", headers=auth)
+    r = client.get("/api/bloggers/999999999", headers=auth)
     assert r.status_code == 404
 
 
 def test_get_blogger_returns_drawer_payload(client, auth):
     import pytest
-    list_resp = client.get("/bloggers", headers=auth, params={"limit": 1}).json()
+    list_resp = client.get("/api/bloggers", headers=auth, params={"limit": 1}).json()
     if not list_resp["items"]:
         pytest.skip("DB empty")
     blogger_id = list_resp["items"][0]["id"]
-    r = client.get(f"/bloggers/{blogger_id}", headers=auth)
+    r = client.get(f"/api/bloggers/{blogger_id}", headers=auth)
     assert r.status_code == 200
     body = r.json()
     assert body["id"] == blogger_id
@@ -63,8 +63,7 @@ def test_get_blogger_returns_drawer_payload(client, auth):
 
 
 def test_create_blogger(client, auth):
-    r = client.post(
-        "/bloggers",
+    r = client.post("/api/bloggers",
         headers=auth,
         json={"display_handle": "@pytest_create_user", "status": "new"},
     )
@@ -73,18 +72,17 @@ def test_create_blogger(client, auth):
     assert body["display_handle"] == "@pytest_create_user"
     new_id = body["id"]
     # Cleanup so test is idempotent
-    client.patch(f"/bloggers/{new_id}", headers=auth, json={"display_handle": f"deleted-{new_id}"})
+    client.patch(f"/api/bloggers/{new_id}", headers=auth, json={"display_handle": f"deleted-{new_id}"})
 
 
 def test_patch_blogger_partial_update(client, auth):
     import pytest
-    list_resp = client.get("/bloggers", headers=auth, params={"limit": 1}).json()
+    list_resp = client.get("/api/bloggers", headers=auth, params={"limit": 1}).json()
     if not list_resp["items"]:
         pytest.skip("DB empty")
     blogger_id = list_resp["items"][0]["id"]
     original_notes = list_resp["items"][0].get("notes")
-    r = client.patch(
-        f"/bloggers/{blogger_id}",
+    r = client.patch(f"/api/bloggers/{blogger_id}",
         headers=auth,
         json={"notes": "patched-by-test"},
     )
@@ -92,4 +90,4 @@ def test_patch_blogger_partial_update(client, auth):
     body = r.json()
     assert body.get("notes") == "patched-by-test" or "notes" not in body
     # Restore
-    client.patch(f"/bloggers/{blogger_id}", headers=auth, json={"notes": original_notes})
+    client.patch(f"/api/bloggers/{blogger_id}", headers=auth, json={"notes": original_notes})

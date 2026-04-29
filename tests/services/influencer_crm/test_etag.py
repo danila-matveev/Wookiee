@@ -1,5 +1,5 @@
 def test_list_returns_etag(client, auth):
-    r = client.get("/bloggers", headers=auth, params={"limit": 5})
+    r = client.get("/api/bloggers", headers=auth, params={"limit": 5})
     assert r.status_code == 200
     assert "ETag" in r.headers
     etag = r.headers["ETag"]
@@ -7,11 +7,10 @@ def test_list_returns_etag(client, auth):
 
 
 def test_if_none_match_returns_304(client, auth):
-    r1 = client.get("/bloggers", headers=auth, params={"limit": 5})
+    r1 = client.get("/api/bloggers", headers=auth, params={"limit": 5})
     etag = r1.headers["ETag"]
 
-    r2 = client.get(
-        "/bloggers",
+    r2 = client.get("/api/bloggers",
         headers={**auth, "If-None-Match": etag},
         params={"limit": 5},
     )
@@ -19,5 +18,5 @@ def test_if_none_match_returns_304(client, auth):
 
 
 def test_health_no_etag(client):
-    r = client.get("/health")
+    r = client.get("/api/health")
     assert "ETag" not in r.headers

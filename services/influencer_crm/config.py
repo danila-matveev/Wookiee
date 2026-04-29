@@ -1,7 +1,9 @@
 """Loads environment for the Influencer CRM API.
 
 Pulls Supabase Postgres credentials from `.env` (root) and
-`sku_database/.env` (fallback, mirrors sheets_etl/loader.py).
+`database/sku/.env` (post-refactor location, PR #81 renamed sku_database → database/sku).
+The legacy `sku_database/.env` path is kept as a fallback for environments
+that haven't migrated yet.
 """
 from __future__ import annotations
 
@@ -12,6 +14,7 @@ from dotenv import load_dotenv
 
 _ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(_ROOT / ".env")
+load_dotenv(_ROOT / "database" / "sku" / ".env")
 load_dotenv(_ROOT / "sku_database" / ".env")
 
 

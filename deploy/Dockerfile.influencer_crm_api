@@ -1,0 +1,40 @@
+# ── Stage 1: build React SPA ──
+FROM node:20-slim AS spa-builder
+
+WORKDIR /ui
+
+# pnpm via corepack (bundled with node:20)
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+COPY services/influencer_crm_ui/package.json services/influencer_crm_ui/pnpm-lock.yaml* /ui/
+RUN pnpm install --frozen-lockfile || pnpm install
+
+COPY services/influencer_crm_ui/ /ui/
+RUN pnpm build
+
+# ── Stage 2: Python BFF + bundled SPA ──
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# System deps for psycopg2
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY services/influencer_crm/requirements.txt /app/services/influencer_crm/requirements.txt
+RUN pip install --no-cache-dir -r services/influencer_crm/requirements.txt
+
+# App code
+COPY shared/ /app/shared/
+COPY services/__init__.py /app/services/__init__.py
+COPY services/influencer_crm/ /app/services/influencer_crm/
+
+# Pre-built SPA from stage 1 — FastAPI mounts this on / via SPAStaticFiles.
+COPY --from=spa-builder /ui/dist /app/ui_dist
+
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
+
+EXPOSE 8082
+
+CMD ["uvicorn", "services.influencer_crm.app:app", "--host", "0.0.0.0", "--port", "8082"]

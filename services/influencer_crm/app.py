@@ -2,23 +2,61 @@
 
 Use create_app() — module-level `app = create_app()` is exposed for uvicorn
 but tests should call create_app() directly so each test gets a fresh app.
+
+Routing layout in production:
+- /api/*  — JSON API (SPA calls these via VITE_API_BASE_URL=/api).
+- /*     — pre-built React SPA from /app/ui_dist (when present in image).
+- /<router>/* (no /api prefix) — kept registered for test/CLI clients
+  that already call e.g. client.get("/bloggers").
+
+The SPA-fallback wrapper around StaticFiles ensures deep-link refreshes
+(e.g. /bloggers/123) return index.html so the SPA router can take over.
 """
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import IntegrityError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from services.influencer_crm.config import LOG_LEVEL
 from services.influencer_crm.etag import ETagMiddleware
-from services.influencer_crm.routers import bloggers, briefs, health, integrations, metrics, ops, products, promos, search, tags
+from services.influencer_crm.routers import (
+    bloggers,
+    briefs,
+    health,
+    integrations,
+    metrics,
+    ops,
+    products,
+    promos,
+    search,
+    tags,
+)
 
 logging.basicConfig(
     level=LOG_LEVEL,
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
 )
+
+UI_DIST_DIR = Path("/app/ui_dist")  # populated by deploy/Dockerfile.influencer_crm_api
+
+
+class SPAStaticFiles(StaticFiles):
+    """StaticFiles that returns index.html for unknown paths so SPA deep
+    links survive a refresh."""
+
+    async def get_response(self, path, scope):
+        try:
+            return await super().get_response(path, scope)
+        except (HTTPException, StarletteHTTPException) as e:
+            if e.status_code == 404:
+                return await super().get_response("index.html", scope)
+            raise
 
 
 def create_app() -> FastAPI:
@@ -29,16 +67,23 @@ def create_app() -> FastAPI:
         version="0.1.0",
     )
     app.add_middleware(ETagMiddleware)
-    app.include_router(health.router)
-    app.include_router(bloggers.router)
-    app.include_router(integrations.router)
-    app.include_router(products.router)
-    app.include_router(tags.router)
-    app.include_router(promos.router)
-    app.include_router(briefs.router)
-    app.include_router(metrics.router)
-    app.include_router(search.router)
-    app.include_router(ops.router)
+
+    api_routers = [
+        health,
+        bloggers,
+        integrations,
+        products,
+        tags,
+        promos,
+        briefs,
+        metrics,
+        search,
+        ops,
+    ]
+    # ALL endpoints live under /api so the SPA can claim /, /bloggers/123, etc.
+    # Tests use the same /api prefix.
+    for module in api_routers:
+        app.include_router(module.router, prefix="/api")
 
     @app.exception_handler(IntegrityError)
     def _pg_integrity_handler(request, exc: IntegrityError):
@@ -54,6 +99,11 @@ def create_app() -> FastAPI:
             {"detail": "Database integrity error"},
             status_code=500,
         )
+
+    # Mount SPA static last — routers above win for any /api/* and /<router>/* path,
+    # SPA serves everything else (index.html, /assets/*, deep links).
+    if UI_DIST_DIR.exists():
+        app.mount("/", SPAStaticFiles(directory=str(UI_DIST_DIR), html=True), name="ui")
 
     return app
 

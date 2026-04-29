@@ -2,7 +2,7 @@ from __future__ import annotations
 
 
 def test_search_returns_both_groups(client, auth):
-    r = client.get("/search", headers=auth, params={"q": "instagram"})
+    r = client.get("/api/search", headers=auth, params={"q": "instagram"})
     assert r.status_code == 200
     body = r.json()
     assert "bloggers" in body and "integrations" in body
@@ -11,12 +11,12 @@ def test_search_returns_both_groups(client, auth):
 
 
 def test_search_requires_q(client, auth):
-    r = client.get("/search", headers=auth)
+    r = client.get("/api/search", headers=auth)
     assert r.status_code == 422
 
 
 def test_search_limit_param(client, auth):
-    r = client.get("/search", headers=auth, params={"q": "a", "limit": 3})
+    r = client.get("/api/search", headers=auth, params={"q": "a", "limit": 3})
     assert r.status_code == 200
     body = r.json()
     assert len(body["bloggers"]) <= 3

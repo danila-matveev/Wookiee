@@ -8,7 +8,7 @@ from __future__ import annotations
 
 
 def test_ops_health_shape(client, auth):
-    r = client.get("/ops/health", headers=auth)
+    r = client.get("/api/ops/health", headers=auth)
     assert r.status_code == 200, r.text
     body = r.json()
     assert "etl_last_run" in body
@@ -20,5 +20,5 @@ def test_ops_health_shape(client, auth):
 
 
 def test_ops_health_requires_api_key(client):
-    r = client.get("/ops/health")
+    r = client.get("/api/ops/health")
     assert r.status_code == 403

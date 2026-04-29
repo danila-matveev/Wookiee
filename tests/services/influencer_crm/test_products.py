@@ -3,12 +3,12 @@ from __future__ import annotations
 
 
 def test_list_products_requires_auth(client):
-    r = client.get("/products")
+    r = client.get("/api/products")
     assert r.status_code == 403
 
 
 def test_list_products_returns_aggregates(client, auth):
-    r = client.get("/products", headers=auth, params={"limit": 5})
+    r = client.get("/api/products", headers=auth, params={"limit": 5})
     assert r.status_code == 200
     body = r.json()
     assert "items" in body
@@ -19,5 +19,5 @@ def test_list_products_returns_aggregates(client, auth):
 
 
 def test_get_product_detail_404(client, auth):
-    r = client.get("/products/999999999", headers=auth)
+    r = client.get("/api/products/999999999", headers=auth)
     assert r.status_code == 404
