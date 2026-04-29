@@ -1271,7 +1271,7 @@ Host: aws-0-xx-xxx-x.pooler.supabase.com
 Port: 5432
 Database: postgres
 User: postgres.xxxxx (service role)
-Password: <из sku_database/.env>
+Password: <из database/sku/.env>
 ```
 
 **Иерархия таблиц:**
@@ -1296,7 +1296,7 @@ statusy (7 статусов)
 
 **REST API:** `https://<project>.supabase.co/rest/v1/`
 
-**Документация:** `sku_database/README.md`
+**Документация:** `database/sku/README.md`
 
 ### 13.5 Google Sheets
 
