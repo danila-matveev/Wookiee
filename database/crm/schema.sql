@@ -2,7 +2,7 @@
 -- Migration 008: Influencer CRM (schema v4.1)
 -- =============================================================================
 -- Creates 22 tables (15 core CRM + 7 supporting) for blogger relationship
--- management on top of sku_database. Schema decisions in db-schema-v4.html.
+-- management on top of the SKU catalogue (database/sku/). Schema decisions in db-schema-v4.html.
 -- v4.1 deltas (from codex-arch-review): C1-C5 + W1, W3, W7, W8, W10 (see HTML).
 -- Apply via: scripts/migrations/008_create_influencer_crm.py (wraps in transaction)
 --
@@ -247,7 +247,7 @@ CREATE INDEX idx_brief_versions_brief ON brief_versions (brief_id, version DESC)
 CREATE TABLE substitute_articles (
     id              BIGSERIAL PRIMARY KEY,
     code            TEXT NOT NULL,
-    artikul_id      INTEGER NOT NULL,  -- FK to existing sku_database.artikuly(id)
+    artikul_id      INTEGER NOT NULL,  -- FK to existing public.artikuly(id) (DDL in database/sku/)
     purpose         TEXT NOT NULL,
     nomenklatura_wb TEXT,
     campaign_name   TEXT,
