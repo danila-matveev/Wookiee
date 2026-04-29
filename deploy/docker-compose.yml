@@ -9,8 +9,8 @@ services:
     entrypoint: ["/bin/bash", "-c"]
     command:
       - |
-        (echo "PATH=/usr/local/bin:/usr/bin:/bin"; echo "PYTHONPATH=/app"; echo "0 10 * * 1 cd /app && python scripts/run_search_queries_sync.py >> /proc/1/fd/1 2>&1"; echo "0 6 * * * cd /app && python scripts/sync_sheets_to_supabase.py --level all >> /proc/1/fd/1 2>&1"; echo "0 */6 * * * cd /app && python -m services.influencer_crm.scripts.etl_runner >> /proc/1/fd/1 2>&1") | crontab -
-        echo "Wookiee cron installed: search queries Mon 10:00 + sheets sync daily 06:00 + CRM ETL every 6h"
+        (echo "PATH=/usr/local/bin:/usr/bin:/bin"; echo "PYTHONPATH=/app"; echo "0 10 * * 1 cd /app && python scripts/run_search_queries_sync.py >> /proc/1/fd/1 2>&1"; echo "0 6 * * * cd /app && python scripts/sync_sheets_to_supabase.py --level all >> /proc/1/fd/1 2>&1"; echo "0 12 * * 1 cd /app && python scripts/run_wb_promocodes_sync.py >> /proc/1/fd/1 2>&1"; echo "0 */6 * * * cd /app && python -m services.influencer_crm.scripts.etl_runner >> /proc/1/fd/1 2>&1") | crontab -
+        echo "Wookiee cron installed: search queries Mon 10:00 + sheets sync daily 06:00 + promocodes Mon 12:00 MSK + CRM ETL every 6h"
         cron -f
 
     env_file:

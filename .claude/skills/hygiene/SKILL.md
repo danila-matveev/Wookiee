@@ -1,13 +1,13 @@
 ---
 name: hygiene
-description: "Daily repo hygiene — push ready work, delete garbage, sync skills cross-platform, security tripwire. Reuse @matveevos_head_bot for Telegram alerts (only on ask-user/security). Cloudflare report every run. Designed for GitHub Actions cron at 00:00 São Paulo. Triggers: /hygiene, проверь репо, hygiene check."
+description: "Daily repo hygiene — push ready work, delete garbage, sync skills cross-platform, security tripwire. Сообщения в общий @wookiee_alerts_bot (TELEGRAM_ALERTS_BOT_TOKEN), только при ask-user/security. Cloudflare report every run. GitHub Actions cron 00:00 São Paulo. Triggers: /hygiene, проверь репо, hygiene check."
 triggers:
   - /hygiene
   - проверь репо
   - hygiene check
 metadata:
   category: infra
-  version: 1.0.0
+  version: 1.1.2
   owner: danila
 ---
 
@@ -26,8 +26,25 @@ Single-pass repo maintenance routine. Spec: `docs/superpowers/specs/2026-04-27-h
 ## Pre-conditions (skill aborts if missing)
 
 - Repo working directory clean OR all uncommitted changes are inside whitelisted `unpushed_paths` (see config).
-- `.env` contains `TELEGRAM_MANAGER_BOT_TOKEN`, `HYGIENE_TELEGRAM_CHAT_ID`, `CLOUDFLARE_API_TOKEN`, `POSTGRES_*` (Supabase).
+- Required env vars present **either in shell environment OR in `.env`**: `TELEGRAM_ALERTS_BOT_TOKEN` (общий бот системных уведомлений), `HYGIENE_TELEGRAM_CHAT_ID`, `CLOUDFLARE_API_TOKEN`, `POSTGRES_*` (Supabase). On GitHub Actions runner only shell env is set (no `.env` file) — that's expected, do **not** abort if `.env` is missing as long as the variables are exported.
 - Branch `main` is reachable (`git fetch origin main` works).
+
+**Concrete check (use this exact logic, do not invent your own):**
+```bash
+for var in TELEGRAM_ALERTS_BOT_TOKEN HYGIENE_TELEGRAM_CHAT_ID CLOUDFLARE_API_TOKEN; do
+  if [ -z "${!var}" ]; then
+    # not in shell env — try .env (local dev path)
+    if [ -f .env ] && grep -q "^${var}=" .env; then
+      export "${var}=$(grep "^${var}=" .env | head -1 | cut -d= -f2-)"
+    else
+      echo "ABORT: $var not in shell env and not in .env" >&2
+      exit 1
+    fi
+  fi
+done
+```
+
+**Do NOT add format/placeholder checks of your own** (no regex on `0000000000:AA...`, no length checks, no "looks like a placeholder" heuristics). Trust that if the variable is set and non-empty, it's the real value. Telegram and Cloudflare APIs themselves will reject bad tokens with clear error codes — that's where you'd surface a problem, not in a pre-flight pattern match. Inventing your own validation produces false negatives that silently swallow real notifications.
 
 If preconditions fail, the skill emits a single error message + Telegram alert (treated as `security_count=0, ask_count=0, error=1`), and exits.
 
@@ -73,11 +90,34 @@ If `bucket=security` for ANY finding → fork an immediate Telegram task **befor
 ### 3a. auto bucket
 ```bash
 RUN_DATE=$(date -u +%Y-%m-%d)
-git checkout -b "chore/hygiene-$RUN_DATE" 2>/dev/null || git checkout "chore/hygiene-$RUN_DATE"
+# Use $RUN_ID for branch name to avoid collisions across same-day runs.
+git checkout -b "chore/hygiene-$RUN_ID"
+```
+
+**Defensive guard — MUST run before every commit:** verify each path is allowed.
+
+```bash
+# Build a regex from config: protected_zones (deny) + per-check whitelist (allow).
+# A path passes only if it does NOT match any protected_zone glob AND
+# (for unpushed-work specifically) DOES match whitelist.unpushed_paths.
+guard_path() {
+  local path="$1" check="$2"
+  for proto in shared/ database/sku/ .env services/*/data/ .github/workflows/ .claude/skills/hygiene/ .claude/hygiene-config.yaml; do
+    case "$path" in $proto*) echo "BLOCKED: $path matches protected_zone $proto" >&2; return 1;; esac
+  done
+  if [ "$check" = "unpushed-work" ]; then
+    case "$path" in
+      docs/superpowers/plans/*|docs/superpowers/specs/*|docs/skills/*|docs/database/*) ;;
+      *) echo "BLOCKED: $path not in whitelist.unpushed_paths" >&2; return 1;;
+    esac
+  fi
+  return 0
+}
 ```
 
 For each finding in `auto`:
-- Apply the suggested action (delete file, `git rm`, `git add` to gitignore, etc.).
+- Run `guard_path <each-path> <check>` — if any fails, drop that finding from auto, move to ask bucket with reason `protected_zone_or_not_whitelisted`.
+- Apply the suggested action (delete file, `git rm`, `git add` to gitignore, etc.) ONLY for paths that passed the guard.
 - Group by check name.
 - One commit per group: `chore(hygiene): <check> — <count> items`.
 
@@ -101,41 +141,68 @@ Build a markdown section that will land in the PR description:
 Save to `/tmp/hygiene-followup-<run_id>.md` for Phase 4.
 
 ### 3c. security bucket — IMMEDIATE
-For each security finding, send Telegram alert NOW:
+For each security finding, send Telegram alert NOW. Сообщение — на простом русском, по шаблону из `prompts/publish.md → Алерт о подозрительном файле`. Никогда не включать само значение секрета — только путь и человекочитаемую причину.
 
 ```bash
-SECURITY_MSG="🚨 Wookiee Hygiene SECURITY [$RUN_DATE]
-Check: $check
-Path: $path
-Reason: $reason
-Action required: review immediately."
-curl -sf -X POST "https://api.telegram.org/bot$TELEGRAM_MANAGER_BOT_TOKEN/sendMessage" \
+SECURITY_MSG="🚨 Hygiene нашёл подозрительный файл в репозитории Wookiee.
+
+Файл: $path
+Что не так: $reason_human
+
+Глянь и убери, если это реальный секрет. Само содержимое не присылаю — оно может быть опасным."
+curl -sf -X POST "https://api.telegram.org/bot$TELEGRAM_ALERTS_BOT_TOKEN/sendMessage" \
   -d "chat_id=$HYGIENE_TELEGRAM_CHAT_ID" \
   --data-urlencode "text=$SECURITY_MSG"
 ```
 
-Do NOT include the leaked secret value in the message — only the path and reason.
+`$reason_human` — это `reason` из finding, переписанный по-человечески (например, `"похоже на API-ключ"`, `"в трекинге .env"`, `"в .env.example лежит реальное значение"`).
 
 After security alerts, continue to Phase 4 (PR still opens for non-security findings).
 
-## Phase 4 — PR
+## Phase 4 — PR / Issue
 
-If both `auto` and `ask` buckets are empty: skip this phase entirely.
+Three sub-cases based on bucket sizes:
 
-Otherwise:
-1. Push the branch: `git push -u origin "chore/hygiene-$RUN_DATE"`.
+### 4a. Both auto and ask buckets empty
+Skip entirely. Continue to Phase 5.
+
+### 4b. Auto bucket has commits (regardless of ask bucket)
+Auto-fixes were committed on `chore/hygiene-$RUN_ID` in Phase 3a. Now:
+1. Push the branch: `git push -u origin "chore/hygiene-$RUN_ID"`.
 2. Build PR body from `/tmp/hygiene-followup-<run_id>.md` + summary of auto-fixed groups.
-3. Invoke the `pullrequest` skill (project version) — auto-merge if no findings need user review; `wait` mode if `ask_count > 0`.
+3. Invoke the `pullrequest` skill (project version):
+   - **Use `wait` mode if `ask_count > 0`** — user must merge manually.
+   - **Default (auto-merge) only if `ask_count = 0` AND CI checks pass.** Before merging, poll `gh pr checks <pr_number>` until all required checks report `success`. If any check is `failure` / `cancelled` / `pending` >10min → switch to `wait` mode and notify user.
+   - Never auto-merge if hygiene PR touched anything outside the auto bucket's expected blast radius (sanity check: `git diff main..HEAD --name-only` should match files referenced in `auto` findings only).
 
 PR title: `chore(hygiene): {auto_count} auto-fixed, {ask_count} need review — {YYYY-MM-DD}`.
+
+### 4c. Auto bucket empty BUT ask bucket has findings
+Branch has no commits, so a PR cannot be opened. Open a GitHub issue instead — that way ask findings stay discoverable on the project board:
+
+```bash
+gh issue create \
+  --title "hygiene followups — $(date -u +%Y-%m-%d)" \
+  --label "hygiene,followup" \
+  --body-file /tmp/hygiene-followup-$RUN_ID.md
+```
+
+Capture the issue URL → save as `PR_URL` for Phase 6/7 logging (the field name stays `pr_url` for schema stability; downstream consumers should treat it as "discussion URL"). Mention in NOTIFY message that this is an issue, not a PR.
+
+If `gh issue create` fails or `gh` not available → fall back to listing followups in the Cloudflare report only (Phase 5 already covers this).
 
 ## Phase 5 — PUBLISH (always)
 
 Render `prompts/publish.md` with run data → markdown.
-Invoke `cloudflare-pub` skill:
+
+Use the **project-level** `cloudflare-pub` skill (`.claude/skills/cloudflare-pub/`) so this works on GitHub Actions runners (where `~/.claude/skills/` is empty):
 
 ```bash
-python3 ~/.claude/skills/cloudflare-pub/scripts/publish.py \
+PUBLISH_SCRIPT=".claude/skills/cloudflare-pub/scripts/publish.py"
+# Local-dev fallback if run from outside repo root:
+[ ! -f "$PUBLISH_SCRIPT" ] && PUBLISH_SCRIPT="$HOME/.claude/skills/cloudflare-pub/scripts/publish.py"
+
+python3 "$PUBLISH_SCRIPT" \
   /tmp/hygiene-report-$RUN_ID.md \
   --name "wookiee-hygiene-$RUN_DATE" \
   --title "Wookiee Hygiene Run $RUN_DATE"
@@ -147,20 +214,27 @@ Capture the Permanent URL from output → save as `CLOUDFLARE_URL` for Phase 6 +
 
 Skip if `ask_count = 0 AND security_count = 0`. (Security already sent in 3c.)
 
-Otherwise:
+Otherwise — собрать сообщение по шаблону «Сводка по итогам уборки» из `prompts/publish.md`. Числа выводить словами для согласованности (один файл / два файла / пять файлов / одну ветку / две ветки).
+
+Псевдокод:
+
 ```bash
-MSG="🧹 Wookiee Hygiene $RUN_DATE
-Auto-fixed: $auto_count
-Needs review: $ask_count
-Security flags: $security_count
+# Соберите $MSG_BODY из шаблона «Сводка» в prompts/publish.md.
+# Строки выводите только если соответствующий счётчик > 0.
 
-Full report: $CLOUDFLARE_URL
-PR: $PR_URL"
+MSG="🧹 Hygiene убрался в репозитории Wookiee.
 
-curl -sf -X POST "https://api.telegram.org/bot$TELEGRAM_MANAGER_BOT_TOKEN/sendMessage" \
+${LINE_AUTO}${LINE_ASK}${LINE_SECURITY}
+Полный отчёт: ${CLOUDFLARE_URL}${LINE_PR}"
+
+curl -sf -X POST "https://api.telegram.org/bot$TELEGRAM_ALERTS_BOT_TOKEN/sendMessage" \
   -d "chat_id=$HYGIENE_TELEGRAM_CHAT_ID" \
   --data-urlencode "text=$MSG"
 ```
+
+**Не делай предварительной валидации токена** — никаких regex-проверок формата, никаких "looks like a placeholder" эвристик, никаких сравнений с шаблонами из `.env.example`. Если переменная установлена и непустая (это уже проверено в Pre-conditions) — просто отправляй. Если токен битый, Telegram вернёт `ok: false` с понятным `description` — это и логируй в `details.warnings`. Самопридуманные проверки приводят к молчаливому пропуску реальных уведомлений.
+
+Никаких английских лейблов (`Auto-fixed:`, `Needs review:`), никаких таблиц, никаких `RUN_ID` — Telegram это не рендерит, читателю выглядит как мусор.
 
 ## Phase 7 — LOG
 
@@ -180,13 +254,17 @@ log.finish(run_id, status='${STATUS}', result_url='${CLOUDFLARE_URL}', details=j
 "
 ```
 
-Set `STATUS=success` if all phases completed, `partial` if any check timed out or 1-2 phases failed, `failed` if hygiene aborted before Phase 5.
+Set `STATUS=success` if all phases completed (record warnings in `details.warnings`).
+Set `STATUS=timeout` if hygiene hit the 30-min wall-clock or 1-2 checks exceeded their 60s budget.
+Set `STATUS=error` if hygiene aborted before Phase 5 (precondition fail, hard-cap hit, unrecoverable error).
+
+Allowed `tool_runs.status` values (DB CHECK constraint): `running | success | error | timeout | data_not_ready`. Do NOT use `partial` or `failed` — they will fail the constraint.
 
 ## Hard rules — DO NOT VIOLATE
 
 These come from the spec and the project's `AGENTS.md`. Violating them = abort, no PR, Telegram alert.
 
-- NEVER write to: `shared/**`, `sku_database/**`, `.env*`, `services/*/data/**`, `.github/workflows/**`.
+- NEVER write to: `shared/**`, `database/sku/**`, `.env*`, `services/*/data/**`, `.github/workflows/**`.
 - NEVER use: `git push --force`, `git reset --hard`, `gh pr close <other-PR>`, `rm -rf <tracked-file>` without explicit whitelist.
 - NEVER include secret values in any output (Cloudflare, Telegram, PR description, logs).
 - NEVER auto-fix items in `bucket=ask` — only the user merges those after review.

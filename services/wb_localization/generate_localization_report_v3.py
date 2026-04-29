@@ -89,7 +89,7 @@ def parse_args():
     )
     parser.add_argument(
         '--sku-db',
-        default=str(BASE_PATH.parent / 'sku_database' / 'Спецификации.xlsx'),
+        default=str(BASE_PATH.parent / 'database' / 'sku' / 'Спецификации.xlsx'),
         help='Путь к файлу баркодов (Спецификации.xlsx)'
     )
     parser.add_argument(

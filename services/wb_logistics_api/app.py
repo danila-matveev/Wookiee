@@ -11,7 +11,8 @@ from __future__ import annotations
 import logging
 import os
 import threading
-from datetime import datetime
+from datetime import date, datetime
+from typing import Optional
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException
@@ -41,6 +42,46 @@ _state: dict = {
     "error": None,
     "summary": None,
 }
+
+# ── Promocodes state (separate namespace) ────────────────────────────────────
+PROMOCODES_API_KEY = os.getenv("PROMOCODES_API_KEY", "")
+_promocodes_lock = threading.Lock()
+_promocodes_state: dict = {
+    "status": "idle",
+    "started_at": None,
+    "finished_at": None,
+    "error": None,
+    "summary": None,
+}
+
+
+def _verify_promocodes_key(x_api_key: str = Header(...)) -> None:
+    if not PROMOCODES_API_KEY:
+        raise HTTPException(500, "PROMOCODES_API_KEY not configured on server")
+    if x_api_key != PROMOCODES_API_KEY:
+        raise HTTPException(403, "Invalid API key")
+
+
+def _promocodes_worker(payload: dict) -> None:
+    from services.sheets_sync.sync.sync_promocodes import run as run_sync
+    try:
+        result = run_sync(
+            mode=payload.get("mode", "last_week"),
+            week_from=date.fromisoformat(payload["from"]) if payload.get("from") else None,
+            week_to=date.fromisoformat(payload["to"]) if payload.get("to") else None,
+            weeks_back=int(payload.get("weeks_back", 12)),
+        )
+        with _promocodes_lock:
+            _promocodes_state["status"] = result.get("status", "error")
+            _promocodes_state["finished_at"] = datetime.now().isoformat(timespec="seconds")
+            _promocodes_state["summary"] = result
+            _promocodes_state["error"] = result.get("error")
+    except Exception as exc:
+        logger.exception("Promocodes sync failed")
+        with _promocodes_lock:
+            _promocodes_state["status"] = "error"
+            _promocodes_state["finished_at"] = datetime.now().isoformat(timespec="seconds")
+            _promocodes_state["error"] = str(exc)
 
 
 def _verify_key(x_api_key: str = Header(...)) -> None:
@@ -179,3 +220,43 @@ def get_status(x_api_key: str = Header(...)):
 @app.get("/health")
 def health():
     return {"ok": True}
+
+
+@app.post("/promocodes/run")
+def promocodes_run(
+    payload: Optional[dict] = None,
+    x_api_key: str = Header(...),
+):
+    _verify_promocodes_key(x_api_key)
+    payload = payload or {}
+
+    with _promocodes_lock:
+        if _promocodes_state["status"] == "running":
+            return JSONResponse(
+                status_code=409,
+                content={
+                    "status": "running",
+                    "started_at": _promocodes_state["started_at"],
+                    "message": "Promocodes sync already running",
+                },
+            )
+        _promocodes_state["status"] = "running"
+        _promocodes_state["started_at"] = datetime.now().isoformat(timespec="seconds")
+        _promocodes_state["finished_at"] = None
+        _promocodes_state["error"] = None
+        _promocodes_state["summary"] = None
+
+    threading.Thread(
+        target=_promocodes_worker, args=(payload,), daemon=True
+    ).start()
+    return JSONResponse(
+        status_code=202,
+        content={"status": "running", "started_at": _promocodes_state["started_at"]},
+    )
+
+
+@app.get("/promocodes/status")
+def promocodes_status(x_api_key: str = Header(...)):
+    _verify_promocodes_key(x_api_key)
+    with _promocodes_lock:
+        return dict(_promocodes_state)

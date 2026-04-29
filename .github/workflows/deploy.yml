@@ -30,10 +30,15 @@ jobs:
             echo "=== Pulling latest code ==="
             git pull origin main
 
+            echo "=== Pre-deploy guard ==="
+            if [ -x "$PROJECT_DIR/scripts/server_predeploy_check.sh" ]; then
+              REPO="$PROJECT_DIR" "$PROJECT_DIR/scripts/server_predeploy_check.sh"
+            fi
+
             echo "=== Building and deploying Wookiee services ==="
             cd deploy
             docker compose build
-            docker compose up -d
+            docker compose up -d --remove-orphans
 
             echo "=== Waiting for startup (30s) ==="
             sleep 30

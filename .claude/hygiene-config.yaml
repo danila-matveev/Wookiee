@@ -14,11 +14,13 @@ cost_caps:
 protected_zones:
   never_modify:
     - shared/**
-    - sku_database/**
+    - database/sku/**
     - .env
     - .env.*
     - services/*/data/**
     - .github/workflows/**
+    - .claude/skills/hygiene/**       # self-protection: hygiene must not auto-fix itself
+    - .claude/hygiene-config.yaml     # self-protection: config tweaks need human review
 
 whitelist:
   binaries_keep:
@@ -32,6 +34,11 @@ whitelist:
     - docs/superpowers/specs/**
     - docs/skills/**
     - docs/database/**
+
+  # Сервисы, которые намеренно отличаются от обычной структуры
+  # (services/<name>/ с __init__.py + config.py) — не флагать в structure_conventions.
+  structure_conventions_exceptions:
+    - services/creative_kb     # PoC/MVP — пока только prompts/ + tests/, entry-point ещё не реализован
 
 checks:
   unpushed_work:           { default: auto_commit_push }
@@ -58,7 +65,8 @@ notifications:
     project_name_format: "wookiee-hygiene-{date}"
 
   telegram:
-    bot_env: TELEGRAM_MANAGER_BOT_TOKEN
+    bot_env: TELEGRAM_ALERTS_BOT_TOKEN  # общий @wookiee_alerts_bot
     chat_env: HYGIENE_TELEGRAM_CHAT_ID
     only_if_ask_user_or_security: true
-    message_prefix: "🧹 Wookiee Hygiene"
+    language: ru                          # сообщения на простом русском
+    style: peer-report                    # как отчёт сотрудника тимлиду

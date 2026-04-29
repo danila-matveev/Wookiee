@@ -19,7 +19,7 @@
 - `services/content_kb/` — векторный поиск по фото (pgvector)
 - `services/creative_kb/` — KB для контент-задач
 - `services/tool_telemetry/` — логирование запусков инструментов
-- `sku_database/` — товарная матрица (Supabase)
+- `database/sku/` — товарная матрица (Supabase)
 - `scripts/` — CLI-скрипты аналитики
 
 ## Старт работы
@@ -87,14 +87,21 @@
 - **DB Server (`89.23.119.253:6433`)** — **ТОЛЬКО ЧТЕНИЕ.** Сторонний сервер подрядчика с данными WB/OZON. Нельзя деплоить, писать данные, менять конфиг. Подключение задаётся через `.env` (`DB_HOST`, `DB_PORT`).
 - Полная документация: `docs/infrastructure.md`
 
+### App Server — deploy-only (НЕ редактировать код на сервере)
+- Сервер `ssh timeweb` — **deploy-only**. Любая правка кода: локально → PR → merge в main → auto-deploy.
+- На сервере крутится **autopull cron** под пользователем `deploy` (`*/5 * * * *` → `scripts/server_autopull.sh`). При drift main vs origin/main — hard-reset + (если изменён код контейнеров) rebuild.
+- При **dirty working tree** autopull ничего не reset-ит, шлёт Telegram alert. Не оставлять uncommitted правки на сервере — autopull ждёт чистого состояния.
+- **Исключение из правила**: hot-debug по прямой просьбе пользователя. Тогда предупреди, что autopull сотрёт правку через ≤5 мин, и сразу оформи PR.
+- Дебаг через `cat`, `grep`, `docker logs` — без ограничений.
+
 ### Безопасность
 - Секреты (пароли, токены, ключи) — ТОЛЬКО в `.env` файлах. Никогда не хардкодить в коде.
 - `.env.example` файлы содержат ТОЛЬКО плейсхолдеры, никогда реальные значения.
 - `.env` файлы git-ignored и не видны AI-агентам (через `.cursorignore`).
 
 ### Supabase — безопасность БД
-- **RLS (Row Level Security) включён** на всех таблицах `sku_database`. НЕ отключать.
-- **При создании новой таблицы** в Supabase — ОБЯЗАТЕЛЬНО включить RLS и создать политики. Инструкция: `sku_database/README.md` → "Безопасность Supabase".
+- **RLS (Row Level Security) включён** на всех таблицах `database/sku`. НЕ отключать.
+- **При создании новой таблицы** в Supabase — ОБЯЗАТЕЛЬНО включить RLS и создать политики. Инструкция: `database/sku/README.md` → "Безопасность Supabase".
 - **Роль `anon`** — заблокирована (0 прав). Не давать права этой роли.
 - **Роль `authenticated`** — только SELECT. Не расширять без необходимости.
 - **Python-скрипты** подключаются через `postgres` (service_role) — RLS к ним не применяется.

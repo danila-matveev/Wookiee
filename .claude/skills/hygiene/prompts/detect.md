@@ -52,22 +52,35 @@ Match-rules: any tracked file that matches `.gitignore` rules → finding.
 
 ## 6. skill-registry-drift
 
+Skills can live in two places: project-level `.claude/skills/` (committed, project-specific) and user-level `~/.claude/skills/` (personal, available across all projects). The Supabase `tools` registry tracks all skills. A skill is orphaned only if it exists in neither location.
+
 ```bash
-ls .claude/skills/ | sort > /tmp/hygiene-skills-fs.txt
+# Combine both locations, dedupe.
+{ ls .claude/skills/ 2>/dev/null; ls "$HOME/.claude/skills/" 2>/dev/null; } | sort -u > /tmp/hygiene-skills-fs.txt
+
 PYTHONPATH=. python3 -c "
 import psycopg2, os
 from dotenv import load_dotenv
-load_dotenv('sku_database/.env')
+load_dotenv('database/sku/.env')
 conn = psycopg2.connect(host=os.getenv('POSTGRES_HOST'), port=os.getenv('POSTGRES_PORT','5432'), dbname=os.getenv('POSTGRES_DB','postgres'), user=os.getenv('POSTGRES_USER'), password=os.getenv('POSTGRES_PASSWORD'))
 cur = conn.cursor()
 cur.execute(\"SELECT slug FROM tools WHERE type='skill' ORDER BY slug\")
-for r in cur.fetchall(): print(r[0])
-" > /tmp/hygiene-skills-db.txt
+# Slugs in DB are stored with a leading '/' (command-style); strip it so they match ls output.
+for r in cur.fetchall(): print(r[0].lstrip('/'))
+" | sort -u > /tmp/hygiene-skills-db.txt
+
 diff /tmp/hygiene-skills-fs.txt /tmp/hygiene-skills-db.txt
 ```
+
+Also list project-level only — used to distinguish project skills (committable) from user-level skills (personal):
+
+```bash
+ls .claude/skills/ 2>/dev/null | sort -u > /tmp/hygiene-skills-project.txt
+```
+
 Match-rules:
-- Lines `<` (in FS, not in DB) → finding `skill-registry-drift / unregistered`, suggested_action: "register via /tool-register".
-- Lines `>` (in DB, not in FS) → finding `skill-registry-drift / orphan`, suggested_action: "ask-user — confirm deletion or restore".
+- Lines `<` (combined FS, not in DB) → finding `skill-registry-drift / unregistered`, suggested_action: "register via /tool-register". Only flag if also present in `/tmp/hygiene-skills-project.txt` (project-level skills are the ones that should be registered for the team; user-level personal skills can be registered or not at user's discretion — skip them to avoid false positives).
+- Lines `>` (in DB, not in combined FS) → finding `skill-registry-drift / orphan`, suggested_action: "ask-user — confirm deletion or restore". This is a real orphan: the skill is gone from both locations.
 
 ## 7. cross-platform-skill-prep
 
@@ -92,30 +105,52 @@ Match-rules:
 ## 9. orphan-imports
 
 ```bash
+# One git pass for all file mtimes (avoid O(N²) subprocess loop).
+git ls-files -z 'shared/*.py' 'services/*.py' 'agents/*.py' 'scripts/*.py' 2>/dev/null \
+  | xargs -0 -I{} git log -1 --format='%cr %H {}' -- '{}' 2>/dev/null \
+  > /tmp/hygiene-py-ages.txt 2>&1 || true
 PYTHONPATH=. python3 - <<'PY'
-import os, ast, pathlib, subprocess
+import ast, pathlib, re
 roots = ['shared','services','agents','scripts']
 modules = {}
 for r in roots:
-    for p in pathlib.Path(r).rglob('*.py') if pathlib.Path(r).exists() else []:
+    if not pathlib.Path(r).exists(): continue
+    for p in pathlib.Path(r).rglob('*.py'):
         if '__pycache__' in p.parts: continue
         modules[str(p)] = p.stem
-seen_imports = set()
+seen = set()
 for p in modules:
     try:
-        tree = ast.parse(pathlib.Path(p).read_text())
+        source = pathlib.Path(p).read_text()
     except Exception:
         continue
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module:
-            seen_imports.add(node.module.split('.')[-1])
-        elif isinstance(node, ast.Import):
-            for n in node.names: seen_imports.add(n.name.split('.')[-1])
-orphans = [p for p,name in modules.items() if name not in seen_imports and name != '__init__']
-for o in orphans:
-    age_days = int(subprocess.check_output(['git','log','-1','--format=%cr','--',o]).decode().strip().split()[0] or '0') if 'days' in subprocess.check_output(['git','log','-1','--format=%cr','--',o]).decode() else 0
-    if age_days >= 60:
-        print(o)
+    try:
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module:
+                seen.add(node.module.split('.')[-1])
+            elif isinstance(node, ast.Import):
+                for n in node.names: seen.add(n.name.split('.')[-1])
+    except Exception:
+        pass
+    # Catch dynamic refs like importlib.import_module("a.b.c") or registry strings.
+    for ref in re.findall(r'["\']([\w.]+)["\']', source):
+        if '.' in ref:
+            seen.add(ref.split('.')[-1])
+ages = {}
+try:
+    with open('/tmp/hygiene-py-ages.txt') as f:
+        for ln in f:
+            m = re.match(r'(\d+)\s+(years?|months?|weeks?|days?)\s+ago\s+\S+\s+(.+)$', ln.strip())
+            if not m: continue
+            n, unit, path = int(m.group(1)), m.group(2), m.group(3)
+            days = n * (365 if 'year' in unit else 30 if 'month' in unit else 7 if 'week' in unit else 1)
+            ages[path] = days
+except FileNotFoundError:
+    pass
+for p, name in modules.items():
+    if name in seen or name == '__init__': continue
+    if ages.get(p, 0) >= 60: print(p)
 PY
 ```
 Match-rules: each printed path → finding (ask_user, no auto-delete).
@@ -135,10 +170,49 @@ Match-rules: each printed path → finding (ask_user).
 ## 11. broken-doc-links
 
 ```bash
-grep -rEoh '\]\([^)]+\.md[^)]*\)' docs --include='*.md' | sed 's/^](\(.*\))$/\1/' | sort -u | while read link; do
-  base=$(echo "$link" | sed 's/#.*$//')
-  if [ -n "$base" ] && [ ! -f "$base" ] && [ ! -f "docs/$base" ]; then echo "BROKEN: $link"; fi
-done | head -30
+PYTHONPATH=. python3 - <<'PY'
+import pathlib, re
+
+ROOT = pathlib.Path('.').resolve()
+DOCS = pathlib.Path('docs')
+# Markdown link with target ending in a known internal-ref extension OR a trailing slash (directory).
+LINK_RE = re.compile(r'\[[^\]]*\]\(([^)]+?(?:\.(?:md|py|sh|ya?ml|json|toml|txt)|/))(?:#[^)]*)?\)')
+
+FENCE_RE = re.compile(r'^```', re.MULTILINE)
+
+def fenced_ranges(text):
+    """Return [(start, end), ...] byte offsets of fenced code blocks (inclusive opening fence, exclusive of trailing newline)."""
+    fences = [m.start() for m in FENCE_RE.finditer(text)]
+    return [(fences[i], fences[i+1]) for i in range(0, len(fences) - 1, 2)]
+
+broken = []
+for src in DOCS.rglob('*.md'):
+    try:
+        text = src.read_text()
+    except Exception:
+        continue
+    skips = fenced_ranges(text)
+    for m in LINK_RE.finditer(text):
+        # Skip links inside fenced code blocks — those are illustrative content, not real refs.
+        if any(s <= m.start() < e for s, e in skips):
+            continue
+        link = m.group(1)
+        # Skip URLs, mail, anchor-only and absolute filesystem paths.
+        if link.startswith(('http://','https://','mailto:','#','/')) or not link:
+            continue
+        # Resolve relative to source file's directory first, then fall back to repo root.
+        candidates = [
+            (src.parent / link).resolve(),
+            (ROOT / link).resolve(),
+        ]
+        if any(c.exists() for c in candidates):
+            continue
+        line_no = text[:m.start()].count('\n') + 1
+        broken.append(f"BROKEN: {src}:{line_no} -> {link}")
+
+for line in broken[:30]:
+    print(line)
+PY
 ```
 Match-rules: any `BROKEN:` line → finding (ask_user — could be intentional rename).
 
@@ -169,6 +243,8 @@ for s in $(ls -1 services/ | head -5); do echo "--- $s ---"; ls services/$s/; do
 ```
 Apply LLM judgment on diff vs majority pattern. Match-rules: deviating service → finding (ask_user).
 
+**Exceptions:** before flagging, check `.claude/hygiene-config.yaml` → `whitelist.structure_conventions_exceptions`. Services listed there are intentional deviations (PoCs, prompt-only modules, etc.) — skip them.
+
 ## 15. obsolete-tracked-files
 
 ```bash
@@ -185,12 +261,20 @@ Match-rules: each printed line → finding (ask_user).
 ## 16. security-scan
 
 ```bash
-# Real secrets in tracked files (regex from gstack-cso, simplified)
-git ls-files | grep -vE '\.(md|example|sample)$' | xargs grep -lE '(API_KEY|SECRET|PASSWORD|TOKEN)\s*=\s*["\x27]?[A-Za-z0-9_/+=-]{16,}' 2>/dev/null | head -20
+# Real secrets in tracked files. Use NUL-separated to handle filenames with spaces/specials.
+# Exclude *_FILE=, *_PATH=, *_DIR= (path-shaped values, not secrets). Require base64-shape value.
+git ls-files -z \
+  | grep -zvE '\.(md|example|sample|json|yaml|yml|toml|html|svg|webp|woff2|css|svelte|eot|tsx|lock)$' \
+  | xargs -0 grep -lE '(API_KEY|SECRET|PASSWORD|TOKEN)[A-Z_]*\s*=\s*["\x27]?[A-Za-z0-9+/=_-]{20,}' 2>/dev/null \
+  | grep -vE '_(FILE|PATH|DIR)\s*=' \
+  | head -20
 # .env tracked check
-git ls-files | grep -E '^\.env$|\.env\.local$|\.env\.production$' | head
-# .env.example sanity (no real values)
-grep -E '^[A-Z_]+=([A-Za-z0-9_/+=-]{20,})' .env.example | grep -vE '(your-|0000|placeholder|example|xxxxxxxx)' | head
+git ls-files | grep -E '^\.env$|/\.env$|\.env\.local$|\.env\.production$' | head
+# .env.example sanity (no real values). Skip *_FILE/_PATH/_DIR (path values legit).
+grep -E '^[A-Z_]+=([A-Za-z0-9_/+=-]{20,})' .env.example \
+  | grep -vE '^[A-Z_]+_(FILE|PATH|DIR)=' \
+  | grep -vE '(your-|0000|placeholder|example|xxxxxxxx|sk-or-v1-\.\.\.|ntn_\.\.\.|sk-ant-api03-\.\.\.|AIza\.\.\.|eyJ\.\.\.)' \
+  | head
 ```
 Match-rules:
 - Any line from cmd 1 → CRITICAL finding (`security-scan / leaked_secret`, severity=critical, bucket=security).

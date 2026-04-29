@@ -117,7 +117,7 @@ def _collect_logistics_cost(start_date: str, end_date: str) -> tuple[dict, list[
 
 
 def _collect_indices() -> tuple[dict, list[str]]:
-    """Block 2: WB Localization Index — read latest from vasily.db history."""
+    """Block 2: WB Localization Index — read latest from wb_logistics.db history."""
     errors: list[str] = []
     result: dict = {"cabinets": {}, "available": False}
 

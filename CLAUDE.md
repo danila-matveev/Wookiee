@@ -19,4 +19,4 @@
 - GROUP BY по модели: ВСЕГДА с `LOWER()`
 - Процентные метрики: ТОЛЬКО средневзвешенные
 - Проблемы качества данных: фиксировать в `docs/database/DATA_QUALITY_NOTES.md`
-- Supabase: RLS включён, новые таблицы — обязательно RLS + политики (см. `sku_database/README.md`)
+- Supabase: RLS включён, новые таблицы — обязательно RLS + политики (см. `database/sku/README.md`)

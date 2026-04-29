@@ -109,7 +109,7 @@ def get_wb_skleyka_halo(current_start: str, current_end: str) -> list[dict]:
     import os
     import psycopg2 as pg2
     from dotenv import load_dotenv
-    load_dotenv('sku_database/.env')
+    load_dotenv('database/sku/.env')
 
     # Step 1: Get skleyka -> artikul mapping from Supabase
     sb_conn = pg2.connect(

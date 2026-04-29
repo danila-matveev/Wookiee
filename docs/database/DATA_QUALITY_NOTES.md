@@ -178,7 +178,7 @@ t['spp_pct'] = (total_spp_amount / total_revenue_before_spp * 100) if total_reve
 
 **Обнаружено:** 2026-02-11, письмо Supabase Security Advisor (25 errors)
 
-**Проблема:** При развертывании схемы `wookiee_sku_database` в Supabase **не был включён RLS** (Row Level Security) ни на одной из 16 таблиц. Роли `anon` и `authenticated` имели полный доступ (SELECT, INSERT, UPDATE, DELETE, TRUNCATE) ко всем таблицам и views через публичный REST API Supabase.
+**Проблема:** При развертывании схемы `database.sku` в Supabase **не был включён RLS** (Row Level Security) ни на одной из 16 таблиц. Роли `anon` и `authenticated` имели полный доступ (SELECT, INSERT, UPDATE, DELETE, TRUNCATE) ко всем таблицам и views через публичный REST API Supabase.
 
 **Масштаб:** Кто угодно с `anon key` проекта мог через REST API:
 - Читать все данные товарной матрицы (артикулы, баркоды, цены, поставщики)
@@ -192,7 +192,7 @@ t['spp_pct'] = (total_spp_amount / total_revenue_before_spp * 100) if total_reve
 4. Созданы 32 RLS-политики
 5. Default privileges настроены на запрет для `anon`
 
-**Файл:** `sku_database/scripts/migrations/005_fix_supabase_security.py`
+**Файл:** `database/sku/scripts/migrations/005_fix_supabase_security.py`
 
 **Дополнительное исправление (миграция 006, 2026-02-25):**
 Supabase Security Advisor продолжал показывать 9 ошибок после миграции 005.
@@ -207,10 +207,10 @@ Supabase Security Advisor продолжал показывать 9 ошибок
 - `REVOKE CREATE ON SCHEMA public FROM public`
 - `ALTER DEFAULT PRIVILEGES` для предотвращения будущих утечек на sequences
 
-**Файл:** `sku_database/scripts/migrations/006_fix_remaining_security.py`
-**Диагностика:** `sku_database/scripts/migrations/diagnose_security.py`
+**Файл:** `database/sku/scripts/migrations/006_fix_remaining_security.py`
+**Диагностика:** `database/sku/scripts/migrations/diagnose_security.py`
 
-**Правило:** При создании новой таблицы в Supabase — обязательно RLS + политики (см. `sku_database/README.md`).
+**Правило:** При создании новой таблицы в Supabase — обязательно RLS + политики (см. `database/sku/README.md`).
 
 ---
 

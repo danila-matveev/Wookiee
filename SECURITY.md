@@ -61,7 +61,7 @@ CREATE POLICY "Allow authenticated read" ON your_table
   USING (true);
 ```
 
-Подробнее: `wookiee_sku_database/README.md`
+Подробнее: `database/sku/README.md`
 
 ## Типы секретов в проекте
 

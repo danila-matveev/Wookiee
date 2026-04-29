@@ -107,12 +107,14 @@ API_KEY = "sk-..."  # ❌ хардкод секретов
 ### Пример структуры агента
 
 ```
-agents/vasily_agent/
+agents/<your_agent>/
 ├── service.py          # Основная логика агента
-├── playbook.md         # LLM-инструкции
-├── README.md           # Документация
+├── playbook.md         # LLM-инструкции (единственный источник истины)
+├── README.md           # Описание для разработчиков
 └── utils.py            # Вспомогательные функции (опционально)
 ```
+
+> Примечание: на момент 2026-04 Phase 1 рефакторинг (PRs #51-58) вывел все исторические агенты (Oleg, Lyudmila, Vasily) в архив `docs/archive/retired_agents/`. См. `docs/adr.md` ADR-009.
 
 ## Безопасность
 
@@ -128,7 +130,7 @@ agents/vasily_agent/
 - При создании новой таблицы:
   1. Включить RLS: `ALTER TABLE table_name ENABLE ROW LEVEL SECURITY;`
   2. Создать политики доступа
-- Подробнее: `sku_database/README.md`
+- Подробнее: `database/sku/README.md`
 
 ### Проверка перед коммитом
 
