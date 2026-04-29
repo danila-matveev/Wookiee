@@ -19,4 +19,5 @@ def _norm(part: str | None) -> str:
 def sheet_row_id(parts: Iterable[str | None]) -> str:
     """Compute deterministic 32-char MD5 hex for a row, given its key parts."""
     joined = "‖".join(_norm(p) for p in parts)
-    return hashlib.md5(joined.encode("utf-8")).hexdigest()
+    # usedforsecurity=False: content-hash for ETL idempotency, not a security primitive.
+    return hashlib.md5(joined.encode("utf-8"), usedforsecurity=False).hexdigest()
