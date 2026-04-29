@@ -63,5 +63,24 @@
 3. После применения миграций — проверить, что job-ы появились в `cron.job` (имена: pg_cron MV-refresh job, `crm_audit_log_retention`, `crm_metrics_snapshots_retention`).
 4. Если после первого `*/5 * * * *` запуска MV не обновится — посмотреть `cron.job_run_details` для диагностики.
 
+## Update — 2026-04-29 (post-application)
+
+P0 fix coммичен (`6947d09`): `tool_telemetry.log_agent_run` no-op заменён на прямую запись в `crm.etl_runs` через `services/influencer_crm/scripts/_telemetry.py`. Routers/ops.py обновлён — SQL запросы переведены с `agent_runs` на `crm.etl_runs`.
+
+Все 3 миграции применены к `gjvwcdtfglupewcwzfhw` (Wookiee Supabase) через MCP:
+- ✅ `010_pg_cron_mv_refresh` — `pg_cron` extension установлен, job `crm_v_blogger_totals_refresh` зарегистрирован (`*/5 * * * *`).
+- ✅ `011_retention_jobs` — два job'а: `crm_audit_log_retention` (вс 03:00, >90д) + `crm_metrics_snapshots_retention` (вс 03:15, >365д). Колонки `created_at`/`captured_at` верифицированы через information_schema перед apply.
+- ✅ `012_etl_runs` — таблица `crm.etl_runs` (10 колонок), индекс `idx_etl_runs_agent_started`, retention job `crm_etl_runs_retention` (вс 03:30, >180д).
+
+**Cron-проверка (2026-04-29 00:35 UTC):** все 4 джобы `active=true`. MV refresh уже отработал один раз: `cron.job_run_details` runid=1, status=succeeded, 82ms.
+
+**Что осталось (требует явного разрешения юзера):**
+- Первый реальный ETL: `python -m services.influencer_crm.scripts.etl_runner --full` — write на shared production, ждёт авторизации.
+- QA1 mandatory gate.
+- Push P5 ветки + PR (после landing P4 в main + rebase).
+- Deploy на app server (`docker compose up -d wookiee-cron`).
+- QA2 canary 24h post-deploy.
+
 ## Conclusion
-P5 implementation: COMPLETE_WITH_DEFERRALS
+P5 infra-side: COMPLETE (миграции применены, cron работает).
+P5 deploy-side: PENDING (требует явных destructive действий: ETL/push/deploy).
