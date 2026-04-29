@@ -1,0 +1,34 @@
+{
+  "majorDimension": "ROWS",
+  "range": "'БД БЛОГЕРЫ'!A1:G4",
+  "values": [
+    [
+      "Никнейм блогера",
+      "Ссылка на Инст",
+      "Аудитория Inst",
+      "Ссылка на ВК",
+      "Ссылка на ТГ",
+      "Ссылка на ТикТок",
+      "Ссылка на ютуб"
+    ],
+    [
+      "sofiimarvel",
+      "https://www.instagram.com/sofiimarvel/",
+      "78 400",
+      "",
+      "https://t.me/yakutyanochkaaaaa"
+    ],
+    [
+      "ynt_barb",
+      "https://www.instagram.com/ynt_barbara/",
+      "68 500",
+      "",
+      "https://t.me/dailylifeaesthetic"
+    ],
+    [
+      "juliaputina_stylist",
+      "https://www.instagram.com/juliaputina_stylist/",
+      "10 200"
+    ]
+  ]
+}
