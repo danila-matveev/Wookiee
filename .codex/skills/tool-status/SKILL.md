@@ -29,7 +29,7 @@ triggers:
 PYTHONPATH=. python3 -c "
 import psycopg2, os, json
 from dotenv import load_dotenv
-load_dotenv('sku_database/.env')
+load_dotenv('database/sku/.env')
 
 conn = psycopg2.connect(
     host=os.getenv('POSTGRES_HOST'), port=os.getenv('POSTGRES_PORT', '5432'),
@@ -77,7 +77,7 @@ print(json.dumps({
 PYTHONPATH=. python3 -c "
 import psycopg2, os, json
 from dotenv import load_dotenv
-load_dotenv('sku_database/.env')
+load_dotenv('database/sku/.env')
 
 slug = 'REPLACE_WITH_SLUG'
 conn = psycopg2.connect(
