@@ -16,6 +16,8 @@ class EtlLastRun(BaseModel):
 class EtlCounts(BaseModel):
     success: int = 0
     failed: int = 0
+    running: int = 0
+    stale_running: int = 0  # running > 1h, treated as stuck
 
 
 class CronJobInfo(BaseModel):

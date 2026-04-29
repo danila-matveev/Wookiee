@@ -26,7 +26,7 @@ test('GP-Ops: /ops dashboard renders KPIs, cron table and retention queue', asyn
           duration_ms: 4200,
           error_message: null,
         },
-        etl_last_24h: { success: 4, failed: 0 },
+        etl_last_24h: { success: 4, failed: 0, running: 0, stale_running: 0 },
         mv_age_seconds: 180,
         retention: {
           audit_log_eligible_for_delete: 12,

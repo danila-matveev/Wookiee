@@ -21,9 +21,10 @@ function etlAccent(status: string | null): 'primary' | 'success' | 'pink' {
   return 'primary';
 }
 
-// Pick a tone for "Сбои за 24ч" KPI — pink when there's any failure.
-function failuresAccent(failed: number): 'success' | 'pink' {
-  return failed > 0 ? 'pink' : 'success';
+// Pick a tone for "Сбои за 24ч" KPI — pink when there's any failure
+// or any stuck running ETL (>1h).
+function failuresAccent(failed: number, staleRunning: number): 'success' | 'pink' {
+  return failed > 0 || staleRunning > 0 ? 'pink' : 'success';
 }
 
 // Pick a tone for "Свежесть MV" — pink when older than the cron cadence (5 min)
@@ -62,9 +63,16 @@ export function OpsPage() {
               />
               <KpiCard
                 title="Сбои за 24ч"
-                accent={failuresAccent(data.etl_last_24h.failed)}
+                accent={failuresAccent(
+                  data.etl_last_24h.failed,
+                  data.etl_last_24h.stale_running,
+                )}
                 value={formatInt(data.etl_last_24h.failed)}
-                hint={`успешно: ${formatInt(data.etl_last_24h.success)}`}
+                hint={
+                  data.etl_last_24h.stale_running > 0
+                    ? `зависших: ${formatInt(data.etl_last_24h.stale_running)} · успешно: ${formatInt(data.etl_last_24h.success)}`
+                    : `успешно: ${formatInt(data.etl_last_24h.success)}`
+                }
               />
             </div>
 

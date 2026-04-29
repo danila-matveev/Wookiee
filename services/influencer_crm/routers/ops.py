@@ -65,13 +65,20 @@ def _fetch_etl_last_run(session: Session) -> EtlLastRun:
 
 
 def _fetch_etl_counts(session: Session) -> EtlCounts:
+    # Counts include `running` so a hung ETL doesn't masquerade as a green dashboard.
+    # `stale_running` (>1h) flags the stuck runs that retention won't auto-clear.
     try:
         row = session.execute(
             text(
                 """
                 SELECT
                     COUNT(*) FILTER (WHERE status='success') AS ok,
-                    COUNT(*) FILTER (WHERE status='failed')  AS failed
+                    COUNT(*) FILTER (WHERE status='failed')  AS failed,
+                    COUNT(*) FILTER (WHERE status='running') AS running,
+                    COUNT(*) FILTER (
+                        WHERE status='running'
+                          AND started_at < now() - INTERVAL '1 hour'
+                    ) AS stale_running
                 FROM crm.etl_runs
                 WHERE agent = :name
                   AND started_at > now() - INTERVAL '24 hours'
@@ -85,22 +92,29 @@ def _fetch_etl_counts(session: Session) -> EtlCounts:
         return EtlCounts()
     if row is None:
         return EtlCounts()
-    return EtlCounts(success=row.ok or 0, failed=row.failed or 0)
+    return EtlCounts(
+        success=row.ok or 0,
+        failed=row.failed or 0,
+        running=row.running or 0,
+        stale_running=row.stale_running or 0,
+    )
 
 
 def _fetch_mv_age(session: Session) -> int | None:
+    # Source of truth: cron.job_run_details for the v_blogger_totals_refresh job.
+    # `pg_stat_user_tables.last_analyze` does NOT update on REFRESH MV — using it
+    # would show a fake "freshness" value. The cron history is authoritative.
     try:
         row = session.execute(
             text(
                 """
-                SELECT EXTRACT(EPOCH FROM (
-                    now() - GREATEST(
-                        COALESCE(last_analyze, last_autoanalyze, now() - INTERVAL '1 day'),
-                        now() - INTERVAL '1 day'
-                    )
-                ))::int AS age
-                FROM pg_stat_user_tables
-                WHERE schemaname = 'crm' AND relname = 'v_blogger_totals'
+                SELECT EXTRACT(EPOCH FROM (now() - MAX(end_time)))::int AS age
+                FROM cron.job_run_details
+                WHERE jobid = (
+                    SELECT jobid FROM cron.job
+                    WHERE jobname = 'crm_v_blogger_totals_refresh'
+                )
+                  AND status = 'succeeded'
                 """
             )
         ).first()

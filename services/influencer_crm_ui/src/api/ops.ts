@@ -12,6 +12,8 @@ export interface EtlLastRun {
 export interface EtlCounts {
   success: number;
   failed: number;
+  running: number;
+  stale_running: number;
 }
 
 export interface CronJobInfo {
