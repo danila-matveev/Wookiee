@@ -61,11 +61,12 @@ Skills can live in two places: project-level `.claude/skills/` (committed, proje
 PYTHONPATH=. python3 -c "
 import psycopg2, os
 from dotenv import load_dotenv
-load_dotenv('sku_database/.env')
+load_dotenv('database/sku/.env')
 conn = psycopg2.connect(host=os.getenv('POSTGRES_HOST'), port=os.getenv('POSTGRES_PORT','5432'), dbname=os.getenv('POSTGRES_DB','postgres'), user=os.getenv('POSTGRES_USER'), password=os.getenv('POSTGRES_PASSWORD'))
 cur = conn.cursor()
 cur.execute(\"SELECT slug FROM tools WHERE type='skill' ORDER BY slug\")
-for r in cur.fetchall(): print(r[0])
+# Slugs in DB are stored with a leading '/' (command-style); strip it so they match ls output.
+for r in cur.fetchall(): print(r[0].lstrip('/'))
 " | sort -u > /tmp/hygiene-skills-db.txt
 
 diff /tmp/hygiene-skills-fs.txt /tmp/hygiene-skills-db.txt
@@ -120,14 +121,22 @@ for r in roots:
 seen = set()
 for p in modules:
     try:
-        tree = ast.parse(pathlib.Path(p).read_text())
+        source = pathlib.Path(p).read_text()
     except Exception:
         continue
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module:
-            seen.add(node.module.split('.')[-1])
-        elif isinstance(node, ast.Import):
-            for n in node.names: seen.add(n.name.split('.')[-1])
+    try:
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module:
+                seen.add(node.module.split('.')[-1])
+            elif isinstance(node, ast.Import):
+                for n in node.names: seen.add(n.name.split('.')[-1])
+    except Exception:
+        pass
+    # Catch dynamic refs like importlib.import_module("a.b.c") or registry strings.
+    for ref in re.findall(r'["\']([\w.]+)["\']', source):
+        if '.' in ref:
+            seen.add(ref.split('.')[-1])
 ages = {}
 try:
     with open('/tmp/hygiene-py-ages.txt') as f:
@@ -161,10 +170,49 @@ Match-rules: each printed path → finding (ask_user).
 ## 11. broken-doc-links
 
 ```bash
-grep -rEoh '\]\([^)]+\.md[^)]*\)' docs --include='*.md' | sed 's/^](\(.*\))$/\1/' | sort -u | while read link; do
-  base=$(echo "$link" | sed 's/#.*$//')
-  if [ -n "$base" ] && [ ! -f "$base" ] && [ ! -f "docs/$base" ]; then echo "BROKEN: $link"; fi
-done | head -30
+PYTHONPATH=. python3 - <<'PY'
+import pathlib, re
+
+ROOT = pathlib.Path('.').resolve()
+DOCS = pathlib.Path('docs')
+# Markdown link with target ending in a known internal-ref extension OR a trailing slash (directory).
+LINK_RE = re.compile(r'\[[^\]]*\]\(([^)]+?(?:\.(?:md|py|sh|ya?ml|json|toml|txt)|/))(?:#[^)]*)?\)')
+
+FENCE_RE = re.compile(r'^```', re.MULTILINE)
+
+def fenced_ranges(text):
+    """Return [(start, end), ...] byte offsets of fenced code blocks (inclusive opening fence, exclusive of trailing newline)."""
+    fences = [m.start() for m in FENCE_RE.finditer(text)]
+    return [(fences[i], fences[i+1]) for i in range(0, len(fences) - 1, 2)]
+
+broken = []
+for src in DOCS.rglob('*.md'):
+    try:
+        text = src.read_text()
+    except Exception:
+        continue
+    skips = fenced_ranges(text)
+    for m in LINK_RE.finditer(text):
+        # Skip links inside fenced code blocks — those are illustrative content, not real refs.
+        if any(s <= m.start() < e for s, e in skips):
+            continue
+        link = m.group(1)
+        # Skip URLs, mail, anchor-only and absolute filesystem paths.
+        if link.startswith(('http://','https://','mailto:','#','/')) or not link:
+            continue
+        # Resolve relative to source file's directory first, then fall back to repo root.
+        candidates = [
+            (src.parent / link).resolve(),
+            (ROOT / link).resolve(),
+        ]
+        if any(c.exists() for c in candidates):
+            continue
+        line_no = text[:m.start()].count('\n') + 1
+        broken.append(f"BROKEN: {src}:{line_no} -> {link}")
+
+for line in broken[:30]:
+    print(line)
+PY
 ```
 Match-rules: any `BROKEN:` line → finding (ask_user — could be intentional rename).
 
@@ -194,6 +242,8 @@ ls -1 services/ | head -10
 for s in $(ls -1 services/ | head -5); do echo "--- $s ---"; ls services/$s/; done
 ```
 Apply LLM judgment on diff vs majority pattern. Match-rules: deviating service → finding (ask_user).
+
+**Exceptions:** before flagging, check `.claude/hygiene-config.yaml` → `whitelist.structure_conventions_exceptions`. Services listed there are intentional deviations (PoCs, prompt-only modules, etc.) — skip them.
 
 ## 15. obsolete-tracked-files
 
