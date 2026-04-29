@@ -24,6 +24,7 @@ jobs:
             services/sheets_sync/requirements.txt
             services/content_kb/requirements.txt
             services/wb_logistics_api/requirements.txt
+            services/influencer_crm/requirements.txt
 
       - name: Install dependencies
         run: |
@@ -31,6 +32,7 @@ jobs:
           pip install -r services/sheets_sync/requirements.txt
           pip install -r services/content_kb/requirements.txt
           pip install -r services/wb_logistics_api/requirements.txt
+          pip install -r services/influencer_crm/requirements.txt
           # Tests-only deps that aren't part of any service requirements file yet:
           # - pytest: previously came from agents/oleg/requirements.txt (deleted in refactor PR #5)
           # - openpyxl: services/logistics_audit (no requirements.txt of its own)
