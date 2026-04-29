@@ -14,7 +14,7 @@ cost_caps:
 protected_zones:
   never_modify:
     - shared/**
-    - sku_database/**
+    - database/sku/**
     - .env
     - .env.*
     - services/*/data/**

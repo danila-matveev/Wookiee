@@ -18,7 +18,7 @@ services/        — активные сервисы
 scripts/         — CLI-скрипты аналитики (запускаются напрямую)
 wookiee-hub/     — веб-интерфейс (React + Vite)
 docs/            — документация
-sku_database/    — товарная матрица (Supabase)
+database/sku/    — товарная матрица (Supabase)
 ```
 
 ## Активные скиллы (CLI)

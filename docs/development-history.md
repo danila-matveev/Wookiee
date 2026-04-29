@@ -38,7 +38,7 @@
 До изменения таблица `wb_tariffs` не была развернута в Supabase, исторические коэффициенты жили только в локальном Excel, а ежедневный сбор не был подготовлен к серверному cron. Из-за этого Tier 2 lookup в логистическом аудите был ненадёжен и зависел от ручной подготовки окружения.
 
 ### Обновлено
-- [x] `sku_database/scripts/migrations/007_create_wb_tariffs.py`
+- [x] `database/sku/scripts/migrations/007_create_wb_tariffs.py`
 - [x] `shared/data_layer/_connection.py`
 - [x] `services/logistics_audit/calculators/warehouse_coef_resolver.py`
 - [x] `services/logistics_audit/etl/tariff_collector.py`
@@ -57,11 +57,11 @@
 ## [2026-02-25] Аудит SKU Database + ТЗ Dashboard каталога
 
 ### Что сделано
-- **Cleanup sku_database/**: удалены мёртвые скрипты (`examples.py`, `db_shell.py`, `import_to_supabase.py`, `diagnose_security.py`), удалены `docker-compose.yml` и `deploy 2.sh`
+- **Cleanup database/sku/**: удалены мёртвые скрипты (`examples.py`, `db_shell.py`, `import_to_supabase.py`, `diagnose_security.py`), удалены `docker-compose.yml` и `deploy 2.sh`
 - Удалён неиспользуемый `MAPPING_ARTIKULY` из `config/mapping.py`
 - Синхронизированы `schema.sql` и `models.py` с живой БД (добавлен `tip_kollekcii`)
 - Добавлен триггер аудита на `modeli_osnova` (ранее отсутствовал)
-- Обновлён `sku_database/README.md` (убраны ссылки на несуществующие файлы)
+- Обновлён `database/sku/README.md` (убраны ссылки на несуществующие файлы)
 - **Полный аудит БД**: программное чтение всех 7 каталожных листов Google Sheets через gspread, сравнение 90+ колонок Sheets с 16 таблицами Supabase
 - **10 предложений по улучшению БД**: от импорта Ozon-склеек (CRITICAL) до compound UNIQUE на artikuly
 - **ТЗ дашборда каталога**: архитектура, ER-диаграмма, 12 модулей UI с wireframes, 7 user journeys с блок-схемами, RBAC (3 роли), workflow статусов, Mermaid-диаграммы
@@ -70,11 +70,11 @@
 Подготовка к созданию визуального дашборда управления товарным каталогом (замена Google Sheets). Аудит выявил 5 критических проблем (пустая таблица `skleyki_ozon`, ~60 неимпортируемых колонок, хардкод в views).
 
 ### Обновлено
-- [x] `sku_database/config/mapping.py` (удалён MAPPING_ARTIKULY)
-- [x] `sku_database/database/schema.sql` (tip_kollekcii)
-- [x] `sku_database/database/models.py` (tip_kollekcii)
-- [x] `sku_database/database/triggers.sql` (modeli_osnova trigger)
-- [x] `sku_database/README.md` (полное обновление)
+- [x] `database/sku/config/mapping.py` (удалён MAPPING_ARTIKULY)
+- [x] `database/sku/database/schema.sql` (tip_kollekcii)
+- [x] `database/sku/database/models.py` (tip_kollekcii)
+- [x] `database/sku/database/triggers.sql` (modeli_osnova trigger)
+- [x] `database/sku/README.md` (полное обновление)
 - [x] `docs/plans/2026-02-25-db-audit-results.md` (создан)
 - [x] `docs/plans/2026-02-25-db-improvement-proposals.md` (создан)
 - [x] `docs/plans/2026-02-25-dashboard-tz.md` (создан)

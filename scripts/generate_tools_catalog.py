@@ -14,7 +14,7 @@ from pathlib import Path
 import psycopg2
 from dotenv import load_dotenv
 
-load_dotenv('sku_database/.env')
+load_dotenv('database/sku/.env')
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_PATH = REPO_ROOT / 'docs' / 'TOOLS_CATALOG.md'

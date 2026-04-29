@@ -57,7 +57,7 @@ ls .claude/skills/ | sort > /tmp/hygiene-skills-fs.txt
 PYTHONPATH=. python3 -c "
 import psycopg2, os
 from dotenv import load_dotenv
-load_dotenv('sku_database/.env')
+load_dotenv('database/sku/.env')
 conn = psycopg2.connect(host=os.getenv('POSTGRES_HOST'), port=os.getenv('POSTGRES_PORT','5432'), dbname=os.getenv('POSTGRES_DB','postgres'), user=os.getenv('POSTGRES_USER'), password=os.getenv('POSTGRES_PASSWORD'))
 cur = conn.cursor()
 cur.execute(\"SELECT slug FROM tools WHERE type='skill' ORDER BY slug\")

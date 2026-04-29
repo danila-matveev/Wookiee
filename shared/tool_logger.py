@@ -25,7 +25,7 @@ def _get_connection():
     """Connect to Supabase PostgreSQL."""
     import psycopg2
     from dotenv import load_dotenv
-    load_dotenv("sku_database/.env")
+    load_dotenv("database/sku/.env")
     return psycopg2.connect(
         host=os.getenv("POSTGRES_HOST"),
         port=os.getenv("POSTGRES_PORT", "5432"),

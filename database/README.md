@@ -4,22 +4,21 @@
 
 ## Зачем эта папка существует
 
-Раньше DDL разъезжался по проекту:
-- `sku_database/` лежал в корне как самостоятельный проект
-- `services/tool_telemetry/schema.sql` — внутри сервиса-логгера
-- CRM-схема (22 таблицы для блогеров) **существовала только в `.superpowers/brainstorm/`** — gitignore-папке, которая может быть удалена в любой момент. Серьёзная дыра: миграция была применена в Supabase, но canonical DDL в репо отсутствовал.
+Единая точка для DDL/миграций/документации всех Supabase-схем Wookiee. Под одной крышей:
+- `database/sku/` — товарная матрица (артикулы, модели, цвета, остатки)
+- `database/crm/` — Influencer CRM (блогеры, креативы, кампании, performance)
 
-Эта папка — единая точка для DDL/миграций/документации всех Supabase-схем.
+Что было до этого: товарная матрица жила в `sku_database/` в корне репо, CRM-схема существовала только в `.superpowers/brainstorm/` (gitignore-папке) — canonical DDL в репо отсутствовал, хотя миграция в Supabase была применена. Теперь обе схемы в одном месте.
 
 ## Содержимое
 
 | Папка | Supabase schema | Назначение | Статус |
 |---|---|---|---|
 | [crm/](crm/) | `crm` | Influencer CRM — блогеры, креативы, кампании, performance | ✅ Applied 2026-04-27 |
-| `sku_database/` (legacy расположение, в корне репо) | `public` | Товарная матрица — артикулы, модели, цвета, остатки | ✅ Production |
+| [sku/](sku/) | `public` | Товарная матрица — артикулы, модели, цвета, остатки (ранее `sku_database/` в корне) | ✅ Production |
 | `services/tool_telemetry/schema.sql` (legacy расположение, внутри сервиса) | `public.tool_telemetry` | Телеметрия запусков скиллов | ✅ Production |
 
-> **Legacy расположение** — `sku_database/` и `tool_telemetry/schema.sql` пока лежат на старых местах: их перенос затронул бы 20+ ссылок в docs/CLAUDE.md/AGENTS.md/onboarding/skills. Новые БД сразу попадают в `database/`.
+> **Legacy расположение** — `tool_telemetry/schema.sql` пока лежит внутри сервиса-логгера: перенос затронул бы ссылки в коде сервиса. Новые БД сразу попадают в `database/`.
 
 ## Как добавлять новую базу
 

@@ -43,7 +43,7 @@ triggers:
 PYTHONPATH=. python3 -c "
 import psycopg2, os
 from dotenv import load_dotenv
-load_dotenv('sku_database/.env')
+load_dotenv('database/sku/.env')
 
 conn = psycopg2.connect(
     host=os.getenv('POSTGRES_HOST'), port=os.getenv('POSTGRES_PORT', '5432'),
@@ -84,7 +84,7 @@ PYTHONPATH=. python3 scripts/generate_tools_catalog.py
 PYTHONPATH=. python3 -c "
 import psycopg2, os
 from dotenv import load_dotenv
-load_dotenv('sku_database/.env')
+load_dotenv('database/sku/.env')
 
 conn = psycopg2.connect(
     host=os.getenv('POSTGRES_HOST'), port=os.getenv('POSTGRES_PORT', '5432'),
