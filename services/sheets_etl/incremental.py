@@ -26,4 +26,15 @@ def filter_new_rows(rows: Iterable[dict], existing: set[str]) -> list[dict]:
     Rows without `sheet_row_id` (e.g., synthesized link rows) pass through
     unchanged — let the upsert dedup them on the natural conflict target.
     """
-    return [r for r in rows if r.get("sheet_row_id") not in existing or "sheet_row_id" not in r]
+    out: list[dict] = []
+    for r in rows:
+        srid = r.get("sheet_row_id")
+        # Passthrough when no sheet_row_id key present (synthesized rows).
+        if srid is None:
+            out.append(r)
+            continue
+        # Skip rows already loaded with the same content.
+        if srid in existing:
+            continue
+        out.append(r)
+    return out

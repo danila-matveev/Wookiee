@@ -10,6 +10,7 @@ const ROUTES = [
   '/slices',
   '/products',
   '/search?q=test',
+  '/ops',
 ];
 
 for (const route of ROUTES) {
