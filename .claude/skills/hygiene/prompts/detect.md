@@ -65,7 +65,8 @@ load_dotenv('database/sku/.env')
 conn = psycopg2.connect(host=os.getenv('POSTGRES_HOST'), port=os.getenv('POSTGRES_PORT','5432'), dbname=os.getenv('POSTGRES_DB','postgres'), user=os.getenv('POSTGRES_USER'), password=os.getenv('POSTGRES_PASSWORD'))
 cur = conn.cursor()
 cur.execute(\"SELECT slug FROM tools WHERE type='skill' ORDER BY slug\")
-for r in cur.fetchall(): print(r[0])
+# Slugs in DB are stored with a leading '/' (command-style); strip it so they match ls output.
+for r in cur.fetchall(): print(r[0].lstrip('/'))
 " | sort -u > /tmp/hygiene-skills-db.txt
 
 diff /tmp/hygiene-skills-fs.txt /tmp/hygiene-skills-db.txt
@@ -241,6 +242,8 @@ ls -1 services/ | head -10
 for s in $(ls -1 services/ | head -5); do echo "--- $s ---"; ls services/$s/; done
 ```
 Apply LLM judgment on diff vs majority pattern. Match-rules: deviating service → finding (ask_user).
+
+**Exceptions:** before flagging, check `.claude/hygiene-config.yaml` → `whitelist.structure_conventions_exceptions`. Services listed there are intentional deviations (PoCs, prompt-only modules, etc.) — skip them.
 
 ## 15. obsolete-tracked-files
 

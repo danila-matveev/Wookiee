@@ -35,6 +35,11 @@ whitelist:
     - docs/skills/**
     - docs/database/**
 
+  # Сервисы, которые намеренно отличаются от обычной структуры
+  # (services/<name>/ с __init__.py + config.py) — не флагать в structure_conventions.
+  structure_conventions_exceptions:
+    - services/creative_kb     # PoC/MVP — пока только prompts/ + tests/, entry-point ещё не реализован
+
 checks:
   unpushed_work:           { default: auto_commit_push }
   stray_binaries:          { default: auto_delete }
