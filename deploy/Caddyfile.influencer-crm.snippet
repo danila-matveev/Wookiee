@@ -1,0 +1,25 @@
+# Influencer CRM — Caddy block
+# Скопируй этот блок в /home/danila/n8n-docker-caddy/Caddyfile (или там где Caddyfile)
+# и сделай `docker compose restart caddy` (или какой там у тебя сервис).
+#
+# Caddy автоматически выпишет Let's Encrypt сертификат для crm.matveevdanila.com
+# при первом запросе.
+#
+# Поведение:
+#   /api/*  → FastAPI BFF (бизнес-API: bloggers, integrations, etc.)
+#   /*      → FastAPI BFF (отдаёт SPA index.html + assets через StaticFiles)
+#
+# FastAPI и Caddy в одной docker network n8n-docker-caddy_default → Caddy
+# проксирует по имени контейнера `influencer_crm_api` без публичного порта.
+
+crm.matveevdanila.com {
+    encode gzip zstd
+
+    # Все запросы (и /api/*, и /*) идут на BFF — FastAPI сам разруливает API vs SPA.
+    reverse_proxy influencer_crm_api:8082
+
+    log {
+        output file /var/log/caddy/crm.matveevdanila.com.log
+        format json
+    }
+}

@@ -13,7 +13,11 @@ from starlette.responses import Response
 
 
 class ETagMiddleware(BaseHTTPMiddleware):
-    EXCLUDED_PATHS = {"/health", "/openapi.json", "/docs", "/redoc"}
+    EXCLUDED_PATHS = {
+        "/health", "/openapi.json", "/docs", "/redoc",
+        # Same set under the /api/* alias (production layout).
+        "/api/health", "/api/openapi.json", "/api/docs", "/api/redoc",
+    }
 
     async def dispatch(self, request: Request, call_next) -> Response:
         if request.method != "GET" or request.url.path in self.EXCLUDED_PATHS:

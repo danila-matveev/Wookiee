@@ -106,6 +106,40 @@ services:
           cpus: '0.25'
           memory: 256M
 
+  # ── Influencer CRM API: FastAPI BFF + pre-built React SPA ──
+  influencer-crm-api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.influencer_crm_api
+    container_name: influencer_crm_api
+    restart: unless-stopped
+
+    env_file:
+      - ../.env
+
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TZ=Europe/Moscow
+
+    networks:
+      - n8n-docker-caddy_default
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8082/health')"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
   # ── WB MCP Server (ИП): Wildberries Seller API via MCP ──
   wb-mcp-ip:
     build:
