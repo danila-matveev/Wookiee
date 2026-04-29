@@ -12,7 +12,7 @@
 **Контекст:** API endpoint `POST /integrations/{id}/metrics-snapshots` принимает поле `note` в теле запроса, но в реальной таблице БД эта колонка отсутствует. Сейчас data layer молча дропает значение, в ответе возвращает `source` (default `'manual'`) — контракт сохранён, но фактическое сохранение заметки невозможно.
 
 **Что сделать:**
-- [ ] Создать миграцию `sku_database/database/migrations/009_add_metrics_note.sql`:
+- [ ] Создать миграцию `database/sku/database/migrations/009_add_metrics_note.sql`:
   ```sql
   ALTER TABLE crm.integration_metrics_snapshots
     ADD COLUMN note text;
