@@ -85,7 +85,7 @@ git checkout -b "chore/hygiene-$RUN_ID"
 # (for unpushed-work specifically) DOES match whitelist.unpushed_paths.
 guard_path() {
   local path="$1" check="$2"
-  for proto in shared/ sku_database/ .env services/*/data/ .github/workflows/ .claude/skills/hygiene/ .claude/hygiene-config.yaml; do
+  for proto in shared/ database/sku/ .env services/*/data/ .github/workflows/ .claude/skills/hygiene/ .claude/hygiene-config.yaml; do
     case "$path" in $proto*) echo "BLOCKED: $path matches protected_zone $proto" >&2; return 1;; esac
   done
   if [ "$check" = "unpushed-work" ]; then
@@ -222,7 +222,7 @@ Allowed `tool_runs.status` values (DB CHECK constraint): `running | success | er
 
 These come from the spec and the project's `AGENTS.md`. Violating them = abort, no PR, Telegram alert.
 
-- NEVER write to: `shared/**`, `sku_database/**`, `.env*`, `services/*/data/**`, `.github/workflows/**`.
+- NEVER write to: `shared/**`, `database/sku/**`, `.env*`, `services/*/data/**`, `.github/workflows/**`.
 - NEVER use: `git push --force`, `git reset --hard`, `gh pr close <other-PR>`, `rm -rf <tracked-file>` without explicit whitelist.
 - NEVER include secret values in any output (Cloudflare, Telegram, PR description, logs).
 - NEVER auto-fix items in `bucket=ask` — only the user merges those after review.
