@@ -295,7 +295,7 @@ def parse_args():
         help='Не загружать статусы из Supabase'
     )
     parser.add_argument(
-        '--sku-db', default=str(PROJECT_ROOT / 'sku_database' / 'Спецификации.xlsx'),
+        '--sku-db', default=str(PROJECT_ROOT / 'database' / 'sku' / 'Спецификации.xlsx'),
         help='Путь к файлу баркодов (Спецификации.xlsx)'
     )
     parser.add_argument(
@@ -1211,7 +1211,7 @@ def run_service_report(
     else:
         raise ValueError(f"Unknown cabinet '{cabinet_key}', expected ip or ooo")
 
-    sku_db = sku_db_path or str(PROJECT_ROOT / 'sku_database' / 'Спецификации.xlsx')
+    sku_db = sku_db_path or str(PROJECT_ROOT / 'database' / 'sku' / 'Спецификации.xlsx')
     barcode_dict = load_barcodes(sku_db)
     statuses = load_statuses(skip=no_statuses, cabinet_name=cabinet.name)
     own_stock = fetch_own_stock()

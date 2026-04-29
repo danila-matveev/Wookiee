@@ -56,7 +56,7 @@ MARKETPLACE_DB_CONFIG: dict = {
 # Supabase (product matrix)
 SUPABASE_ENV_PATH: str = os.getenv(
     'SUPABASE_ENV_PATH',
-    str(PROJECT_ROOT / 'sku_database' / '.env'),
+    str(PROJECT_ROOT / 'database' / 'sku' / '.env'),
 )
 
 # ============================================================================

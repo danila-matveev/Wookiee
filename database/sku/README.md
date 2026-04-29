@@ -9,7 +9,7 @@
 ### 1. Установка
 
 ```bash
-cd sku_database
+cd database/sku
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
@@ -68,7 +68,7 @@ GROUP BY mo.kod ORDER BY sku DESC LIMIT 10"
 ## Структура проекта
 
 ```
-sku_database/
+database/sku/
 ├── db.py                   # CLI команда (главная!)
 ├── .env                    # Настройки подключения
 ├── requirements.txt        # Зависимости

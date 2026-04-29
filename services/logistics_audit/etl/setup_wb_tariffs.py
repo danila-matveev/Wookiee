@@ -25,7 +25,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 load_dotenv(PROJECT_ROOT / ".env")
 
 logger = logging.getLogger(__name__)
-MIGRATION_PATH = PROJECT_ROOT / "sku_database" / "scripts" / "migrations" / "007_create_wb_tariffs.py"
+MIGRATION_PATH = PROJECT_ROOT / "database" / "sku" / "scripts" / "migrations" / "007_create_wb_tariffs.py"
 
 
 @dataclass(frozen=True)
