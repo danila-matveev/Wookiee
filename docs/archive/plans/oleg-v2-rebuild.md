@@ -685,7 +685,7 @@ CREATE TABLE feedback_log (
 | [shared/clients/wb_client.py](shared/clients/wb_client.py) | Researcher Agent (WB API) |
 | [shared/clients/ozon_client.py](shared/clients/ozon_client.py) | Researcher Agent (OZON API) |
 | [shared/model_mapping.py](shared/model_mapping.py) | Reporter + Researcher |
-| [agents/oleg/playbook.md](agents/oleg/playbook.md) | Reporter (+ обновляется Quality Agent) |
+| `agents/oleg/playbook.md` (агент удалён) | Reporter (+ обновляется Quality Agent) |
 | [agents/oleg/services/price_analysis/](agents/oleg/services/price_analysis/) | Reporter Agent |
 | [agents/oleg/services/notion_service.py](agents/oleg/services/notion_service.py) | Pipeline |
 

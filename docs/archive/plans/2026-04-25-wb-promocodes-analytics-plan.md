@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.11, FastAPI, httpx, gspread, pytest, Postgres (Supabase `tools` table), Docker, Apps Script.
 
-**Spec:** [docs/superpowers/specs/2026-04-24-wb-promocodes-analytics-design.md](../specs/2026-04-24-wb-promocodes-analytics-design.md)
+**Spec:** `docs/superpowers/specs/2026-04-24-wb-promocodes-analytics-design.md` (архив, файл удалён)
 
 ---
 
