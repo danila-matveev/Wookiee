@@ -120,14 +120,22 @@ for r in roots:
 seen = set()
 for p in modules:
     try:
-        tree = ast.parse(pathlib.Path(p).read_text())
+        source = pathlib.Path(p).read_text()
     except Exception:
         continue
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module:
-            seen.add(node.module.split('.')[-1])
-        elif isinstance(node, ast.Import):
-            for n in node.names: seen.add(n.name.split('.')[-1])
+    try:
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module:
+                seen.add(node.module.split('.')[-1])
+            elif isinstance(node, ast.Import):
+                for n in node.names: seen.add(n.name.split('.')[-1])
+    except Exception:
+        pass
+    # Catch dynamic refs like importlib.import_module("a.b.c") or registry strings.
+    for ref in re.findall(r'["\']([\w.]+)["\']', source):
+        if '.' in ref:
+            seen.add(ref.split('.')[-1])
 ages = {}
 try:
     with open('/tmp/hygiene-py-ages.txt') as f:
@@ -161,10 +169,38 @@ Match-rules: each printed path → finding (ask_user).
 ## 11. broken-doc-links
 
 ```bash
-grep -rEoh '\]\([^)]+\.md[^)]*\)' docs --include='*.md' | sed 's/^](\(.*\))$/\1/' | sort -u | while read link; do
-  base=$(echo "$link" | sed 's/#.*$//')
-  if [ -n "$base" ] && [ ! -f "$base" ] && [ ! -f "docs/$base" ]; then echo "BROKEN: $link"; fi
-done | head -30
+PYTHONPATH=. python3 - <<'PY'
+import pathlib, re
+
+ROOT = pathlib.Path('.').resolve()
+DOCS = pathlib.Path('docs')
+# Markdown link with target ending in a known internal-ref extension OR a trailing slash (directory).
+LINK_RE = re.compile(r'\[[^\]]*\]\(([^)]+?(?:\.(?:md|py|sh|ya?ml|json|toml|txt)|/))(?:#[^)]*)?\)')
+
+broken = []
+for src in DOCS.rglob('*.md'):
+    try:
+        text = src.read_text()
+    except Exception:
+        continue
+    for m in LINK_RE.finditer(text):
+        link = m.group(1)
+        # Skip URLs, mail, anchor-only and absolute filesystem paths.
+        if link.startswith(('http://','https://','mailto:','#','/')) or not link:
+            continue
+        # Resolve relative to source file's directory first, then fall back to repo root.
+        candidates = [
+            (src.parent / link).resolve(),
+            (ROOT / link).resolve(),
+        ]
+        if any(c.exists() for c in candidates):
+            continue
+        line_no = text[:m.start()].count('\n') + 1
+        broken.append(f"BROKEN: {src}:{line_no} -> {link}")
+
+for line in broken[:30]:
+    print(line)
+PY
 ```
 Match-rules: any `BROKEN:` line → finding (ask_user — could be intentional rename).
 
