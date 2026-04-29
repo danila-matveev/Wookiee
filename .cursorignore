@@ -5,7 +5,7 @@
 .env.*
 !.env.example
 bot/.env
-wookiee_sku_database/.env
+database/sku/.env
 marketplace-data-pipeline/.env
 *.pem
 *.key

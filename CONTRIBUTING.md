@@ -130,7 +130,7 @@ agents/<your_agent>/
 - При создании новой таблицы:
   1. Включить RLS: `ALTER TABLE table_name ENABLE ROW LEVEL SECURITY;`
   2. Создать политики доступа
-- Подробнее: `sku_database/README.md`
+- Подробнее: `database/sku/README.md`
 
 ### Проверка перед коммитом
 

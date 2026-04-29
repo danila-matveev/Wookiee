@@ -19,7 +19,7 @@
 - `services/content_kb/` — векторный поиск по фото (pgvector)
 - `services/creative_kb/` — KB для контент-задач
 - `services/tool_telemetry/` — логирование запусков инструментов
-- `sku_database/` — товарная матрица (Supabase)
+- `database/sku/` — товарная матрица (Supabase)
 - `scripts/` — CLI-скрипты аналитики
 
 ## Старт работы
@@ -100,8 +100,8 @@
 - `.env` файлы git-ignored и не видны AI-агентам (через `.cursorignore`).
 
 ### Supabase — безопасность БД
-- **RLS (Row Level Security) включён** на всех таблицах `sku_database`. НЕ отключать.
-- **При создании новой таблицы** в Supabase — ОБЯЗАТЕЛЬНО включить RLS и создать политики. Инструкция: `sku_database/README.md` → "Безопасность Supabase".
+- **RLS (Row Level Security) включён** на всех таблицах `database/sku`. НЕ отключать.
+- **При создании новой таблицы** в Supabase — ОБЯЗАТЕЛЬНО включить RLS и создать политики. Инструкция: `database/sku/README.md` → "Безопасность Supabase".
 - **Роль `anon`** — заблокирована (0 прав). Не давать права этой роли.
 - **Роль `authenticated`** — только SELECT. Не расширять без необходимости.
 - **Python-скрипты** подключаются через `postgres` (service_role) — RLS к ним не применяется.
