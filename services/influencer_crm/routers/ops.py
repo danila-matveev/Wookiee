@@ -1,11 +1,12 @@
 """Ops health endpoint — single source of truth for the dashboard.
 
-Read-only. Reads from agent_runs, cron.job, and crm.* retention sources.
-X-API-Key gate inherited from the rest of the BFF (router-level dependency).
+Read-only. Reads from crm.etl_runs (migration 012), cron.job, and crm.*
+retention sources. X-API-Key gate inherited from the rest of the BFF
+(router-level dependency).
 
 Each sub-source is wrapped in try/except: a missing schema (e.g. pg_cron not
-installed in the test DB) must not crash the endpoint — it degrades to empty
-defaults instead.
+installed in the test DB, or crm.etl_runs not yet migrated) must not crash
+the endpoint — it degrades to empty defaults instead.
 """
 from __future__ import annotations
 
@@ -41,8 +42,8 @@ def _fetch_etl_last_run(session: Session) -> EtlLastRun:
             text(
                 """
                 SELECT started_at, status, duration_ms, error_message
-                FROM agent_runs
-                WHERE agent_name = :name
+                FROM crm.etl_runs
+                WHERE agent = :name
                 ORDER BY started_at DESC
                 LIMIT 1
                 """
@@ -50,7 +51,7 @@ def _fetch_etl_last_run(session: Session) -> EtlLastRun:
             {"name": ETL_AGENT_NAME},
         ).first()
     except Exception as e:
-        logger.warning("ops.health: agent_runs lookup failed: %s", e)
+        logger.warning("ops.health: crm.etl_runs lookup failed: %s", e)
         session.rollback()
         return EtlLastRun()
     if row is None:
@@ -71,15 +72,15 @@ def _fetch_etl_counts(session: Session) -> EtlCounts:
                 SELECT
                     COUNT(*) FILTER (WHERE status='success') AS ok,
                     COUNT(*) FILTER (WHERE status='failed')  AS failed
-                FROM agent_runs
-                WHERE agent_name = :name
+                FROM crm.etl_runs
+                WHERE agent = :name
                   AND started_at > now() - INTERVAL '24 hours'
                 """
             ),
             {"name": ETL_AGENT_NAME},
         ).first()
     except Exception as e:
-        logger.warning("ops.health: agent_runs counts failed: %s", e)
+        logger.warning("ops.health: crm.etl_runs counts failed: %s", e)
         session.rollback()
         return EtlCounts()
     if row is None:

@@ -44,12 +44,12 @@
 python -m services.influencer_crm.scripts.etl_runner --full
 ```
 
-Ждать завершения. Exit code 0 = ок. Проверить запись в `agent_runs`:
+Ждать завершения. Exit code 0 = ок. Проверить запись в `crm.etl_runs`:
 
 ```sql
-SELECT started_at, status, duration_ms, error_message
-FROM agent_runs
-WHERE agent_name = 'crm-sheets-etl'
+SELECT started_at, status, duration_ms, mode, error_message
+FROM crm.etl_runs
+WHERE agent = 'crm-sheets-etl'
 ORDER BY started_at DESC LIMIT 1;
 ```
 
