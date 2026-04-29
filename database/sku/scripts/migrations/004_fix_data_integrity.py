@@ -140,13 +140,13 @@ def migrate():
             text("UPDATE cveta SET cvet = 'серый' WHERE id = 13 AND cvet = 'cерый'")
         )
         if result.rowcount:
-            print(f"   cveta 13: cерый → серый")
+            print("   cveta 13: cерый → серый")
 
         result = conn.execute(
             text("UPDATE cveta SET cvet = 'светло-розовый' WHERE id = 17 AND cvet = 'cветло-розовый'")
         )
         if result.rowcount:
-            print(f"   cveta 17: cветло-розовый → светло-розовый")
+            print("   cveta 17: cветло-розовый → светло-розовый")
 
         conn.commit()
 

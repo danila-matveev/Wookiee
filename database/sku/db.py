@@ -203,7 +203,7 @@ def cmd_backup(args):
 
     try:
         with open(output_file, 'w', encoding='utf-8') as f:
-            f.write(f"-- Wookiee SKU Database Backup\n")
+            f.write("-- Wookiee SKU Database Backup\n")
             f.write(f"-- Generated: {datetime.now().isoformat()}\n")
             f.write(f"-- Host: {config.host}\n\n")
 

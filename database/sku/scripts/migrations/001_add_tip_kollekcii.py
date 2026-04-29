@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from scripts.db_connection import engine, execute_sql
+from scripts.db_connection import engine
 from sqlalchemy import text
 
 

@@ -16,7 +16,7 @@ import sys
 import argparse
 import logging
 from pathlib import Path
-from typing import Dict, Optional, Any
+from typing import Dict, Optional
 
 import pandas as pd
 from sqlalchemy.orm import Session
@@ -31,12 +31,12 @@ load_dotenv(project_root / ".env")
 
 from config.database import get_session, engine
 from config.mapping import (
-    MAPPING_MODELI, MAPPING_TOVARY, MAPPING_CVETA, MODEL_STATUS_MAP,
+    MODEL_STATUS_MAP,
     clean_barcode, clean_string, clean_numeric, clean_integer, clean_boolean
 )
 from database.models import (
     Base, Kategoriya, Kollekciya, Status, Razmer, Importer, Fabrika,
-    Cvet, ModelOsnova, Model, Artikul, Tovar, SleykaWB, SleykaOzon
+    Cvet, ModelOsnova, Model, Artikul, Tovar, SleykaWB
 )
 
 # Настройка логирования
