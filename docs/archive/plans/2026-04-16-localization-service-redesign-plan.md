@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.11, pytest, pandas, gspread, SQLite (история), Google Sheets API v4.
 
-**Spec:** [docs/superpowers/specs/2026-04-16-localization-service-redesign-design.md](../specs/2026-04-16-localization-service-redesign-design.md)
+**Spec:** `docs/superpowers/specs/2026-04-16-localization-service-redesign-design.md` (архив, файл удалён)
 
 ---
 

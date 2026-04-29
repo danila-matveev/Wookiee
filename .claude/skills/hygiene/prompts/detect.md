@@ -52,8 +52,12 @@ Match-rules: any tracked file that matches `.gitignore` rules → finding.
 
 ## 6. skill-registry-drift
 
+Skills can live in two places: project-level `.claude/skills/` (committed, project-specific) and user-level `~/.claude/skills/` (personal, available across all projects). The Supabase `tools` registry tracks all skills. A skill is orphaned only if it exists in neither location.
+
 ```bash
-ls .claude/skills/ | sort > /tmp/hygiene-skills-fs.txt
+# Combine both locations, dedupe.
+{ ls .claude/skills/ 2>/dev/null; ls "$HOME/.claude/skills/" 2>/dev/null; } | sort -u > /tmp/hygiene-skills-fs.txt
+
 PYTHONPATH=. python3 -c "
 import psycopg2, os
 from dotenv import load_dotenv
@@ -62,12 +66,20 @@ conn = psycopg2.connect(host=os.getenv('POSTGRES_HOST'), port=os.getenv('POSTGRE
 cur = conn.cursor()
 cur.execute(\"SELECT slug FROM tools WHERE type='skill' ORDER BY slug\")
 for r in cur.fetchall(): print(r[0])
-" > /tmp/hygiene-skills-db.txt
+" | sort -u > /tmp/hygiene-skills-db.txt
+
 diff /tmp/hygiene-skills-fs.txt /tmp/hygiene-skills-db.txt
 ```
+
+Also list project-level only — used to distinguish project skills (committable) from user-level skills (personal):
+
+```bash
+ls .claude/skills/ 2>/dev/null | sort -u > /tmp/hygiene-skills-project.txt
+```
+
 Match-rules:
-- Lines `<` (in FS, not in DB) → finding `skill-registry-drift / unregistered`, suggested_action: "register via /tool-register".
-- Lines `>` (in DB, not in FS) → finding `skill-registry-drift / orphan`, suggested_action: "ask-user — confirm deletion or restore".
+- Lines `<` (combined FS, not in DB) → finding `skill-registry-drift / unregistered`, suggested_action: "register via /tool-register". Only flag if also present in `/tmp/hygiene-skills-project.txt` (project-level skills are the ones that should be registered for the team; user-level personal skills can be registered or not at user's discretion — skip them to avoid false positives).
+- Lines `>` (in DB, not in combined FS) → finding `skill-registry-drift / orphan`, suggested_action: "ask-user — confirm deletion or restore". This is a real orphan: the skill is gone from both locations.
 
 ## 7. cross-platform-skill-prep
 
