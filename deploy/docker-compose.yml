@@ -100,11 +100,11 @@ services:
     deploy:
       resources:
         limits:
+          cpus: '1.0'
+          memory: 1536M
+        reservations:
           cpus: '0.5'
           memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 256M
 
   # ── Influencer CRM API: FastAPI BFF + pre-built React SPA ──
   influencer-crm-api:

@@ -1,0 +1,10 @@
+# WB Logistics API — Caddy block (фрагмент для matveevdanila.com)
+# Добавь этот handle_path внутрь блока matveevdanila.com {…}
+# в /home/danila/n8n-docker-caddy/caddy_config/Caddyfile
+# и сделай `docker compose restart caddy`.
+#
+# Контейнер wb-logistics-api должен быть в сети n8n-docker-caddy_default.
+
+    handle_path /api/vasily/* {
+        reverse_proxy wb-logistics-api:8000
+    }
