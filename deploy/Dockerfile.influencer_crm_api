@@ -10,6 +10,13 @@ COPY services/influencer_crm_ui/package.json services/influencer_crm_ui/pnpm-loc
 RUN pnpm install --frozen-lockfile || pnpm install
 
 COPY services/influencer_crm_ui/ /ui/
+
+# VITE_API_KEY is baked into the JS bundle so the SPA can authenticate to the
+# BFF. Yes, anyone who fetches the bundle can extract it — this is an internal
+# tool, the key is rotatable, and there's no public discovery surface. If a
+# proper login flow is added later, drop this arg.
+ARG VITE_API_KEY=""
+ENV VITE_API_KEY=${VITE_API_KEY}
 RUN pnpm build
 
 # ── Stage 2: Python BFF + bundled SPA ──
