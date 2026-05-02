@@ -246,7 +246,16 @@ pytest tests/telemost_recorder/test_live_join.py \
 
 ## 12. Prerequisites Before Implementation
 
-- [ ] Yandex.Cloud аккаунт + API ключ SpeechKit (Phase 3, не нужен в Phase 1)
+- [ ] `playwright>=1.45` в `services/telemost_recorder/requirements.txt` + `playwright install chromium` в Dockerfile
 - [ ] `TELEMOST_BOT_NAME` в `.env` (default: `Wookiee Recorder`)
 - [ ] Тестовая встреча Телемоста для интеграционного теста Phase 1
-- [ ] Timeweb: проверить, что Docker может запустить headful Chromium + Xvfb (известное ограничение на shared VPS)
+- [ ] Yandex.Cloud аккаунт + API ключ SpeechKit (Phase 3, не нужен в Phase 1)
+
+## 13. Known Risks
+
+| Риск | Серьёзность | Митигация |
+|------|-------------|-----------|
+| Timeweb RAM = 2 GB: один Chromium ~400–600 MB, Phase 1 ок, Phase 7 (3 параллельных) — на пределе | Phase 7 | Chromium-флаги `--disable-gpu --disable-dev-shm-usage --no-sandbox`; при необходимости расширить VPS |
+| Телемост меняет UI без предупреждения — CSS-селекторы сломаются | Средняя | Defensive selectors (несколько fallback), `UI_DETECTION_FAILED` с явным сообщением, тест-реконнект при старте |
+| Форма входа: одно поле имени или два — неизвестно до первого теста | Низкая | Реконн-шаг в Phase 1 плане: запустить скрипт на реальной встрече, зафиксировать структуру DOM |
+| Headful Chromium под Xvfb на shared VPS может завершаться по OOM-killer | Средняя | Memory limits в docker-compose; `--single-process` не использовать (небезопасно), вместо этого `--disable-gpu` |
