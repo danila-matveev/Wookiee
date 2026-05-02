@@ -19,6 +19,7 @@ from __future__ import annotations
 """
 
 import argparse
+import gc
 import logging
 import sys
 import time
@@ -443,9 +444,11 @@ def fetch_logistics_costs(cabinet, days: int) -> dict[str, float]:
 
     print(f"   [{cabinet.name}] Запрос расходов на логистику (reportDetailByPeriod)...")
 
-    all_rows: list[dict] = []
+    costs: dict[str, float] = {}
     rrd_id = 0
     page = 0
+    total_rows = 0
+    logistics_rows = 0
 
     with httpx.Client(timeout=120.0) as client:
         while True:
@@ -477,7 +480,15 @@ def fetch_logistics_costs(cabinet, days: int) -> dict[str, float]:
             if not data:
                 break
 
-            all_rows.extend(data)
+            # Aggregate on the fly — don't accumulate all rows in memory
+            for row in data:
+                if row.get("supplier_oper_name") == "Логистика":
+                    logistics_rows += 1
+                    article = (row.get("sa_name") or "").strip().lower()
+                    if article:
+                        costs[article] = costs.get(article, 0) + abs(row.get("delivery_rub", 0))
+
+            total_rows += len(data)
             rrd_id = data[-1].get("rrd_id", 0)
             logger.info(
                 "reportDetailByPeriod page %d: %d rows, rrd_id=%d",
@@ -490,18 +501,7 @@ def fetch_logistics_costs(cabinet, days: int) -> dict[str, float]:
             # Rate limit: 1 req/min
             time.sleep(62)
 
-    print(f"   [{cabinet.name}] reportDetailByPeriod: {len(all_rows)} строк")
-
-    # Aggregate logistics costs by supplier article
-    costs: dict[str, float] = {}
-    logistics_rows = 0
-    for row in all_rows:
-        if row.get("supplier_oper_name") != "Логистика":
-            continue
-        logistics_rows += 1
-        article = (row.get("sa_name") or "").strip().lower()
-        if article:
-            costs[article] = costs.get(article, 0) + abs(row.get("delivery_rub", 0))
+    print(f"   [{cabinet.name}] reportDetailByPeriod: {total_rows} строк")
 
     print(f"   [{cabinet.name}] Логистика: {logistics_rows} строк, {len(costs)} артикулов")
     return costs
@@ -945,6 +945,8 @@ def run_for_cabinet(
     # 2. Трансформация в формат v3
     print("\n2. Трансформация данных...")
     df_stocks = transform_remains_to_df_stocks(remains)
+    del remains
+    gc.collect()
     df_regions = transform_orders_to_df_regions(orders, df_stocks, days=args.days)
 
     if df_regions.empty:
@@ -1013,11 +1015,18 @@ def run_for_cabinet(
             prices_dict=il_prices,
             period_days=il_days,
         )
+        # Pre-compute turnover before freeing il_orders
+        _il_turnover_rub = _calculate_turnover_from_orders(il_orders)
+        del il_orders
+        gc.collect()
+
         s = il_irp['summary']
         print(f"   Период: {il_days} дн. (13 недель)")
         print(f"   ИЛ: {s['overall_il']:.2f}, ИРП: {s['overall_irp_pct']:.2f}%")
         print(f"   Артикулов: {s['total_articles']}, в ИРП-зоне: {s['irp_zone_articles']}")
         print(f"   ИРП-нагрузка: {s['irp_monthly_cost_rub']:,.0f} ₽/мес")
+    else:
+        _il_turnover_rub = 0.0
 
     # 5. Economic analysis (requires il_irp + actual logistics costs)
     economics = None
@@ -1052,13 +1061,10 @@ def run_for_cabinet(
     ):
         print("\n6. Сценарный анализ (30-90%)...")
         try:
-            # Оборот должен быть за тот же период, что logistics_costs (il_days).
-            turnover_source = il_orders if il_orders else orders
-            turnover_rub = _calculate_turnover_from_orders(turnover_source)
             scenarios = analyze_scenarios(
                 il_irp=il_irp,
                 logistics_costs=logistics_costs,
-                turnover_rub=turnover_rub,
+                turnover_rub=_il_turnover_rub,
                 period_days=il_days,
             )
             re = scenarios.get('relocation_economics', {})
