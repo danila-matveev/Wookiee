@@ -145,6 +145,10 @@ async def _execute_join(
         ).first
         await locator.click()
         state = await _wait_for_known_state(page, timeout=15)
+        # If still CONTINUE_IN_BROWSER after click, the meeting is not active
+        if state == ScreenState.CONTINUE_IN_BROWSER:
+            meeting.transition(MeetingStatus.FAILED, FailReason.MEETING_NOT_FOUND)
+            return
 
     if state == ScreenState.UNKNOWN:
         await _save_screenshot(page, screenshot_dir, "unknown_state")
