@@ -25,7 +25,7 @@ router = APIRouter(
 @router.get("", response_model=Page[IntegrationOut])
 def list_integrations(
     session: Session = Depends(get_session),
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(50, ge=1, le=1000),
     cursor: str | None = None,
     stage_in: list[str] | None = Query(default=None),
     marketplace: str | None = None,
