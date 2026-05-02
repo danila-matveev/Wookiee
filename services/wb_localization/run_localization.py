@@ -917,8 +917,8 @@ def run_for_cabinet(
             from shared.clients.sheets_client import get_client
 
             if VASILY_SPREADSHEET_ID:
-                gc = get_client(GOOGLE_SA_FILE)
-                spreadsheet = gc.open_by_key(VASILY_SPREADSHEET_ID)
+                gs_client = get_client(GOOGLE_SA_FILE)
+                spreadsheet = gs_client.open_by_key(VASILY_SPREADSHEET_ID)
                 write_reference_sheet(spreadsheet, reference)
                 print("   Справочник обновлён в Google Sheets.")
             else:
