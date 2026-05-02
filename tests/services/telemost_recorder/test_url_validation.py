@@ -9,6 +9,8 @@ from services.telemost_recorder.join import validate_url
     ("http://telemost.yandex.ru/j/123", True),
     ("https://telemost.yandex.com/join/12345", True),
     ("https://telemost.yandex.com/join/abc-def", True),
+    ("https://telemost.360.yandex.ru/j/63944462843605", True),
+    ("https://telemost.360.yandex.ru/j/abc-def", True),
     # invalid
     ("https://zoom.us/j/12345", False),
     ("https://meet.google.com/abc-def-ghi", False),

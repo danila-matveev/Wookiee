@@ -12,7 +12,7 @@ from services.telemost_recorder.config import BOT_NAME, JOIN_TIMEOUT, SCREENSHOT
 from services.telemost_recorder.state import FailReason, Meeting, MeetingStatus
 
 _URL_PATTERN = re.compile(
-    r"^https?://telemost\.yandex\.(ru|com)/(j|join)/[a-zA-Z0-9_\-]+"
+    r"^https?://(telemost\.yandex\.(ru|com)|telemost\.360\.yandex\.ru)/(j|join)/[a-zA-Z0-9_\-]+"
 )
 
 
