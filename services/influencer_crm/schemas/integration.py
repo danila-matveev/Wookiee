@@ -176,6 +176,15 @@ class IntegrationUpdate(BaseModel):
     post_content: str | None = None
     analysis: str | None = None
     recommended_models: str | None = None
+    # Compliance
+    has_marking: bool | None = None
+    has_contract: bool | None = None
+    has_deeplink: bool | None = None
+    has_closing_docs: bool | None = None
+    has_full_recording: bool | None = None
+    all_data_filled: bool | None = None
+    has_quality_content: bool | None = None
+    complies_with_rules: bool | None = None
 
 
 class StageTransitionIn(BaseModel):

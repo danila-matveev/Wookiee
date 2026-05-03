@@ -195,6 +195,15 @@ export interface IntegrationUpdate {
   post_content?: string | null;
   analysis?: string | null;
   recommended_models?: string | null;
+  // Compliance
+  has_marking?: boolean | null;
+  has_contract?: boolean | null;
+  has_deeplink?: boolean | null;
+  has_closing_docs?: boolean | null;
+  has_full_recording?: boolean | null;
+  all_data_filled?: boolean | null;
+  has_quality_content?: boolean | null;
+  complies_with_rules?: boolean | null;
 }
 
 /**
@@ -240,6 +249,15 @@ export interface IntegrationInput {
   post_content?: string | null;
   analysis?: string | null;
   recommended_models?: string | null;
+  // Compliance
+  has_marking?: boolean | null;
+  has_contract?: boolean | null;
+  has_deeplink?: boolean | null;
+  has_closing_docs?: boolean | null;
+  has_full_recording?: boolean | null;
+  all_data_filled?: boolean | null;
+  has_quality_content?: boolean | null;
+  complies_with_rules?: boolean | null;
 }
 
 export function createIntegration(body: IntegrationInput): Promise<IntegrationOut> {

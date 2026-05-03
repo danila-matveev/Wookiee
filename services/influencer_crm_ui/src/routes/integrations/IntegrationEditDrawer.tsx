@@ -154,6 +154,15 @@ const formSchema = z.object({
   post_content: optionalString,
   analysis: optionalString,
   recommended_models: optionalString,
+  // Compliance (nullable booleans — tri-state: null=не проверено, false=нет, true=да)
+  has_marking: z.boolean().nullable().optional().default(null),
+  has_contract: z.boolean().nullable().optional().default(null),
+  has_deeplink: z.boolean().nullable().optional().default(null),
+  has_closing_docs: z.boolean().nullable().optional().default(null),
+  has_full_recording: z.boolean().nullable().optional().default(null),
+  all_data_filled: z.boolean().nullable().optional().default(null),
+  has_quality_content: z.boolean().nullable().optional().default(null),
+  complies_with_rules: z.boolean().nullable().optional().default(null),
 });
 
 type FormInput = z.input<typeof formSchema>;
@@ -207,6 +216,15 @@ function defaultsFromDetail(detail?: IntegrationDetailOut, initialDate?: string)
     post_content: detail?.post_content ?? '',
     analysis: detail?.analysis ?? '',
     recommended_models: detail?.recommended_models ?? '',
+    // Compliance
+    has_marking: detail?.has_marking ?? null,
+    has_contract: detail?.has_contract ?? null,
+    has_deeplink: detail?.has_deeplink ?? null,
+    has_closing_docs: detail?.has_closing_docs ?? null,
+    has_full_recording: detail?.has_full_recording ?? null,
+    all_data_filled: detail?.all_data_filled ?? null,
+    has_quality_content: detail?.has_quality_content ?? null,
+    complies_with_rules: detail?.complies_with_rules ?? null,
   };
 }
 
@@ -276,6 +294,14 @@ export function IntegrationEditDrawer({
       post_content: values.post_content,
       analysis: values.analysis,
       recommended_models: values.recommended_models,
+      has_marking: values.has_marking,
+      has_contract: values.has_contract,
+      has_deeplink: values.has_deeplink,
+      has_closing_docs: values.has_closing_docs,
+      has_full_recording: values.has_full_recording,
+      all_data_filled: values.all_data_filled,
+      has_quality_content: values.has_quality_content,
+      complies_with_rules: values.complies_with_rules,
     };
     await upsert.mutateAsync({ id: isEdit ? id : undefined, body });
     onClose();

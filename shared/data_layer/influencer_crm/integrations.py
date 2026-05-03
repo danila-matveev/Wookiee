@@ -161,6 +161,9 @@ _UPDATABLE = {
     # Content & links
     "contract_url", "post_url", "tz_url", "screen_url",
     "post_content", "analysis", "recommended_models",
+    # Compliance
+    "has_marking", "has_contract", "has_deeplink", "has_closing_docs",
+    "has_full_recording", "all_data_filled", "has_quality_content", "complies_with_rules",
 }
 
 
