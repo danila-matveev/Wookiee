@@ -46,8 +46,11 @@ _STATE_SELECTORS: dict[ScreenState, list[str]] = {
     ],
     ScreenState.WAITING_ROOM: [
         "[data-testid='waiting-room']",
+        "text=комнате ожидания",
+        "text=Организатор видит ваш запрос",
         "text=Зал ожидания",
         "text=Waiting room",
+        "text=You are in the waiting room",
     ],
     ScreenState.NAME_FORM: [
         "[data-testid='display-name-input']",
@@ -83,6 +86,22 @@ async def _wait_for_known_state(page: Page, timeout: float) -> ScreenState:
     while time.monotonic() < deadline:
         state = await detect_screen_state(page)
         if state != ScreenState.UNKNOWN:
+            return state
+        await asyncio.sleep(0.5)
+    return ScreenState.UNKNOWN
+
+
+async def _wait_for_joined(page: Page, timeout: float) -> ScreenState:
+    """After clicking the join button, poll until WAITING_ROOM or IN_MEETING appears.
+    Ignores NAME_FORM because the name input stays in the DOM under the overlay."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        state = await detect_screen_state(page)
+        if state in (
+            ScreenState.WAITING_ROOM,
+            ScreenState.IN_MEETING,
+            ScreenState.MEETING_NOT_FOUND,
+        ):
             return state
         await asyncio.sleep(0.5)
     return ScreenState.UNKNOWN
@@ -165,14 +184,18 @@ async def _execute_join(
         await name_input.fill(bot_name)
 
         join_btn = page.locator(
+            "[data-testid='enter-conference-button'], "
             "[data-testid='join-button'], "
+            "button:has-text('Подключиться'), "
             "button:has-text('Присоединиться'), "
             "button:has-text('Войти'), "
             "button:has-text('Join')"
         ).first
         await join_btn.click()
-
-        state = await _wait_for_known_state(page, timeout=JOIN_TIMEOUT)
+        # Use _wait_for_joined instead of _wait_for_known_state: the name input
+        # stays visible in the DOM while the waiting-room overlay appears on top,
+        # so a generic poll would return NAME_FORM immediately and miss WAITING_ROOM.
+        state = await _wait_for_joined(page, timeout=JOIN_TIMEOUT)
 
     if state == ScreenState.WAITING_ROOM:
         meeting.transition(MeetingStatus.WAITING_ROOM)
@@ -181,12 +204,11 @@ async def _execute_join(
             "meeting_id": meeting.meeting_id,
             "message": "Wookiee Recorder в зале ожидания — впустите его в интерфейсе Телемоста",
         })
-        state = await _wait_for_admission(page, timeout=WAITING_ROOM_TIMEOUT)
-        if state != ScreenState.IN_MEETING:
-            meeting.transition(MeetingStatus.FAILED, FailReason.NOT_ADMITTED)
-            return
+        # Caller (run_session) handles the admission wait. join_meeting returns here.
+        return
 
     if state == ScreenState.IN_MEETING:
+        await _mute_bot(page)
         screenshot = await _save_screenshot(page, screenshot_dir, "screenshot_001")
         meeting.screenshot_path = str(screenshot)
         meeting.transition(MeetingStatus.IN_MEETING)
@@ -199,6 +221,17 @@ async def _execute_join(
 
     await _save_screenshot(page, screenshot_dir, "failed_state")
     meeting.transition(MeetingStatus.FAILED, FailReason.UI_DETECTION_FAILED)
+
+
+async def _mute_bot(page: Page) -> None:
+    """Turn off the bot's mic and camera to avoid fake audio/video in the meeting."""
+    for testid in ("turn-off-mic-button", "turn-off-camera-button"):
+        try:
+            loc = page.locator(f"[data-testid='{testid}']").first
+            if await loc.is_visible(timeout=2_000):
+                await loc.click()
+        except Exception:
+            pass
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -246,6 +279,26 @@ async def run_session(url: str, bot_name: str = BOT_NAME) -> None:
 
         if meeting.status == MeetingStatus.FAILED:
             return
+
+        if meeting.status == MeetingStatus.WAITING_ROOM:
+            state = await _wait_for_admission(page, timeout=WAITING_ROOM_TIMEOUT)
+            if state != ScreenState.IN_MEETING:
+                meeting.transition(MeetingStatus.FAILED, FailReason.NOT_ADMITTED)
+                _emit({
+                    "status": "FAILED",
+                    "reason": "NOT_ADMITTED",
+                    "meeting_id": meeting.meeting_id,
+                })
+                return
+            await _mute_bot(page)
+            screenshot = await _save_screenshot(page, screenshot_dir, "screenshot_001")
+            meeting.screenshot_path = str(screenshot)
+            meeting.transition(MeetingStatus.IN_MEETING)
+            _emit({
+                "status": "IN_MEETING",
+                "meeting_id": meeting.meeting_id,
+                "screenshot": meeting.screenshot_path,
+            })
 
         screenshot_n = 2
         try:
