@@ -69,14 +69,16 @@ def _map_marketplace(s: str) -> str | None:
     return MARKETPLACE_MAP.get((s or "").strip().lower())
 
 
-def _stage_for(publish_date: Any, erid: str | None) -> str:
-    """Pick a stage that satisfies chk_int_erid for historic rows."""
-    if erid:
-        return "done"
-    # 2022-09-01 cutoff — older rows don't need erid
-    if publish_date and str(publish_date) < "2022-09-01":
-        return "done"
-    return "content_received"
+def _stage_for(publish_date: Any) -> str:
+    """Assign Russian stage based on publish date.
+
+    Historical integrations (before current month) → завершено.
+    Future/current month → запланировано.
+    Manual stage transitions happen in the Kanban UI.
+    """
+    if publish_date and str(publish_date) < "2026-05-01":
+        return "завершено"
+    return "запланировано"
 
 
 def transform(values: list[list[Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -117,7 +119,7 @@ def transform(values: list[list[Any]]) -> tuple[list[dict[str, Any]], list[dict[
         srid = sheet_row_id([blogger, marketer, str(publish_date), channel])
         erid = None  # not in current sheet layout
         post_url = str(raw[41]).strip() if len(raw) > 41 and raw[41] else None
-        stage = _stage_for(publish_date, erid)
+        stage = _stage_for(publish_date)
 
         rec: dict[str, Any] = {
             "blogger_handle_ref": blogger,
@@ -131,6 +133,12 @@ def transform(values: list[list[Any]]) -> tuple[list[dict[str, Any]], list[dict[
             "cost_placement": parse_decimal(raw[10]) if len(raw) > 10 else None,
             "cost_delivery": parse_decimal(raw[11]) if len(raw) > 11 else None,
             "cost_goods": parse_decimal(raw[12]) if len(raw) > 12 else None,
+            # Audience (cols 14-18)
+            "theme":           str(raw[14]).strip() if len(raw) > 14 and raw[14] else None,
+            "audience_age":    str(raw[15]).strip() if len(raw) > 15 and raw[15] else None,
+            "subscribers":     parse_int(raw[16]) if len(raw) > 16 else None,
+            "min_reach":       parse_int(raw[17]) if len(raw) > 17 else None,
+            "engagement_rate": parse_decimal(raw[18]) if len(raw) > 18 else None,
             "plan_cpm": parse_decimal(raw[19]) if len(raw) > 19 else None,
             "plan_ctr": parse_decimal(raw[20]) if len(raw) > 20 else None,
             "plan_clicks": parse_int(raw[21]) if len(raw) > 21 else None,

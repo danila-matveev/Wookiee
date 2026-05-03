@@ -347,7 +347,7 @@ CREATE TABLE integrations (
     channel                  TEXT NOT NULL,
     ad_format                TEXT NOT NULL,
     marketplace              TEXT NOT NULL,
-    stage                    TEXT NOT NULL DEFAULT 'lead',
+    stage                    TEXT NOT NULL DEFAULT 'переговоры',
     outcome                  TEXT,
     cancelled_reason         TEXT,
     rescheduled_from_date    DATE,
@@ -371,6 +371,12 @@ CREATE TABLE integrations (
     post_content             TEXT,
     analysis                 TEXT,
     recommended_models       TEXT,
+    -- Audience snapshot at time of integration (from Sheets cols 14-18).
+    theme                    TEXT,
+    audience_age             TEXT,
+    subscribers              INTEGER,
+    min_reach                INTEGER,
+    engagement_rate          NUMERIC(5,2),
     plan_views               INTEGER,
     plan_ctr                 NUMERIC(5,2),
     plan_clicks              INTEGER,
@@ -405,7 +411,7 @@ CREATE TABLE integrations (
     CONSTRAINT chk_int_channel CHECK (channel IN ('instagram','youtube','tiktok','telegram','vk','rutube','other')),
     CONSTRAINT chk_int_ad_format CHECK (ad_format IN ('short_video','long_video','image_post','text_post','live_stream','story','integration','long_post')),
     CONSTRAINT chk_int_marketplace CHECK (marketplace IN ('wb','ozon','both')),
-    CONSTRAINT chk_int_stage CHECK (stage IN ('lead','negotiation','agreed','brief','awaiting_content','content_received','published','published_pending_metrics','paid','done')),
+    CONSTRAINT chk_int_stage CHECK (stage IN ('переговоры','согласовано','отправка_комплекта','контент','запланировано','аналитика','завершено','архив')),
     CONSTRAINT chk_int_outcome CHECK (outcome IS NULL OR outcome IN ('cancelled','refunded','no_show')),
     CONSTRAINT chk_int_payment CHECK (payment_method IS NULL OR payment_method IN ('sbp_card','samozanyaty','ip','barter','other')),
     CONSTRAINT chk_int_costs_nonneg CHECK (
@@ -413,15 +419,7 @@ CREATE TABLE integrations (
         COALESCE(cost_delivery, 0)  >= 0 AND
         COALESCE(cost_goods, 0)     >= 0
     ),
-    -- C1 (codex-arch-review): exempt list extended to include awaiting_content + content_received.
-    -- Rationale: erid is obtained when the post goes live (published+); content prep stages must
-    -- be allowed without erid. The CHECK still blocks promotion to 'published' without erid for
-    -- posts dated after 2022-09-01 (Russian advertising law).
-    CONSTRAINT chk_int_erid CHECK (
-        erid IS NOT NULL OR
-        publish_date < DATE '2022-09-01' OR
-        stage IN ('lead','negotiation','agreed','brief','awaiting_content','content_received')
-    ),
+    -- erid: nullable, tracked via has_marking boolean. Historical imports pre-date erid tracking.
     CONSTRAINT chk_int_reschedule CHECK (reschedule_count >= 0),
     CONSTRAINT uq_integrations_sheet_row UNIQUE (sheet_row_id)
 );

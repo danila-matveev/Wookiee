@@ -21,16 +21,14 @@ import { Select } from '@/ui/Select';
 import { Textarea } from '@/ui/Textarea';
 
 const STAGE_LABELS: Record<Stage, string> = {
-  lead: 'Лид',
-  negotiation: 'Переговоры',
-  agreed: 'Согласовано',
-  content_received: 'Контент получен',
-  content_approved: 'Контент утверждён',
-  scheduled: 'Запланировано',
-  published: 'Опубликовано',
-  paid: 'Оплачено',
-  done: 'Готово',
-  rejected: 'Отклонено',
+  переговоры: 'Переговоры',
+  согласовано: 'Согласовано',
+  отправка_комплекта: 'Отправка комплекта',
+  контент: 'Контент',
+  запланировано: 'Запланировано',
+  аналитика: 'Аналитика',
+  завершено: 'Завершено',
+  архив: 'Архив',
 };
 
 const CHANNEL_OPTIONS: { value: Channel; label: string }[] = [
@@ -66,8 +64,7 @@ const OUTCOME_OPTIONS: { value: '' | Outcome; label: string }[] = [
   { value: 'failed_compliance', label: 'Compliance fail' },
 ];
 
-// Helpers — reused decimal/int validators following the BloggerEditDrawer playbook.
-// Decimal fields stay strings end-to-end (Decimal precision rule); empty → null.
+// Helpers — decimal fields stay strings end-to-end; empty → null.
 const optionalDecimal = z
   .string()
   .trim()
@@ -131,10 +128,32 @@ const formSchema = z.object({
   cost_delivery: optionalDecimal,
   cost_goods: optionalDecimal,
   erid: optionalString,
-  fact_views: optionalInt,
-  fact_orders: optionalInt,
-  fact_revenue: optionalDecimal,
   notes: optionalString,
+  // Audience
+  theme: optionalString,
+  audience_age: optionalString,
+  subscribers: optionalInt,
+  min_reach: optionalInt,
+  engagement_rate: optionalDecimal,
+  // Fact metrics
+  fact_views: optionalInt,
+  fact_cpm: optionalDecimal,
+  fact_clicks: optionalInt,
+  fact_ctr: optionalDecimal,
+  fact_cpc: optionalDecimal,
+  fact_carts: optionalInt,
+  cr_to_cart: optionalDecimal,
+  fact_orders: optionalInt,
+  cr_to_order: optionalDecimal,
+  fact_revenue: optionalDecimal,
+  // Content & links
+  contract_url: optionalString,
+  post_url: optionalString,
+  tz_url: optionalString,
+  screen_url: optionalString,
+  post_content: optionalString,
+  analysis: optionalString,
+  recommended_models: optionalString,
 });
 
 type FormInput = z.input<typeof formSchema>;
@@ -143,13 +162,7 @@ type FormOutput = z.output<typeof formSchema>;
 interface IntegrationEditDrawerProps {
   open: boolean;
   onClose: () => void;
-  /** When provided AND > 0, drawer opens in edit mode. Otherwise create mode. */
   id?: number;
-  /**
-   * Seed `publish_date` in create mode. Ignored when `id` is set (edit mode loads
-   * `publish_date` from the BFF detail). Used by CalendarPage's "click empty cell"
-   * flow to prefill the date for a new integration.
-   */
   initialDate?: string;
 }
 
@@ -161,17 +174,39 @@ function defaultsFromDetail(detail?: IntegrationDetailOut, initialDate?: string)
     channel: detail?.channel ?? 'instagram',
     ad_format: detail?.ad_format ?? 'story',
     marketplace: detail?.marketplace ?? 'wb',
-    stage: detail?.stage ?? 'lead',
+    stage: detail?.stage ?? 'переговоры',
     outcome: detail?.outcome ?? '',
     is_barter: detail?.is_barter ?? false,
     cost_placement: detail?.cost_placement ?? '',
     cost_delivery: detail?.cost_delivery ?? '',
     cost_goods: detail?.cost_goods ?? '',
     erid: detail?.erid ?? '',
-    fact_views: detail?.fact_views != null ? String(detail.fact_views) : '',
-    fact_orders: detail?.fact_orders != null ? String(detail.fact_orders) : '',
-    fact_revenue: detail?.fact_revenue ?? '',
     notes: detail?.notes ?? '',
+    // Audience
+    theme: detail?.theme ?? '',
+    audience_age: detail?.audience_age ?? '',
+    subscribers: detail?.subscribers != null ? String(detail.subscribers) : '',
+    min_reach: detail?.min_reach != null ? String(detail.min_reach) : '',
+    engagement_rate: detail?.engagement_rate ?? '',
+    // Fact metrics
+    fact_views: detail?.fact_views != null ? String(detail.fact_views) : '',
+    fact_cpm: detail?.fact_cpm ?? '',
+    fact_clicks: detail?.fact_clicks != null ? String(detail.fact_clicks) : '',
+    fact_ctr: detail?.fact_ctr ?? '',
+    fact_cpc: detail?.fact_cpc ?? '',
+    fact_carts: detail?.fact_carts != null ? String(detail.fact_carts) : '',
+    cr_to_cart: detail?.cr_to_cart ?? '',
+    fact_orders: detail?.fact_orders != null ? String(detail.fact_orders) : '',
+    cr_to_order: detail?.cr_to_order ?? '',
+    fact_revenue: detail?.fact_revenue ?? '',
+    // Content & links
+    contract_url: detail?.contract_url ?? '',
+    post_url: detail?.post_url ?? '',
+    tz_url: detail?.tz_url ?? '',
+    screen_url: detail?.screen_url ?? '',
+    post_content: detail?.post_content ?? '',
+    analysis: detail?.analysis ?? '',
+    recommended_models: detail?.recommended_models ?? '',
   };
 }
 
@@ -190,9 +225,6 @@ export function IntegrationEditDrawer({
     defaultValues: defaultsFromDetail(detail, isEdit ? undefined : initialDate),
   });
 
-  // Sync form on open / detail change. Reset only when drawer opens or a *different*
-  // integration is loaded — same pattern as BloggerEditDrawer. `initialDate` only
-  // matters in create mode; in edit mode the BFF detail wins.
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentional reset trigger
   useEffect(() => {
     if (open) {
@@ -207,9 +239,6 @@ export function IntegrationEditDrawer({
     : 'Новая интеграция';
 
   const onSubmit: SubmitHandler<FormOutput> = async (values) => {
-    // The form schema produces a fully-validated payload; we narrow to the BFF write shape.
-    // For PATCH (edit), all keys are optional but we send the full set since RHF defaults
-    // already mirror the loaded detail — no diffing needed.
     const body: IntegrationInput = {
       blogger_id: values.blogger_id,
       marketer_id: values.marketer_id,
@@ -224,16 +253,34 @@ export function IntegrationEditDrawer({
       cost_delivery: values.cost_delivery,
       cost_goods: values.cost_goods,
       erid: values.erid,
-      fact_views: values.fact_views,
-      fact_orders: values.fact_orders,
-      fact_revenue: values.fact_revenue,
       notes: values.notes,
+      theme: values.theme,
+      audience_age: values.audience_age,
+      subscribers: values.subscribers,
+      min_reach: values.min_reach,
+      engagement_rate: values.engagement_rate,
+      fact_views: values.fact_views,
+      fact_cpm: values.fact_cpm,
+      fact_clicks: values.fact_clicks,
+      fact_ctr: values.fact_ctr,
+      fact_cpc: values.fact_cpc,
+      fact_carts: values.fact_carts,
+      cr_to_cart: values.cr_to_cart,
+      fact_orders: values.fact_orders,
+      cr_to_order: values.cr_to_order,
+      fact_revenue: values.fact_revenue,
+      contract_url: values.contract_url,
+      post_url: values.post_url,
+      tz_url: values.tz_url,
+      screen_url: values.screen_url,
+      post_content: values.post_content,
+      analysis: values.analysis,
+      recommended_models: values.recommended_models,
     };
     await upsert.mutateAsync({ id: isEdit ? id : undefined, body });
     onClose();
   };
 
-  // Derived total_cost (read-only display) — sum the three cost components when present.
   const watched = form.watch();
   const computedTotal = (() => {
     const parts = [watched.cost_placement, watched.cost_delivery, watched.cost_goods]
@@ -268,8 +315,10 @@ export function IntegrationEditDrawer({
       <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-6">
         <BasicsSection form={form} />
         <CostsSection form={form} totalDisplay={computedTotal} />
-        <ComplianceSection form={form} />
+        <AudienceSection form={form} />
         <FactSection form={form} />
+        <ContentSection form={form} />
+        <ComplianceSection form={form} />
         <SubstitutesSection detail={detail} isEdit={isEdit} />
         {upsert.error && (
           <p className="text-sm text-danger">
@@ -277,7 +326,6 @@ export function IntegrationEditDrawer({
             {upsert.error instanceof Error ? upsert.error.message : 'неизвестная ошибка'}
           </p>
         )}
-        {/* Hidden submit so Enter inside a field triggers handleSubmit */}
         <button type="submit" hidden aria-hidden="true" tabIndex={-1} />
       </form>
     </Drawer>
@@ -409,10 +457,7 @@ function CostsSection({ form, totalDisplay }: SectionProps & { totalDisplay: str
   const totalId = useId();
 
   return (
-    <Section
-      title="Стоимость"
-      hint="Денежные поля — строки. total_cost рассчитывается на стороне БД (generated column), здесь — локальный предпросмотр."
-    >
+    <Section title="Стоимость">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Размещение, ₽" htmlFor={placementId} error={errors.cost_placement?.message}>
           <Input
@@ -444,34 +489,52 @@ function CostsSection({ form, totalDisplay }: SectionProps & { totalDisplay: str
   );
 }
 
-function ComplianceSection({ form }: SectionProps) {
+function AudienceSection({ form }: SectionProps) {
   const {
     register,
     formState: { errors },
-    watch,
   } = form;
-  const eridId = useId();
-  const notesId = useId();
-  const stage = watch('stage');
-  const eridRequiredHint = stage === 'published';
+  const themeId = useId();
+  const ageId = useId();
+  const subscribersId = useId();
+  const minReachId = useId();
+  const erId = useId();
 
   return (
-    <Section title="Compliance">
-      <div className="grid grid-cols-1 gap-4">
-        <Field
-          label={`ERID${eridRequiredHint ? ' (обязательно для published)' : ''}`}
-          htmlFor={eridId}
-          error={errors.erid?.message}
-        >
-          <Input id={eridId} placeholder="напр. 2VtzqwYjJjA" {...register('erid')} />
+    <Section title="Аудитория">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field label="Тематика" htmlFor={themeId} error={errors.theme?.message}>
+          <Input id={themeId} placeholder="мода, лайфстайл, техника..." {...register('theme')} />
         </Field>
 
-        <Field label="Заметки" htmlFor={notesId} error={errors.notes?.message}>
-          <Textarea
-            id={notesId}
-            rows={3}
-            placeholder="ТЗ, договорённости, ссылка на пост..."
-            {...register('notes')}
+        <Field label="Возраст аудитории" htmlFor={ageId} error={errors.audience_age?.message}>
+          <Input id={ageId} placeholder="25-34, 18-24..." {...register('audience_age')} />
+        </Field>
+
+        <Field label="Подписчики" htmlFor={subscribersId} error={errors.subscribers?.message}>
+          <Input
+            id={subscribersId}
+            inputMode="numeric"
+            placeholder="100000"
+            {...register('subscribers')}
+          />
+        </Field>
+
+        <Field label="Мин. охват" htmlFor={minReachId} error={errors.min_reach?.message}>
+          <Input
+            id={minReachId}
+            inputMode="numeric"
+            placeholder="15000"
+            {...register('min_reach')}
+          />
+        </Field>
+
+        <Field label="ER, %" htmlFor={erId} error={errors.engagement_rate?.message}>
+          <Input
+            id={erId}
+            inputMode="decimal"
+            placeholder="2.5"
+            {...register('engagement_rate')}
           />
         </Field>
       </div>
@@ -485,28 +548,206 @@ function FactSection({ form }: SectionProps) {
     formState: { errors },
   } = form;
   const viewsId = useId();
+  const cpmId = useId();
+  const clicksId = useId();
+  const ctrId = useId();
+  const cpcId = useId();
+  const cartsId = useId();
+  const crToCartId = useId();
   const ordersId = useId();
+  const crToOrderId = useId();
   const revenueId = useId();
 
   return (
-    <Section
-      title="Факт"
-      hint="Финальные показатели. Снимки метрик во времени — отдельная таблица crm.integration_metrics_snapshots, форма для них появится в T19/T20."
-    >
+    <Section title="Факт">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Field label="Просмотры" htmlFor={viewsId} error={errors.fact_views?.message}>
           <Input id={viewsId} inputMode="numeric" placeholder="0" {...register('fact_views')} />
+        </Field>
+
+        <Field label="CPM, ₽" htmlFor={cpmId} error={errors.fact_cpm?.message}>
+          <Input id={cpmId} inputMode="decimal" placeholder="0" {...register('fact_cpm')} />
+        </Field>
+
+        <Field label="Клики" htmlFor={clicksId} error={errors.fact_clicks?.message}>
+          <Input id={clicksId} inputMode="numeric" placeholder="0" {...register('fact_clicks')} />
+        </Field>
+
+        <Field label="CTR, %" htmlFor={ctrId} error={errors.fact_ctr?.message}>
+          <Input id={ctrId} inputMode="decimal" placeholder="0" {...register('fact_ctr')} />
+        </Field>
+
+        <Field label="CPC, ₽" htmlFor={cpcId} error={errors.fact_cpc?.message}>
+          <Input id={cpcId} inputMode="decimal" placeholder="0" {...register('fact_cpc')} />
+        </Field>
+
+        <Field label="Корзины" htmlFor={cartsId} error={errors.fact_carts?.message}>
+          <Input id={cartsId} inputMode="numeric" placeholder="0" {...register('fact_carts')} />
+        </Field>
+
+        <Field label="CR → корзина, %" htmlFor={crToCartId} error={errors.cr_to_cart?.message}>
+          <Input
+            id={crToCartId}
+            inputMode="decimal"
+            placeholder="0"
+            {...register('cr_to_cart')}
+          />
         </Field>
 
         <Field label="Заказы, шт" htmlFor={ordersId} error={errors.fact_orders?.message}>
           <Input id={ordersId} inputMode="numeric" placeholder="0" {...register('fact_orders')} />
         </Field>
 
+        <Field label="CR → заказ, %" htmlFor={crToOrderId} error={errors.cr_to_order?.message}>
+          <Input
+            id={crToOrderId}
+            inputMode="decimal"
+            placeholder="0"
+            {...register('cr_to_order')}
+          />
+        </Field>
+
         <Field label="Выручка, ₽" htmlFor={revenueId} error={errors.fact_revenue?.message}>
-          <Input id={revenueId} inputMode="decimal" placeholder="0" {...register('fact_revenue')} />
+          <Input
+            id={revenueId}
+            inputMode="decimal"
+            placeholder="0"
+            {...register('fact_revenue')}
+          />
         </Field>
       </div>
     </Section>
+  );
+}
+
+function ContentSection({ form }: SectionProps) {
+  const {
+    register,
+    formState: { errors },
+  } = form;
+  const contractId = useId();
+  const postUrlId = useId();
+  const tzId = useId();
+  const screenId = useId();
+  const postContentId = useId();
+  const analysisId = useId();
+  const modelsId = useId();
+  const notesId = useId();
+  const eridId = useId();
+
+  return (
+    <Section title="Контент и ссылки">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field label="Ссылка на договор" htmlFor={contractId} error={errors.contract_url?.message}>
+          <Input
+            id={contractId}
+            type="url"
+            placeholder="https://..."
+            {...register('contract_url')}
+          />
+        </Field>
+
+        <Field label="Ссылка на пост" htmlFor={postUrlId} error={errors.post_url?.message}>
+          <Input id={postUrlId} type="url" placeholder="https://..." {...register('post_url')} />
+        </Field>
+
+        <Field label="Ссылка на ТЗ" htmlFor={tzId} error={errors.tz_url?.message}>
+          <Input id={tzId} type="url" placeholder="https://..." {...register('tz_url')} />
+        </Field>
+
+        <Field label="Скриншот" htmlFor={screenId} error={errors.screen_url?.message}>
+          <Input id={screenId} type="url" placeholder="https://..." {...register('screen_url')} />
+        </Field>
+
+        <Field label="ERID" htmlFor={eridId} error={errors.erid?.message}>
+          <Input id={eridId} placeholder="напр. 2VtzqwYjJjA" {...register('erid')} />
+        </Field>
+
+        <Field label="Рекомендуемые модели" htmlFor={modelsId} error={errors.recommended_models?.message}>
+          <Input id={modelsId} placeholder="модель1, модель2..." {...register('recommended_models')} />
+        </Field>
+
+        <div className="sm:col-span-2">
+          <Field label="Текст поста" htmlFor={postContentId} error={errors.post_content?.message}>
+            <Textarea id={postContentId} rows={4} {...register('post_content')} />
+          </Field>
+        </div>
+
+        <div className="sm:col-span-2">
+          <Field label="Анализ" htmlFor={analysisId} error={errors.analysis?.message}>
+            <Textarea id={analysisId} rows={3} placeholder="выводы по интеграции..." {...register('analysis')} />
+          </Field>
+        </div>
+
+        <div className="sm:col-span-2">
+          <Field label="Заметки" htmlFor={notesId} error={errors.notes?.message}>
+            <Textarea
+              id={notesId}
+              rows={3}
+              placeholder="ТЗ, договорённости, ссылки..."
+              {...register('notes')}
+            />
+          </Field>
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+function ComplianceSection({ form }: SectionProps) {
+  return (
+    <Section title="Compliance">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {(
+          [
+            ['has_marking', 'Маркировка'],
+            ['has_contract', 'Договор'],
+            ['has_deeplink', 'Диплинк'],
+            ['has_closing_docs', 'Закрывающие'],
+            ['has_full_recording', 'Полная запись'],
+            ['all_data_filled', 'Данные заполнены'],
+            ['has_quality_content', 'Качество контента'],
+            ['complies_with_rules', 'Соответствие правилам'],
+          ] as const
+        ).map(([field]) => (
+          <ComplianceCheckbox key={field} form={form} field={field} />
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+const COMPLIANCE_LABELS: Record<string, string> = {
+  has_marking: 'Маркировка',
+  has_contract: 'Договор',
+  has_deeplink: 'Диплинк',
+  has_closing_docs: 'Закрывающие',
+  has_full_recording: 'Полная запись',
+  all_data_filled: 'Данные заполнены',
+  has_quality_content: 'Качество контента',
+  complies_with_rules: 'Соответствие правилам',
+};
+
+function ComplianceCheckbox({
+  form,
+  field,
+}: {
+  form: UseFormReturn<FormInput, unknown, FormOutput>;
+  field: keyof typeof COMPLIANCE_LABELS;
+}) {
+  const checkId = useId();
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        id={checkId}
+        type="checkbox"
+        className="size-4 rounded border-border"
+        {...form.register(field as keyof FormInput)}
+      />
+      <label htmlFor={checkId} className="text-sm text-fg">
+        {COMPLIANCE_LABELS[field]}
+      </label>
+    </div>
   );
 }
 
@@ -541,7 +782,7 @@ function SubstitutesSection({
       <Section title="Подменные артикулы">
         <EmptyState
           title="Нет подменных артикулов"
-          description="CRUD junction-таблицы будет добавлен в T19+ через отдельный endpoint."
+          description="Привязываются через ETL из Google Sheets."
         />
       </Section>
     );

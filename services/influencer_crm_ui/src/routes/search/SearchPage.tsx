@@ -26,16 +26,14 @@ const STATUS_LABEL: Record<BloggerStatus, string> = {
 };
 
 const STAGE_TONE: Record<Stage, NonNullable<BadgeProps['tone']>> = {
-  lead: 'secondary',
-  negotiation: 'info',
-  agreed: 'info',
-  content_received: 'info',
-  content_approved: 'info',
-  scheduled: 'warning',
-  published: 'orange',
-  paid: 'success',
-  done: 'success',
-  rejected: 'danger',
+  переговоры: 'secondary',
+  согласовано: 'info',
+  отправка_комплекта: 'info',
+  контент: 'info',
+  запланировано: 'warning',
+  аналитика: 'orange',
+  завершено: 'success',
+  архив: 'secondary',
 };
 
 function formatDate(iso: string): string {

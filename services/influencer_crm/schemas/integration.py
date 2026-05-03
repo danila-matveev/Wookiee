@@ -8,10 +8,16 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
-# Stages from migration 008 schema (10 columns Kanban)
+# Russian stages (migration 013)
 Stage = Literal[
-    "lead", "negotiation", "agreed", "content_received",
-    "content_approved", "scheduled", "published", "paid", "done", "rejected",
+    "переговоры",
+    "согласовано",
+    "отправка_комплекта",
+    "контент",
+    "запланировано",
+    "аналитика",
+    "завершено",
+    "архив",
 ]
 Outcome = Literal["delivered", "cancelled", "no_show", "failed_compliance"]
 Channel = Literal["instagram", "telegram", "tiktok", "youtube", "vk", "rutube"]
@@ -38,8 +44,27 @@ class IntegrationOut(BaseModel):
     cost_goods: Decimal | None = None
     total_cost: Decimal = Decimal("0")
     erid: str | None = None
+    # Audience
+    theme: str | None = None
+    audience_age: str | None = None
+    subscribers: int | None = None
+    min_reach: int | None = None
+    engagement_rate: Decimal | None = None
+    # Plan metrics
+    plan_cpm: Decimal | None = None
+    plan_ctr: Decimal | None = None
+    plan_clicks: int | None = None
+    plan_cpc: Decimal | None = None
+    # Fact metrics
     fact_views: int | None = None
+    fact_cpm: Decimal | None = None
+    fact_clicks: int | None = None
+    fact_ctr: Decimal | None = None
+    fact_cpc: Decimal | None = None
+    fact_carts: int | None = None
+    cr_to_cart: Decimal | None = None
     fact_orders: int | None = None
+    cr_to_order: Decimal | None = None
     fact_revenue: Decimal | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
@@ -68,13 +93,24 @@ class IntegrationDetailOut(IntegrationOut):
     marketer_name: str
     substitutes: list[IntegrationSubstituteOut] = Field(default_factory=list)
     posts: list[IntegrationPostOut] = Field(default_factory=list)
+    # Content & links
     contract_url: str | None = None
     post_url: str | None = None
     tz_url: str | None = None
+    screen_url: str | None = None
     post_content: str | None = None
+    analysis: str | None = None
+    recommended_models: str | None = None
     notes: str | None = None
+    # Compliance
     has_marking: bool | None = None
     has_contract: bool | None = None
+    has_deeplink: bool | None = None
+    has_closing_docs: bool | None = None
+    has_full_recording: bool | None = None
+    all_data_filled: bool | None = None
+    has_quality_content: bool | None = None
+    complies_with_rules: bool | None = None
 
 
 class IntegrationCreate(BaseModel):
@@ -84,13 +120,19 @@ class IntegrationCreate(BaseModel):
     channel: Channel
     ad_format: AdFormat
     marketplace: Marketplace
-    stage: Stage = "lead"
+    stage: Stage = "переговоры"
     is_barter: bool = False
     cost_placement: Decimal | None = None
     cost_delivery: Decimal | None = None
     cost_goods: Decimal | None = None
     erid: str | None = None
     notes: str | None = None
+    # Audience
+    theme: str | None = None
+    audience_age: str | None = None
+    subscribers: int | None = None
+    min_reach: int | None = None
+    engagement_rate: Decimal | None = None
 
 
 class IntegrationUpdate(BaseModel):
@@ -109,9 +151,31 @@ class IntegrationUpdate(BaseModel):
     cost_goods: Decimal | None = None
     erid: str | None = None
     notes: str | None = None
+    # Audience
+    theme: str | None = None
+    audience_age: str | None = None
+    subscribers: int | None = None
+    min_reach: int | None = None
+    engagement_rate: Decimal | None = None
+    # Fact metrics
     fact_views: int | None = None
+    fact_cpm: Decimal | None = None
+    fact_clicks: int | None = None
+    fact_ctr: Decimal | None = None
+    fact_cpc: Decimal | None = None
+    fact_carts: int | None = None
+    cr_to_cart: Decimal | None = None
     fact_orders: int | None = None
+    cr_to_order: Decimal | None = None
     fact_revenue: Decimal | None = None
+    # Content
+    contract_url: str | None = None
+    post_url: str | None = None
+    tz_url: str | None = None
+    screen_url: str | None = None
+    post_content: str | None = None
+    analysis: str | None = None
+    recommended_models: str | None = None
 
 
 class StageTransitionIn(BaseModel):

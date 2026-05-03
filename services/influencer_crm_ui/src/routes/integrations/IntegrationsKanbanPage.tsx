@@ -54,7 +54,7 @@ export function IntegrationsKanbanPage() {
     <>
       <PageHeader
         title="Интеграции"
-        sub="10 стадий — перетащи карточку для смены стадии. Клик откроет детали."
+        sub="8 стадий — перетащи карточку для смены стадии. Клик откроет детали."
         actions={
           <Button variant="primary" onClick={() => setActiveId(0)}>
             <Plus size={16} /> Новая интеграция

@@ -27,24 +27,23 @@ export function toIsoDate(d: Date): string {
 }
 
 /**
- * Map a stage to the legend marker color used in the prototype.
- * - success (green): published / paid / done — публикация состоялась
- * - warning (amber): content_received / content_approved / scheduled — ждём контент/выход
- * - primary (orange): negotiation / agreed — активное обсуждение
- * - muted-fg: lead / rejected — драфт / отказ
+ * Map a stage to the legend marker color.
+ * - success (green): завершено — публикация состоялась
+ * - warning (amber): запланировано / аналитика — ждём выхода/данных
+ * - primary (orange): согласовано / отправка_комплекта / контент — активная работа
+ * - muted-fg: архив
  */
 function stageMarkerClass(stage: Stage): string {
   switch (stage) {
-    case 'published':
-    case 'paid':
-    case 'done':
+    case 'завершено':
       return 'bg-success';
-    case 'content_received':
-    case 'content_approved':
-    case 'scheduled':
+    case 'запланировано':
+    case 'аналитика':
       return 'bg-warning';
-    case 'negotiation':
-    case 'agreed':
+    case 'переговоры':
+    case 'согласовано':
+    case 'отправка_комплекта':
+    case 'контент':
       return 'bg-primary';
     default:
       return 'bg-muted-fg';

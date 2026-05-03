@@ -1,32 +1,28 @@
 import { api } from '@/lib/api';
 
-// Stage tuple — matches BFF schemas/integration.py exactly (10 columns Kanban).
+// Stage tuple — matches BFF schemas/integration.py exactly (8-stage Russian funnel).
 export const STAGES = [
-  'lead',
-  'negotiation',
-  'agreed',
-  'content_received',
-  'content_approved',
-  'scheduled',
-  'published',
-  'paid',
-  'done',
-  'rejected',
+  'переговоры',
+  'согласовано',
+  'отправка_комплекта',
+  'контент',
+  'запланировано',
+  'аналитика',
+  'завершено',
+  'архив',
 ] as const;
 
 export type Stage = (typeof STAGES)[number];
 
 export const STAGE_LABELS: Record<Stage, string> = {
-  lead: 'Лид',
-  negotiation: 'Переговоры',
-  agreed: 'Согласовано',
-  content_received: 'Контент получен',
-  content_approved: 'Контент утверждён',
-  scheduled: 'Запланировано',
-  published: 'Опубликовано',
-  paid: 'Оплачено',
-  done: 'Готово',
-  rejected: 'Отклонено',
+  переговоры: 'Переговоры',
+  согласовано: 'Согласовано',
+  отправка_комплекта: 'Отправка комплекта',
+  контент: 'Контент',
+  запланировано: 'Запланировано',
+  аналитика: 'Аналитика',
+  завершено: 'Завершено',
+  архив: 'Архив',
 };
 
 export type Outcome = 'delivered' | 'cancelled' | 'no_show' | 'failed_compliance';
@@ -58,8 +54,27 @@ export interface IntegrationOut {
   cost_goods: string | null;
   total_cost: string;
   erid: string | null;
+  // Audience
+  theme: string | null;
+  audience_age: string | null;
+  subscribers: number | null;
+  min_reach: number | null;
+  engagement_rate: string | null;
+  // Plan metrics
+  plan_cpm: string | null;
+  plan_ctr: string | null;
+  plan_clicks: number | null;
+  plan_cpc: string | null;
+  // Fact metrics
   fact_views: number | null;
+  fact_cpm: string | null;
+  fact_clicks: number | null;
+  fact_ctr: string | null;
+  fact_cpc: string | null;
+  fact_carts: number | null;
+  cr_to_cart: string | null;
   fact_orders: number | null;
+  cr_to_order: string | null;
   fact_revenue: string | null;
   created_at: string | null;
   updated_at: string | null;
@@ -86,13 +101,24 @@ export interface IntegrationDetailOut extends IntegrationOut {
   marketer_name: string;
   substitutes: IntegrationSubstituteOut[];
   posts: IntegrationPostOut[];
+  // Content & links
   contract_url: string | null;
   post_url: string | null;
   tz_url: string | null;
+  screen_url: string | null;
   post_content: string | null;
+  analysis: string | null;
+  recommended_models: string | null;
   notes: string | null;
+  // Compliance
   has_marking: boolean | null;
   has_contract: boolean | null;
+  has_deeplink: boolean | null;
+  has_closing_docs: boolean | null;
+  has_full_recording: boolean | null;
+  all_data_filled: boolean | null;
+  has_quality_content: boolean | null;
+  complies_with_rules: boolean | null;
 }
 
 export interface IntegrationsPage {
@@ -144,16 +170,35 @@ export interface IntegrationUpdate {
   cost_goods?: string | null;
   erid?: string | null;
   notes?: string | null;
+  // Audience
+  theme?: string | null;
+  audience_age?: string | null;
+  subscribers?: number | null;
+  min_reach?: number | null;
+  engagement_rate?: string | null;
+  // Fact metrics
   fact_views?: number | null;
+  fact_cpm?: string | null;
+  fact_clicks?: number | null;
+  fact_ctr?: string | null;
+  fact_cpc?: string | null;
+  fact_carts?: number | null;
+  cr_to_cart?: string | null;
   fact_orders?: number | null;
+  cr_to_order?: string | null;
   fact_revenue?: string | null;
+  // Content & links
+  contract_url?: string | null;
+  post_url?: string | null;
+  tz_url?: string | null;
+  screen_url?: string | null;
+  post_content?: string | null;
+  analysis?: string | null;
+  recommended_models?: string | null;
 }
 
 /**
- * Mirrors `IntegrationCreate` on the BFF — a strict superset of `IntegrationUpdate`
- * where blogger_id/marketer_id/publish_date/channel/ad_format/marketplace are required.
- * Used by the upsert form: when no id is set we POST this; when id is set we PATCH the
- * partial slice. We type as a shared shape and let the runtime pick which endpoint to hit.
+ * Mirrors `IntegrationCreate` on the BFF — required fields for create, optional for patch.
  */
 export interface IntegrationInput {
   blogger_id: number;
@@ -170,9 +215,31 @@ export interface IntegrationInput {
   cost_goods?: string | null;
   erid?: string | null;
   notes?: string | null;
+  // Audience
+  theme?: string | null;
+  audience_age?: string | null;
+  subscribers?: number | null;
+  min_reach?: number | null;
+  engagement_rate?: string | null;
+  // Fact metrics
   fact_views?: number | null;
+  fact_cpm?: string | null;
+  fact_clicks?: number | null;
+  fact_ctr?: string | null;
+  fact_cpc?: string | null;
+  fact_carts?: number | null;
+  cr_to_cart?: string | null;
   fact_orders?: number | null;
+  cr_to_order?: string | null;
   fact_revenue?: string | null;
+  // Content & links
+  contract_url?: string | null;
+  post_url?: string | null;
+  tz_url?: string | null;
+  screen_url?: string | null;
+  post_content?: string | null;
+  analysis?: string | null;
+  recommended_models?: string | null;
 }
 
 export function createIntegration(body: IntegrationInput): Promise<IntegrationOut> {
