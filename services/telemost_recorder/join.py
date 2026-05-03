@@ -108,7 +108,12 @@ async def _wait_for_joined(page: Page, timeout: float) -> ScreenState:
 
 
 async def _wait_for_admission(page: Page, timeout: float) -> ScreenState:
-    """Poll every 5 s while in waiting room. Returns IN_MEETING on admission or WAITING_ROOM on timeout."""
+    """Poll every 5 s while in waiting room. Returns IN_MEETING on admission or WAITING_ROOM on timeout.
+
+    Detection strategy: Telemost's selector-based IN_MEETING detection may miss the
+    real meeting UI. As a reliable fallback we check whether the waiting-room overlay
+    text has disappeared — if it has, the host admitted us.
+    """
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         await asyncio.sleep(5)
@@ -117,6 +122,15 @@ async def _wait_for_admission(page: Page, timeout: float) -> ScreenState:
             return state
         if state == ScreenState.MEETING_NOT_FOUND:
             return state
+        # Fallback: Telemost waiting-room cycles between two phrases.
+        # Only declare IN_MEETING when BOTH are absent simultaneously.
+        try:
+            wr1 = await page.locator("text=комнате ожидания").first.is_visible(timeout=300)
+            wr2 = await page.locator("text=Организатор видит").first.is_visible(timeout=300)
+            if not wr1 and not wr2:
+                return ScreenState.IN_MEETING
+        except Exception:
+            pass
     return ScreenState.WAITING_ROOM
 
 

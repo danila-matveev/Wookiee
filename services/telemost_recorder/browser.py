@@ -10,6 +10,22 @@ from services.telemost_recorder.config import BROWSER_FLAGS, HEADLESS
 
 # Injected into every page before any site script runs.
 # Intercepts all three ways JS can navigate to a custom protocol URL.
+# Mutes all outgoing audio by disabling tracks returned by getUserMedia.
+# Prevents the Chromium fake-device 440 Hz tone from being transmitted to
+# other meeting participants. Video track is kept (needed for Telemost to
+# accept the join), but audio is silenced from the very first frame.
+_MEDIA_MUTE_SCRIPT = """
+(function () {
+    var orig = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    navigator.mediaDevices.getUserMedia = function (constraints) {
+        return orig(constraints).then(function (stream) {
+            stream.getAudioTracks().forEach(function (t) { t.enabled = false; });
+            return stream;
+        });
+    };
+})();
+"""
+
 _BTN_BLOCKER_SCRIPT = """
 (function () {
     var proto = Object.getPrototypeOf(window.location);
@@ -85,6 +101,7 @@ async def launch_browser() -> AsyncIterator[tuple[Browser, BrowserContext, Page]
         # try opening the native app — this triggers a macOS/Linux OS dialog.
         # Patching Location.prototype via Object.getPrototypeOf avoids the dialog;
         # Telemost's own fallback timer then shows the web join form normally.
+        await context.add_init_script(_MEDIA_MUTE_SCRIPT)
         await context.add_init_script(_BTN_BLOCKER_SCRIPT)
         page = await context.new_page()
         try:
