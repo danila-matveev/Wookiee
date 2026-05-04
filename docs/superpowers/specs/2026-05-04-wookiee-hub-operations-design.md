@@ -83,6 +83,9 @@ Sidebar (Community — без изменений):
 - Нет ссылки на signup
 - После логина → redirect `/operations/tools`
 - `ProtectedRoute` — обёртка на весь хаб, redirect на `/login` если нет сессии
+- **Logout:** кнопка в topbar/user-menu → `supabase.auth.signOut()` → redirect `/login`
+
+**Критичное исправление `supabase.ts`:** текущий клиент создан с `persistSession: false, autoRefreshToken: false` — сессия не переживает перезагрузку страницы. Меняем на `persistSession: true, autoRefreshToken: true`.
 
 ### `/operations/tools` — Каталог тулзов (главная страница)
 
@@ -112,6 +115,10 @@ Sidebar (Community — без изменений):
 
 **Данные:** Supabase `tools` таблица, загрузка при mount, кеш в Zustand store.
 
+**Маппинг в сервисном слое:** БД возвращает `display_name` — в `tools-service.ts` явно маппим на `name` для совместимости с существующим типом `Tool`. Без этого маппинга все карточки покажут `undefined`.
+
+**Fallback для `name_ru`:** если поле `null` (до запуска populate-скрипта) — строку с русским названием не рендерим, не показываем placeholder.
+
 ### Detail Panel (правый слайд-ин)
 
 Открывается поверх каталога при клике на карточку. Закрывается крестиком или кликом вне панели.
@@ -123,7 +130,7 @@ Sidebar (Community — без изменений):
 
 **Для типа `skill`:**
 4. **Как работает** — пошаговое описание из `tools.how_it_works`
-5. **Промпт / инструкция** — содержимое `.md` файла скилла, отображается как `<pre>` с подсветкой markdown. Файл читается из `docs/skills/<slug>.md` через `/api/skills/:slug` или статическую раздачу
+5. **Документация скилла** — содержимое `docs/skills/<slug>.md` (19 файлов покрывают все скиллы). Файл fetch-ится из `public/skills/<slug>.md`. Секция рендерится только если файл существует — для типов `service`, `cron`, `script` этот блок не показываем.
 6. **Как запустить** — команда из `tools.run_command` (например `/finance-report`)
 7. **Зависимости** — из `tools.dependencies` (массив тегов)
 8. **Результат** — из `tools.output_description`
