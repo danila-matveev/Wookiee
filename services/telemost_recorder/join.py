@@ -92,23 +92,39 @@ async def _wait_for_known_state(page: Page, timeout: float) -> ScreenState:
 
 
 async def _wait_for_joined(page: Page, timeout: float) -> ScreenState:
-    """After clicking the join button, poll until WAITING_ROOM or IN_MEETING appears.
-    Ignores NAME_FORM because the name input stays in the DOM under the overlay."""
+    """After clicking join, poll until WAITING_ROOM/IN_MEETING/MEETING_NOT_FOUND.
+
+    Ignores NAME_FORM — the name input stays in DOM under the waiting-room overlay.
+    After 3 s uses absence of WR text as a fallback IN_MEETING signal for meetings
+    that admit the bot directly (no waiting room).
+    """
     deadline = time.monotonic() + timeout
+    join_time = time.monotonic()
     while time.monotonic() < deadline:
         state = await detect_screen_state(page)
-        if state in (
-            ScreenState.WAITING_ROOM,
-            ScreenState.IN_MEETING,
-            ScreenState.MEETING_NOT_FOUND,
-        ):
+        if state in (ScreenState.WAITING_ROOM, ScreenState.IN_MEETING, ScreenState.MEETING_NOT_FOUND):
             return state
+        # After the page has had time to settle, treat absence of all known
+        # pre-meeting elements as a signal that the bot is already in the meeting.
+        if time.monotonic() - join_time >= 3.0 and state == ScreenState.UNKNOWN:
+            try:
+                wr1 = await page.locator("text=комнате ожидания").first.is_visible(timeout=300)
+                wr2 = await page.locator("text=Организатор видит").first.is_visible(timeout=300)
+                name_inp = await page.locator("input[type='text']").first.is_visible(timeout=300)
+                if not wr1 and not wr2 and not name_inp:
+                    return ScreenState.IN_MEETING
+            except Exception:
+                pass
         await asyncio.sleep(0.5)
     return ScreenState.UNKNOWN
 
 
 async def _wait_for_admission(page: Page, timeout: float) -> ScreenState:
-    """Poll every 5 s while in waiting room. Returns IN_MEETING on admission or WAITING_ROOM on timeout."""
+    """Polls every 5 s while in waiting room.
+
+    Returns IN_MEETING on admission or WAITING_ROOM on timeout.
+    Falls back to absence of both WR phrases when selector-based detection fails.
+    """
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         await asyncio.sleep(5)
@@ -117,7 +133,43 @@ async def _wait_for_admission(page: Page, timeout: float) -> ScreenState:
             return state
         if state == ScreenState.MEETING_NOT_FOUND:
             return state
+        # Fallback: both waiting-room phrases absent simultaneously → admitted
+        try:
+            wr1 = await page.locator("text=комнате ожидания").first.is_visible(timeout=300)
+            wr2 = await page.locator("text=Организатор видит").first.is_visible(timeout=300)
+            if not wr1 and not wr2:
+                return ScreenState.IN_MEETING
+        except Exception:
+            pass
     return ScreenState.WAITING_ROOM
+
+
+async def _dismiss_modals(page: Page) -> None:
+    """Close known Telemost popups (e.g. Алиса Про) that appear after joining."""
+    for selector in (
+        "button:has-text('Отлично')",
+        "button:has-text('Понятно')",
+        "[data-testid='modal-close-button']",
+        "button[aria-label='Закрыть']",
+    ):
+        try:
+            loc = page.locator(selector).first
+            if await loc.is_visible(timeout=1_000):
+                await loc.click()
+                await asyncio.sleep(0.5)
+        except Exception:
+            pass
+
+
+async def _mute_bot(page: Page) -> None:
+    """Click mic-off / camera-off buttons if they appear in the meeting UI."""
+    for testid in ("turn-off-mic-button", "turn-off-camera-button"):
+        try:
+            loc = page.locator(f"[data-testid='{testid}']").first
+            if await loc.is_visible(timeout=2_000):
+                await loc.click()
+        except Exception:
+            pass
 
 
 def _emit(payload: dict) -> None:
@@ -141,6 +193,7 @@ async def _execute_join(
     """
     Navigate to meeting URL and drive the join flow to completion.
     Updates meeting.status in place. All outcomes are reflected via FSM transitions.
+    Stops at WAITING_ROOM — admission polling is handled by run_session.
     """
     meeting.transition(MeetingStatus.JOINING)
 
@@ -192,6 +245,7 @@ async def _execute_join(
             "button:has-text('Join')"
         ).first
         await join_btn.click()
+
         # Use _wait_for_joined instead of _wait_for_known_state: the name input
         # stays visible in the DOM while the waiting-room overlay appears on top,
         # so a generic poll would return NAME_FORM immediately and miss WAITING_ROOM.
@@ -208,6 +262,7 @@ async def _execute_join(
         return
 
     if state == ScreenState.IN_MEETING:
+        await _dismiss_modals(page)
         await _mute_bot(page)
         screenshot = await _save_screenshot(page, screenshot_dir, "screenshot_001")
         meeting.screenshot_path = str(screenshot)
@@ -221,17 +276,6 @@ async def _execute_join(
 
     await _save_screenshot(page, screenshot_dir, "failed_state")
     meeting.transition(MeetingStatus.FAILED, FailReason.UI_DETECTION_FAILED)
-
-
-async def _mute_bot(page: Page) -> None:
-    """Turn off the bot's mic and camera to avoid fake audio/video in the meeting."""
-    for testid in ("turn-off-mic-button", "turn-off-camera-button"):
-        try:
-            loc = page.locator(f"[data-testid='{testid}']").first
-            if await loc.is_visible(timeout=2_000):
-                await loc.click()
-        except Exception:
-            pass
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -278,6 +322,11 @@ async def run_session(url: str, bot_name: str = BOT_NAME) -> None:
         await _execute_join(page, meeting, bot_name, screenshot_dir)
 
         if meeting.status == MeetingStatus.FAILED:
+            _emit({
+                "status": "FAILED",
+                "reason": meeting.fail_reason.value if meeting.fail_reason else "UNKNOWN",
+                "meeting_id": meeting.meeting_id,
+            })
             return
 
         if meeting.status == MeetingStatus.WAITING_ROOM:
@@ -290,6 +339,7 @@ async def run_session(url: str, bot_name: str = BOT_NAME) -> None:
                     "meeting_id": meeting.meeting_id,
                 })
                 return
+            await _dismiss_modals(page)
             await _mute_bot(page)
             screenshot = await _save_screenshot(page, screenshot_dir, "screenshot_001")
             meeting.screenshot_path = str(screenshot)
