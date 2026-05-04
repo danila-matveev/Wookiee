@@ -122,7 +122,7 @@
 
 ## Notion: сохранение и обновление отчётов
 
-Текущий [notion_service.py](agents/oleg/services/notion_service.py) уже поддерживает **upsert**:
+Текущий `agents/oleg/services/notion_service.py` уже поддерживает **upsert**:
 - Ищет страницу по "Период начала" + "Период конца"
 - Если найдена → **перезаписывает** (удаляет контент + вставляет новый)
 - Если нет → создаёт новую страницу
@@ -140,12 +140,12 @@
 
 **Цель:** восстановить генерацию отчётов прямо сейчас, до полной перестройки.
 
-1. Снизить порог margin fill до 50% в [data_freshness_service.py](agents/oleg/services/data_freshness_service.py):339
+1. Снизить порог margin fill до 50% в `agents/oleg/services/data_freshness_service.py:339`
 2. Добавить Telegram-алерт при 3+ последовательных неудачах гейтов
 3. Проверить Docker-контейнеры на сервере через SSH (`docker ps`, `docker logs`)
 4. Сгенерировать пропущенные отчёты за 19-22 февраля
 
-**Файлы:** [data_freshness_service.py](agents/oleg/services/data_freshness_service.py), [agent_runner.py](agents/oleg/agent_runner.py)
+**Файлы:** `agents/oleg/services/data_freshness_service.py`, `agents/oleg/agent_runner.py`
 
 ---
 
@@ -679,15 +679,15 @@ CREATE TABLE feedback_log (
 
 | Модуль | Использует |
 |--------|-----------|
-| [shared/data_layer.py](shared/data_layer.py) | Reporter Agent (60+ SQL-запросов) |
+| `shared/data_layer/` (рефакторинг: стал пакетом) | Reporter Agent (60+ SQL-запросов) |
 | [shared/config.py](shared/config.py) | Все компоненты |
 | [shared/clients/openrouter_client.py](shared/clients/openrouter_client.py) | Все агенты (LLM) |
 | [shared/clients/wb_client.py](shared/clients/wb_client.py) | Researcher Agent (WB API) |
 | [shared/clients/ozon_client.py](shared/clients/ozon_client.py) | Researcher Agent (OZON API) |
 | [shared/model_mapping.py](shared/model_mapping.py) | Reporter + Researcher |
 | `agents/oleg/playbook.md` (агент удалён) | Reporter (+ обновляется Quality Agent) |
-| [agents/oleg/services/price_analysis/](agents/oleg/services/price_analysis/) | Reporter Agent |
-| [agents/oleg/services/notion_service.py](agents/oleg/services/notion_service.py) | Pipeline |
+| `agents/oleg/services/price_analysis/` (агент удалён) | Reporter Agent |
+| `agents/oleg/services/notion_service.py` (агент удалён) | Pipeline |
 
 ## Что меняется
 
