@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from services.influencer_crm.deps import get_session, verify_api_key
@@ -37,7 +37,10 @@ def get_brief(
     brief_id: int,
     session: Session = Depends(get_session),
 ) -> BriefDetailOut:
-    return repo.get_brief(session, brief_id)
+    result = repo.get_brief(session, brief_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Brief not found")
+    return result
 
 
 @router.post("", response_model=BriefOut, status_code=status.HTTP_201_CREATED)
@@ -54,12 +57,15 @@ def patch_brief(
     payload: BriefUpdate,
     session: Session = Depends(get_session),
 ) -> BriefOut:
-    return repo.patch_brief(
+    result = repo.patch_brief(
         session,
         brief_id,
         title=payload.title,
         status=payload.status,
     )
+    if result is None:
+        raise HTTPException(status_code=404, detail="Brief not found")
+    return result
 
 
 @router.post(

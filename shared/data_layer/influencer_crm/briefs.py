@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 
-from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -71,16 +70,15 @@ def list_briefs(
     return BriefsPage(items=[_to_brief_out(r) for r in rows])
 
 
-def get_brief(session: Session, brief_id: int) -> BriefDetailOut:
+def get_brief(session: Session, brief_id: int) -> BriefDetailOut | None:
     row = session.execute(
         text(f"{_LIST_SELECT} WHERE b.id = :id"),
         {"id": brief_id},
     ).mappings().first()
     if row is None:
-        raise HTTPException(status_code=404, detail="Brief not found")
+        return None
     base = _to_brief_out(row)
     versions = list_versions(session, brief_id)
-    # Latest version content as content_md for the detail view.
     content_md = versions[0].content_md if versions else ""
     return BriefDetailOut(**base.model_dump(), content_md=content_md, versions=versions)
 
@@ -91,11 +89,7 @@ def patch_brief(
     *,
     title: str | None = None,
     status: str | None = None,
-) -> BriefOut:
-    if title is None and status is None:
-        # No-op — return current state.
-        return get_brief(session, brief_id)
-
+) -> BriefOut | None:
     sets: list[str] = ["updated_at = now()"]
     params: dict = {"id": brief_id}
     if title is not None:
@@ -107,13 +101,11 @@ def patch_brief(
         params["status"] = db_status
 
     updated = session.execute(
-        text(
-            f"UPDATE crm.briefs SET {', '.join(sets)} WHERE id = :id RETURNING id"
-        ),
+        text(f"UPDATE crm.briefs SET {', '.join(sets)} WHERE id = :id RETURNING id"),
         params,
     ).scalar_one_or_none()
     if updated is None:
-        raise HTTPException(status_code=404, detail="Brief not found")
+        return None
 
     row = session.execute(
         text(f"{_LIST_SELECT} WHERE b.id = :id"),
