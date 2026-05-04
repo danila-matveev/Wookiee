@@ -47,6 +47,21 @@ _BTN_BLOCKER_SCRIPT = """
 })();
 """
 
+# Disables audio on all MediaStream tracks produced by getUserMedia.
+# --use-fake-device-for-media-stream emits a 440 Hz tone; this mutes it
+# at the WebRTC level before Telemost can transmit it to other participants.
+_MEDIA_MUTE_SCRIPT = """
+(function () {
+    var orig = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    navigator.mediaDevices.getUserMedia = function (constraints) {
+        return orig(constraints).then(function (stream) {
+            stream.getAudioTracks().forEach(function (t) { t.enabled = false; });
+            return stream;
+        });
+    };
+})();
+"""
+
 
 def _start_xvfb() -> Optional[subprocess.Popen]:
     """Start virtual display on Linux. Returns process handle or None on macOS/Windows."""
@@ -63,8 +78,8 @@ def _start_xvfb() -> Optional[subprocess.Popen]:
 @asynccontextmanager
 async def launch_browser() -> AsyncIterator[tuple[Browser, BrowserContext, Page]]:
     """
-    Async context manager: launches Chromium headful (Xvfb on Linux) with fake
-    media devices. Yields (browser, context, page). Cleans up on exit.
+    Async context manager: launches Chromium headless with fake media devices
+    and silenced audio. Yields (browser, context, page). Cleans up on exit.
 
     Usage:
         async with launch_browser() as (browser, context, page):
@@ -86,6 +101,8 @@ async def launch_browser() -> AsyncIterator[tuple[Browser, BrowserContext, Page]
         # Patching Location.prototype via Object.getPrototypeOf avoids the dialog;
         # Telemost's own fallback timer then shows the web join form normally.
         await context.add_init_script(_BTN_BLOCKER_SCRIPT)
+        # Mute the fake 440 Hz tone from --use-fake-device-for-media-stream.
+        await context.add_init_script(_MEDIA_MUTE_SCRIPT)
         page = await context.new_page()
         try:
             yield browser, context, page
