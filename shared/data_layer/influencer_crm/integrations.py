@@ -20,7 +20,11 @@ SELECT i.id, i.blogger_id, i.marketer_id, i.brief_id,
        i.publish_date, i.channel, i.ad_format, i.marketplace,
        i.stage, i.outcome, i.is_barter,
        i.cost_placement, i.cost_delivery, i.cost_goods, i.total_cost,
-       i.erid, i.fact_views, i.fact_orders, i.fact_revenue,
+       i.erid,
+       i.theme, i.audience_age, i.subscribers, i.min_reach, i.engagement_rate,
+       i.plan_cpm, i.plan_ctr, i.plan_clicks, i.plan_cpc,
+       i.fact_views, i.fact_cpm, i.fact_clicks, i.fact_ctr, i.fact_cpc,
+       i.fact_carts, i.cr_to_cart, i.fact_orders, i.cr_to_order, i.fact_revenue,
        i.created_at, i.updated_at
 FROM crm.integrations i
 WHERE i.archived_at IS NULL
@@ -122,24 +126,25 @@ def get_integration(session: Session, integration_id: int) -> IntegrationDetailO
     return IntegrationDetailOut(**payload)
 
 
-_INSERT_SQL = """
-INSERT INTO crm.integrations (
-    blogger_id, marketer_id, publish_date, channel, ad_format, marketplace,
-    stage, is_barter, cost_placement, cost_delivery, cost_goods, erid, notes
-) VALUES (
-    :blogger_id, :marketer_id, :publish_date, :channel, :ad_format, :marketplace,
-    :stage, :is_barter, :cost_placement, :cost_delivery, :cost_goods, :erid, :notes
-) RETURNING id
-"""
+_INSERT_FIELDS = (
+    "blogger_id", "marketer_id", "publish_date", "channel", "ad_format",
+    "marketplace", "stage", "is_barter", "cost_placement", "cost_delivery",
+    "cost_goods", "erid", "notes",
+    "theme", "audience_age", "subscribers", "min_reach", "engagement_rate",
+)
+
+_INSERT_SQL = (
+    "INSERT INTO crm.integrations ("
+    + ", ".join(_INSERT_FIELDS)
+    + ") VALUES ("
+    + ", ".join(f":{f}" for f in _INSERT_FIELDS)
+    + ") RETURNING id"
+)
 
 
 def create_integration(session: Session, **fields: Any) -> int:
-    payload = {k: fields.get(k) for k in (
-        "blogger_id", "marketer_id", "publish_date", "channel", "ad_format",
-        "marketplace", "stage", "is_barter", "cost_placement", "cost_delivery",
-        "cost_goods", "erid", "notes",
-    )}
-    payload["stage"] = payload["stage"] or "lead"
+    payload = {k: fields.get(k) for k in _INSERT_FIELDS}
+    payload["stage"] = payload["stage"] or "переговоры"
     payload["is_barter"] = bool(payload["is_barter"])
     return int(session.execute(text(_INSERT_SQL), payload).scalar_one())
 
@@ -148,7 +153,17 @@ _UPDATABLE = {
     "blogger_id", "marketer_id", "publish_date", "channel", "ad_format",
     "marketplace", "stage", "outcome", "is_barter",
     "cost_placement", "cost_delivery", "cost_goods", "erid", "notes",
-    "fact_views", "fact_orders", "fact_revenue",
+    # Audience
+    "theme", "audience_age", "subscribers", "min_reach", "engagement_rate",
+    # Fact metrics
+    "fact_views", "fact_cpm", "fact_clicks", "fact_ctr", "fact_cpc",
+    "fact_carts", "cr_to_cart", "fact_orders", "cr_to_order", "fact_revenue",
+    # Content & links
+    "contract_url", "post_url", "tz_url", "screen_url",
+    "post_content", "analysis", "recommended_models",
+    # Compliance
+    "has_marking", "has_contract", "has_deeplink", "has_closing_docs",
+    "has_full_recording", "all_data_filled", "has_quality_content", "complies_with_rules",
 }
 
 
@@ -186,20 +201,11 @@ def transition_stage(
 
 def search_integrations(session: Session, q: str, limit: int = 10) -> list[IntegrationOut]:
     """ILIKE search on notes + post_content."""
-    rows = session.execute(
-        text(
-            "SELECT id, blogger_id, marketer_id, brief_id, "
-            "       publish_date, channel, ad_format, marketplace, "
-            "       stage, outcome, is_barter, "
-            "       cost_placement, cost_delivery, cost_goods, total_cost, "
-            "       erid, fact_views, fact_orders, fact_revenue, "
-            "       created_at, updated_at "
-            "FROM crm.integrations "
-            "WHERE archived_at IS NULL AND ("
-            "    COALESCE(notes, '') ILIKE '%' || :q || '%' "
-            " OR COALESCE(post_content, '') ILIKE '%' || :q || '%'"
-            ") ORDER BY updated_at DESC LIMIT :limit"
-        ),
-        {"q": q, "limit": limit},
-    ).mappings().all()
+    sql = (
+        _LIST_BASE
+        + " AND (COALESCE(i.notes,'') ILIKE '%' || :q || '%'"
+        + "   OR COALESCE(i.post_content,'') ILIKE '%' || :q || '%')"
+        + " ORDER BY i.updated_at DESC LIMIT :limit"
+    )
+    rows = session.execute(text(sql), {"q": q, "limit": limit}).mappings().all()
     return [IntegrationOut(**dict(r)) for r in rows]

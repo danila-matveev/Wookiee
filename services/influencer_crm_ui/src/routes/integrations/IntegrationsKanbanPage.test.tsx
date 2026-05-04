@@ -15,16 +15,18 @@ describe('IntegrationsKanbanPage', () => {
     // Header renders.
     expect(screen.getByText('Интеграции')).toBeInTheDocument();
 
-    // All 10 columns are present.
-    await waitFor(() => expect(screen.getByTestId('kanban-column-lead')).toBeInTheDocument());
-    expect(screen.getByTestId('kanban-column-rejected')).toBeInTheDocument();
+    // All 8 Russian columns are present.
+    await waitFor(() =>
+      expect(screen.getByTestId('kanban-column-переговоры')).toBeInTheDocument(),
+    );
+    expect(screen.getByTestId('kanban-column-архив')).toBeInTheDocument();
 
-    // Card 1 (lead) — fixture has blogger_id 11.
-    const leadColumn = screen.getByTestId('kanban-column-lead');
+    // Card 1 (переговоры) — fixture has blogger_id 11.
+    const leadColumn = screen.getByTestId('kanban-column-переговоры');
     await waitFor(() => expect(within(leadColumn).getByText('Блогер #11')).toBeInTheDocument());
 
-    // Card 3 (scheduled) — fixture has blogger_id 13, barter card.
-    const scheduledColumn = screen.getByTestId('kanban-column-scheduled');
+    // Card 3 (запланировано) — fixture has blogger_id 13, barter card.
+    const scheduledColumn = screen.getByTestId('kanban-column-запланировано');
     expect(within(scheduledColumn).getByText('Блогер #13')).toBeInTheDocument();
   });
 });

@@ -26,8 +26,8 @@ def test_list_integrations(session: Session):
 
 
 def test_list_filter_by_stage(session: Session):
-    rows, _ = repo.list_integrations(session, limit=50, stage_in=["done"])
-    assert all(r.stage == "done" for r in rows)
+    rows, _ = repo.list_integrations(session, limit=50, stage_in=["завершено"])
+    assert all(r.stage == "завершено" for r in rows)
 
 
 def test_list_filter_by_marketplace(session: Session):
@@ -39,7 +39,7 @@ def test_list_kanban_excludes_archived(session: Session):
     """The Kanban view (default) must hide archived rows."""
     rows, _ = repo.list_integrations(session, limit=200)
     # archived ones never appear; query filters archived_at IS NULL
-    assert all(getattr(r, "outcome", None) != "cancelled" or r.stage != "rejected"
+    assert all(r.stage != "архив" or getattr(r, "outcome", None) is None
                for r in rows[:5])  # smoke
 
 
@@ -58,6 +58,6 @@ def test_stage_transition_writes_history(session: Session):
     if not rows:
         pytest.skip("DB empty")
     integration_id = rows[0].id
-    repo.transition_stage(session, integration_id, target_stage="agreed", note="test")
+    repo.transition_stage(session, integration_id, target_stage="согласовано", note="test")
     refreshed = repo.get_integration(session, integration_id)
-    assert refreshed.stage == "agreed"
+    assert refreshed.stage == "согласовано"
