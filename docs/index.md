@@ -67,6 +67,5 @@
 |---|---|
 | [archive/oleg-v2-architecture.md](archive/oleg-v2-architecture.md) | Архитектура Oleg V2 (выведен 2026-04) |
 | [archive/agents/](archive/agents/) | Архив документации удалённых агентов |
-| [archive/plans/](archive/plans/) | Архив выполненных планов |
 | [archive/specs/](archive/specs/) | Архив спецификаций |
 | [archive/retired_agents/](archive/retired_agents/) | Архив runtime-кода удалённых агентов |
