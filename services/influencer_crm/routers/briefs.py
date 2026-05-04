@@ -1,14 +1,18 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from services.influencer_crm.deps import get_session, verify_api_key
 from services.influencer_crm.schemas.brief import (
     BriefCreate,
+    BriefDetailOut,
     BriefOut,
+    BriefStatus,
+    BriefUpdate,
     BriefVersionCreate,
     BriefVersionOut,
+    BriefsPage,
 )
 from shared.data_layer.influencer_crm import briefs as repo
 
@@ -19,12 +23,43 @@ router = APIRouter(
 )
 
 
+@router.get("", response_model=BriefsPage)
+def list_briefs(
+    status: BriefStatus | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=200),
+    session: Session = Depends(get_session),
+) -> BriefsPage:
+    return repo.list_briefs(session, status=status, limit=limit)
+
+
+@router.get("/{brief_id}", response_model=BriefDetailOut)
+def get_brief(
+    brief_id: int,
+    session: Session = Depends(get_session),
+) -> BriefDetailOut:
+    return repo.get_brief(session, brief_id)
+
+
 @router.post("", response_model=BriefOut, status_code=status.HTTP_201_CREATED)
 def create_brief(
     payload: BriefCreate,
     session: Session = Depends(get_session),
 ) -> BriefOut:
     return repo.create_brief(session, title=payload.title, content_md=payload.content_md)
+
+
+@router.patch("/{brief_id}", response_model=BriefOut)
+def patch_brief(
+    brief_id: int,
+    payload: BriefUpdate,
+    session: Session = Depends(get_session),
+) -> BriefOut:
+    return repo.patch_brief(
+        session,
+        brief_id,
+        title=payload.title,
+        status=payload.status,
+    )
 
 
 @router.post(

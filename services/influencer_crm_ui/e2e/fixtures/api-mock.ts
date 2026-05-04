@@ -100,7 +100,7 @@ export async function mockApi(page: Page) {
               channel: 'instagram',
               ad_format: 'short_video',
               marketplace: 'wb',
-              stage: 'agreed',
+              stage: 'согласовано',
               outcome: null,
               is_barter: false,
               total_cost: '15000',
@@ -123,7 +123,7 @@ export async function mockApi(page: Page) {
               channel: 'telegram',
               ad_format: 'long_post',
               marketplace: 'ozon',
-              stage: 'scheduled',
+              stage: 'запланировано',
               outcome: null,
               is_barter: false,
               total_cost: '8000',
@@ -175,27 +175,38 @@ export async function mockApi(page: Page) {
   });
 
   // Briefs (T15) — list + creation echo
+  const briefsFixture = [
+    { id: 51, title: 'Бриф Wendy May', status: 'draft', current_version: 1, current_version_id: 101, created_at: '2026-05-01T10:00:00Z', updated_at: '2026-05-01T10:00:00Z' },
+    { id: 52, title: 'Бриф Charlotte', status: 'on_review', current_version: 2, current_version_id: 103, created_at: '2026-05-02T10:00:00Z', updated_at: '2026-05-03T10:00:00Z' },
+  ];
   await page.route('http://api.test/api/briefs**', async (route) => {
-    if (route.request().method() === 'POST') {
+    const url = route.request().url();
+    const method = route.request().method();
+
+    if (method === 'POST' && !url.includes('/versions')) {
       const body = JSON.parse(route.request().postData() ?? '{}');
       await route.fulfill({
         status: 201,
         contentType: 'application/json',
-        body: JSON.stringify({
-          id: 99,
-          title: body.title ?? 'Test',
-          current_version_id: 1,
-          created_at: new Date().toISOString(),
-        }),
+        body: JSON.stringify({ id: 99, title: body.title ?? 'Test', status: 'draft', current_version: 1, current_version_id: 1, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
       });
       return;
     }
-    if (route.request().method() === 'GET') {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ items: [], next_cursor: null }),
-      });
+    if (method === 'PATCH') {
+      const body = JSON.parse(route.request().postData() ?? '{}');
+      const idMatch = url.match(/\/briefs\/(\d+)/);
+      const base = briefsFixture.find((b) => b.id === Number(idMatch?.[1])) ?? briefsFixture[0];
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...base, ...body, updated_at: new Date().toISOString() }) });
+      return;
+    }
+    if (method === 'GET') {
+      const idMatch = url.match(/\/briefs\/(\d+)(?!\/)/);
+      if (idMatch) {
+        const base = briefsFixture.find((b) => b.id === Number(idMatch[1])) ?? briefsFixture[0];
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...base, content_md: 'Текст брифа', versions: [{ id: base.current_version_id, brief_id: base.id, version: base.current_version, content_md: 'Текст брифа', created_at: base.created_at }] }) });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: briefsFixture, next_cursor: null }) });
       return;
     }
     await route.continue();
@@ -252,7 +263,7 @@ export async function mockApi(page: Page) {
           channel: 'instagram',
           ad_format: 'short_video',
           marketplace: 'wb',
-          stage: 'agreed',
+          stage: 'согласовано',
           outcome: null,
           is_barter: false,
           total_cost: '15000',
@@ -294,7 +305,7 @@ export async function mockApi(page: Page) {
         channel: 'instagram',
         ad_format: 'short_video',
         marketplace: 'wb',
-        stage: 'agreed',
+        stage: 'согласовано',
         outcome: null,
         is_barter: false,
         total_cost: '15000',
