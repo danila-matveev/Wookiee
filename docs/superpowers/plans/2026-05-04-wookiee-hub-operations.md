@@ -52,10 +52,11 @@ wookiee-hub/src/components/layout/user-menu.tsx ← wire logout supabase.auth.si
 -- database/migrations/014_operations_hub.sql
 -- Добавляем поля к таблице tools
 alter table public.tools
-  add column if not exists name_ru           text,
-  add column if not exists health_check      text,
-  add column if not exists output_description text,
-  add column if not exists skill_md_path     text;
+  add column if not exists name_ru             text,
+  add column if not exists health_check        text,
+  add column if not exists output_description  text,
+  add column if not exists skill_md_path       text,
+  add column if not exists required_env_vars   text[] default '{}';
 
 -- Таблица истории запусков (Phase 2 — создаём сейчас, заполним позже)
 create table if not exists public.tool_runs (
@@ -279,6 +280,7 @@ export interface OperationsTool {
   outputDescription: string | null // mapped from output_description
   healthCheck: string | null    // mapped from health_check
   skillMdPath: string | null    // mapped from skill_md_path
+  requiredEnvVars: string[]     // mapped from required_env_vars (API keys this tool needs)
   totalRuns: number
   lastRunAt: string | null      // mapped from last_run_at (ISO string)
   lastStatus: string | null     // mapped from last_status
@@ -336,6 +338,7 @@ const mockRow = {
   output_description: 'Notion страница',
   health_check: null,
   skill_md_path: 'finance-report.md',
+  required_env_vars: ['OPENROUTER_API_KEY', 'SUPABASE_URL'],
   total_runs: 42,
   last_run_at: '2026-05-04T09:15:00Z',
   last_status: 'success',
@@ -434,6 +437,7 @@ function mapRow(row: any): OperationsTool {
     outputDescription: row.output_description ?? null,
     healthCheck: row.health_check ?? null,
     skillMdPath: row.skill_md_path ?? null,
+    requiredEnvVars: row.required_env_vars ?? [],
     totalRuns: row.total_runs ?? 0,
     lastRunAt: row.last_run_at ?? null,
     lastStatus: row.last_status ?? null,
@@ -447,7 +451,7 @@ export async function fetchTools(): Promise<OperationsTool[]> {
       'slug, display_name, name_ru, type, category, status, version, ' +
       'description, how_it_works, run_command, data_sources, depends_on, ' +
       'output_targets, output_description, health_check, skill_md_path, ' +
-      'total_runs, last_run_at, last_status'
+      'required_env_vars, total_runs, last_run_at, last_status'
     )
     .neq('status', 'archived')
 
@@ -507,6 +511,7 @@ const makeTool = (overrides: Partial<OperationsTool>): OperationsTool => ({
   outputDescription: null,
   healthCheck: null,
   skillMdPath: null,
+  requiredEnvVars: [],
   totalRuns: 0,
   lastRunAt: null,
   lastStatus: null,
@@ -957,6 +962,7 @@ const tool: OperationsTool = {
   outputDescription: null,
   healthCheck: null,
   skillMdPath: 'finance-report.md',
+  requiredEnvVars: ['OPENROUTER_API_KEY'],
   totalRuns: 5,
   lastRunAt: '2026-05-04T09:00:00Z',
   lastStatus: 'success',
@@ -985,10 +991,19 @@ describe('ToolCard', () => {
     expect(onSelect).toHaveBeenCalledWith(tool)
   })
 
-  it('shows status indicator as green for active', () => {
+  it('shows green dot for active tool with success last status', () => {
     render(<ToolCard tool={tool} onSelect={vi.fn()} />)
     const indicator = document.querySelector('[data-status="active"]')
     expect(indicator).toBeInTheDocument()
+    expect(indicator).toHaveClass('bg-green-500')
+  })
+
+  it('shows red dot and error border when lastStatus is error', () => {
+    render(<ToolCard tool={{ ...tool, lastStatus: 'error' }} onSelect={vi.fn()} />)
+    const indicator = document.querySelector('[data-last-status="error"]')
+    expect(indicator).toBeInTheDocument()
+    expect(indicator).toHaveClass('bg-red-500')
+    expect(screen.getByRole('article')).toHaveClass('border-red-300')
   })
 })
 ```
@@ -1021,11 +1036,14 @@ const TYPE_CLASSES: Record<string, string> = {
   script:  'bg-amber-100 text-amber-700',
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  active:     'bg-green-500',
-  deprecated: 'bg-amber-500',
-  draft:      'bg-gray-400',
-  archived:   'bg-red-500',
+// Status dot priority: run error > catalog status.
+// A tool that is `active` in catalog but had a failed run should show red — not green.
+function getStatusDot(tool: OperationsTool): string {
+  if (tool.lastStatus === 'error') return 'bg-red-500'
+  if (tool.status === 'deprecated') return 'bg-amber-500'
+  if (tool.status === 'draft') return 'bg-gray-400'
+  if (tool.status === 'archived') return 'bg-gray-300'
+  return 'bg-green-500'
 }
 
 function formatLastRun(iso: string | null): string {
@@ -1048,7 +1066,12 @@ export function ToolCard({ tool, onSelect }: ToolCardProps) {
     <article
       role="article"
       onClick={() => onSelect(tool)}
-      className="bg-card border border-border rounded-xl p-4 cursor-pointer hover:border-primary/40 hover:shadow-sm transition-all"
+      className={cn(
+        'bg-card rounded-xl p-4 cursor-pointer hover:shadow-sm transition-all border',
+        tool.lastStatus === 'error'
+          ? 'border-red-300 bg-red-50/30 hover:border-red-400'
+          : 'border-border hover:border-primary/40'
+      )}
     >
       <div className="flex items-start justify-between mb-1.5">
         <div className="min-w-0 flex-1 mr-2">
@@ -1061,7 +1084,8 @@ export function ToolCard({ tool, onSelect }: ToolCardProps) {
         </div>
         <span
           data-status={tool.status}
-          className={cn('w-2 h-2 rounded-full shrink-0 mt-1.5', STATUS_COLORS[tool.status] ?? 'bg-gray-400')}
+          data-last-status={tool.lastStatus ?? 'none'}
+          className={cn('w-2 h-2 rounded-full shrink-0 mt-1.5', getStatusDot(tool))}
         />
       </div>
 
@@ -1284,6 +1308,14 @@ const CATEGORY_LABEL: Record<string, string> = {
   planning: 'Планирование',
 }
 
+function formatLastRunPanel(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime()
+  const h = Math.floor(diff / 3_600_000)
+  if (h < 1) return 'только что'
+  if (h < 24) return `${h}ч назад`
+  return `${Math.floor(h / 24)}д назад`
+}
+
 interface SectionProps { label: string; children: React.ReactNode }
 function Section({ label, children }: SectionProps) {
   return (
@@ -1421,18 +1453,46 @@ export function ToolDetailPanel({ tool, onClose }: ToolDetailPanelProps) {
             </Section>
           )}
 
-          {/* Run history — Phase 2 placeholder */}
-          <Section label="История запусков">
-            <div className="border border-dashed border-border rounded-lg p-4 text-center">
-              <p className="text-[12px] text-muted-foreground">
-                История запусков появится в Phase 2 после подключения телеметрии
-              </p>
-              {tool.totalRuns > 0 && (
-                <p className="text-[11px] text-muted-foreground mt-1">
-                  Всего запусков: {tool.totalRuns} · Последний: {tool.lastStatus}
+          {/* Required env vars (skills only) */}
+          {tool.type === 'skill' && tool.requiredEnvVars.length > 0 && (
+            <Section label="Переменные окружения">
+              <div className="flex flex-wrap gap-2">
+                {tool.requiredEnvVars.map((v) => (
+                  <code key={v} className="text-[11px] bg-amber-50 border border-amber-200 text-amber-700 rounded px-2 py-0.5 font-mono">
+                    {v}
+                  </code>
+                ))}
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-1">Задать в .env файле проекта</p>
+            </Section>
+          )}
+
+          {/* Run stats from tools table — available in Phase 1 */}
+          <Section label="Статистика запусков">
+            <div className="grid grid-cols-3 gap-2">
+              <div className="bg-muted/40 border border-border rounded-lg p-3">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Всего</p>
+                <p className="text-xl font-bold text-foreground">{tool.totalRuns}</p>
+              </div>
+              <div className="bg-muted/40 border border-border rounded-lg p-3">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Последний</p>
+                <p className="text-[12px] text-foreground">{tool.lastRunAt ? formatLastRunPanel(tool.lastRunAt) : '—'}</p>
+              </div>
+              <div className={cn(
+                'border rounded-lg p-3',
+                tool.lastStatus === 'error' ? 'bg-red-50 border-red-200' : 'bg-muted/40 border-border'
+              )}>
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Статус</p>
+                <p className={cn(
+                  'text-[12px] font-medium',
+                  tool.lastStatus === 'error' ? 'text-red-600' :
+                  tool.lastStatus === 'success' ? 'text-green-600' : 'text-muted-foreground'
+                )}>
+                  {tool.lastStatus ?? '—'}
                 </p>
-              )}
+              </div>
             </div>
+            <p className="text-[11px] text-muted-foreground mt-2">Детальная история запусков — Phase 2</p>
           </Section>
 
         </div>
@@ -1516,6 +1576,18 @@ export function ToolsPage() {
   }, [filtered])
 
   const activeCount = tools.filter(t => t.status === 'active').length
+  const errorCount = tools.filter(t => t.lastStatus === 'error').length
+
+  const lastRunDisplay = useMemo(() => {
+    const dates = tools.filter(t => t.lastRunAt).map(t => t.lastRunAt!)
+    if (dates.length === 0) return '—'
+    const latest = dates.reduce((a, b) => a > b ? a : b)
+    const diff = Date.now() - new Date(latest).getTime()
+    const h = Math.floor(diff / 3_600_000)
+    if (h < 1) return 'только что'
+    if (h < 24) return `${h}ч назад`
+    return `${Math.floor(h / 24)}д назад`
+  }, [tools])
 
   return (
     <div className="space-y-5">
@@ -1530,14 +1602,14 @@ export function ToolsPage() {
       {/* KPI cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: 'Всего тулзов',    value: tools.length,          sub: 'в каталоге' },
-          { label: 'Активных',        value: activeCount,            sub: `из ${tools.length}`, highlight: true },
-          { label: 'Запусков сегодня', value: '—',                  sub: 'Phase 2' },
-          { label: 'Последний запуск', value: '—',                   sub: 'Phase 2' },
-        ].map(({ label, value, sub, highlight }) => (
+          { label: 'Всего тулзов',     value: tools.length,   sub: 'в каталоге',         cls: 'text-foreground' },
+          { label: 'Активных',         value: activeCount,     sub: `из ${tools.length}`,  cls: 'text-green-600' },
+          { label: 'С ошибкой',        value: errorCount,      sub: 'last_status = error', cls: errorCount > 0 ? 'text-red-600' : 'text-foreground' },
+          { label: 'Последний запуск', value: lastRunDisplay,  sub: 'по данным каталога',  cls: 'text-foreground' },
+        ].map(({ label, value, sub, cls }) => (
           <div key={label} className="bg-card border border-border rounded-xl p-4">
             <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">{label}</p>
-            <p className={`text-2xl font-bold ${highlight ? 'text-green-600' : 'text-foreground'}`}>{value}</p>
+            <p className={`text-2xl font-bold ${cls}`}>{value}</p>
             <p className="text-[11px] text-muted-foreground mt-0.5">{sub}</p>
           </div>
         ))}
@@ -1580,6 +1652,18 @@ export function ToolsPage() {
       {!loading && filtered.length === 0 && (
         <div className="py-12 text-center">
           <p className="text-sm text-muted-foreground">Тулзы не найдены</p>
+        </div>
+      )}
+
+      {/* Add new tool instruction */}
+      {!loading && (
+        <div className="border border-dashed border-border rounded-xl p-4 text-center">
+          <p className="text-[13px] font-medium text-foreground">Добавить новый инструмент в каталог</p>
+          <p className="text-[12px] text-muted-foreground mt-1">
+            Запустите{' '}
+            <code className="font-mono bg-muted text-foreground px-1 py-0.5 rounded">/tool-register</code>
+            {' '}в Claude Code — скилл заведёт запись в Supabase и обновит каталог
+          </p>
         </div>
       )}
 
