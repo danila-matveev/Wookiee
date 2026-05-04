@@ -12,11 +12,11 @@ load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 load_dotenv(Path(__file__).resolve().parents[2] / "sku_database" / ".env")
 
 PG_CONFIG = {
-    "host": os.getenv("POSTGRES_HOST"),
-    "port": int(os.getenv("POSTGRES_PORT", "5432")),
-    "database": os.getenv("POSTGRES_DB", "postgres"),
-    "user": os.getenv("POSTGRES_USER"),
-    "password": os.getenv("POSTGRES_PASSWORD"),
+    "host": os.getenv("POSTGRES_HOST") or os.getenv("SUPABASE_HOST"),
+    "port": int(os.getenv("POSTGRES_PORT") or os.getenv("SUPABASE_PORT") or "5432"),
+    "database": os.getenv("POSTGRES_DB") or os.getenv("SUPABASE_DB") or "postgres",
+    "user": os.getenv("POSTGRES_USER") or os.getenv("SUPABASE_USER"),
+    "password": os.getenv("POSTGRES_PASSWORD") or os.getenv("SUPABASE_PASSWORD"),
     "sslmode": "require",
     "options": "-csearch_path=crm,public",
 }
