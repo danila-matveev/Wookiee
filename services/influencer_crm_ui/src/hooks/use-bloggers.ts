@@ -38,7 +38,7 @@ export function useUpsertBlogger() {
       id ? updateBlogger(id, body) : createBlogger(body as BloggerInput),
     onSuccess: (saved) => {
       qc.invalidateQueries({ queryKey: ['bloggers'] });
-      qc.setQueryData(['blogger', saved.id], saved);
+      qc.invalidateQueries({ queryKey: ['blogger', saved.id] });
     },
   });
 }
