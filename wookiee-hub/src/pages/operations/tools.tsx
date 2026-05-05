@@ -70,7 +70,7 @@ export function ToolsPage() {
     <div className="space-y-5">
       {/* Header */}
       <div>
-        <h1 className="text-xl font-bold text-foreground">Tools Catalog</h1>
+        <h1 className="text-xl font-bold text-foreground">Каталог инструментов</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
           Все инструменты системы Wookiee — агенты, сервисы, скиллы, cron-задачи
         </p>

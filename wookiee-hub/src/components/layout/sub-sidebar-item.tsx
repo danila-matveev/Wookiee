@@ -1,6 +1,7 @@
 import { NavLink } from "react-router-dom"
 
 import { cn } from "@/lib/utils"
+import { useOperationsStore } from "@/stores/operations"
 import type { NavItem } from "@/types/navigation"
 
 interface SubSidebarItemProps {
@@ -9,6 +10,11 @@ interface SubSidebarItemProps {
 
 function SubSidebarItem({ item }: SubSidebarItemProps) {
   const Icon = item.icon
+  const toolsCount = useOperationsStore((s) => s.tools.length)
+
+  const badge = item.id === "tools" && toolsCount > 0
+    ? String(toolsCount)
+    : item.badge
 
   return (
     <NavLink
@@ -25,9 +31,9 @@ function SubSidebarItem({ item }: SubSidebarItemProps) {
     >
       <Icon size={16} className="shrink-0" />
       <span className="truncate">{item.label}</span>
-      {item.badge && (
+      {badge && (
         <span className="ml-auto text-[10px] border border-border bg-bg-soft text-text-dim rounded-[3px] px-1 py-0 shrink-0">
-          {item.badge}
+          {badge}
         </span>
       )}
     </NavLink>

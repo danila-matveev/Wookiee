@@ -37,6 +37,7 @@ export async function fetchTools(): Promise<OperationsTool[]> {
       'required_env_vars, total_runs, last_run_at, last_status'
     )
     .neq('status', 'archived')
+    .eq('show_in_hub', true)
 
   if (error || !data) {
     console.error('[tools-service] fetchTools error:', error?.message)
