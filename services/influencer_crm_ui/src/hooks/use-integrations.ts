@@ -50,8 +50,7 @@ export function useUpsertIntegration() {
         : createIntegration(body as IntegrationInput),
     onSuccess: (saved) => {
       qc.invalidateQueries({ queryKey: ['integrations'] });
-      qc.invalidateQueries({ queryKey: ['integration', saved.id] });
-      qc.setQueryData(['integration', saved.id], saved);
+      qc.removeQueries({ queryKey: ['integration', saved.id] });
     },
   });
 }
