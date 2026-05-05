@@ -114,6 +114,19 @@ def patch_brief(
     return _to_brief_out(row)
 
 
+def delete_brief(session: Session, brief_id: int) -> bool:
+    """Delete brief and all its versions. Returns False if not found."""
+    session.execute(
+        text("DELETE FROM crm.brief_versions WHERE brief_id = :id"),
+        {"id": brief_id},
+    )
+    deleted = session.execute(
+        text("DELETE FROM crm.briefs WHERE id = :id RETURNING id"),
+        {"id": brief_id},
+    ).scalar_one_or_none()
+    return deleted is not None
+
+
 def create_brief(session: Session, *, title: str, content_md: str) -> BriefOut:
     brief_id = session.execute(
         text(
