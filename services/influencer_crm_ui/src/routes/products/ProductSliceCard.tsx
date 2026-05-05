@@ -66,10 +66,10 @@ function monthLabel(key: string): string {
 
 interface ProductSliceCardProps {
   modelOsnovaId: number;
-  onClose: () => void;
+  onClose?: () => void;
 }
 
-export function ProductSliceCard({ modelOsnovaId, onClose }: ProductSliceCardProps) {
+export function ProductSliceCard({ modelOsnovaId }: ProductSliceCardProps) {
   const { data, isLoading, isError } = useProduct(modelOsnovaId);
 
   // Group integrations by YYYY-MM, descending. Within a group, keep BFF order
@@ -89,23 +89,8 @@ export function ProductSliceCard({ modelOsnovaId, onClose }: ProductSliceCardPro
   }, [data?.integrations]);
 
   return (
-    <section className="bg-card border border-border-strong rounded-lg shadow-warm p-5 mt-6">
-      <header className="flex items-start justify-between gap-3 mb-4">
-        <div>
-          <h2 className="font-display text-xl font-semibold text-fg">
-            {data?.model_name ?? '...'}
-          </h2>
-          <p className="text-sm text-muted-fg mt-0.5">Срез по интеграциям</p>
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="text-muted-fg hover:text-fg text-sm cursor-pointer"
-          aria-label="Закрыть срез"
-        >
-          Закрыть
-        </button>
-      </header>
+    <div>
+      <p className="text-sm text-muted-fg mb-4">Срез по интеграциям</p>
 
       {/*
         Halo strip (substitute_articles): T17 deferral.
@@ -165,7 +150,7 @@ export function ProductSliceCard({ modelOsnovaId, onClose }: ProductSliceCardPro
           })}
         </div>
       )}
-    </section>
+    </div>
   );
 }
 

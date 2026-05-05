@@ -5,6 +5,7 @@ import { formatRub } from '@/lib/format';
 import { useProducts } from '@/hooks/use-products';
 import { PageHeader } from '@/layout/PageHeader';
 import { Button } from '@/ui/Button';
+import { Drawer } from '@/ui/Drawer';
 import { FilterPill } from '@/ui/FilterPill';
 import { Input } from '@/ui/Input';
 import { QueryStatusBoundary } from '@/ui/QueryStatusBoundary';
@@ -75,7 +76,17 @@ function ProductCard({ product, selected, onSelect }: ProductCardProps) {
 export function ProductsPage() {
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const searchId = useId();
+
+  function openProduct(id: number): void {
+    setSelectedId(id);
+    setDrawerOpen(true);
+  }
+
+  function closeDrawer(): void {
+    setDrawerOpen(false);
+  }
 
   const { data, isLoading, error, fetchNextPage, hasNextPage, isFetchingNextPage } = useProducts();
   const allItems = useMemo(() => data?.pages.flatMap((p) => p.items) ?? [], [data?.pages]);
@@ -140,10 +151,8 @@ export function ProductsPage() {
             <ProductCard
               key={p.model_osnova_id}
               product={p}
-              selected={selectedId === p.model_osnova_id}
-              onSelect={() =>
-                setSelectedId((prev) => (prev === p.model_osnova_id ? null : p.model_osnova_id))
-              }
+              selected={drawerOpen && selectedId === p.model_osnova_id}
+              onSelect={() => openProduct(p.model_osnova_id)}
             />
           ))}
         </div>
@@ -157,9 +166,21 @@ export function ProductsPage() {
         </div>
       )}
 
-      {selectedId !== null && (
-        <ProductSliceCard modelOsnovaId={selectedId} onClose={() => setSelectedId(null)} />
-      )}
+      <Drawer
+        open={drawerOpen}
+        onClose={closeDrawer}
+        title={
+          selectedId !== null
+            ? (items.find((p) => p.model_osnova_id === selectedId)?.model_name ??
+              `Модель #${selectedId}`)
+            : 'Продукт'
+        }
+        width="max-w-2xl"
+      >
+        {selectedId !== null && (
+          <ProductSliceCard modelOsnovaId={selectedId} onClose={closeDrawer} />
+        )}
+      </Drawer>
     </>
   );
 }
