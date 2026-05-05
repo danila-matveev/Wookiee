@@ -59,15 +59,18 @@ PostgreSQL FK не может ссылаться на VIEW — только на
 | `id` | BIGSERIAL PK | |
 | `promo_code_id` | BIGINT NOT NULL | Cross-schema FK → `crm.promo_codes(id)` ON DELETE RESTRICT |
 | `week_start` | DATE NOT NULL | Понедельник ISO-недели |
-| `sales_rub` | NUMERIC(14,2) | Продажи, руб. |
-| `payout_rub` | NUMERIC(14,2) | К перечислению, руб. |
+| `sales_rub` | NUMERIC(14,2) | Продажи, руб. (из `retail_amount` WB API) |
+| `payout_rub` | NUMERIC(14,2) | К перечислению, руб. (из `ppvz_for_pay` WB API, переименован) |
 | `orders_count` | INTEGER | Заказов, шт. |
 | `returns_count` | INTEGER | Возвратов, шт. |
-| `avg_check` | NUMERIC(12,2) | Средний чек, руб. |
+| `avg_discount_pct` | NUMERIC(5,2) | Реально применённая средняя скидка за неделю (из WB API) |
+| `avg_check` | NUMERIC(12,2) | Средний чек, руб. (вычисляется ETL: `sales_rub / NULLIF(orders_count, 0)`) |
 | `captured_at` | TIMESTAMPTZ DEFAULT now() | Когда записано |
 
 Constraints: `UNIQUE(promo_code_id, week_start)`, все числовые поля `>= 0`.  
 Запись: через UUID→ID lookup: `SELECT id FROM crm.promo_codes WHERE external_uuid = %s`. Если UUID не найден — лог + skip, не падаем.
+
+WB API возвращает поля: `ppvz_rub` (→ `payout_rub`), `avg_discount_pct` (хранится as-is). `avg_check` ETL вычисляет сам перед INSERT.
 
 ### Views в `marketing` (read-only API)
 
