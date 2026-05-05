@@ -204,18 +204,28 @@ def run_integrations(conn, incremental: bool = False) -> tuple[int, int, int]:
     # Step 3: load integrations
     matched, miss_marketer = [], 0
     for r in integrations:
-        m_id = marketers.get(r["marketer_name"])
+        m_id = marketers.get(r["marketer_name"]) if r["marketer_name"] else None
         b_id = handle_to_id.get(r["blogger_handle_ref"].lower())
         if not m_id:
             miss_marketer += 1
-            continue
         if not b_id:
             continue
         clean = {k: v for k, v in r.items()
                  if k not in ("blogger_handle_ref", "marketer_name")}
         clean["blogger_id"] = b_id
-        clean["marketer_id"] = m_id
+        clean["marketer_id"] = m_id  # may be None — column is now nullable
         matched.append(clean)
+    # Deduplicate by sheet_row_id — same hash from two sheet rows means same
+    # logical integration; keep first occurrence to avoid CardinalityViolation.
+    seen_srids: set[str] = set()
+    deduped: list[dict] = []
+    for r in matched:
+        srid = r["sheet_row_id"]
+        if srid not in seen_srids:
+            seen_srids.add(srid)
+            deduped.append(r)
+    matched = deduped
+
     if incremental:
         existing = existing_sheet_row_ids(conn, "crm.integrations")
         matched = filter_new_rows(matched, existing)

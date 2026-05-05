@@ -58,6 +58,26 @@ def _map_channel(s: str) -> str | None:
     return CHANNEL_MAP.get(_first_token(s))
 
 
+def _infer_channel_from_url(url: str) -> str | None:
+    """Infer social channel from a profile URL."""
+    u = (url or "").strip().lower()
+    if not u:
+        return None
+    if "t.me/" in u or "telegram" in u:
+        return "telegram"
+    if "instagram.com" in u:
+        return "instagram"
+    if "vk.com" in u or "vk.ru" in u:
+        return "vk"
+    if "tiktok.com" in u:
+        return "tiktok"
+    if "youtube.com" in u or "youtu.be" in u:
+        return "youtube"
+    if "rutube.ru" in u:
+        return "rutube"
+    return None
+
+
 def _map_ad_format(s: str) -> str | None:
     key = (s or "").strip().lower()
     if key in AD_FORMAT_MAP:
@@ -100,23 +120,22 @@ def transform(values: list[list[Any]]) -> tuple[list[dict[str, Any]], list[dict[
         if not publish_date:
             continue
 
-        marketplace = _map_marketplace(raw[8] if len(raw) > 8 else "")
-        if not marketplace:
-            continue
+        marketplace = _map_marketplace(raw[8] if len(raw) > 8 else "") or "wb"
 
-        channel = _map_channel(raw[9] if len(raw) > 9 else "")
-        if not channel:
-            continue
+        social_url = str(raw[2]).strip() if len(raw) > 2 and raw[2] else ""
+        channel = (
+            _map_channel(raw[9] if len(raw) > 9 else "")
+            or _infer_channel_from_url(social_url)
+            or "instagram"
+        )
 
         ad_format = _map_ad_format(raw[7] if len(raw) > 7 else "")
         if not ad_format:
             ad_format = "integration"
 
         marketer = str(raw[1]).strip() if len(raw) > 1 and raw[1] else None
-        if not marketer:
-            continue
 
-        srid = sheet_row_id([blogger, marketer, str(publish_date), channel])
+        srid = sheet_row_id([blogger, marketer or "", str(publish_date), channel])
         erid = None  # not in current sheet layout
         post_url = str(raw[41]).strip() if len(raw) > 41 and raw[41] else None
         stage = _stage_for(publish_date)
