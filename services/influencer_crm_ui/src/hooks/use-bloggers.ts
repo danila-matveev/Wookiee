@@ -38,7 +38,10 @@ export function useUpsertBlogger() {
       id ? updateBlogger(id, body) : createBlogger(body as BloggerInput),
     onSuccess: (saved) => {
       qc.invalidateQueries({ queryKey: ['bloggers'] });
-      qc.invalidateQueries({ queryKey: ['blogger', saved.id] });
+      // Remove (not just invalidate) the detail entry — the list mutation returns
+      // BloggerOut which lacks channels/integrations fields. Stale-while-revalidate
+      // would serve the incomplete object to BloggerExpandedRow causing a crash.
+      qc.removeQueries({ queryKey: ['blogger', saved.id] });
     },
   });
 }
