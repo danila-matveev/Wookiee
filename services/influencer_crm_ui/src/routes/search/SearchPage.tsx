@@ -57,7 +57,7 @@ function BloggerResultCard({ blogger }: { blogger: BloggerOut }) {
   const displayName = blogger.real_name ?? blogger.display_handle;
   return (
     <Link
-      to="/bloggers"
+      to={`/bloggers/${blogger.id}`}
       data-testid={`search-result-blogger-${blogger.id}`}
       className="flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3 shadow-sm transition-colors duration-150 hover:border-primary-light hover:bg-bg-warm"
     >
@@ -72,14 +72,10 @@ function BloggerResultCard({ blogger }: { blogger: BloggerOut }) {
 }
 
 function IntegrationResultCard({ integration }: { integration: IntegrationOut }) {
-  // T18 punts on opening the IntegrationEditDrawer from search — re-mounting the
-  // drawer on this page would mean threading queryClient state for substitutes/posts,
-  // which is messy. We navigate to /integrations and let the user find the card on
-  // the Kanban board. (See plan §"T18 — Global search".)
-  const handleLabel = `Блогер #${integration.blogger_id}`;
+  const handleLabel = integration.blogger_handle ?? `Блогер #${integration.blogger_id}`;
   return (
     <Link
-      to="/integrations"
+      to={`/bloggers/${integration.blogger_id}`}
       data-testid={`search-result-integration-${integration.id}`}
       className="flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3 shadow-sm transition-colors duration-150 hover:border-primary-light hover:bg-bg-warm"
     >

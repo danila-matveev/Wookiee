@@ -40,7 +40,9 @@ export type Marketplace = 'wb' | 'ozon' | 'both';
 export interface IntegrationOut {
   id: number;
   blogger_id: number;
-  marketer_id: number;
+  blogger_handle: string | null;
+  marketer_id: number | null;
+  marketer_name: string | null;
   brief_id: number | null;
   publish_date: string; // ISO date
   channel: Channel;

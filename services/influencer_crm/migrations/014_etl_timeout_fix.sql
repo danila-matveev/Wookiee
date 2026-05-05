@@ -44,9 +44,12 @@ ALTER ROLE postgres SET statement_timeout = 0;
 -- deletes rows where week_start < (now() - INTERVAL '2 years')::date.
 -- A partial index on week_start covering only old rows makes the DELETE O(deleted)
 -- instead of O(total_table_rows).
+-- Note: partial index predicates require IMMUTABLE functions; now() is VOLATILE.
+-- Using a static cutoff date (updated manually ~yearly) instead.
+-- Current cutoff: rows older than 2024-01-01 are considered "retention candidates".
 CREATE INDEX IF NOT EXISTS idx_samw_week_retention
     ON crm.substitute_article_metrics_weekly (week_start)
-    WHERE week_start < (now() - INTERVAL '1 year')::date;
+    WHERE week_start < '2024-01-01'::date;
 
 -- ── Verification queries (run manually after applying) ────────────────────────
 -- 1. Confirm role timeout is cleared:

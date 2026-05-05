@@ -25,8 +25,12 @@ SELECT i.id, i.blogger_id, i.marketer_id, i.brief_id,
        i.plan_cpm, i.plan_ctr, i.plan_clicks, i.plan_cpc,
        i.fact_views, i.fact_cpm, i.fact_clicks, i.fact_ctr, i.fact_cpc,
        i.fact_carts, i.cr_to_cart, i.fact_orders, i.cr_to_order, i.fact_revenue,
-       i.created_at, i.updated_at
+       i.created_at, i.updated_at,
+       b.display_handle AS blogger_handle,
+       m.name AS marketer_name
 FROM crm.integrations i
+JOIN crm.bloggers b ON b.id = i.blogger_id
+LEFT JOIN crm.marketers m ON m.id = i.marketer_id
 WHERE i.archived_at IS NULL
 """
 

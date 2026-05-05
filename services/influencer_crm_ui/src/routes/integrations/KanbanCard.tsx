@@ -21,13 +21,14 @@ const SUPPORTED_PILL_CHANNELS: ReadonlySet<string> = new Set([
 ]);
 
 function formatDate(iso: string): string {
-  // Compact ru-RU date — '12.05'
+  // Compact ru-RU date — '12.05.2026'
   try {
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return iso;
     const dd = String(d.getDate()).padStart(2, '0');
     const mm = String(d.getMonth() + 1).padStart(2, '0');
-    return `${dd}.${mm}`;
+    const yy = String(d.getFullYear()).slice(2);
+    return `${dd}.${mm}.${yy}`;
   } catch {
     return iso;
   }
@@ -56,7 +57,7 @@ export function KanbanCard({ integration, onOpen }: KanbanCardProps) {
       }
     : undefined;
 
-  const handleLabel = `Блогер #${integration.blogger_id}`;
+  const handleLabel = integration.blogger_handle ?? `Блогер #${integration.blogger_id}`;
   const channel = integration.channel;
   const showPill = SUPPORTED_PILL_CHANNELS.has(channel);
 

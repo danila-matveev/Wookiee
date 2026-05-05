@@ -30,7 +30,9 @@ class IntegrationOut(BaseModel):
 
     id: int
     blogger_id: int
-    marketer_id: int
+    blogger_handle: str | None = None
+    marketer_id: int | None = None
+    marketer_name: str | None = None
     brief_id: int | None = None
     publish_date: date
     channel: Channel
