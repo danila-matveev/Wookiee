@@ -1,6 +1,6 @@
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Optional
 
@@ -37,8 +37,8 @@ class Meeting:
     status: MeetingStatus = field(default=MeetingStatus.PENDING)
     fail_reason: Optional[FailReason] = field(default=None)
     screenshot_path: Optional[str] = field(default=None)
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    updated_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def transition(self, new_status: MeetingStatus, fail_reason: Optional[FailReason] = None) -> None:
         allowed = _VALID_TRANSITIONS.get(self.status, set())
@@ -49,4 +49,4 @@ class Meeting:
             )
         self.status = new_status
         self.fail_reason = fail_reason
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(UTC)
