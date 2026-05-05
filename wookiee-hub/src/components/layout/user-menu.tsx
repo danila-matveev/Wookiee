@@ -1,4 +1,5 @@
 import { User, Settings, LogOut } from "lucide-react"
+import { useNavigate } from "react-router-dom"
 
 import {
   DropdownMenu,
@@ -7,8 +8,16 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
+import { supabase } from "@/lib/supabase"
 
 function UserMenu() {
+  const navigate = useNavigate()
+
+  async function handleLogout() {
+    await supabase.auth.signOut()
+    navigate("/login")
+  }
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -27,7 +36,7 @@ function UserMenu() {
           Настройки
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem variant="destructive">
+        <DropdownMenuItem variant="destructive" onSelect={handleLogout}>
           <LogOut size={14} />
           Выход
         </DropdownMenuItem>
