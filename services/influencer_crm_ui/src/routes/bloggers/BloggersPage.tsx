@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useBloggers } from '@/hooks/use-bloggers';
 import { PageHeader } from '@/layout/PageHeader';
 import { Button } from '@/ui/Button';
@@ -8,13 +9,24 @@ import { BloggersFilters, type BloggersFilterValue } from './BloggersFilters';
 import { BloggersTable } from './BloggersTable';
 
 export function BloggersPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [filters, setFilters] = useState<BloggersFilterValue>({ status: 'active' });
   const { data, isLoading, error, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useBloggers(filters);
   const items = data?.pages.flatMap((p) => p.items) ?? [];
 
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [drawerBloggerId, setDrawerBloggerId] = useState<number | undefined>(undefined);
+  const openParam = searchParams.get('open');
+  const [drawerOpen, setDrawerOpen] = useState(() => openParam !== null);
+  const [drawerBloggerId, setDrawerBloggerId] = useState<number | undefined>(
+    () => (openParam ? Number(openParam) : undefined),
+  );
+
+  useEffect(() => {
+    if (openParam !== null) {
+      setDrawerBloggerId(Number(openParam));
+      setDrawerOpen(true);
+    }
+  }, [openParam]);
 
   const openCreate = () => {
     setDrawerBloggerId(undefined);
@@ -57,7 +69,15 @@ export function BloggersPage() {
       )}
       <BloggerEditDrawer
         open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
+        onClose={() => {
+          setDrawerOpen(false);
+          if (searchParams.has('open')) {
+            setSearchParams((prev) => {
+              prev.delete('open');
+              return prev;
+            });
+          }
+        }}
         bloggerId={drawerBloggerId}
       />
     </>

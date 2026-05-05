@@ -57,7 +57,7 @@ function BloggerResultCard({ blogger }: { blogger: BloggerOut }) {
   const displayName = blogger.real_name ?? blogger.display_handle;
   return (
     <Link
-      to={`/bloggers/${blogger.id}`}
+      to={`/bloggers?open=${blogger.id}`}
       data-testid={`search-result-blogger-${blogger.id}`}
       className="flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3 shadow-sm transition-colors duration-150 hover:border-primary-light hover:bg-bg-warm"
     >
@@ -75,7 +75,7 @@ function IntegrationResultCard({ integration }: { integration: IntegrationOut })
   const handleLabel = integration.blogger_handle ?? `Блогер #${integration.blogger_id}`;
   return (
     <Link
-      to={`/bloggers/${integration.blogger_id}`}
+      to={`/bloggers?open=${integration.blogger_id}`}
       data-testid={`search-result-integration-${integration.id}`}
       className="flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3 shadow-sm transition-colors duration-150 hover:border-primary-light hover:bg-bg-warm"
     >
