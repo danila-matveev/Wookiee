@@ -35,7 +35,7 @@ export function useCreateBrief() {
     mutationFn: (body) => createBrief(body),
     onSuccess: (saved) => {
       qc.invalidateQueries({ queryKey: ['briefs'] });
-      qc.setQueryData(['brief', saved.id], saved);
+      qc.removeQueries({ queryKey: ['brief', saved.id] });
     },
   });
 }
@@ -72,9 +72,7 @@ export function useUpdateBriefStatus() {
     mutationFn: ({ id, status }) => updateBriefStatus(id, status),
     onSuccess: (saved) => {
       qc.invalidateQueries({ queryKey: ['briefs'] });
-      qc.setQueryData(['brief', saved.id], (old: unknown) =>
-        old && typeof old === 'object' ? { ...(old as Record<string, unknown>), ...saved } : saved,
-      );
+      qc.removeQueries({ queryKey: ['brief', saved.id] });
     },
   });
 }
@@ -86,9 +84,7 @@ export function useUpdateBrief() {
     mutationFn: ({ id, body }) => updateBrief(id, body),
     onSuccess: (saved) => {
       qc.invalidateQueries({ queryKey: ['briefs'] });
-      qc.setQueryData(['brief', saved.id], (old: unknown) =>
-        old && typeof old === 'object' ? { ...(old as Record<string, unknown>), ...saved } : saved,
-      );
+      qc.removeQueries({ queryKey: ['brief', saved.id] });
     },
   });
 }
