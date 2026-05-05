@@ -26,9 +26,15 @@ create index if not exists tool_runs_slug_started
 -- RLS для tool_runs
 alter table public.tool_runs enable row level security;
 
-create policy if not exists "authenticated read tool_runs"
-  on public.tool_runs for select
-  using (auth.role() = 'authenticated');
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where tablename = 'tool_runs' and policyname = 'authenticated read tool_runs'
+  ) then
+    execute 'create policy "authenticated read tool_runs" on public.tool_runs for select using (auth.role() = ''authenticated'')';
+  end if;
+end $$;
 
 -- RLS для tools (таблица уже существует с политиками — добавляем если нет)
 do $$
