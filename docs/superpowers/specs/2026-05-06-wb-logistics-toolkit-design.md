@@ -64,7 +64,9 @@ wb-logistics-toolkit/
 │   │   └── formatters.py             ← общие стили
 │   └── data/
 │       ├── mappings.py               ← склады → ФО, области → ФО
-│       └── history.db                ← SQLite история расчётов (.gitignore)
+│       ├── history.db                ← SQLite история расчётов (.gitignore)
+│       └── cache/                    ← JSON кэш между фазами (.gitignore)
+│           └── {cabinet}_latest.json ← результат Фазы 1, читается Фазой 2 и 3
 │
 ├── audit/                            ← Инструмент 2: Аудит переплат
 │   ├── run_audit.py                  ← полный аудит: API → расчёт → Excel
@@ -87,7 +89,8 @@ wb-logistics-toolkit/
 │   │   ├── sheet_weekly.py
 │   │   └── sheet_recommendations.py  ← итог для претензии (новый)
 │   ├── etl/
-│   │   └── tariff_collector.py       ← ежедневный сбор тарифов в Supabase
+│   │   ├── tariff_collector.py       ← ежедневный сбор тарифов в Supabase
+│   │   └── import_coeff_table.py     ← первичный импорт таблицы КТР/КРП в Supabase
 │   └── models/
 │       ├── report_row.py
 │       ├── audit_config.py
@@ -137,14 +140,19 @@ warehouses:
     fd: Дальневосточный + Сибирский
     available: false
     reason: "Закрыт WB для поставок СФО (май 2026)"
+    redistribution_limit_per_day: 5000
   - name: Казань
     fd: Приволжский
     available: true
     note: "Дорогой склад (225%), но высокая локализация ПФО ~95%"
+    redistribution_limit_per_day: 10000
   - name: Коледино
     fd: Центральный
     available: true
+    redistribution_limit_per_day: 100000
 ```
+
+Поле `redistribution_limit_per_day` — дневной лимит перераспределения на склад-получатель (из WB Partners → Тарифный конструктор). Алгоритм перестановок читает лимиты отсюда, не из Supabase.
 
 Алгоритм перестановок читает этот файл и исключает недоступные склады из рекомендаций. Это **конфигурационный файл**, не аналитические данные — ручное обновление при изменениях от WB корректно. Все расчётные показатели (ДЛ, ИЛ, ИРП) по-прежнему считаются только из API.
 
@@ -153,10 +161,6 @@ warehouses:
 # Токены кабинетов WB (имя совпадает с name в cabinets.yaml, uppercase)
 WB_TOKEN_OOO=eyJ...
 WB_TOKEN_IP=eyJ...
-
-# ID Google Sheets для каждого кабинета
-CABINET_OOO_SHEET_ID=1TMadx...
-CABINET_IP_SHEET_ID=1AbCde...
 
 # Google Service Account
 GOOGLE_CREDENTIALS_PATH=credentials.json
@@ -192,7 +196,8 @@ python localization/run_analysis.py --cabinet ooo --days 90
 ──────────────────────────────────────────────────────────
 python localization/run_roadmap.py --cabinet ooo
 
-  Берёт результаты Фазы 1
+  Читает кэш: localization/data/cache/{cabinet}_latest.json (результат Фазы 1)
+  Если кэш старше 24 часов — предупреждает и предлагает пересчитать
       ↓
   permutation_calculator: какие артикулы куда переложить
       ↓
@@ -209,10 +214,10 @@ python localization/run_roadmap.py --cabinet ooo
 python localization/run_permutations.py --cabinet ooo
 
   WB API: warehouse_remains (текущие остатки)
+  Читает кэш: localization/data/cache/{cabinet}_latest.json (ДЛ из Фазы 1)
       ↓
   permutation_calculator: итоговый план с учётом:
-    - warehouse_status.yaml (исключает закрытые склады)
-    - лимиты перераспределения (из Supabase wb_tariffs)
+    - warehouse_status.yaml (исключает закрытые склады, читает лимиты)
     - защита доноров (ДЛ донора не ниже 70%)
       ↓
   Sheets: Перемещения, Допоставки, Сводка, Обновление
@@ -349,7 +354,7 @@ python audit/etl/tariff_collector.py --date 2026-05-06
 
 При старте `shared/coeff_table.py` загружает актуальную таблицу (last valid_from ≤ today).
 
-Первоначальное наполнение: скрипт `audit/etl/import_coeff_table.py` импортирует таблицу из официальной документации WB Partners. При изменении тарифов WB — добавляется новая строка с новым `valid_from`, старые строки не трогаются (история сохраняется).
+Первоначальное наполнение: `python audit/etl/import_coeff_table.py` импортирует текущую таблицу из `irp_coefficients.py` (уже верифицированные данные). При изменении тарифов WB — добавляется новая строка с новым `valid_from`, старые строки не трогаются (история сохраняется для корректного аудита прошлых периодов).
 
 ---
 
