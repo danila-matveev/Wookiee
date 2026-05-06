@@ -1,9 +1,7 @@
 """Pydantic schemas for crm.integrations + drawer payload + Kanban transitions."""
-from __future__ import annotations
-
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -30,65 +28,65 @@ class IntegrationOut(BaseModel):
 
     id: int
     blogger_id: int
-    blogger_handle: str | None = None
-    marketer_id: int | None = None
-    marketer_name: str | None = None
-    brief_id: int | None = None
+    blogger_handle: Optional[str] = None
+    marketer_id: Optional[int] = None
+    marketer_name: Optional[str] = None
+    brief_id: Optional[int] = None
     publish_date: date
     channel: Channel
     ad_format: AdFormat
     marketplace: Marketplace
     stage: Stage
-    outcome: Outcome | None = None
+    outcome: Optional[Outcome] = None
     is_barter: bool = False
-    cost_placement: Decimal | None = None
-    cost_delivery: Decimal | None = None
-    cost_goods: Decimal | None = None
+    cost_placement: Optional[Decimal] = None
+    cost_delivery: Optional[Decimal] = None
+    cost_goods: Optional[Decimal] = None
     total_cost: Decimal = Decimal("0")
-    erid: str | None = None
-    primary_substitute_code: str | None = None
+    erid: Optional[str] = None
+    primary_substitute_code: Optional[str] = None
     # Audience
-    theme: str | None = None
-    audience_age: str | None = None
-    subscribers: int | None = None
-    min_reach: int | None = None
-    engagement_rate: Decimal | None = None
+    theme: Optional[str] = None
+    audience_age: Optional[str] = None
+    subscribers: Optional[int] = None
+    min_reach: Optional[int] = None
+    engagement_rate: Optional[Decimal] = None
     # Plan metrics
-    plan_cpm: Decimal | None = None
-    plan_ctr: Decimal | None = None
-    plan_clicks: int | None = None
-    plan_cpc: Decimal | None = None
+    plan_cpm: Optional[Decimal] = None
+    plan_ctr: Optional[Decimal] = None
+    plan_clicks: Optional[int] = None
+    plan_cpc: Optional[Decimal] = None
     # Fact metrics
-    fact_views: int | None = None
-    fact_cpm: Decimal | None = None
-    fact_clicks: int | None = None
-    fact_ctr: Decimal | None = None
-    fact_cpc: Decimal | None = None
-    fact_carts: int | None = None
-    cr_to_cart: Decimal | None = None
-    fact_orders: int | None = None
-    cr_to_order: Decimal | None = None
-    fact_revenue: Decimal | None = None
-    created_at: datetime | None = None
-    updated_at: datetime | None = None
+    fact_views: Optional[int] = None
+    fact_cpm: Optional[Decimal] = None
+    fact_clicks: Optional[int] = None
+    fact_ctr: Optional[Decimal] = None
+    fact_cpc: Optional[Decimal] = None
+    fact_carts: Optional[int] = None
+    cr_to_cart: Optional[Decimal] = None
+    fact_orders: Optional[int] = None
+    cr_to_order: Optional[Decimal] = None
+    fact_revenue: Optional[Decimal] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 
 class IntegrationSubstituteOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     substitute_article_id: int
     code: str
-    artikul_id: int | None
+    artikul_id: Optional[int]
     display_order: int
-    tracking_url: str | None = None
+    tracking_url: Optional[str] = None
 
 
 class IntegrationPostOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
-    post_url: str | None
-    posted_at: datetime | None
-    fact_views: int | None
-    fact_clicks: int | None
+    post_url: Optional[str]
+    posted_at: Optional[datetime]
+    fact_views: Optional[int]
+    fact_clicks: Optional[int]
 
 
 class IntegrationDetailOut(IntegrationOut):
@@ -97,23 +95,23 @@ class IntegrationDetailOut(IntegrationOut):
     substitutes: list[IntegrationSubstituteOut] = Field(default_factory=list)
     posts: list[IntegrationPostOut] = Field(default_factory=list)
     # Content & links
-    contract_url: str | None = None
-    post_url: str | None = None
-    tz_url: str | None = None
-    screen_url: str | None = None
-    post_content: str | None = None
-    analysis: str | None = None
-    recommended_models: str | None = None
-    notes: str | None = None
+    contract_url: Optional[str] = None
+    post_url: Optional[str] = None
+    tz_url: Optional[str] = None
+    screen_url: Optional[str] = None
+    post_content: Optional[str] = None
+    analysis: Optional[str] = None
+    recommended_models: Optional[str] = None
+    notes: Optional[str] = None
     # Compliance
-    has_marking: bool | None = None
-    has_contract: bool | None = None
-    has_deeplink: bool | None = None
-    has_closing_docs: bool | None = None
-    has_full_recording: bool | None = None
-    all_data_filled: bool | None = None
-    has_quality_content: bool | None = None
-    complies_with_rules: bool | None = None
+    has_marking: Optional[bool] = None
+    has_contract: Optional[bool] = None
+    has_deeplink: Optional[bool] = None
+    has_closing_docs: Optional[bool] = None
+    has_full_recording: Optional[bool] = None
+    all_data_filled: Optional[bool] = None
+    has_quality_content: Optional[bool] = None
+    complies_with_rules: Optional[bool] = None
 
 
 class IntegrationCreate(BaseModel):
@@ -125,72 +123,72 @@ class IntegrationCreate(BaseModel):
     marketplace: Marketplace
     stage: Stage = "переговоры"
     is_barter: bool = False
-    cost_placement: Decimal | None = None
-    cost_delivery: Decimal | None = None
-    cost_goods: Decimal | None = None
-    erid: str | None = None
-    notes: str | None = None
+    cost_placement: Optional[Decimal] = None
+    cost_delivery: Optional[Decimal] = None
+    cost_goods: Optional[Decimal] = None
+    erid: Optional[str] = None
+    notes: Optional[str] = None
     # Audience
-    theme: str | None = None
-    audience_age: str | None = None
-    subscribers: int | None = None
-    min_reach: int | None = None
-    engagement_rate: Decimal | None = None
+    theme: Optional[str] = None
+    audience_age: Optional[str] = None
+    subscribers: Optional[int] = None
+    min_reach: Optional[int] = None
+    engagement_rate: Optional[Decimal] = None
 
 
 class IntegrationUpdate(BaseModel):
     """All fields optional — PATCH semantics."""
-    blogger_id: int | None = None
-    marketer_id: int | None = None
-    publish_date: date | None = None
-    channel: Channel | None = None
-    ad_format: AdFormat | None = None
-    marketplace: Marketplace | None = None
-    stage: Stage | None = None
-    outcome: Outcome | None = None
-    is_barter: bool | None = None
-    cost_placement: Decimal | None = None
-    cost_delivery: Decimal | None = None
-    cost_goods: Decimal | None = None
-    erid: str | None = None
-    notes: str | None = None
+    blogger_id: Optional[int] = None
+    marketer_id: Optional[int] = None
+    publish_date: Optional[date] = None
+    channel: Optional[Channel] = None
+    ad_format: Optional[AdFormat] = None
+    marketplace: Optional[Marketplace] = None
+    stage: Optional[Stage] = None
+    outcome: Optional[Outcome] = None
+    is_barter: Optional[bool] = None
+    cost_placement: Optional[Decimal] = None
+    cost_delivery: Optional[Decimal] = None
+    cost_goods: Optional[Decimal] = None
+    erid: Optional[str] = None
+    notes: Optional[str] = None
     # Audience
-    theme: str | None = None
-    audience_age: str | None = None
-    subscribers: int | None = None
-    min_reach: int | None = None
-    engagement_rate: Decimal | None = None
+    theme: Optional[str] = None
+    audience_age: Optional[str] = None
+    subscribers: Optional[int] = None
+    min_reach: Optional[int] = None
+    engagement_rate: Optional[Decimal] = None
     # Fact metrics
-    fact_views: int | None = None
-    fact_cpm: Decimal | None = None
-    fact_clicks: int | None = None
-    fact_ctr: Decimal | None = None
-    fact_cpc: Decimal | None = None
-    fact_carts: int | None = None
-    cr_to_cart: Decimal | None = None
-    fact_orders: int | None = None
-    cr_to_order: Decimal | None = None
-    fact_revenue: Decimal | None = None
+    fact_views: Optional[int] = None
+    fact_cpm: Optional[Decimal] = None
+    fact_clicks: Optional[int] = None
+    fact_ctr: Optional[Decimal] = None
+    fact_cpc: Optional[Decimal] = None
+    fact_carts: Optional[int] = None
+    cr_to_cart: Optional[Decimal] = None
+    fact_orders: Optional[int] = None
+    cr_to_order: Optional[Decimal] = None
+    fact_revenue: Optional[Decimal] = None
     # Content
-    contract_url: str | None = None
-    post_url: str | None = None
-    tz_url: str | None = None
-    screen_url: str | None = None
-    post_content: str | None = None
-    analysis: str | None = None
-    recommended_models: str | None = None
+    contract_url: Optional[str] = None
+    post_url: Optional[str] = None
+    tz_url: Optional[str] = None
+    screen_url: Optional[str] = None
+    post_content: Optional[str] = None
+    analysis: Optional[str] = None
+    recommended_models: Optional[str] = None
     # Compliance
-    has_marking: bool | None = None
-    has_contract: bool | None = None
-    has_deeplink: bool | None = None
-    has_closing_docs: bool | None = None
-    has_full_recording: bool | None = None
-    all_data_filled: bool | None = None
-    has_quality_content: bool | None = None
-    complies_with_rules: bool | None = None
+    has_marking: Optional[bool] = None
+    has_contract: Optional[bool] = None
+    has_deeplink: Optional[bool] = None
+    has_closing_docs: Optional[bool] = None
+    has_full_recording: Optional[bool] = None
+    all_data_filled: Optional[bool] = None
+    has_quality_content: Optional[bool] = None
+    complies_with_rules: Optional[bool] = None
 
 
 class StageTransitionIn(BaseModel):
     """POST /integrations/{id}/stage body — Kanban drag-drop."""
     target_stage: Stage
-    note: str | None = None
+    note: Optional[str] = None

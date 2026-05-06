@@ -4,7 +4,7 @@ Read paths join crm.v_blogger_totals for aggregate counts.
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -37,12 +37,12 @@ def list_bloggers(
     session: Session,
     *,
     limit: int = 50,
-    cursor: str | None = None,
-    status: str | None = None,
-    marketer_id: int | None = None,
-    q: str | None = None,
-    channel: str | None = None,
-) -> tuple[list[BloggerOut], str | None]:
+    cursor: Optional[str] = None,
+    status: Optional[str] = None,
+    marketer_id: Optional[int] = None,
+    q: Optional[str] = None,
+    channel: Optional[str] = None,
+) -> tuple[list[BloggerOut], Optional[str]]:
     """Return (rows, next_cursor). Rows length ≤ limit.
 
     Note: combining ``q`` with ``cursor`` has undefined pagination behavior
@@ -279,9 +279,9 @@ def list_bloggers_summary(
     *,
     limit: int = 200,
     offset: int = 0,
-    status: str | None = None,
-    q: str | None = None,
-    channel: str | None = None,
+    status: Optional[str] = None,
+    q: Optional[str] = None,
+    channel: Optional[str] = None,
 ) -> tuple[list, int]:
     """Return (rows, total_count) for table view.
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging  # noqa: F401
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -30,11 +31,11 @@ logger = logging.getLogger("influencer_crm.bloggers")
 def list_bloggers(
     session: Session = Depends(get_session),
     limit: int = Query(50, ge=1, le=200),
-    cursor: str | None = None,
-    status_filter: str | None = Query(default=None, alias="status"),
-    marketer_id: int | None = None,
-    q: str | None = None,
-    channel: str | None = Query(default=None),
+    cursor: Optional[str] = None,
+    status_filter: Optional[str] = Query(default=None, alias="status"),
+    marketer_id: Optional[int] = None,
+    q: Optional[str] = None,
+    channel: Optional[str] = Query(default=None),
 ) -> Page[BloggerOut]:
     items, next_cursor = repo.list_bloggers(
         session, limit=limit, cursor=cursor,
@@ -46,9 +47,9 @@ def list_bloggers(
 
 @router.get("/summary", response_model=BloggerSummaryPage)
 def get_bloggers_summary(
-    status: str | None = None,
-    q: str | None = Query(default=None),
-    channel: str | None = Query(default=None),
+    status: Optional[str] = None,
+    q: Optional[str] = Query(default=None),
+    channel: Optional[str] = Query(default=None),
     limit: int = Query(default=200, le=500),
     offset: int = Query(default=0, ge=0),
     session: Session = Depends(get_session),
