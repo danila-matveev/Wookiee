@@ -23,3 +23,4 @@ from shared.data_layer.advertising import *        # noqa: F401,F403
 from shared.data_layer.funnel_seo import *         # noqa: F401,F403
 from shared.data_layer.planning import *           # noqa: F401,F403
 from shared.data_layer.logistics import *          # noqa: F401,F403
+from shared.data_layer.rnp import *               # noqa: F401,F403
