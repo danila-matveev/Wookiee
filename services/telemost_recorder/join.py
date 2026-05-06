@@ -443,9 +443,11 @@ async def run_session(url: str, bot_name: str = BOT_NAME) -> None:
         # Meeting loop
         screenshot_n = 2
         participant_tick = 0
+        elapsed = 0  # seconds since recording started
         try:
             while True:
                 await asyncio.sleep(SCREENSHOT_INTERVAL)
+                elapsed += SCREENSHOT_INTERVAL
                 await _save_screenshot(page, screenshot_dir, f"screenshot_{screenshot_n:03d}")
                 screenshot_n += 1
 
@@ -454,7 +456,9 @@ async def run_session(url: str, bot_name: str = BOT_NAME) -> None:
                     meeting.participants = await extract_participants(page)
                     participant_tick = 0
 
-                if await detect_meeting_ended(page):
+                # Grace period: don't exit for the first 90s after recording starts
+                # so the host has time to join before we trigger "bot is alone" detection
+                if elapsed >= 90 and await detect_meeting_ended(page):
                     _emit({"status": "MEETING_ENDED_DETECTED", "meeting_id": meeting.meeting_id})
                     break
         except (asyncio.CancelledError, KeyboardInterrupt):

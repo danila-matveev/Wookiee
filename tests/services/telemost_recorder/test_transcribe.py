@@ -1,26 +1,38 @@
-import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-from services.telemost_recorder.transcribe import (
-    TranscriptSegment,
-    _parse_response,
-    _poll_until_done,
-    _submit_job,
-)
-
-_FIXTURES = Path(__file__).parent / "fixtures"
+from services.telemost_recorder.transcribe import TranscriptSegment, transcribe_audio
 
 
-def _load_fixture(name: str) -> dict:
-    return json.loads((_FIXTURES / name).read_text())
+def _make_grpc_response(channel_tag: str, text: str, start_ms: int, end_ms: int):
+    """Build a minimal mock gRPC StreamingResponse with one final alternative."""
+    from yandex.cloud.ai.stt.v3 import stt_pb2
+
+    word = stt_pb2.Word(text=text, start_time_ms=start_ms, end_time_ms=end_ms)
+    alt = stt_pb2.Alternative(text=text, words=[word], start_time_ms=start_ms, end_time_ms=end_ms)
+    update = stt_pb2.AlternativeUpdate(alternatives=[alt], channel_tag=channel_tag)
+    resp = stt_pb2.StreamingResponse()
+    resp.final.CopyFrom(update)
+    return resp
 
 
-def test_parse_response_returns_segments() -> None:
-    raw = _load_fixture("speechkit_response.json")
-    segments = _parse_response(raw)
+def test_transcribe_audio_returns_segments(tmp_path):
+    audio = tmp_path / "audio.opus"
+    audio.write_bytes(b"fakeaudio")
+
+    resp1 = _make_grpc_response("1", "Добрый день", 480, 1200)
+    resp2 = _make_grpc_response("2", "Привет", 1300, 1800)
+
+    mock_stub = MagicMock()
+    mock_stub.RecognizeFile.return_value = iter([resp1, resp2])
+
+    with patch("services.telemost_recorder.transcribe.stt_service_pb2_grpc.AsyncRecognizerStub",
+               return_value=mock_stub), \
+         patch("grpc.secure_channel") as mock_channel:
+        mock_channel.return_value.__enter__ = lambda s: s
+        mock_channel.return_value.__exit__ = MagicMock(return_value=False)
+        segments = transcribe_audio(audio)
+
     assert len(segments) == 2
     assert segments[0].speaker == "Speaker 1"
     assert segments[0].text == "Добрый день"
@@ -29,51 +41,65 @@ def test_parse_response_returns_segments() -> None:
     assert segments[1].text == "Привет"
 
 
-def test_parse_response_sorted_by_start_ms() -> None:
-    raw = _load_fixture("speechkit_response.json")
-    segments = _parse_response(raw)
+def test_transcribe_audio_sorted_by_start_ms(tmp_path):
+    audio = tmp_path / "audio.opus"
+    audio.write_bytes(b"fakeaudio")
+
+    # Return segments out of order to verify sorting
+    resp1 = _make_grpc_response("1", "Второй", 2000, 2500)
+    resp2 = _make_grpc_response("2", "Первый", 100, 500)
+
+    mock_stub = MagicMock()
+    mock_stub.RecognizeFile.return_value = iter([resp1, resp2])
+
+    with patch("services.telemost_recorder.transcribe.stt_service_pb2_grpc.AsyncRecognizerStub",
+               return_value=mock_stub), \
+         patch("grpc.secure_channel") as mock_channel:
+        mock_channel.return_value.__enter__ = lambda s: s
+        mock_channel.return_value.__exit__ = MagicMock(return_value=False)
+        segments = transcribe_audio(audio)
+
     times = [s.start_ms for s in segments]
     assert times == sorted(times)
 
 
-def test_parse_response_empty_chunks() -> None:
-    segments = _parse_response({"response": {"chunks": []}})
+def test_transcribe_audio_empty_stream(tmp_path):
+    audio = tmp_path / "audio.opus"
+    audio.write_bytes(b"fakeaudio")
+
+    mock_stub = MagicMock()
+    mock_stub.RecognizeFile.return_value = iter([])
+
+    with patch("services.telemost_recorder.transcribe.stt_service_pb2_grpc.AsyncRecognizerStub",
+               return_value=mock_stub), \
+         patch("grpc.secure_channel") as mock_channel:
+        mock_channel.return_value.__enter__ = lambda s: s
+        mock_channel.return_value.__exit__ = MagicMock(return_value=False)
+        segments = transcribe_audio(audio)
+
     assert segments == []
 
 
-def test_parse_response_missing_response_key() -> None:
-    segments = _parse_response({})
+def test_transcribe_audio_skips_empty_text(tmp_path):
+    audio = tmp_path / "audio.opus"
+    audio.write_bytes(b"fakeaudio")
+
+    resp = _make_grpc_response("0", "   ", 0, 100)
+
+    mock_stub = MagicMock()
+    mock_stub.RecognizeFile.return_value = iter([resp])
+
+    with patch("services.telemost_recorder.transcribe.stt_service_pb2_grpc.AsyncRecognizerStub",
+               return_value=mock_stub), \
+         patch("grpc.secure_channel") as mock_channel:
+        mock_channel.return_value.__enter__ = lambda s: s
+        mock_channel.return_value.__exit__ = MagicMock(return_value=False)
+        segments = transcribe_audio(audio)
+
     assert segments == []
 
 
-def test_submit_job_returns_operation_id() -> None:
-    mock_resp = MagicMock()
-    mock_resp.read.return_value = b'{"id": "op-456"}'
-    mock_resp.__enter__ = lambda s: s
-    mock_resp.__exit__ = MagicMock(return_value=False)
-
-    with patch("urllib.request.urlopen", return_value=mock_resp):
-        op_id = _submit_job("base64audiodata")
-
-    assert op_id == "op-456"
-
-
-def test_poll_until_done_returns_when_done() -> None:
-    done_response = _load_fixture("speechkit_response.json")
-    mock_resp = MagicMock()
-    mock_resp.read.return_value = json.dumps(done_response).encode()
-    mock_resp.__enter__ = lambda s: s
-    mock_resp.__exit__ = MagicMock(return_value=False)
-
-    with patch("urllib.request.urlopen", return_value=mock_resp), \
-         patch("time.sleep"):
-        result = _poll_until_done("op-123", timeout_seconds=30)
-
-    assert result["done"] is True
-    assert "response" in result
-
-
-def test_transcript_segment_dataclass() -> None:
+def test_transcript_segment_dataclass():
     seg = TranscriptSegment(speaker="Speaker 1", start_ms=1000, end_ms=2000, text="Привет")
     assert seg.speaker == "Speaker 1"
     assert seg.start_ms == 1000
