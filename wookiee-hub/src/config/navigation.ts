@@ -10,6 +10,7 @@ import {
   Users2,
   Kanban,
   CalendarDays,
+  TrendingUp,
 } from "lucide-react"
 import type { NavGroup } from "@/types/navigation"
 
@@ -43,6 +44,14 @@ export const navigationGroups: NavGroup[] = [
       { id: "bloggers",     label: "Блогеры",    icon: Users2,       path: "/influence/bloggers" },
       { id: "integrations", label: "Интеграции", icon: Kanban,       path: "/influence/integrations" },
       { id: "calendar",     label: "Календарь",  icon: CalendarDays, path: "/influence/calendar" },
+    ],
+  },
+  {
+    id: "analytics",
+    icon: TrendingUp,
+    label: "Аналитика",
+    items: [
+      { id: "rnp", label: "Рука на пульсе", icon: Activity, path: "/analytics/rnp" },
     ],
   },
 ]

@@ -11,6 +11,7 @@ import os
 from datetime import date, timedelta
 from typing import Optional
 
+import jwt
 from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,15 +19,19 @@ from fastapi.middleware.cors import CORSMiddleware
 load_dotenv()
 
 ANALYTICS_API_KEY     = os.getenv("ANALYTICS_API_KEY", "")
+SUPABASE_JWT_SECRET   = os.getenv("SUPABASE_JWT_SECRET", "")
 GOOGLE_SA_FILE        = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE", "services/sheets_sync/credentials/google_sa.json")
 RNP_EXT_ADS_SHEET_ID  = os.getenv("RNP_EXT_ADS_SHEET_ID", "")
 RNP_BLOGGERS_SHEET_ID = os.getenv("RNP_BLOGGERS_SHEET_ID", "")
-# TODO: RNP_BLOGGERS_SHEET_ID — уточнить у Артёма. Пока пустой — сервис работает без блогеров.
 
 app = FastAPI(title="Analytics API", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://hub.os.wookiee.shop",
+        "http://localhost:5173",
+        "http://localhost:5174",
+    ],
     allow_methods=["GET"],
     allow_headers=["*"],
 )
@@ -40,11 +45,36 @@ logger = logging.getLogger("analytics_api")
 MAX_PERIOD_DAYS = 91  # 13 weeks
 
 
-def _verify_key(x_api_key: str) -> None:
-    if not ANALYTICS_API_KEY:
-        raise HTTPException(500, "ANALYTICS_API_KEY not configured")
-    if x_api_key != ANALYTICS_API_KEY:
-        raise HTTPException(403, "Invalid API key")
+def _verify_auth(
+    x_api_key: str | None = None,
+    authorization: str | None = None,
+) -> None:
+    # Path 1: Supabase Bearer JWT — Hub SPA (no key in bundle)
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization[len("Bearer "):]
+        _verify_supabase_jwt(token)
+        return
+
+    # Path 2: static X-Api-Key — server-side scripts
+    if x_api_key is not None:
+        if not ANALYTICS_API_KEY:
+            raise HTTPException(500, "ANALYTICS_API_KEY not configured")
+        if x_api_key != ANALYTICS_API_KEY:
+            raise HTTPException(403, "Invalid API key")
+        return
+
+    raise HTTPException(403, "Authorization required: Bearer token or X-Api-Key header")
+
+
+def _verify_supabase_jwt(token: str) -> None:
+    if not SUPABASE_JWT_SECRET:
+        raise HTTPException(403, "Bearer auth not configured on server (SUPABASE_JWT_SECRET missing)")
+    try:
+        jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=["HS256"], audience="authenticated")
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(401, "Token expired")
+    except jwt.InvalidTokenError as exc:
+        raise HTTPException(403, f"Invalid token: {exc}")
 
 
 def _align_monday(d: date) -> date:
@@ -63,9 +93,10 @@ def health():
 @app.get("/api/rnp/models")
 def rnp_models(
     marketplace: str = Query("wb"),
-    x_api_key: str = Header(...),
+    x_api_key: str | None = Header(default=None),
+    authorization: str | None = Header(default=None),
 ):
-    _verify_key(x_api_key)
+    _verify_auth(x_api_key, authorization)
     if marketplace != "wb":
         raise HTTPException(501, "Only marketplace=wb supported in Phase 1")
     from shared.data_layer.rnp import fetch_rnp_models_wb
@@ -80,14 +111,14 @@ def rnp_weeks(
     date_to: date   = Query(...),
     marketplace: str          = Query("wb"),
     buyout_forecast: Optional[float] = Query(None, ge=0.0, le=1.0),
-    x_api_key: str = Header(...),
+    x_api_key: str | None = Header(default=None),
+    authorization: str | None = Header(default=None),
 ):
-    _verify_key(x_api_key)
+    _verify_auth(x_api_key, authorization)
 
     if marketplace != "wb":
         raise HTTPException(501, "Only marketplace=wb supported in Phase 1")
 
-    # Align to week boundaries
     date_from = _align_monday(date_from)
     date_to   = _align_sunday(date_to)
 
@@ -101,10 +132,8 @@ def rnp_weeks(
         aggregate_to_weeks,
     )
 
-    # Fetch WB DB data
     daily_rows = fetch_rnp_wb_daily(model, date_from, date_to)
 
-    # Fetch Sheets data (fail gracefully — T4 Sheets fallback)
     ext_ads_available = True
     sheets_data: dict = {}
     try:
@@ -128,7 +157,6 @@ def rnp_weeks(
 
     weeks = aggregate_to_weeks(daily_rows, sheets_data, buyout_forecast)
 
-    # Compute period-level buyout used
     tot_orders = sum(w.get("orders_qty") or 0 for w in weeks)
     tot_sales  = sum(w.get("sales_qty") or 0 for w in weeks)
     buyout_used = (tot_sales / tot_orders) if tot_orders > 0 else (buyout_forecast or 0.87)
