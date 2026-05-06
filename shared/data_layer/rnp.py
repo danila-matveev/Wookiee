@@ -197,7 +197,11 @@ def _to_float(raw) -> Optional[float]:
     if raw is None or raw == "":
         return None
     try:
-        return float(str(raw).replace(",", ".").replace("\xa0", "").replace(" ", ""))
+        import re
+        s = str(raw).replace("\xa0", "").replace(" ", "")
+        # Strip leading currency symbols/prefixes ("р.", "₽", "$")
+        s = re.sub(r'^[^\d\-]+', '', s)
+        return float(s.replace(",", "."))
     except (ValueError, TypeError):
         return None
 
