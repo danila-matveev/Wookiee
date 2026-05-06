@@ -20,24 +20,39 @@ triggers:
 
 ---
 
+## Шаг 0: Уточнить период
+
+**Перед запуском сборщиков обязательно спроси пользователя:**
+
+> За какой период сделать отчёт?
+> Текущая неделя (пн {дата_пн} — вс {дата_вс}) или другой период?
+
+Если пользователь не указал дату явно — покажи, какую неделю ты собираешься брать (автоопределение: неделя, содержащая сегодняшний день), и жди подтверждения или корректировки.
+
+Получив ответ, определи `REF_DATE` — любую дату внутри нужной недели в формате `YYYY-MM-DD`. Например, если нужна неделя 4–11 мая, `REF_DATE=2026-05-04`.
+
+---
+
 ## Шаг 1: Запустить все сборщики параллельно
 
-Запускай все 5 команд одновременно в отдельных Bash-вызовах. Это необходимо для параллельного выполнения, так как сборщики независимы:
+Запускай все 5 команд одновременно в отдельных Bash-вызовах. Это необходимо для параллельного выполнения, так как сборщики независимы.
+
+Подставь `REF_DATE` из Шага 0 (формат `YYYY-MM-DD`). Если неделя текущая — аргумент можно опустить.
 
 ```bash
-cd /Users/danilamatveev/Projects/Wookiee && python3 modules/coo_report/collectors/finance.py
+cd /Users/danilamatveev/Projects/Wookiee && python3 modules/coo_report/collectors/finance.py REF_DATE
 ```
 ```bash
-cd /Users/danilamatveev/Projects/Wookiee && python3 modules/coo_report/collectors/models.py
+cd /Users/danilamatveev/Projects/Wookiee && python3 modules/coo_report/collectors/models.py REF_DATE
 ```
 ```bash
-cd /Users/danilamatveev/Projects/Wookiee && python3 modules/coo_report/collectors/logistics.py
+cd /Users/danilamatveev/Projects/Wookiee && python3 modules/coo_report/collectors/logistics.py REF_DATE
 ```
 ```bash
-cd /Users/danilamatveev/Projects/Wookiee && python3 modules/coo_report/collectors/ads.py
+cd /Users/danilamatveev/Projects/Wookiee && python3 modules/coo_report/collectors/ads.py REF_DATE
 ```
 ```bash
-cd /Users/danilamatveev/Projects/Wookiee && python3 modules/coo_report/collectors/team.py
+cd /Users/danilamatveev/Projects/Wookiee && python3 modules/coo_report/collectors/team.py REF_DATE
 ```
 
 Каждый сборщик создаёт JSON в `/tmp/`:
@@ -220,30 +235,34 @@ logistics.json = {
 team.json = {
   "staff": {
     "Имя": {
-      "done_count": N,
-      "active_count": N,
-      "overdue_count": N,
+      "name": "Имя",
+      "full_name": "Имя Фамилия",
+      "role": "...",
+      "done": N,
+      "active": N,
+      "overdue": N,
       "done_titles": ["задача 1", "задача 2", ...],
-      "bitrix_id": N
+      "active_titles": [...],
+      "overdue_titles": [...]
     },
     ...
   },
-  "period": {...},
-  "data_refreshed": bool
+  "data_refreshed": bool,
+  "bitrix_period": {...}
 }
 ```
 
 | Сотрудник | Что выполнено | Активные | Просрочено | Оценка |
 |-----------|---------------|----------|-----------|--------|
-| Имя | первые 2-3 из `done_titles` | `active_count` | `overdue_count` | 🟢/🟡/🔴 |
+| Имя | первые 2-3 из `done_titles` | `active` | `overdue` | 🟢/🟡/🔴 |
 
 **Оценка:**
-- `overdue_count == 0` → 🟢
-- `overdue_count` 1–2 → 🟡
-- `overdue_count` ≥ 3 → 🔴
+- `overdue == 0` → 🟢
+- `overdue` 1–2 → 🟡
+- `overdue` ≥ 3 → 🔴
 - Если `data_refreshed == false` → добавь ⚠️ к оценке
 
-**Важно про просрочки:** высокие `overdue_count` (20+) часто означают накопившиеся recurring-задачи (еженедельные отчёты и т.д.), а не реальное невыполнение. Смотри на `done_titles` — если задачи делаются, это нормально.
+**Важно про просрочки:** высокие `overdue` (20+) часто означают накопившиеся recurring-задачи (еженедельные отчёты и т.д.), а не реальное невыполнение. Смотри на `done_titles` — если задачи делаются, это нормально.
 
 ### Разделы 2, 3 (Анализ и решения)
 

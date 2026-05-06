@@ -124,7 +124,8 @@ def collect(ref_date: date = None) -> dict:
 
 
 if __name__ == "__main__":
-    data = collect()
+    ref = date.fromisoformat(sys.argv[1]) if len(sys.argv) > 1 else None
+    data = collect(ref)
     OUTPUT_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"Финансы сохранены → {OUTPUT_PATH}")
     current = data.get("combined", {}).get("current", {})
