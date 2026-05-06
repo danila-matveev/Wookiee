@@ -108,7 +108,12 @@ export interface RnpResponse {
   weeks: RnpWeek[]
 }
 
+export interface RnpModel {
+  label: string
+  value: string
+}
+
 export interface RnpModelsResponse {
   marketplace: string
-  models: string[]
+  models: RnpModel[]
 }

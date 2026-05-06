@@ -99,7 +99,7 @@ def rnp_models(
     if marketplace != "wb":
         raise HTTPException(501, "Only marketplace=wb supported in Phase 1")
     from shared.data_layer.rnp import fetch_rnp_models_wb
-    models = fetch_rnp_models_wb()
+    models = fetch_rnp_models_wb()  # list[{"label": str, "value": str}]
     return {"marketplace": marketplace, "models": models}
 
 

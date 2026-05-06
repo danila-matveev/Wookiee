@@ -5,7 +5,7 @@ import logging
 from datetime import date, datetime, timedelta
 from typing import Optional
 
-from shared.data_layer._connection import _get_wb_connection
+from shared.data_layer._connection import _get_wb_connection, _get_supabase_connection
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +19,9 @@ __all__ = [
     "_week_start",
     "_detect_phase",
 ]
+
+# Type alias for model list items
+RnpModel = dict  # {"label": str, "value": str}
 
 
 def _safe_div(a: Optional[float], b: Optional[float]) -> Optional[float]:
@@ -42,23 +45,30 @@ def _detect_phase(margin_pct: Optional[float]) -> str:
     return "recovery"
 
 
-def fetch_rnp_models_wb() -> list[str]:
-    """Sorted list of distinct WB model names available in abc_date.
+def fetch_rnp_models_wb() -> list[dict]:
+    """List of active WB models from Supabase `modeli` table.
 
-    Filters to ASCII-only names with recent activity (last 90 days) to exclude
-    corrupted entries, Cyrillic junk, and discontinued products.
+    Returns only models with statuses: "Продается" (8), "Выводим" (9), "Запуск" (14).
+    Skips models where artikul_modeli IS NULL.
+    Multiple modeli records with the same wb_key are collapsed — MIN(kod) used as label.
+
+    Returns list of dicts: [{"label": str, "value": str}, ...]
+    where value = LOWER(SPLIT_PART(artikul_modeli, '/', 1)) — the WB filter key.
     """
-    conn = _get_wb_connection()
+    conn = _get_supabase_connection()
     try:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT DISTINCT LOWER(SPLIT_PART(article, '/', 1)) AS model
-                FROM abc_date
-                WHERE date::date >= CURRENT_DATE - INTERVAL '90 days'
-                  AND LOWER(SPLIT_PART(article, '/', 1)) ~ '^[a-z][a-z0-9._-]*$'
-                ORDER BY 1
+                SELECT
+                    MIN(kod) AS label,
+                    LOWER(SPLIT_PART(artikul_modeli, '/', 1)) AS wb_key
+                FROM modeli
+                WHERE artikul_modeli IS NOT NULL
+                  AND status_id IN (8, 9, 14)
+                GROUP BY wb_key
+                ORDER BY wb_key
             """)
-            return [row[0] for row in cur.fetchall()]
+            return [{"label": row[0], "value": row[1]} for row in cur.fetchall()]
     finally:
         conn.close()
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { fetchRnpModels } from "@/api/rnp"
 import { Button } from "@/components/ui/button"
+import type { RnpModel } from "@/types/rnp"
 
 export const PHASE_COLORS: Record<string, string> = {
   norm: "#185FA5", decline: "#E24B4A", recovery: "#1D9E75",
@@ -38,7 +39,7 @@ interface RnpFiltersProps {
 
 export function RnpFilters({ onApply, loading }: RnpFiltersProps) {
   const [searchParams, setSearchParams] = useSearchParams()
-  const [models, setModels] = useState<string[]>([])
+  const [models, setModels] = useState<RnpModel[]>([])
 
   const model    = searchParams.get("model") ?? ""
   const dateFrom = searchParams.get("from")  ?? weeksAgo(8).from
@@ -76,7 +77,7 @@ export function RnpFilters({ onApply, loading }: RnpFiltersProps) {
           onChange={e => setParam("model", e.target.value)}
         >
           <option value="">Выберите модель</option>
-          {models.map(m => <option key={m} value={m}>{m}</option>)}
+          {models.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
         </select>
       </div>
 
