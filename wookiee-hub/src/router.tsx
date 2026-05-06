@@ -12,6 +12,7 @@ import { AnalyticsPage } from "@/pages/community/analytics"
 import { BloggersPage } from "@/pages/influence/bloggers/BloggersPage"
 import { IntegrationsKanbanPage } from "@/pages/influence/integrations/IntegrationsKanbanPage"
 import { CalendarPage } from "@/pages/influence/calendar/CalendarPage"
+import { RnpPage } from "@/pages/analytics/rnp"
 
 export const router = createBrowserRouter([
   {
@@ -39,6 +40,8 @@ export const router = createBrowserRouter([
       { path: "/influence/bloggers",     element: <BloggersPage /> },
       { path: "/influence/integrations", element: <IntegrationsKanbanPage /> },
       { path: "/influence/calendar",     element: <CalendarPage /> },
+      { path: "/analytics",              element: <Navigate to="/analytics/rnp" replace /> },
+      { path: "/analytics/rnp",          element: <RnpPage /> },
     ],
   },
 ])
