@@ -1,5 +1,5 @@
 -- =============================================================================
--- Migration 015: marketing schema (Phase 1)
+-- Migration 016: marketing schema (Phase 1)
 -- =============================================================================
 -- Creates marketing schema as an analytics read-layer over crm.*.
 -- Physical crm.* tables are untouched — FK constraints preserved.
