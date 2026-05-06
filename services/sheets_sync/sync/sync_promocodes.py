@@ -84,32 +84,32 @@ def _cabinets_from_env() -> list[tuple[str, str]]:
 def _merge_for_db(
     week_data: dict[tuple[str, str], dict],
 ) -> dict[str, dict]:
-    """Merge per-(uuid, cabinet) metrics into per-uuid totals for DB write."""
+    """Merge per-(uuid, cabinet) metrics into per-uuid totals for DB write.
+
+    Both ИП and ООО cabinets share the same WB seller statistics, so the same
+    order appears in both responses. To avoid double-counting, we take only the
+    first occurrence of each uuid (preferring ООО over ИП).
+    """
+    # Prefer ООО data; fall back to any other cabinet for uuids not in ООО
+    seen: set[str] = set()
     merged: dict[str, dict] = {}
-    for (uuid, _cab), data in week_data.items():
-        m = data["metrics"]
-        if uuid not in merged:
+
+    for preferred_cab in ("ООО", None):  # two passes: ООО first, then the rest
+        for (uuid, cab), data in week_data.items():
+            if uuid in seen:
+                continue
+            if preferred_cab is not None and cab != preferred_cab:
+                continue
+            seen.add(uuid)
+            m = data["metrics"]
             merged[uuid] = {
                 "sales_rub": m["sales_rub"],
                 "ppvz_rub": m["ppvz_rub"],
                 "orders_count": m["orders_count"],
                 "returns_count": m["returns_count"],
-                "_disc_weighted": m["avg_discount_pct"] * m["orders_count"],
-                "_disc_orders": m["orders_count"],
+                "avg_discount_pct": m["avg_discount_pct"],
             }
-        else:
-            d = merged[uuid]
-            d["sales_rub"] += m["sales_rub"]
-            d["ppvz_rub"] += m["ppvz_rub"]
-            d["orders_count"] += m["orders_count"]
-            d["returns_count"] += m["returns_count"]
-            d["_disc_weighted"] += m["avg_discount_pct"] * m["orders_count"]
-            d["_disc_orders"] += m["orders_count"]
 
-    for d in merged.values():
-        n = d.pop("_disc_orders")
-        w = d.pop("_disc_weighted")
-        d["avg_discount_pct"] = (w / n) if n > 0 else 0.0
     return merged
 
 
