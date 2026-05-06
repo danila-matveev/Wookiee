@@ -35,6 +35,53 @@ export interface BloggerDetailOut extends BloggerOut {
   geo_country: string[] | null;
 }
 
+export interface ChannelBrief {
+  id: number;
+  channel: string;
+  handle: string;
+  url: string | null;
+}
+
+export interface BloggerSummaryOut {
+  id: number;
+  display_handle: string;
+  real_name: string | null;
+  status: BloggerStatus;
+  default_marketer_id: number | null;
+  price_story_default: string | null;
+  price_reels_default: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  channels: ChannelBrief[];
+  integrations_count: number;
+  integrations_done: number;
+  last_integration_at: string | null;
+  total_spent: string;
+  avg_cpm_fact: string | null;
+}
+
+export interface BloggerSummaryPage {
+  items: BloggerSummaryOut[];
+  total: number;
+}
+
+export interface BloggerSummaryParams {
+  status?: BloggerStatus;
+  q?: string;
+  channel?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export function listBloggersSummary(params: BloggerSummaryParams = {}): Promise<BloggerSummaryPage> {
+  const search = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined) search.set(k, String(v));
+  }
+  const qs = search.toString();
+  return crmApi.get<BloggerSummaryPage>(`/bloggers/summary${qs ? `?${qs}` : ''}`);
+}
+
 export interface BloggersPage {
   items: BloggerOut[];
   next_cursor: string | null;

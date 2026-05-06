@@ -3,9 +3,11 @@ import {
   type BloggerInput,
   type BloggerListParams,
   type BloggerOut,
+  type BloggerSummaryParams,
   createBlogger,
   getBlogger,
   listBloggers,
+  listBloggersSummary,
   updateBlogger,
 } from '@/api/crm/bloggers';
 
@@ -15,6 +17,14 @@ export function useBloggers(params: Omit<BloggerListParams, 'cursor'> = {}) {
     queryFn: ({ pageParam }) => listBloggers({ ...params, cursor: pageParam }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.next_cursor ?? undefined,
+  });
+}
+
+export function useBloggersSummary(params: BloggerSummaryParams = {}) {
+  return useQuery({
+    queryKey: ['bloggers-summary', params],
+    queryFn: () => listBloggersSummary(params),
+    staleTime: 30_000,
   });
 }
 

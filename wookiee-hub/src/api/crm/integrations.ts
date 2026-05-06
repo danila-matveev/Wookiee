@@ -56,6 +56,7 @@ export interface IntegrationOut {
   cost_goods: string | null;
   total_cost: string;
   erid: string | null;
+  primary_substitute_code: string | null;
   // Audience
   theme: string | null;
   audience_age: string | null;
@@ -135,6 +136,7 @@ export interface IntegrationListParams {
   blogger_id?: number;
   date_from?: string;
   date_to?: string;
+  q?: string;
   cursor?: string;
   limit?: number;
 }
