@@ -56,10 +56,13 @@ def upsert(conn, table: str, rows: list[dict[str, Any]],
     _skip = {conflict_col, *(no_update_cols or [])}
     update_set = ", ".join(f"{c} = EXCLUDED.{c}" for c in cols if c not in _skip)
 
-    sql = (
-        f'INSERT INTO {table} ({", ".join(cols)}) VALUES %s '
-        f'ON CONFLICT ({conflict_col}) DO UPDATE SET {update_set}'
-    )
+    if not update_set:
+        sql = f'INSERT INTO {table} ({", ".join(cols)}) VALUES %s ON CONFLICT ({conflict_col}) DO NOTHING'
+    else:
+        sql = (
+            f'INSERT INTO {table} ({", ".join(cols)}) VALUES %s '
+            f'ON CONFLICT ({conflict_col}) DO UPDATE SET {update_set}'
+        )
     values = [[r[c] for c in cols] for r in rows]
     with conn.cursor() as cur:
         for i in range(0, len(values), _BATCH_SIZE):
