@@ -44,9 +44,12 @@ def get_week_bounds(ref_date: date = None) -> tuple[date, date, date, date]:
 
     current_start — понедельник недели, содержащей ref_date.
     current_end   — следующий понедельник (exclusive, для WHERE date < current_end).
+
+    По умолчанию (ref_date=None) берётся прошлая неделя — текущая может быть
+    незакрытой и данные по ней могут быть неполными.
     """
     if ref_date is None:
-        ref_date = date.today()
+        ref_date = date.today() - timedelta(days=7)
     days_since_monday = ref_date.weekday()
     current_start = ref_date - timedelta(days=days_since_monday)
     current_end = current_start + timedelta(days=7)
