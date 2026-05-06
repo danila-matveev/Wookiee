@@ -33,7 +33,7 @@ export function CalendarPage() {
   const { data, isLoading, error } = useIntegrations({
     date_from: dateFrom,
     date_to: dateTo,
-    limit: 500,
+    limit: 1000,
   });
   const integrations = data?.items ?? [];
 

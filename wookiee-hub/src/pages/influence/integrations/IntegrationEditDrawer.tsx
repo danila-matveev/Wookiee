@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect, useId } from 'react';
-import { type SubmitHandler, type UseFormReturn, useForm } from 'react-hook-form';
+import { type SubmitHandler, type UseFormReturn, useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 import type {
   AdFormat,
@@ -20,6 +20,25 @@ import { Input } from '@/components/crm/ui/Input';
 import { Select } from '@/components/crm/ui/Select';
 import { Textarea } from '@/components/crm/ui/Textarea';
 
+const CHANNEL_FORMATS: Record<string, string[]> = {
+  instagram: ['story', 'short_video', 'long_video', 'image_post', 'integration', 'live_stream'],
+  telegram:  ['long_post', 'image_post', 'integration'],
+  tiktok:    ['short_video', 'live_stream'],
+  youtube:   ['long_video', 'short_video', 'integration', 'live_stream'],
+  vk:        ['long_post', 'image_post', 'short_video', 'live_stream'],
+  rutube:    ['long_video', 'short_video'],
+};
+
+const AD_FORMAT_LABELS: Record<string, string> = {
+  story: 'Сторис',
+  short_video: 'Короткое видео (Reels/Shorts)',
+  long_video: 'Длинное видео',
+  long_post: 'Длинный пост',
+  image_post: 'Пост с фото',
+  integration: 'Нативная интеграция',
+  live_stream: 'Прямой эфир',
+};
+
 const CHANNEL_OPTIONS: { value: Channel; label: string }[] = [
   { value: 'instagram', label: 'Instagram' },
   { value: 'telegram', label: 'Telegram' },
@@ -29,15 +48,6 @@ const CHANNEL_OPTIONS: { value: Channel; label: string }[] = [
   { value: 'rutube', label: 'RuTube' },
 ];
 
-const AD_FORMAT_OPTIONS: { value: AdFormat; label: string }[] = [
-  { value: 'story', label: 'Сторис' },
-  { value: 'short_video', label: 'Короткое видео (Reels/Shorts)' },
-  { value: 'long_video', label: 'Длинное видео' },
-  { value: 'long_post', label: 'Длинный пост' },
-  { value: 'image_post', label: 'Пост с фото' },
-  { value: 'integration', label: 'Нативная интеграция' },
-  { value: 'live_stream', label: 'Прямой эфир' },
-];
 
 const MARKETPLACE_OPTIONS: { value: Marketplace; label: string }[] = [
   { value: 'wb', label: 'WB' },
@@ -358,6 +368,8 @@ function BasicsSection({ form }: SectionProps) {
   const {
     register,
     formState: { errors },
+    getValues,
+    setValue,
   } = form;
   const bloggerId = useId();
   const marketerId = useId();
@@ -368,6 +380,22 @@ function BasicsSection({ form }: SectionProps) {
   const stageId = useId();
   const outcomeId = useId();
   const barterId = useId();
+
+  const selectedChannel = useWatch({ control: form.control, name: 'channel' }) as string;
+  const availableFormats = selectedChannel && CHANNEL_FORMATS[selectedChannel]
+    ? CHANNEL_FORMATS[selectedChannel]
+    : Object.keys(AD_FORMAT_LABELS);
+
+  useEffect(() => {
+    if (!selectedChannel) return;
+    const allowed = CHANNEL_FORMATS[selectedChannel];
+    if (!allowed) return;
+    const currentFormat = getValues('ad_format') as string;
+    if (currentFormat && !allowed.includes(currentFormat)) {
+      setValue('ad_format', allowed[0] as FormInput['ad_format']);
+    }
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset ad_format only when channel changes
+  }, [selectedChannel]);
 
   return (
     <Section title="Основное">
@@ -420,10 +448,8 @@ function BasicsSection({ form }: SectionProps) {
 
         <Field label="Формат*" htmlFor={adFormatId} error={errors.ad_format?.message}>
           <Select id={adFormatId} {...register('ad_format')}>
-            {AD_FORMAT_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
+            {availableFormats.map((fmt) => (
+              <option key={fmt} value={fmt}>{AD_FORMAT_LABELS[fmt] ?? fmt}</option>
             ))}
           </Select>
         </Field>
