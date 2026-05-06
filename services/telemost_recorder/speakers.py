@@ -109,5 +109,6 @@ def resolve_speakers(
             content = content.split("```")[1].lstrip("json").strip()
         mapping = json.loads(content)
         return {k: v for k, v in mapping.items() if k in speaker_labels}
-    except Exception:
+    except Exception as exc:
+        print(f"WARNING: speaker resolution failed: {exc}")
         return {}
