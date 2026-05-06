@@ -37,16 +37,24 @@ def get_conn():
 
 
 def upsert(conn, table: str, rows: list[dict[str, Any]],
-           conflict_col: str = "sheet_row_id") -> int:
+           conflict_col: str = "sheet_row_id",
+           no_update_cols: list[str] | None = None) -> int:
     """INSERT … ON CONFLICT (conflict_col) DO UPDATE for every column except conflict_col.
 
     Uses execute_values for multi-row batching instead of row-by-row execute,
     which avoids statement_timeout on large sheets.
+
+    Args:
+        no_update_cols: Optional list of column names to exclude from the
+            DO UPDATE SET clause. Use this to preserve values set manually
+            in the DB (e.g. stage on kanban cards) that should not be
+            overwritten by the ETL run.
     """
     if not rows:
         return 0
     cols = list(rows[0].keys())
-    update_set = ", ".join(f"{c} = EXCLUDED.{c}" for c in cols if c != conflict_col)
+    _skip = {conflict_col, *(no_update_cols or [])}
+    update_set = ", ".join(f"{c} = EXCLUDED.{c}" for c in cols if c not in _skip)
 
     sql = (
         f'INSERT INTO {table} ({", ".join(cols)}) VALUES %s '

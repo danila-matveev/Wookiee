@@ -229,7 +229,7 @@ def run_integrations(conn, incremental: bool = False) -> tuple[int, int, int]:
     if incremental:
         existing = existing_sheet_row_ids(conn, "crm.integrations")
         matched = filter_new_rows(matched, existing)
-    n_i = upsert(conn, "crm.integrations", matched)
+    n_i = upsert(conn, "crm.integrations", matched, no_update_cols=["stage"])
 
     # Step 4: resolve sub-links via ArticleResolver (handles SKU, OZON, model name)
     matched_srids = [m["sheet_row_id"] for m in matched]
