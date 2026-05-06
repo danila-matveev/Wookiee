@@ -12,6 +12,7 @@ from services.influencer_crm.schemas.blogger import (
     BloggerCreate,
     BloggerDetailOut,
     BloggerOut,
+    BloggerSummaryPage,
     BloggerUpdate,
 )
 from shared.data_layer.influencer_crm import bloggers as repo
@@ -41,6 +42,24 @@ def list_bloggers(
         channel=channel,
     )
     return Page[BloggerOut](items=items, next_cursor=next_cursor)
+
+
+@router.get("/summary", response_model=BloggerSummaryPage)
+def get_bloggers_summary(
+    status: str | None = None,
+    q: str | None = Query(default=None),
+    channel: str | None = Query(default=None),
+    limit: int = Query(default=200, le=500),
+    offset: int = Query(default=0, ge=0),
+    session: Session = Depends(get_session),
+) -> BloggerSummaryPage:
+    """Enriched blogger list for table view with channels and aggregate metrics."""
+    from shared.data_layer.influencer_crm import bloggers as dl
+
+    items, total = dl.list_bloggers_summary(
+        session, limit=limit, offset=offset, status=status, q=q, channel=channel
+    )
+    return BloggerSummaryPage(items=items, total=total)
 
 
 @router.get("/{blogger_id}", response_model=BloggerDetailOut)

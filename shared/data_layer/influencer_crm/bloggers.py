@@ -215,3 +215,127 @@ def search_bloggers(session: Session, q: str, limit: int = 10) -> list[BloggerOu
         {"q": q, "limit": limit},
     ).mappings().all()
     return [BloggerOut(**dict(r)) for r in rows]
+
+
+_SUMMARY_SQL = """
+SELECT
+    b.id, b.display_handle, b.real_name, b.status,
+    b.default_marketer_id, b.price_story_default::text, b.price_reels_default::text,
+    b.created_at::text, b.updated_at::text,
+    COALESCE(
+        json_agg(
+            DISTINCT jsonb_build_object(
+                'id',      bc.id,
+                'channel', bc.channel,
+                'handle',  bc.handle,
+                'url',     bc.url
+            )
+        ) FILTER (WHERE bc.id IS NOT NULL),
+        '[]'::json
+    ) AS channels,
+    COALESCE(t.integrations_count, 0)  AS integrations_count,
+    COALESCE(t.integrations_done, 0)   AS integrations_done,
+    t.last_integration_at::text        AS last_integration_at,
+    COALESCE(t.total_spent::text, '0') AS total_spent,
+    CASE
+        WHEN SUM(i.fact_views) > 0
+        THEN ROUND(
+            SUM(i.total_cost::numeric) / NULLIF(SUM(i.fact_views), 0) * 1000,
+            2
+        )::text
+        ELSE NULL
+    END AS avg_cpm_fact
+FROM crm.bloggers b
+LEFT JOIN crm.blogger_channels bc      ON bc.blogger_id = b.id
+LEFT JOIN crm.v_blogger_totals t       ON t.blogger_id  = b.id
+LEFT JOIN crm.integrations i           ON i.blogger_id  = b.id
+                                       AND i.archived_at IS NULL
+WHERE b.archived_at IS NULL
+  {status_filter}
+  {q_filter}
+  {channel_filter}
+GROUP BY b.id, b.display_handle, b.real_name, b.status,
+         b.default_marketer_id, b.price_story_default, b.price_reels_default,
+         b.created_at, b.updated_at,
+         t.integrations_count, t.integrations_done,
+         t.last_integration_at, t.total_spent
+ORDER BY b.updated_at DESC NULLS LAST, b.id DESC
+LIMIT :limit OFFSET :offset
+"""
+
+_SUMMARY_COUNT_SQL = """
+SELECT COUNT(DISTINCT b.id)
+FROM crm.bloggers b
+LEFT JOIN crm.blogger_channels bc ON bc.blogger_id = b.id
+WHERE b.archived_at IS NULL
+  {status_filter}
+  {q_filter}
+  {channel_filter}
+"""
+
+
+def list_bloggers_summary(
+    session: Session,
+    *,
+    limit: int = 200,
+    offset: int = 0,
+    status: str | None = None,
+    q: str | None = None,
+    channel: str | None = None,
+) -> tuple[list, int]:
+    """Return (rows, total_count) for table view.
+
+    Uses offset pagination (not cursor) because table supports sorting/jumping.
+    Limit capped at 500.
+    """
+    import json as _json
+
+    from services.influencer_crm.schemas.blogger import BloggerSummaryOut, ChannelBrief
+
+    limit = min(limit, 500)
+    params: dict[str, Any] = {"limit": limit, "offset": offset}
+
+    status_filter = ""
+    if status:
+        status_filter = "AND b.status = :status"
+        params["status"] = status
+
+    q_filter = ""
+    if q:
+        q_filter = "AND LOWER(b.display_handle) LIKE LOWER(:q_pattern)"
+        params["q_pattern"] = f"%{q}%"
+
+    channel_filter = ""
+    if channel:
+        channel_filter = (
+            "AND b.id IN ("
+            "  SELECT blogger_id FROM crm.blogger_channels WHERE channel = :channel"
+            ")"
+        )
+        params["channel"] = channel
+
+    fmt = dict(
+        status_filter=status_filter,
+        q_filter=q_filter,
+        channel_filter=channel_filter,
+    )
+
+    rows = session.execute(
+        text(_SUMMARY_SQL.format(**fmt)), params
+    ).mappings().all()
+
+    count_params = {k: v for k, v in params.items() if k not in ("limit", "offset")}
+    total = session.execute(
+        text(_SUMMARY_COUNT_SQL.format(**fmt)), count_params
+    ).scalar() or 0
+
+    items = []
+    for r in rows:
+        channels_raw = r["channels"]
+        if isinstance(channels_raw, str):
+            channels_raw = _json.loads(channels_raw)
+        channels = [ChannelBrief(**c) for c in (channels_raw or [])]
+        row_dict = dict(r)
+        row_dict.pop("channels", None)
+        items.append(BloggerSummaryOut(**row_dict, channels=channels))
+    return items, total

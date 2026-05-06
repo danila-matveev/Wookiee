@@ -75,3 +75,39 @@ class BloggerUpdate(BaseModel):
     contact_email: str | None = None
     contact_phone: str | None = None
     notes: str | None = None
+
+
+class ChannelBrief(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    channel: str
+    handle: str
+    url: str | None = None
+
+
+class BloggerSummaryOut(BaseModel):
+    """Enriched blogger row for table view — includes channels + aggregate metrics."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    display_handle: str
+    real_name: str | None = None
+    status: str
+    default_marketer_id: int | None = None
+    price_story_default: str | None = None
+    price_reels_default: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+
+    channels: list[ChannelBrief] = Field(default_factory=list)
+    integrations_count: int = 0
+    integrations_done: int = 0
+    last_integration_at: str | None = None
+    total_spent: str = "0"
+    avg_cpm_fact: str | None = None
+
+
+class BloggerSummaryPage(BaseModel):
+    items: list[BloggerSummaryOut]
+    total: int
