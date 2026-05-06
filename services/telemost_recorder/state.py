@@ -10,6 +10,9 @@ class MeetingStatus(str, Enum):
     JOINING = "JOINING"
     WAITING_ROOM = "WAITING_ROOM"
     IN_MEETING = "IN_MEETING"
+    RECORDING = "RECORDING"
+    TRANSCRIBING = "TRANSCRIBING"
+    DONE = "DONE"
     FAILED = "FAILED"
 
 
@@ -19,13 +22,18 @@ class FailReason(str, Enum):
     JOIN_TIMEOUT = "JOIN_TIMEOUT"
     UI_DETECTION_FAILED = "UI_DETECTION_FAILED"
     NOT_ADMITTED = "NOT_ADMITTED"
+    RECORDING_FAILED = "RECORDING_FAILED"
+    TRANSCRIPTION_FAILED = "TRANSCRIPTION_FAILED"
 
 
 _VALID_TRANSITIONS: dict[MeetingStatus, set[MeetingStatus]] = {
     MeetingStatus.PENDING: {MeetingStatus.JOINING, MeetingStatus.FAILED},
     MeetingStatus.JOINING: {MeetingStatus.IN_MEETING, MeetingStatus.WAITING_ROOM, MeetingStatus.FAILED},
     MeetingStatus.WAITING_ROOM: {MeetingStatus.IN_MEETING, MeetingStatus.FAILED},
-    MeetingStatus.IN_MEETING: set(),
+    MeetingStatus.IN_MEETING: {MeetingStatus.RECORDING, MeetingStatus.FAILED},
+    MeetingStatus.RECORDING: {MeetingStatus.TRANSCRIBING, MeetingStatus.FAILED},
+    MeetingStatus.TRANSCRIBING: {MeetingStatus.DONE, MeetingStatus.FAILED},
+    MeetingStatus.DONE: set(),
     MeetingStatus.FAILED: set(),
 }
 
@@ -37,6 +45,8 @@ class Meeting:
     status: MeetingStatus = field(default=MeetingStatus.PENDING)
     fail_reason: Optional[FailReason] = field(default=None)
     screenshot_path: Optional[str] = field(default=None)
+    transcript_path: Optional[str] = field(default=None)
+    participants: list[str] = field(default_factory=list)
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 

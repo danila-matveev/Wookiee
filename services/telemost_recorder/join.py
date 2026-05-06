@@ -172,6 +172,101 @@ async def _mute_bot(page: Page) -> None:
             pass
 
 
+async def extract_participants(page: Page) -> list[str]:
+    """Open Participants panel and scrape display names."""
+    names: list[str] = []
+    try:
+        btn = page.locator(
+            "button:has-text('Участники'), [data-testid='participants-button']"
+        ).first
+        if await btn.is_visible(timeout=2_000):
+            await btn.click()
+            await asyncio.sleep(0.5)
+            items = page.locator(
+                "[data-testid='participant-name'], "
+                ".participant-name, "
+                "[class*='participant'][class*='name']"
+            )
+            count = await items.count()
+            for i in range(count):
+                name = (await items.nth(i).text_content() or "").strip()
+                if name and name != "Wookiee Recorder":
+                    names.append(name)
+            await btn.click()  # close panel
+    except Exception:
+        pass
+
+    # Fallback: video tile labels
+    if not names:
+        try:
+            tiles = page.locator("[class*='tile'][class*='name'], .video-tile-name")
+            count = await tiles.count()
+            for i in range(count):
+                name = (await tiles.nth(i).text_content() or "").strip()
+                if name and name != "Wookiee Recorder":
+                    names.append(name)
+        except Exception:
+            pass
+
+    return list(dict.fromkeys(names))  # deduplicate, preserve order
+
+
+async def detect_meeting_ended(page: Page) -> bool:
+    """Return True when Telemost signals the meeting has ended."""
+    selectors = [
+        "text=Встреча завершена",
+        "text=Meeting ended",
+        "text=Конференция завершена",
+        "[data-testid='meeting-ended']",
+        "text=Чтобы пригласить других участников",  # bot is alone
+        "text=To invite other participants",
+    ]
+    for selector in selectors:
+        try:
+            if await page.locator(selector).first.is_visible(timeout=200):
+                return True
+        except Exception:
+            continue
+    try:
+        if "telemost" not in page.url:
+            return True
+    except Exception:
+        pass
+    # Bot is alone in the meeting (participant count badge == 1)
+    try:
+        badge = page.locator("button:has-text('Участники') >> text=/\\d+/")
+        text = (await badge.first.text_content(timeout=500) or "").strip()
+        if text == "1":
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def _format_ms(ms: int) -> str:
+    total_s = ms // 1000
+    h, remainder = divmod(total_s, 3600)
+    m, s = divmod(remainder, 60)
+    return f"{h:02d}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"
+
+
+def _write_transcript(segments: list, output_dir: Path) -> None:
+    """Write transcript.txt and transcript.json to output_dir."""
+    txt_lines = [
+        f"[{_format_ms(s.start_ms)}] {s.speaker}: {s.text}"
+        for s in segments
+    ]
+    (output_dir / "transcript.txt").write_text("\n".join(txt_lines), encoding="utf-8")
+
+    json_data = [
+        {"speaker": s.speaker, "start_ms": s.start_ms, "end_ms": s.end_ms, "text": s.text}
+        for s in segments
+    ]
+    (output_dir / "transcript.json").write_text(
+        json.dumps(json_data, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+
 def _emit(payload: dict) -> None:
     print(json.dumps(payload, ensure_ascii=False), flush=True)
 
@@ -301,22 +396,20 @@ async def join_meeting(url: str, bot_name: str = BOT_NAME) -> Meeting:
 
 async def run_session(url: str, bot_name: str = BOT_NAME) -> None:
     """
-    Join a meeting and hold the browser open, taking a screenshot every
-    SCREENSHOT_INTERVAL seconds until Ctrl+C or the meeting ends.
-    Use from the CLI.
+    Join a meeting, record audio, transcribe after meeting ends.
+    Holds the browser open until meeting ends or Ctrl+C.
     """
+    from services.telemost_recorder.audio import AudioCapture
+
     meeting = Meeting(url=url)
     if not validate_url(url):
         meeting.transition(MeetingStatus.FAILED, FailReason.INVALID_URL)
-        _emit({
-            "status": "FAILED",
-            "reason": "INVALID_URL",
-            "message": "Ссылка не похожа на Яндекс Телемост",
-        })
+        _emit({"status": "FAILED", "reason": "INVALID_URL", "message": "Ссылка не похожа на Яндекс Телемост"})
         return
 
     screenshot_dir = Path("data/telemost") / meeting.meeting_id
     screenshot_dir.mkdir(parents=True, exist_ok=True)
+    capture = AudioCapture(meeting_id=meeting.meeting_id, output_dir=screenshot_dir)
 
     async with launch_browser() as (_, __, page):
         await _execute_join(page, meeting, bot_name, screenshot_dir)
@@ -333,30 +426,76 @@ async def run_session(url: str, bot_name: str = BOT_NAME) -> None:
             state = await _wait_for_admission(page, timeout=WAITING_ROOM_TIMEOUT)
             if state != ScreenState.IN_MEETING:
                 meeting.transition(MeetingStatus.FAILED, FailReason.NOT_ADMITTED)
-                _emit({
-                    "status": "FAILED",
-                    "reason": "NOT_ADMITTED",
-                    "meeting_id": meeting.meeting_id,
-                })
+                _emit({"status": "FAILED", "reason": "NOT_ADMITTED", "meeting_id": meeting.meeting_id})
                 return
             await _dismiss_modals(page)
             await _mute_bot(page)
             screenshot = await _save_screenshot(page, screenshot_dir, "screenshot_001")
             meeting.screenshot_path = str(screenshot)
             meeting.transition(MeetingStatus.IN_MEETING)
-            _emit({
-                "status": "IN_MEETING",
-                "meeting_id": meeting.meeting_id,
-                "screenshot": meeting.screenshot_path,
-            })
+            _emit({"status": "IN_MEETING", "meeting_id": meeting.meeting_id, "screenshot": meeting.screenshot_path})
 
+        # Start audio recording (no-op on macOS)
+        capture.start()
+        meeting.transition(MeetingStatus.RECORDING)
+        _emit({"status": "RECORDING", "meeting_id": meeting.meeting_id})
+
+        # Meeting loop
         screenshot_n = 2
+        participant_tick = 0
         try:
             while True:
                 await asyncio.sleep(SCREENSHOT_INTERVAL)
-                await _save_screenshot(
-                    page, screenshot_dir, f"screenshot_{screenshot_n:03d}"
-                )
+                await _save_screenshot(page, screenshot_dir, f"screenshot_{screenshot_n:03d}")
                 screenshot_n += 1
+
+                participant_tick += SCREENSHOT_INTERVAL
+                if participant_tick >= 60:
+                    meeting.participants = await extract_participants(page)
+                    participant_tick = 0
+
+                if await detect_meeting_ended(page):
+                    _emit({"status": "MEETING_ENDED_DETECTED", "meeting_id": meeting.meeting_id})
+                    break
         except (asyncio.CancelledError, KeyboardInterrupt):
             pass
+
+    # Stop recording (browser already closed)
+    audio_path = capture.stop()
+
+    # Transcribe
+    meeting.transition(MeetingStatus.TRANSCRIBING)
+    _emit({"status": "TRANSCRIBING", "meeting_id": meeting.meeting_id})
+
+    if not audio_path:
+        _emit({"status": "TRANSCRIBING_SKIPPED", "reason": "no audio file", "meeting_id": meeting.meeting_id})
+        meeting.transition(MeetingStatus.DONE)
+        return
+
+    try:
+        from services.telemost_recorder.transcribe import transcribe_audio
+        from services.telemost_recorder.speakers import load_speakers, resolve_speakers
+
+        segments = transcribe_audio(audio_path)
+        employees = load_speakers()
+        speaker_map = resolve_speakers(segments, meeting.participants, employees)
+        for seg in segments:
+            seg.speaker = speaker_map.get(seg.speaker, seg.speaker)
+
+        _write_transcript(segments, screenshot_dir)
+        meeting.transcript_path = str(screenshot_dir / "transcript.txt")
+        meeting.transition(MeetingStatus.DONE)
+        _emit({
+            "status": "DONE",
+            "meeting_id": meeting.meeting_id,
+            "transcript": meeting.transcript_path,
+            "segments": len(segments),
+        })
+    except Exception as exc:
+        meeting.transition(MeetingStatus.FAILED, FailReason.TRANSCRIPTION_FAILED)
+        _emit({
+            "status": "FAILED",
+            "reason": "TRANSCRIPTION_FAILED",
+            "meeting_id": meeting.meeting_id,
+            "error": str(exc),
+        })

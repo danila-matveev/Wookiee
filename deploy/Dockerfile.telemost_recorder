@@ -1,9 +1,11 @@
-# Wookiee Telemost Recorder — Phase 1 (browser bot, no audio)
+# Wookiee Telemost Recorder — Phase 2 (browser bot + audio recording)
 FROM python:3.11-slim
 
-# System libraries required by Playwright's Chromium build + Xvfb
+# System libraries required by Playwright's Chromium build + Xvfb + PulseAudio + ffmpeg
 RUN apt-get update && apt-get install -y --no-install-recommends \
     xvfb \
+    pulseaudio \
+    ffmpeg \
     libglib2.0-0 \
     libnss3 \
     libnspr4 \
@@ -41,6 +43,10 @@ COPY . /app
 ENV DISPLAY=:99
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
+
+COPY deploy/telemost_entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
 
 # Default: print help. Production override: join <url>
 CMD ["python", "scripts/telemost_record.py", "--help"]

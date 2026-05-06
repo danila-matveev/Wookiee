@@ -50,12 +50,12 @@ def test_pending_directly_to_in_meeting_is_invalid() -> None:
         m.transition(MeetingStatus.IN_MEETING)
 
 
-def test_in_meeting_is_terminal() -> None:
+def test_in_meeting_can_transition_to_recording() -> None:
     m = Meeting(url="https://telemost.yandex.ru/j/123")
     m.transition(MeetingStatus.JOINING)
     m.transition(MeetingStatus.IN_MEETING)
-    with pytest.raises(ValueError, match="Invalid transition"):
-        m.transition(MeetingStatus.FAILED)
+    m.transition(MeetingStatus.RECORDING)
+    assert m.status == MeetingStatus.RECORDING
 
 
 def test_failed_is_terminal() -> None:

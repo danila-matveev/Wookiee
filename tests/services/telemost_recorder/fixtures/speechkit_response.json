@@ -1,0 +1,35 @@
+{
+  "id": "op-123",
+  "done": true,
+  "response": {
+    "chunks": [
+      {
+        "alternatives": [
+          {
+            "words": [
+              {"text": "Добрый", "startTime": "0.480s", "endTime": "0.720s"},
+              {"text": "день", "startTime": "0.720s", "endTime": "1.050s"}
+            ],
+            "text": "Добрый день",
+            "confidence": 0.98
+          }
+        ],
+        "channelTag": "0",
+        "speakerTag": "1"
+      },
+      {
+        "alternatives": [
+          {
+            "words": [
+              {"text": "Привет", "startTime": "3.100s", "endTime": "3.500s"}
+            ],
+            "text": "Привет",
+            "confidence": 0.95
+          }
+        ],
+        "channelTag": "0",
+        "speakerTag": "2"
+      }
+    ]
+  }
+}

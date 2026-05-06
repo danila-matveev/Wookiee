@@ -1479,7 +1479,7 @@ Phase 2 is **done** when:
 ## .env Keys Required
 
 ```bash
-SPEECHKIT_API_KEY=YOUR_SPEECHKIT_API_KEY_HERE
+SPEECHKIT_API_KEY=your_speechkit_api_key_here
 YANDEX_FOLDER_ID=b1gabkp48fg6cu6tqsec
 TELEMOST_CAPTURE=true          # false on macOS
 MAX_RECORDING_MINUTES=240
