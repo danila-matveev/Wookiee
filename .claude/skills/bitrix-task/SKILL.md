@@ -342,3 +342,32 @@ for u in data.get('result', []):
 - **Wookiee** — бренд женского белья, ~400 млн/год, WB+Ozon
 - **TELOWAY** — wellness-бренд спортивной одежды (запуск 2026). Поглощает Wookiee
 - Оба бренда = одна компания, один Битрикс, одна команда
+
+---
+
+## Логирование (выполнить после создания задачи)
+
+Прочитай `USER_EMAIL` из `.env`. Выполни через Supabase MCP (`execute_sql`, project `gjvwcdtfglupewcwzfhw`):
+
+```sql
+WITH ins AS (
+  INSERT INTO tool_runs (
+    id, tool_slug, status, trigger_type, triggered_by,
+    items_processed, notes,
+    started_at, finished_at, duration_sec
+  ) VALUES (
+    gen_random_uuid(), '/bitrix-task',
+    '{status}', 'manual', 'user:{USER_EMAIL}',
+    1, 'task_id={task_id}',
+    now() - interval '{duration_sec} seconds', now(), {duration_sec}
+  ) RETURNING tool_slug
+)
+UPDATE tools SET
+  total_runs = total_runs + 1,
+  last_run_at = now(),
+  last_status = '{status}',
+  updated_at = now()
+WHERE slug = '/bitrix-task';
+```
+
+Где: `{status}` = `success` или `error`, `{task_id}` = ID созданной задачи в Битрикс, `{USER_EMAIL}` из `.env`, `{duration_sec}` = секунды.

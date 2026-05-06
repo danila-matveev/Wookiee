@@ -39,7 +39,7 @@ def run_audit(config: AuditConfig, output_dir: str = ".") -> str:
         from shared.tool_logger import ToolLogger
         _tl = ToolLogger("logistics-audit")
         _run_id = _tl.start(
-            trigger="cli", user="danila",
+            trigger=os.getenv("RUN_TRIGGER", "manual"), user=os.getenv("USER_EMAIL", "unknown"),
             period_start=config.date_from.isoformat(),
             period_end=config.date_to.isoformat(),
         )

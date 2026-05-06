@@ -22,6 +22,7 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from shared.clients.wb_client import WBClient
+from shared.tool_logger import ToolLogger
 from shared.data_layer import (
     get_wb_buyouts_returns_by_model,
     get_wb_buyouts_returns_by_artikul,
@@ -186,12 +187,17 @@ def main():
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-    collect_reviews_data(
-        date_from=args.date_from,
-        date_to=args.date_to,
-        output_path=args.output,
-        cabinet=args.cabinet,
-    )
+
+    tl = ToolLogger("/reviews-audit")
+    with tl.run(period_start=args.date_from, period_end=args.date_to) as run_meta:
+        result = collect_reviews_data(
+            date_from=args.date_from,
+            date_to=args.date_to,
+            output_path=args.output,
+            cabinet=args.cabinet,
+        )
+        if isinstance(result, dict):
+            run_meta["items"] = result.get("total_reviews", 0) + result.get("total_questions", 0)
 
 
 if __name__ == "__main__":

@@ -19,6 +19,7 @@ from datetime import datetime
 
 from scripts.abc_audit.utils import compute_abc_date_params, build_abc_quality_flags
 from scripts.abc_audit.collectors.finance import collect_finance
+from shared.tool_logger import ToolLogger
 from scripts.abc_audit.collectors.inventory import collect_inventory
 from scripts.abc_audit.collectors.hierarchy import collect_hierarchy
 from scripts.abc_audit.collectors.buyouts import collect_buyouts, collect_size_data
@@ -126,22 +127,29 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    data = run_collection(args.date)
+    tl = ToolLogger("/abc-audit")
+    with tl.run(period_start=args.date or datetime.now().strftime("%Y-%m-%d"),
+                period_end=args.date or datetime.now().strftime("%Y-%m-%d")) as run_meta:
+        data = run_collection(args.date)
 
-    cut_date = data["meta"]["cut_date"]
-    output_path = args.output or f"/tmp/abc-audit-{cut_date}.json"
+        cut_date = data["meta"]["cut_date"]
+        output_path = args.output or f"/tmp/abc-audit-{cut_date}.json"
 
-    output = json.dumps(data, ensure_ascii=False, default=str)
-    with open(output_path, "w") as f:
-        f.write(output)
+        output = json.dumps(data, ensure_ascii=False, default=str)
+        with open(output_path, "w") as f:
+            f.write(output)
 
-    duration = data["meta"]["duration_sec"]
-    err_count = len(data["meta"]["errors"])
-    print(
-        f"ABC-audit data collected: {output_path} "
-        f"({len(output)} bytes, {duration}s, {err_count} errors)",
-        file=sys.stderr,
-    )
+        duration = data["meta"]["duration_sec"]
+        err_count = len(data["meta"]["errors"])
+        print(
+            f"ABC-audit data collected: {output_path} "
+            f"({len(output)} bytes, {duration}s, {err_count} errors)",
+            file=sys.stderr,
+        )
+
+        run_meta["items"] = data["meta"].get("sku_count", 0)
+        if err_count:
+            run_meta["notes"] = f"{err_count} errors"
 
 
 if __name__ == "__main__":

@@ -520,3 +520,32 @@ Fuzzy-match по названию и алиасам. Если неоднозна
 - **TELOWAY** — wellness-бренд спортивной одежды (запуск 2026), поглощает Wookiee
 - Оба бренда = одна компания, один Финолог (biz_id=48556)
 - Основная валюта: рубли (currency_id=1), доллары (currency_id=4)
+
+---
+
+## Логирование (выполнить после записи в Финолог)
+
+Прочитай `USER_EMAIL` из `.env`. Выполни через Supabase MCP (`execute_sql`, project `gjvwcdtfglupewcwzfhw`):
+
+```sql
+WITH ins AS (
+  INSERT INTO tool_runs (
+    id, tool_slug, status, trigger_type, triggered_by,
+    items_processed, notes,
+    started_at, finished_at, duration_sec
+  ) VALUES (
+    gen_random_uuid(), '/finolog',
+    '{status}', 'manual', 'user:{USER_EMAIL}',
+    {transactions_count}, '{brief_description}',
+    now() - interval '{duration_sec} seconds', now(), {duration_sec}
+  ) RETURNING tool_slug
+)
+UPDATE tools SET
+  total_runs = total_runs + 1,
+  last_run_at = now(),
+  last_status = '{status}',
+  updated_at = now()
+WHERE slug = '/finolog';
+```
+
+Где: `{status}` = `success` или `error`, `{transactions_count}` = количество записей (обычно 1), `{brief_description}` = краткое описание операции (например, "расход 50000 ₽, логистика"), `{USER_EMAIL}` из `.env`, `{duration_sec}` = секунды.

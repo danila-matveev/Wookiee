@@ -13,6 +13,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 from scripts.monthly_plan.utils import compute_date_params, build_quality_flags
+from shared.tool_logger import ToolLogger
 from scripts.monthly_plan.collectors.pnl import collect_pnl
 from scripts.monthly_plan.collectors.pricing import collect_pricing
 from scripts.monthly_plan.collectors.advertising import collect_advertising
@@ -109,16 +110,22 @@ def main():
         print(json.dumps(data, ensure_ascii=False, indent=2))
         return
 
-    data = run_collection(args.month)
+    month_start = args.month + "-01"
+    tl = ToolLogger("/monthly-plan")
+    with tl.run(period_start=month_start, period_end=month_start) as run_meta:
+        data = run_collection(args.month)
 
-    output = json.dumps(data, ensure_ascii=False, default=str)
-    if args.output:
-        with open(args.output, "w") as f:
-            f.write(output)
-        print(f"Saved to {args.output} ({len(output)} bytes, {data['meta']['collection_duration_sec']}s)",
-              file=sys.stderr)
-    else:
-        print(output)
+        output = json.dumps(data, ensure_ascii=False, default=str)
+        if args.output:
+            with open(args.output, "w") as f:
+                f.write(output)
+            print(f"Saved to {args.output} ({len(output)} bytes, {data['meta']['collection_duration_sec']}s)",
+                  file=sys.stderr)
+        else:
+            print(output)
+
+        run_meta["items"] = len(data) - 1  # keys minus "meta"
+        run_meta["notes"] = f"duration={data['meta']['collection_duration_sec']}s"
 
 
 if __name__ == "__main__":

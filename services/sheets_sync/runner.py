@@ -186,7 +186,7 @@ def main():
     try:
         from shared.tool_logger import ToolLogger
         _tl = ToolLogger("sheets-sync")
-        _run_id = _tl.start(trigger="cli", user="danila", environment="local")
+        _run_id = _tl.start(trigger=os.getenv("RUN_TRIGGER", "manual"), user=os.getenv("USER_EMAIL", "unknown"), environment=os.getenv("ENVIRONMENT", "local"))
     except Exception:
         _tl, _run_id = None, None
 

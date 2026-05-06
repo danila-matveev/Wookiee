@@ -107,3 +107,32 @@ options:
 ## Output
 
 Все отчёты сохраняются в `data/hh_research/<role-slug>/<YYYY-MM-DD>-<stage>.md` для повторного использования аналитики и истории. Slug — латиница, kebab-case (`product-manager`, `senior-backend-python`).
+
+---
+
+## Логирование (выполнить после завершения исследования)
+
+Прочитай `USER_EMAIL` из `.env`. Выполни через Supabase MCP (`execute_sql`, project `gjvwcdtfglupewcwzfhw`):
+
+```sql
+WITH ins AS (
+  INSERT INTO tool_runs (
+    id, tool_slug, status, trigger_type, triggered_by,
+    items_processed, notes,
+    started_at, finished_at, duration_sec
+  ) VALUES (
+    gen_random_uuid(), '/hh-research',
+    '{status}', 'manual', 'user:{USER_EMAIL}',
+    {vacancies_count}, 'role={role_slug}',
+    now() - interval '{duration_sec} seconds', now(), {duration_sec}
+  ) RETURNING tool_slug
+)
+UPDATE tools SET
+  total_runs = total_runs + 1,
+  last_run_at = now(),
+  last_status = '{status}',
+  updated_at = now()
+WHERE slug = '/hh-research';
+```
+
+Где: `{status}` = `success` или `error`, `{vacancies_count}` = количество найденных вакансий, `{role_slug}` = slug роли, `{USER_EMAIL}` из `.env`, `{duration_sec}` = секунды.

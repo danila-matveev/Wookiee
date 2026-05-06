@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from datetime import date
 
@@ -43,20 +44,35 @@ def _parse_args() -> argparse.Namespace:
 def main() -> int:
     args = _parse_args()
     from services.sheets_sync.sync.sync_promocodes import run
+    from shared.tool_logger import ToolLogger
 
-    result = run(
-        mode=args.mode,
-        week_from=args.date_from,
-        week_to=args.date_to,
-        weeks_back=args.weeks_back,
-        write_to_db=not args.skip_db,
-    )
+    tl = ToolLogger("wb-promocodes-sync")
+    period = args.date_from.isoformat() if args.date_from else ""
+    with tl.run(
+        trigger=os.getenv("RUN_TRIGGER", "manual"),
+        user=os.getenv("USER_EMAIL", "unknown"),
+        period_start=period,
+        period_end=args.date_to.isoformat() if args.date_to else period,
+    ) as run_meta:
+        result = run(
+            mode=args.mode,
+            week_from=args.date_from,
+            week_to=args.date_to,
+            weeks_back=args.weeks_back,
+            write_to_db=not args.skip_db,
+        )
 
-    print(f"status={result['status']}  added={result.get('rows_added', 0)}  "
-          f"updated={result.get('rows_updated', 0)}  "
-          f"db_written={result.get('db_rows_written', 0)}  "
-          f"unknown={len(result.get('unknown_uuids', []))}")
-    return 0 if result.get("status") == "ok" else 1
+        print(f"status={result['status']}  added={result.get('rows_added', 0)}  "
+              f"updated={result.get('rows_updated', 0)}  "
+              f"db_written={result.get('db_rows_written', 0)}  "
+              f"unknown={len(result.get('unknown_uuids', []))}")
+
+        run_meta["items"] = result.get("rows_added", 0) + result.get("rows_updated", 0)
+        if result.get("status") != "ok":
+            run_meta["stage"] = "sync"
+            raise RuntimeError(f"sync failed: status={result['status']}")
+
+    return 0
 
 
 if __name__ == "__main__":

@@ -371,3 +371,34 @@ cd modules/bitrix-analytics && python3 fetch_data.py --days $ARGUMENTS
 - 🎭 Инфлюенс / Офис
 - 💰 Финансы
 - 📦 Склад / Закупки
+
+---
+
+## Логирование (выполнить всегда в конце)
+
+Прочитай `USER_EMAIL` из `.env`. Рассчитай длительность от старта до завершения публикации в Notion.
+
+Выполни через Supabase MCP (`execute_sql`, project `gjvwcdtfglupewcwzfhw`):
+
+```sql
+WITH ins AS (
+  INSERT INTO tool_runs (
+    id, tool_slug, status, trigger_type, triggered_by,
+    result_url, items_processed, notes,
+    started_at, finished_at, duration_sec
+  ) VALUES (
+    gen_random_uuid(), '/bitrix-analytics',
+    '{status}', 'manual', 'user:{USER_EMAIL}',
+    '{notion_url}', {items_count}, '{brief_notes}',
+    now() - interval '{duration_sec} seconds', now(), {duration_sec}
+  ) RETURNING tool_slug
+)
+UPDATE tools SET
+  total_runs = total_runs + 1,
+  last_run_at = now(),
+  last_status = '{status}',
+  updated_at = now()
+WHERE slug = '/bitrix-analytics';
+```
+
+Где: `{status}` = `success` или `error`, `{notion_url}` = URL страницы в Notion, `{items_count}` = количество задач/участников в отчёте, `{USER_EMAIL}` из `.env` (или `unknown`), `{duration_sec}` = целое число секунд.
