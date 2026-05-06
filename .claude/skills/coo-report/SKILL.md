@@ -15,8 +15,8 @@ triggers:
 
 Собирает данные из 5 независимых источников параллельно, проверяет на аномалии и создаёт заполненную страницу в Notion по шаблону Елизаветы Литвиновой (COO).
 
-Автоматически заполняет разделы 1, 6, 7, 8, 9 (финансы, комплекты, реклама, логистика, сотрудники).
-Разделы 2-5, 10-12 остаются для ручного заполнения.
+Автоматически заполняет разделы 1, 2, 3, 6, 7, 8, 9 (финансы, анализ, рекомендации, комплекты, реклама, логистика, сотрудники).
+Разделы 4, 5, 10, 11, 12 остаются для ручного заполнения.
 
 ---
 
@@ -63,125 +63,203 @@ cd /Users/danilamatveev/Projects/Wookiee && python3 modules/coo_report/collector
 
 Помести ⚠️ в соответствующей ячейке:
 
-- `/tmp/coo_models.json`: любая модель с `trend_pct > 300%` или `trend_pct < -80%` → экстремальные скачки
+- `/tmp/coo_models.json`: любая модель с `trend_pct > 300%` → экстремальный рост (аномалия данных?)
 - `/tmp/coo_logistics.json`: `localization_warning == true` → проблемы с локализацией склада
 - `/tmp/coo_logistics.json`: любая модель с `turnover_days > 180` → скоро товар устаревает
 - `/tmp/coo_team.json`: `data_refreshed == false` → данные Битрикс не обновлялись >24 часов
+
+**Важно: неполная текущая неделя.** Если `period.current_end` — это дата раньше воскресенья (отчёт формируется в середине недели), то `trend_pct` у ВСЕХ моделей будет -40% — -87%. Это математический артефакт, не бизнес-сигнал. В таком случае:
+- НЕ помечай падение тренда как ⚠️
+- В ячейках тренда пиши `* неполная нед.` вместо ↑/↓
+- Добавь callout в начало раздела 6: "⚠️ Текущая неделя неполная (N из 7 дней). Тренды статистически нерелевантны."
 
 ---
 
 ## Шаг 3: Синтез — заполнить разделы отчёта
 
-Используя прочитанные JSON, дублируй шаблон в Notion и заполни разделы:
-
 ### Раздел 1 (Финансы)
 
-Таблица P&L из `/tmp/coo_finance.json`:
+Таблица P&L из `/tmp/coo_finance.json`, поле `combined`:
 
 | Метрика | Неделя 1 (previous) | Неделя 2 (current) |
 |---------|---------------------|-------------------|
-| Заказы шт | `previous.orders_count` | `current.orders_count` |
-| Выручка до СПП | `previous.revenue_before_spp` | `current.revenue_before_spp` |
-| Выручка после СПП | `previous.revenue_after_spp` | `current.revenue_after_spp` |
-| Себестоимость | `previous.cost_of_goods` | `current.cost_of_goods` |
-| Логистика | `previous.logistics` | `current.logistics` |
-| Комиссия МП | `previous.commission` | `current.commission` |
-| ДРР всего % | `previous.drr_total_pct` | `current.drr_total_pct` |
-| — внутренняя | `previous.drr_internal_pct` | `current.drr_internal_pct` |
-| — внешняя | `previous.drr_external_pct` | `current.drr_external_pct` |
-| Выкуп % | `previous.buyout_pct` (лаг 3-21 дн.) | `current.buyout_pct` (лаг 3-21 дн.) |
-| Маржа | `previous.margin` | `current.margin` |
+| Заказы шт | `combined.previous.orders_count` | `combined.current.orders_count` |
+| Выручка до СПП | `combined.previous.revenue_before_spp` | `combined.current.revenue_before_spp` |
+| Выручка после СПП | `combined.previous.revenue_after_spp` | `combined.current.revenue_after_spp` |
+| Себестоимость | `combined.previous.cost_of_goods` | `combined.current.cost_of_goods` |
+| Логистика | `combined.previous.logistics` | `combined.current.logistics` |
+| Комиссия МП | `combined.previous.commission` | `combined.current.commission` |
+| ДРР всего % | `combined.previous.drr_total_pct` | `combined.current.drr_total_pct` |
+| — внутренняя | `combined.previous.drr_internal_pct` | `combined.current.drr_internal_pct` |
+| — внешняя | `combined.previous.drr_external_pct` | `combined.current.drr_external_pct` |
+| Выкуп % | *(лаг 3-21 дн., заполнить вручную)* | *(лаг 3-21 дн., заполнить вручную)* |
+| Маржа | `combined.previous.margin` | `combined.current.margin` |
 
-**Примечание:** Выкуп % — лаговый показатель. Добавь пометку "(лаг 3-21 дн.)" в ячейке.
+**Примечание:** Выкуп % — лаговый показатель. Всегда добавляй пометку "(лаг 3-21 дн.)" — не использовать как причину изменения маржи.
+
+Числа форматировать: выручка и маржа — `1 234 567 ₽`, проценты — `12.3%`.
 
 ### Раздел 6 (Комплекты)
 
-Таблица по 16 моделям из `/tmp/coo_models.json`:
+Таблица по 16 официальным моделям из `/tmp/coo_models.json`.
 
-| Модель | Выручка | Маржа | Тренд | Статус | Проблема | Действие |
-|--------|---------|-------|-------|--------|----------|----------|
-| wendy | `current.revenue` | `current.margin` | `_trend()` | `_status()` | `_problem()` | `_action()` |
-| ... | | | | | | |
+**Структура JSON:**
+```
+models.json = {
+  "current": { "wendy": {...}, "ruby": {...}, ... },  # текущая неделя
+  "previous": { "wendy": {...}, "ruby": {...}, ... }, # предыдущая неделя
+  "period": { "current_start": "...", "current_end": "..." }
+}
+```
 
-**Логика заполнения:**
+Поля модели в `current`:
+- `revenue` — выручка ₽ (orders_rub)
+- `margin` — маржа ₽
+- `margin_pct` — маржа %
+- `drr_pct` — ДРР %
+- `orders_count` — заказы шт
+- `trend_pct` — изменение выручки vs предыдущей неделе %
 
-- **Тренд:**
-  - `trend_pct > 10` → "↑ рост"
-  - `trend_pct < -10` → "↓ падение"
-  - иначе → "→ стабильно"
-  - Если `trend_pct > 300` или `< -80`: добавь префикс ⚠️
+Поля модели в `previous`: те же, кроме `trend_pct`.
 
-- **Статус продаж:**
-  - выручка > 500K → "Активно"
-  - 100K–500K → "Умеренно"
-  - < 100K → "Слабо"
+**Фильтрация:** используй только 16 официальных моделей (wendy, ruby, vuki, charlotte, audrey, joy, moon, lana, eva, bella, valery, alice, set vuki, set ruby, set moon, set bella). Пропускай "корректировка рекламы", "other" и другие артефакты.
 
-- **Проблема и Действие:** сформулируй сам на основе данных:
-  - Если маржа упала > 20% от previous → проблема "Маржа ↓"
-  - Если ДРР > 30% → проблема "ДРР высокий"
-  - Если тренд падение + маржа падает → проблема "Падающая модель"
-  - Действие = конкретное рекомендация (пересчитать цену, выключить рекламу, проверить costs и т.д.)
+| Модель | Выручка | Маржа | ДРР | Тренд | Действие |
+|--------|---------|-------|-----|-------|----------|
+| Wendy | `current.wendy.revenue` | `current.wendy.margin_pct` | `current.wendy.drr_pct` | `_trend()` | `_action()` |
+
+**Логика тренда** (только если неделя полная):
+- `trend_pct > 10` → "↑ +N%"
+- `trend_pct < -10` → "↓ -N%"
+- иначе → "→ стабильно"
+
+**Логика действия** (формулируй содержательно):
+- ДРР > 5% → "снизить ставки / выключить неэффективные кампании"
+- маржа < 0 → "разобрать юнит-экономику, возможно убрать модель из рекламы"
+- маржа упала > 20% от previous → "проверить рост себестоимости или логистики"
+- всё в норме → "—" или конкретная развивающая рекомендация
 
 ### Раздел 7 (Реклама)
 
-Из `/tmp/coo_ads.json`:
+Из `/tmp/coo_ads.json`.
 
-| Канал | Расходы | ROI | Заказы |
-|-------|---------|-----|--------|
-| Блогеры | `bloggers.spend` | `bloggers.roi` | `bloggers.orders` |
-| ВК | `vk.spend` | `vk.roi` | `vk.orders` |
-| Создатели | `creators.spend` | `creators.roi` | `creators.orders` |
-| Яндекс | ⚠️ заполнить вручную | | |
-| Посевы подрядчик | ⚠️ заполнить вручную | | |
+**Структура JSON:**
+```
+ads.json = {
+  "previous": {
+    "bloggers": { "spend_rub": N, "drr_pct": N },
+    "vk":       { "spend_rub": N, "drr_pct": N },
+    "creators": { "spend_rub": N, "drr_pct": N },
+    "internal_wb": { "spend_rub": N, "drr_pct": N },
+    "orders_rub": N
+  },
+  "current": { ... },  # те же поля
+  "manual_fill_required": ["yandex", "vk_seeds_contractor"],
+  "period": { "current_start": "...", "current_end": "..." }
+}
+```
 
-**Примечание:** Яндекс и Посевы подрядчика заполни плейсхолдерами "⚠️ заполнить вручную" — данных в API не получить.
+| Канал | Расходы (пред.) | ДРР (пред.) | Расходы (тек.) | ДРР (тек.) |
+|-------|-----------------|-------------|----------------|------------|
+| Блогеры | `previous.bloggers.spend_rub` | `previous.bloggers.drr_pct`% | `current.bloggers.spend_rub` | `current.bloggers.drr_pct`% |
+| ВК таргет + посевы | `previous.vk.spend_rub` | `previous.vk.drr_pct`% | `current.vk.spend_rub` | `current.vk.drr_pct`% |
+| Создатели | `previous.creators.spend_rub` | — | `current.creators.spend_rub` | — |
+| WB внутренняя | `previous.internal_wb.spend_rub` | `previous.internal_wb.drr_pct`% | `current.internal_wb.spend_rub` | `current.internal_wb.drr_pct`% |
+| Яндекс | ⚠️ заполнить вручную | | ⚠️ заполнить вручную | |
+| Посевы подрядчик | ⚠️ заполнить вручную | | ⚠️ заполнить вручную | |
+
+**Примечание:** Яндекс и Посевы подрядчика — данных в DB нет, всегда ставь плейсхолдер. ВК и блогеры агрегированы в группы (разбивка на посевы / подрядчик / таргет недоступна из DB).
 
 ### Раздел 8 (Логистика)
 
-Из `/tmp/coo_logistics.json`:
+Из `/tmp/coo_logistics.json`.
 
-| Метрика | Значение | Статус |
-|---------|----------|--------|
-| Индекс локализации | `localization_index`% | `_status()` |
-| Средняя оборачиваемость | `avg_turnover_days` дн. | `_status()` |
+**Структура JSON:**
+```
+logistics.json = {
+  "localization_index": N,       # индекс локализации WB %
+  "localization_warning": bool,  # true если <65%
+  "models": {
+    "Wendy": {
+      "turnover_days": N,         # оборачиваемость дн.
+      "stock_fbo_units": N,       # остаток на FBO WB
+      "stock_moysklad_units": N,  # остаток в МойСклад (компоненты!)
+      "stock_transit_units": N,   # в транзите
+      "daily_sales": N,           # продажи/день (7-дн. среднее)
+      "gmroi_pct": N,             # GMROI %
+      "low_sales": bool
+    },
+    ...
+  }
+}
+```
 
-**Статусы:**
+**Важно по МойСклад:** `stock_moysklad_units` считается в компонентах, не в комплектах. Для комплектов (Set Vuki, Set Ruby и т.д.) реальное число комплектов = N/2.
 
-- **Локализация:** ≥65% → 🟢, 50–65% → 🟡, <50% → 🔴 (+ предупреждение если warning)
-- **Оборачиваемость:** <60 дн. → 🟢, 60–90 дн. → 🟡, >90 дн. → 🔴
+Итоговая таблица логистики:
+
+| Показатель | Значение | Статус |
+|------------|----------|--------|
+| Индекс локализации | `localization_index`% | ≥65% 🟢 / 50–65% 🟡 / <50% 🔴 |
+| Средневзвешенная оборачиваемость | вычислить: `sum(t*s for t,s in models) / sum(s)` дн. | <60 🟢 / 60–90 🟡 / >90 🔴 |
+
+Затем — подробная таблица по каждой модели:
+
+| Модель | Оборачиваемость | FBO (шт) | МС (шт) | Транзит | Продажи/день | GMROI |
+|--------|----------------|----------|---------|---------|--------------|-------|
+| Wendy | N дн. | N | N | N | N | N% |
+
+Статус оборачиваемости в ячейке: <60 дн. → 🟢, 60–90 → 🟡, >90 → 🔴 (жирный шрифт для >180).
 
 ### Раздел 9 (Сотрудники)
 
-Из `/tmp/coo_team.json`:
+Из `/tmp/coo_team.json`.
+
+**Структура JSON:**
+```
+team.json = {
+  "staff": {
+    "Имя": {
+      "done_count": N,
+      "active_count": N,
+      "overdue_count": N,
+      "done_titles": ["задача 1", "задача 2", ...],
+      "bitrix_id": N
+    },
+    ...
+  },
+  "period": {...},
+  "data_refreshed": bool
+}
+```
 
 | Сотрудник | Что выполнено | Активные | Просрочено | Оценка |
 |-----------|---------------|----------|-----------|--------|
-| Артём | `done_titles[0:2]` | `active_count` | `overdue_count` | `_grade()` |
-| ... | | | | |
+| Имя | первые 2-3 из `done_titles` | `active_count` | `overdue_count` | 🟢/🟡/🔴 |
 
-**Логика:**
-- **Что выполнено:** первые 2–3 задачи из `done_titles`
-- **Оценка:** 
-  - нет просрочек → 🟢
-  - 1–2 просрочки → 🟡
-  - 3+ просрочки → 🔴
-  - Если `data_refreshed == false` → добавь ⚠️
+**Оценка:**
+- `overdue_count == 0` → 🟢
+- `overdue_count` 1–2 → 🟡
+- `overdue_count` ≥ 3 → 🔴
+- Если `data_refreshed == false` → добавь ⚠️ к оценке
 
-### Разделы 2, 3 (Проблемы и решения)
+**Важно про просрочки:** высокие `overdue_count` (20+) часто означают накопившиеся recurring-задачи (еженедельные отчёты и т.д.), а не реальное невыполнение. Смотри на `done_titles` — если задачи делаются, это нормально.
 
-Сформулируй на основе всех данных:
+### Разделы 2, 3 (Анализ и решения)
 
-**Раздел 2 — Основная проблема:**
-- То, что сильнее всего отклонилось от нормы
-- Примеры: "Маржа упала на 15% из-за роста себестоимости", "ДРР растёт, заказы нет", "Оборачиваемость 120+ дн. на 3 моделях"
+Формулируй на основе всех данных — это ценность отчёта, не оставляй пустыми.
+
+**Раздел 2 — Основная проблема недели:**
+- Самое значимое отклонение от нормы
+- С цифрами: не "маржа упала", а "маржа упала на 15% (-200K₽) при росте логистики +30%"
 
 **Раздел 3 — Рекомендуемое решение:**
-- Конкретное действие с ответственным
-- Примеры: "Артём: пересчитать себестоимость с поставщиком", "Светлана: выключить рекламу на убыточных каналах", "Валерия: перепроверить локализацию склада"
+- Конкретное действие + ответственный + срок
+- Например: "Артём: пересчитать юнит-экономику Valery и Alice до пятницы — GMROI отрицательный"
 
 ### Разделы 4, 5, 10, 11, 12
 
-Оставь пустыми с текстом:
+Оставь с текстом:
 ```
 ← заполнить вручную
 ```
@@ -190,19 +268,19 @@ cd /Users/danilamatveev/Projects/Wookiee && python3 modules/coo_report/collector
 
 ## Шаг 4: Создать страницу в Notion
 
-1. **Дублируй шаблон** через Notion MCP:
+1. **Дублируй шаблон** через Notion MCP (`notion-duplicate-page`):
    - Template ID: `35658a2bd5878028ad75f1773a0f8593`
    - Parent folder ID: `35658a2bd587803b8ab5fc540e4318e7`
 
-2. **Переименуй страницу:**
+2. **Переименуй страницу** по формату:
    ```
-   Отчётность COO 04.05 — 11.05.2026
+   Отчётность COO ДД.ММ — ДД.ММ.ГГГГ
    ```
-   (дата из `coo_finance.json["period"]["current_start"]`)
+   Даты берёшь из `coo_finance.json["period"]`: `current_start` и `current_end`.
 
-3. **Заполни разделы** согласно шагу 3
+3. **Заполни разделы** согласно шагу 3 через `notion-update-page`.
 
-4. **Верни ссылку** на готовую страницу в Notion
+4. **Верни ссылку** на готовую страницу в Notion.
 
 ---
 
@@ -225,6 +303,7 @@ MOYSKLAD_TOKEN=...       # МойСклад API
 Bitrix_rest_api=...      # Bitrix24 REST API
 
 NOTION_TOKEN=...         # Notion API
+USER_EMAIL=...           # для логирования (например danila@wookiee.shop)
 ```
 
 ---
@@ -234,15 +313,16 @@ NOTION_TOKEN=...         # Notion API
 Если сборщик упал:
 
 ```bash
-# Читай логи сборщика
-tail -f /tmp/coo_*.json
-
 # Проверь синтаксис Python
 python3 -m py_compile modules/coo_report/collectors/finance.py
 
 # Запусти один сборщик с трассировкой
 python3 -u modules/coo_report/collectors/finance.py 2>&1 | tee /tmp/debug.log
 ```
+
+Частые причины:
+- `team.py` — Bitrix API возвращает camelCase (`responsibleId`), а не UPPERCASE. `_normalize_task()` в коде это исправляет.
+- `logistics.py` — читает индекс локализации из листа `Сводка` самого свежего `.xlsx` в `services/wb_localization/Отчеты готовые/`. Если файлов нет — вернёт `None`.
 
 ---
 
@@ -261,10 +341,11 @@ python3 -u modules/coo_report/collectors/finance.py 2>&1 | tee /tmp/debug.log
 - `_log_status` = `success` или `error`
 - `_log_url` = URL страницы в Notion (например `https://www.notion.so/PAGE_ID`)
 - `_log_items` = количество моделей в отчёте (обычно 16)
-- `_log_notes` = краткое описание результата или ошибки (например "Отчёт 04.05–11.05.2026, 16 моделей, маржа 37.1%")
-- `_log_user` = значение USER_EMAIL из `.env` (или "unknown")
+- `_log_notes` = краткое описание результата (например "Отчёт 04.05–11.05.2026, 16 моделей, маржа 37.1%")
+- `_log_user` = значение `USER_EMAIL` из `.env` (или "unknown")
+- `N` = длительность выполнения в секундах
 
-Выполни через Supabase MCP:
+Выполни через Supabase MCP (`execute_sql`, project `gjvwcdtfglupewcwzfhw`):
 
 ```sql
 WITH ins AS (
