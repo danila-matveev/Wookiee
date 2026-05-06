@@ -7,6 +7,9 @@ import {
   BarChart3,
   Activity,
   Clock,
+  Users2,
+  Kanban,
+  CalendarDays,
 } from "lucide-react"
 import type { NavGroup } from "@/types/navigation"
 
@@ -30,6 +33,16 @@ export const navigationGroups: NavGroup[] = [
       { id: "questions", label: "Вопросы",   icon: HelpCircle,   path: "/community/questions" },
       { id: "answers",   label: "Ответы",    icon: CheckCircle2, path: "/community/answers" },
       { id: "analytics", label: "Аналитика", icon: BarChart3,    path: "/community/analytics" },
+    ],
+  },
+  {
+    id: "influence",
+    icon: Users2,
+    label: "Influence CRM",
+    items: [
+      { id: "bloggers",     label: "Блогеры",    icon: Users2,       path: "/influence/bloggers" },
+      { id: "integrations", label: "Интеграции", icon: Kanban,       path: "/influence/integrations" },
+      { id: "calendar",     label: "Календарь",  icon: CalendarDays, path: "/influence/calendar" },
     ],
   },
 ]

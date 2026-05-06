@@ -8,6 +8,9 @@ import { ReviewsPage } from "@/pages/community/reviews"
 import { QuestionsPage } from "@/pages/community/questions"
 import { AnswersPage } from "@/pages/community/answers"
 import { AnalyticsPage } from "@/pages/community/analytics"
+import { BloggersPage } from "@/pages/influence/bloggers/BloggersPage"
+import { IntegrationsKanbanPage } from "@/pages/influence/integrations/IntegrationsKanbanPage"
+import { CalendarPage } from "@/pages/influence/calendar/CalendarPage"
 
 export const router = createBrowserRouter([
   {
@@ -30,6 +33,10 @@ export const router = createBrowserRouter([
       { path: "/community/questions",  element: <QuestionsPage /> },
       { path: "/community/answers",    element: <AnswersPage /> },
       { path: "/community/analytics",  element: <AnalyticsPage /> },
+      { path: "/influence",              element: <Navigate to="/influence/bloggers" replace /> },
+      { path: "/influence/bloggers",     element: <BloggersPage /> },
+      { path: "/influence/integrations", element: <IntegrationsKanbanPage /> },
+      { path: "/influence/calendar",     element: <CalendarPage /> },
     ],
   },
 ])
