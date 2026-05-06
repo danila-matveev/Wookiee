@@ -4,6 +4,7 @@ import { ProtectedRoute } from "@/components/auth/protected-route"
 import { LoginPage } from "@/pages/auth/login"
 import { ToolsPage } from "@/pages/operations/tools"
 import { ActivityPage } from "@/pages/operations/activity"
+import { HealthPage } from "@/pages/operations/health"
 import { ReviewsPage } from "@/pages/community/reviews"
 import { QuestionsPage } from "@/pages/community/questions"
 import { AnswersPage } from "@/pages/community/answers"
@@ -28,6 +29,7 @@ export const router = createBrowserRouter([
       { path: "/operations",           element: <Navigate to="/operations/tools" replace /> },
       { path: "/operations/tools",     element: <ToolsPage /> },
       { path: "/operations/activity",  element: <ActivityPage /> },
+      { path: "/operations/health",    element: <HealthPage /> },
       { path: "/community",            element: <Navigate to="/community/reviews" replace /> },
       { path: "/community/reviews",    element: <ReviewsPage /> },
       { path: "/community/questions",  element: <QuestionsPage /> },

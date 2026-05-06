@@ -246,6 +246,17 @@ export function ToolDetailPanel({ tool, onClose }: ToolDetailPanelProps) {
                 </p>
               </div>
             </div>
+            {tool.lastStatus === 'error' && (
+              <div className="mt-3 flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                <XCircle size={13} className="text-red-600 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-[12px] font-semibold text-red-700">Последний запуск завершился ошибкой</p>
+                  <p className="text-[11px] text-red-600 mt-0.5">
+                    Проверьте секцию «Последние запуски» ниже или запустите инструмент повторно.
+                  </p>
+                </div>
+              </div>
+            )}
           </Section>
 
           <Section label="Последние запуски">
