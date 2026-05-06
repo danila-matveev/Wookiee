@@ -1,5 +1,6 @@
 """Slices view — model_osnova → integrations roll-up."""
 from __future__ import annotations
+from typing import Optional
 
 from datetime import date
 from decimal import Decimal
@@ -13,7 +14,7 @@ class ProductSliceOut(BaseModel):
     model_name: str
     integrations_count: int = 0
     integrations_done: int = 0
-    last_publish_date: date | None = None
+    last_publish_date: Optional[date] = None
     total_spent: Decimal = Decimal("0")
     total_revenue_fact: Decimal = Decimal("0")
 
@@ -25,9 +26,9 @@ class ProductDetailIntegrationOut(BaseModel):
     publish_date: date
     stage: str
     total_cost: Decimal
-    fact_views: int | None = None
-    fact_orders: int | None = None
-    fact_revenue: Decimal | None = None
+    fact_views: Optional[int] = None
+    fact_orders: Optional[int] = None
+    fact_revenue: Optional[Decimal] = None
 
 
 class ProductDetailOut(ProductSliceOut):

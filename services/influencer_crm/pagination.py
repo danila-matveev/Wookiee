@@ -4,7 +4,7 @@ from __future__ import annotations
 import base64
 import json
 from datetime import datetime, timezone
-from typing import Generic, TypeVar
+from typing import Generic, TypeVar, Optional
 
 from pydantic import BaseModel
 
@@ -24,7 +24,7 @@ def encode_cursor(updated_at: datetime, item_id: int) -> str:
     return base64.urlsafe_b64encode(payload.encode("utf-8")).decode("ascii")
 
 
-def decode_cursor(cursor: str | None) -> tuple[datetime, int] | None:
+def decode_cursor(cursor: Optional[str]) -> Optional[tuple[datetime, int]]:
     """Decode an opaque cursor. Returns None on any failure (404 → first page)."""
     if not cursor:
         return None
@@ -41,4 +41,4 @@ def decode_cursor(cursor: str | None) -> tuple[datetime, int] | None:
 
 class Page(BaseModel, Generic[T]):
     items: list[T]
-    next_cursor: str | None = None
+    next_cursor: Optional[str] = None

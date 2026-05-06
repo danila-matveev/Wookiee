@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
 import psycopg2.extras
 
@@ -29,7 +29,7 @@ def insert_etl_run(
     finished_at: datetime,
     duration_ms: int,
     status: str,
-    error_message: str | None = None,
+    error_message: Optional[str] = None,
     rows_loaded: dict[str, Any] | None = None,
 ) -> None:
     try:

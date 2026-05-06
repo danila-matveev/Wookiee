@@ -1,5 +1,6 @@
 """GET /products + GET /products/{model_osnova_id}."""
 from __future__ import annotations
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -20,7 +21,7 @@ router = APIRouter(
 def list_products(
     session: Session = Depends(get_session),
     limit: int = Query(50, ge=1, le=200),
-    cursor: str | None = None,
+    cursor: Optional[str] = None,
 ) -> Page[ProductSliceOut]:
     items, next_cursor = repo.list_products(session, limit=limit, cursor=cursor)
     return Page[ProductSliceOut](items=items, next_cursor=next_cursor)

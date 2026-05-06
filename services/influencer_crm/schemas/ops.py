@@ -1,5 +1,6 @@
 """Pydantic schemas for the /ops/health endpoint."""
 from __future__ import annotations
+from typing import Optional
 
 from datetime import datetime
 
@@ -7,10 +8,10 @@ from pydantic import BaseModel
 
 
 class EtlLastRun(BaseModel):
-    started_at: datetime | None = None
-    status: str | None = None
-    duration_ms: int | None = None
-    error_message: str | None = None
+    started_at: Optional[datetime] = None
+    status: Optional[str] = None
+    duration_ms: Optional[int] = None
+    error_message: Optional[str] = None
 
 
 class EtlCounts(BaseModel):
@@ -34,6 +35,6 @@ class RetentionCounts(BaseModel):
 class OpsHealth(BaseModel):
     etl_last_run: EtlLastRun
     etl_last_24h: EtlCounts
-    mv_age_seconds: int | None = None
+    mv_age_seconds: Optional[int] = None
     retention: RetentionCounts
     cron_jobs: list[CronJobInfo]

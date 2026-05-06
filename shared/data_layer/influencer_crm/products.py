@@ -4,6 +4,7 @@ A model_osnova rolls up multiple modeli (color variants). We map
 substitute_articles → artikul_id → modeli.id → modeli_osnova.id.
 """
 from __future__ import annotations
+from typing import Optional
 
 from datetime import datetime
 
@@ -39,8 +40,8 @@ def list_products(
     session: Session,
     *,
     limit: int = 50,
-    cursor: str | None = None,
-) -> tuple[list[ProductSliceOut], str | None]:
+    cursor: Optional[str] = None,
+) -> tuple[list[ProductSliceOut], Optional[str]]:
     decoded = decode_cursor(cursor)
     having_clause = ""
     params: dict = {"limit": limit + 1}

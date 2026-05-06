@@ -9,6 +9,7 @@ installed in the test DB, or crm.etl_runs not yet migrated) must not crash
 the endpoint — it degrades to empty defaults instead.
 """
 from __future__ import annotations
+from typing import Optional
 
 import logging
 
@@ -100,7 +101,7 @@ def _fetch_etl_counts(session: Session) -> EtlCounts:
     )
 
 
-def _fetch_mv_age(session: Session) -> int | None:
+def _fetch_mv_age(session: Session) -> Optional[int]:
     # Source of truth: cron.job_run_details for the v_blogger_totals_refresh job.
     # `pg_stat_user_tables.last_analyze` does NOT update on REFRESH MV — using it
     # would show a fake "freshness" value. The cron history is authoritative.

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
@@ -25,7 +27,7 @@ router = APIRouter(
 
 @router.get("", response_model=BriefsPage)
 def list_briefs(
-    status: BriefStatus | None = Query(default=None),
+    status: Optional[BriefStatus] = Query(default=None),
     limit: int = Query(default=100, ge=1, le=200),
     session: Session = Depends(get_session),
 ) -> BriefsPage:
@@ -68,11 +70,11 @@ def patch_brief(
     return result
 
 
-@router.delete("/{brief_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{brief_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 def delete_brief(
     brief_id: int,
     session: Session = Depends(get_session),
-) -> None:
+):
     found = repo.delete_brief(session, brief_id)
     if not found:
         raise HTTPException(status_code=404, detail="Brief not found")

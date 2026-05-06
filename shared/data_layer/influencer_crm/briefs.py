@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Optional
 
 import json
 
@@ -51,7 +52,7 @@ def _to_brief_out(row: dict) -> BriefOut:
 def list_briefs(
     session: Session,
     *,
-    status: str | None = None,
+    status: Optional[str] = None,
     limit: int = 100,
 ) -> BriefsPage:
     params: dict = {"limit": min(limit, 200)}
@@ -87,8 +88,8 @@ def patch_brief(
     session: Session,
     brief_id: int,
     *,
-    title: str | None = None,
-    status: str | None = None,
+    title: Optional[str] = None,
+    status: Optional[str] = None,
 ) -> BriefOut | None:
     sets: list[str] = ["updated_at = now()"]
     params: dict = {"id": brief_id}

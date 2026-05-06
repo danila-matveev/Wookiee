@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Optional
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -8,9 +9,9 @@ from services.influencer_crm.schemas.promo import PromoCodeOut, SubstituteArticl
 
 
 def list_substitute_articles(
-    session: Session, *, limit: int = 50, cursor: str | None = None,
-    status: str | None = None,
-) -> tuple[list[SubstituteArticleOut], str | None]:
+    session: Session, *, limit: int = 50, cursor: Optional[str] = None,
+    status: Optional[str] = None,
+) -> tuple[list[SubstituteArticleOut], Optional[str]]:
     params: dict = {"limit": limit + 1}
     where = []
     if status:
@@ -41,9 +42,9 @@ def list_substitute_articles(
 
 
 def list_promo_codes(
-    session: Session, *, limit: int = 50, cursor: str | None = None,
-    status: str | None = None,
-) -> tuple[list[PromoCodeOut], str | None]:
+    session: Session, *, limit: int = 50, cursor: Optional[str] = None,
+    status: Optional[str] = None,
+) -> tuple[list[PromoCodeOut], Optional[str]]:
     params: dict = {"limit": limit + 1}
     where = []
     if status:

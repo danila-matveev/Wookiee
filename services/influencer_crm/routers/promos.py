@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
@@ -18,8 +19,8 @@ router = APIRouter(
 def list_substitute_articles(
     session: Session = Depends(get_session),
     limit: int = Query(50, ge=1, le=200),
-    cursor: str | None = None,
-    status: str | None = None,
+    cursor: Optional[str] = None,
+    status: Optional[str] = None,
 ) -> Page[SubstituteArticleOut]:
     items, nxt = repo.list_substitute_articles(session, limit=limit, cursor=cursor, status=status)
     return Page[SubstituteArticleOut](items=items, next_cursor=nxt)
@@ -29,8 +30,8 @@ def list_substitute_articles(
 def list_promo_codes(
     session: Session = Depends(get_session),
     limit: int = Query(50, ge=1, le=200),
-    cursor: str | None = None,
-    status: str | None = None,
+    cursor: Optional[str] = None,
+    status: Optional[str] = None,
 ) -> Page[PromoCodeOut]:
     items, nxt = repo.list_promo_codes(session, limit=limit, cursor=cursor, status=status)
     return Page[PromoCodeOut](items=items, next_cursor=nxt)

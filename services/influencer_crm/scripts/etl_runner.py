@@ -6,6 +6,7 @@ Usage:
 Default = --incremental. Pass --full to force full-import.
 """
 from __future__ import annotations
+from typing import Optional
 
 import argparse
 import sys
@@ -20,7 +21,7 @@ AGENT_NAME = "crm-sheets-etl"
 AGENT_VERSION = "1.0.0"
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="CRM Sheets ETL cron entrypoint")
     parser.add_argument(
         "--full",
@@ -35,7 +36,7 @@ def main(argv: list[str] | None = None) -> int:
     etl_argv = [] if args.full else ["--incremental"]
 
     status = "running"
-    error: str | None = None
+    error: Optional[str] = None
     exit_code = 0
 
     try:

@@ -1,7 +1,7 @@
 """Read/write queries for crm.integrations + related M:N."""
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -45,15 +45,15 @@ def list_integrations(
     session: Session,
     *,
     limit: int = 50,
-    cursor: str | None = None,
-    stage_in: list[str] | None = None,
-    marketplace: str | None = None,
-    marketer_id: int | None = None,
-    blogger_id: int | None = None,
-    date_from: str | None = None,
-    date_to: str | None = None,
-    q: str | None = None,
-) -> tuple[list[IntegrationOut], str | None]:
+    cursor: Optional[str] = None,
+    stage_in: Optional[list[str]] = None,
+    marketplace: Optional[str] = None,
+    marketer_id: Optional[int] = None,
+    blogger_id: Optional[int] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    q: Optional[str] = None,
+) -> tuple[list[IntegrationOut], Optional[str]]:
     params: dict[str, Any] = {"limit": limit + 1}
     where: list[str] = []
 
@@ -197,7 +197,7 @@ def update_integration(
 
 
 def transition_stage(
-    session: Session, integration_id: int, *, target_stage: str, note: str | None = None
+    session: Session, integration_id: int, *, target_stage: str, note: Optional[str] = None
 ) -> None:
     """Stage column update — trigger writes integration_stage_history row."""
     update_integration(session, integration_id, {"stage": target_stage})

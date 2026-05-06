@@ -1,5 +1,6 @@
 """Integrations endpoints — list (Kanban-aware), detail, create, patch, stage."""
 from __future__ import annotations
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -26,14 +27,14 @@ router = APIRouter(
 def list_integrations(
     session: Session = Depends(get_session),
     limit: int = Query(50, ge=1, le=1000),
-    cursor: str | None = None,
-    stage_in: list[str] | None = Query(default=None),
-    marketplace: str | None = None,
-    marketer_id: int | None = None,
-    blogger_id: int | None = None,
-    date_from: str | None = None,
-    date_to: str | None = None,
-    q: str | None = Query(default=None),
+    cursor: Optional[str] = None,
+    stage_in: Optional[list[str]] = Query(default=None),
+    marketplace: Optional[str] = None,
+    marketer_id: Optional[int] = None,
+    blogger_id: Optional[int] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    q: Optional[str] = Query(default=None),
 ) -> Page[IntegrationOut]:
     items, next_cursor = repo.list_integrations(
         session, limit=limit, cursor=cursor,
