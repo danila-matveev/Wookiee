@@ -49,6 +49,31 @@ def write_weekly_metrics(week_start: date, metrics_by_uuid: dict[str, dict]) -> 
         conn.close()
 
 
+def _auto_insert_promo(conn, uuid: str) -> int | None:
+    """Insert placeholder promo code for unknown WB UUID. name=NULL for manual fill-in."""
+    placeholder_code = f"WB:{uuid.upper()}"
+    with conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO crm.promo_codes (code, external_uuid, status) "
+            "VALUES (%s, %s::uuid, 'active') "
+            "ON CONFLICT (external_uuid) DO NOTHING RETURNING id",
+            (placeholder_code, uuid),
+        )
+        rec = cur.fetchone()
+        if rec is None:
+            cur.execute(
+                "SELECT id FROM crm.promo_codes WHERE external_uuid = %s::uuid LIMIT 1",
+                (uuid,),
+            )
+            rec = cur.fetchone()
+    conn.commit()
+    if rec:
+        logger.info("Auto-inserted placeholder promo_code: code=%s uuid=%s id=%d",
+                    placeholder_code, uuid, rec[0])
+        return rec[0]
+    return None
+
+
 def _resolve_rows(conn, week_start: date, metrics_by_uuid: dict[str, dict]) -> list[dict]:
     rows: list[dict] = []
     with conn.cursor() as cur:
@@ -59,9 +84,12 @@ def _resolve_rows(conn, week_start: date, metrics_by_uuid: dict[str, dict]) -> l
             )
             rec = cur.fetchone()
             if rec is None:
-                logger.warning("promo uuid %s not found in crm.promo_codes — skipped", uuid)
-                continue
-            promo_code_id = rec[0]
+                promo_code_id = _auto_insert_promo(conn, uuid)
+                if promo_code_id is None:
+                    logger.warning("Could not auto-insert uuid %s — skipped", uuid)
+                    continue
+            else:
+                promo_code_id = rec[0]
 
             sales = m.get("sales_rub") or 0.0
             orders = m.get("orders_count") or 0
