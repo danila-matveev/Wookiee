@@ -27,7 +27,13 @@ SELECT i.id, i.blogger_id, i.marketer_id, i.brief_id,
        i.fact_carts, i.cr_to_cart, i.fact_orders, i.cr_to_order, i.fact_revenue,
        i.created_at, i.updated_at,
        b.display_handle AS blogger_handle,
-       m.name AS marketer_name
+       m.name AS marketer_name,
+       (SELECT sa.code
+        FROM crm.integration_substitute_articles isa
+        JOIN crm.substitute_articles sa ON sa.id = isa.substitute_article_id
+        WHERE isa.integration_id = i.id
+        ORDER BY isa.display_order
+        LIMIT 1) AS primary_substitute_code
 FROM crm.integrations i
 JOIN crm.bloggers b ON b.id = i.blogger_id
 LEFT JOIN crm.marketers m ON m.id = i.marketer_id

@@ -46,6 +46,7 @@ class IntegrationOut(BaseModel):
     cost_goods: Decimal | None = None
     total_cost: Decimal = Decimal("0")
     erid: str | None = None
+    primary_substitute_code: str | None = None
     # Audience
     theme: str | None = None
     audience_age: str | None = None

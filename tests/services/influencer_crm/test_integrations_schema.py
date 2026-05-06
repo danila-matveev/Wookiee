@@ -36,3 +36,17 @@ def test_stage_transition_validates_known_stage():
     StageTransitionIn(target_stage="согласовано")
     with pytest.raises(ValidationError):
         StageTransitionIn(target_stage="bogus_stage")
+
+
+def test_integration_out_has_primary_substitute_code():
+    """primary_substitute_code must be optional string."""
+    from services.influencer_crm.schemas.integration import IntegrationOut
+
+    fields = IntegrationOut.model_fields
+    assert "primary_substitute_code" in fields, (
+        "IntegrationOut must have primary_substitute_code field"
+    )
+    field = fields["primary_substitute_code"]
+    assert not field.is_required(), (
+        "primary_substitute_code must be optional (None default)"
+    )
