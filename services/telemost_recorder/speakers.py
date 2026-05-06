@@ -10,8 +10,8 @@ from services.telemost_recorder.config import BITRIX_REST_API, SPEAKERS_FILE
 from services.telemost_recorder.transcribe import TranscriptSegment
 
 _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-# MAIN tier per economics rules: classification/routing tasks
-_LLM_MODEL = "google/gemini-flash-1.5-8b"
+# MAIN tier per economics rules: analytics, tool-use
+_LLM_MODEL = "google/gemini-3-flash-preview"
 
 
 def sync_from_bitrix() -> list[dict]:
@@ -75,6 +75,7 @@ def resolve_speakers(
 
     openrouter_key = os.getenv("OPENROUTER_API_KEY", "")
     if not openrouter_key:
+        print("WARNING: OPENROUTER_API_KEY not set, skipping speaker resolution")
         return {}
 
     payload = json.dumps({
