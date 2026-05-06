@@ -39,6 +39,7 @@
 | /reviews-audit | [skills/reviews-audit.md](skills/reviews-audit.md) |
 | /monthly-plan | [skills/monthly-plan.md](skills/monthly-plan.md) |
 | /finolog-dds-report | [skills/finolog-dds-report.md](skills/finolog-dds-report.md) |
+| /coo-report | [skills/coo-report.md](skills/coo-report.md) |
 | /content-search | [skills/content-search.md](skills/content-search.md) |
 | /tool-status | [skills/tool-status.md](skills/tool-status.md) |
 | /tool-register | [skills/tool-register.md](skills/tool-register.md) |
