@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 from shared.data_layer._connection import _get_wb_connection
@@ -166,7 +166,6 @@ def _parse_sheet_date(raw: str) -> Optional[date]:
     if not raw or not isinstance(raw, str):
         return None
     raw = raw.strip()
-    from datetime import datetime
     for fmt in ("%d.%m.%Y", "%Y-%m-%d"):
         try:
             return datetime.strptime(raw, fmt).date()
@@ -483,7 +482,7 @@ def aggregate_to_weeks(
             "cpo_internal": _safe_div(adv_internal_rub, orders_internal_qty),
             "cpm_internal": _safe_div(adv_internal_rub * 1000, adv_views),
             "adv_internal_profit_forecast": adv_int_profit,
-            "romi_internal": _safe_div((adv_int_profit or 0) * 100, adv_internal_rub) if adv_int_profit else None,
+            "romi_internal": _safe_div((adv_int_profit if adv_int_profit is not None else 0) * 100, adv_internal_rub) if adv_int_profit is not None else None,
             # Внешняя реклама итого
             "adv_external_rub":          adv_external_rub or None,
             "drr_external_from_sales":   _safe_div(adv_external_rub * 100, sales_rub),
@@ -501,7 +500,7 @@ def aggregate_to_weeks(
             "blogger_carts":   blogger_carts,
             "blogger_orders":  blogger_orders,
             "blogger_profit_forecast": blogger_profit,
-            "romi_blogger": _safe_div((blogger_profit or 0) * 100, blogger_rub) if blogger_profit and blogger_rub else None,
+            "romi_blogger": _safe_div((blogger_profit if blogger_profit is not None else 0) * 100, blogger_rub) if blogger_profit is not None and blogger_rub else None,
             "blogger_no_stats": blogger_no_stats,
             # ВК SIDS
             "vk_sids_rub":            vk_sids_rub or None,
@@ -538,7 +537,7 @@ def aggregate_to_weeks(
             # Прогноз
             "sales_forecast_rub":  sales_fc_rub,
             "margin_forecast_rub": margin_fc_rub,
-            "margin_forecast_pct": _safe_div((margin_fc_rub or 0) * 100, sales_fc_rub) if margin_fc_rub and sales_fc_rub else None,
+            "margin_forecast_pct": _safe_div((margin_fc_rub if margin_fc_rub is not None else 0) * 100, sales_fc_rub) if margin_fc_rub is not None and sales_fc_rub else None,
         })
 
     return result

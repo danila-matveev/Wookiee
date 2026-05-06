@@ -23,7 +23,9 @@ function sundayOf(d: Date): string {
 
 function weeksAgo(n: number): { from: string; to: string } {
   const today = new Date()
-  const sun = new Date(sundayOf(new Date(today.setDate(today.getDate() - 7))))
+  const lastWeek = new Date(today)
+  lastWeek.setDate(today.getDate() - 7)
+  const sun = new Date(sundayOf(lastWeek))
   const mon = new Date(sun)
   mon.setDate(sun.getDate() - (n - 1) * 7 - 6)
   return { from: mon.toISOString().slice(0, 10), to: sun.toISOString().slice(0, 10) }
