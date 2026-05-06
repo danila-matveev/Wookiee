@@ -12,6 +12,23 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from modules.coo_report.config import COO_STAFF, BITRIX_DONE_STATUSES, BITRIX_ACTIVE_STATUSES
 
 OUTPUT_PATH = Path("/tmp/coo_team.json")
+
+_BITRIX_FIELD_MAP = {
+    'responsibleId': 'RESPONSIBLE_ID',
+    'status': 'STATUS',
+    'deadline': 'DEADLINE',
+    'closedDate': 'CLOSED_DATE',
+    'title': 'TITLE',
+    'id': 'ID',
+}
+
+
+def _normalize_task(task: dict) -> dict:
+    result = dict(task)
+    for lower, upper in _BITRIX_FIELD_MAP.items():
+        if lower in result and upper not in result:
+            result[upper] = result[lower]
+    return result
 BITRIX_DATA_PATH = Path("/tmp/bitrix_report_data.json")
 FETCH_SCRIPT = PROJECT_ROOT / "modules" / "bitrix-analytics" / "fetch_data.py"
 MAX_DATA_AGE_HOURS = 24
@@ -112,7 +129,7 @@ def collect(ref_date: date = None) -> dict:
         }
 
     raw = json.loads(BITRIX_DATA_PATH.read_text(encoding="utf-8"))
-    tasks = raw.get("tasks", [])
+    tasks = [_normalize_task(t) for t in raw.get("tasks", [])]
     staff = raw.get("staff", {})
     period = raw.get("period", {})
 

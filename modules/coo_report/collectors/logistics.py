@@ -18,22 +18,27 @@ LOCALIZATION_SCRIPT = PROJECT_ROOT / "services" / "wb_localization" / "run_local
 
 def get_localization_index() -> Optional[float]:
     """
-    Запускает run_localization.py --dry-run, парсит индекс локализации из stdout.
-    Ожидаемый формат строки: "Индекс локализации: 67.3%"
+    Парсит "Средний индекс" из самого свежего Excel-отчёта локализации.
+    --dry-run не выводит итоговый индекс, поэтому читаем последний готовый отчёт.
     """
+    report_dir = LOCALIZATION_SCRIPT.parent / "Отчеты готовые"
+    reports = sorted(report_dir.glob("Отчет_локализация_v3_*.xlsx"),
+                     key=lambda p: p.stat().st_mtime, reverse=True)
+    if not reports:
+        return None
     try:
-        result = subprocess.run(
-            [sys.executable, str(LOCALIZATION_SCRIPT), "--dry-run"],
-            capture_output=True, text=True, timeout=120,
-        )
-        for line in result.stdout.splitlines():
-            if "локализац" in line.lower() and "%" in line:
-                match = re.search(r"(\d+(?:\.\d+)?)\s*%", line)
-                if match:
-                    return float(match.group(1))
+        import pandas as pd
+        xls = pd.ExcelFile(reports[0])
+        if "Сводка" not in xls.sheet_names:
+            return None
+        df = pd.read_excel(xls, sheet_name="Сводка")
+        mask = df["Показатель"].astype(str).str.contains("Средний индекс", na=False)
+        if not mask.any():
+            return None
+        raw = str(df.loc[mask, "Значение"].iloc[0]).replace("%", "").strip()
+        return float(raw)
     except Exception:
-        pass
-    return None
+        return None
 
 
 def calculate_gmroi(weekly_margin: float, avg_stock_units: float, cost_per_unit: float) -> float:
