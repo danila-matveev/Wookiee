@@ -43,13 +43,19 @@ def _detect_phase(margin_pct: Optional[float]) -> str:
 
 
 def fetch_rnp_models_wb() -> list[str]:
-    """Sorted list of distinct WB model names available in abc_date."""
+    """Sorted list of distinct WB model names available in abc_date.
+
+    Filters to ASCII-only names with recent activity (last 90 days) to exclude
+    corrupted entries, Cyrillic junk, and discontinued products.
+    """
     conn = _get_wb_connection()
     try:
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT DISTINCT LOWER(SPLIT_PART(article, '/', 1)) AS model
                 FROM abc_date
+                WHERE date::date >= CURRENT_DATE - INTERVAL '90 days'
+                  AND LOWER(SPLIT_PART(article, '/', 1)) ~ '^[a-z][a-z0-9._-]*$'
                 ORDER BY 1
             """)
             return [row[0] for row in cur.fetchall()]
@@ -136,6 +142,9 @@ def fetch_rnp_wb_daily(
     finally:
         conn.close()
 
+    def _f(v) -> Optional[float]:
+        return float(v) if v is not None else None
+
     all_dates = sorted(set(abc) | set(ord_) | set(ca) | set(adv))
     result = []
     for dt in all_dates:
@@ -145,18 +154,18 @@ def fetch_rnp_wb_daily(
         w = adv.get(dt, (None,) * 4)
         result.append({
             "date": dt,
-            "orders_qty":       a[1],
-            "sales_qty":        a[2],
-            "sales_rub":        a[3],
-            "adv_internal_rub": a[4],
-            "margin_rub":       a[5],
-            "orders_rub":       o[1],
-            "orders_spp_rub":   o[2],
-            "clicks_total":     c[1],
-            "cart_total":       c[2],
-            "adv_views":        w[1],
-            "adv_clicks":       w[2],
-            "adv_orders":       w[3],
+            "orders_qty":       _f(a[1]),
+            "sales_qty":        _f(a[2]),
+            "sales_rub":        _f(a[3]),
+            "adv_internal_rub": _f(a[4]),
+            "margin_rub":       _f(a[5]),
+            "orders_rub":       _f(o[1]),
+            "orders_spp_rub":   _f(o[2]),
+            "clicks_total":     _f(c[1]),
+            "cart_total":       _f(c[2]),
+            "adv_views":        _f(w[1]),
+            "adv_clicks":       _f(w[2]),
+            "adv_orders":       _f(w[3]),
         })
     return result
 
