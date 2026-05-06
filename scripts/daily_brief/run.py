@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from scripts.daily_brief import collector, forecast, patterns
+from shared.tool_logger import ToolLogger
 
 
 def parse_date_arg(arg: str | None) -> date:
@@ -183,18 +184,26 @@ def main():
     target = parse_date_arg(sys.argv[1] if len(sys.argv) > 1 else None)
     print(f"[daily-brief] target date: {target.isoformat()}")
 
-    brief = build_brief(target)
+    tl = ToolLogger("daily-brief")
+    with tl.run(period_start=target.isoformat(), period_end=target.isoformat()) as run_meta:
+        brief = build_brief(target)
 
-    # Save JSON
-    out_dir = ROOT / "data" / "daily_brief"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f"{target.isoformat()}.json"
-    with open(out_path, "w", encoding="utf-8") as f:
-        json.dump(brief, f, ensure_ascii=False, indent=2)
-    print(f"[daily-brief] saved: {out_path}")
+        # Save JSON
+        out_dir = ROOT / "data" / "daily_brief"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / f"{target.isoformat()}.json"
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(brief, f, ensure_ascii=False, indent=2)
+        print(f"[daily-brief] saved: {out_path}")
 
-    # Print a short summary to stdout (for skill to pick up)
-    print(json.dumps(brief, ensure_ascii=False, indent=2))
+        run_meta["items"] = sum(
+            len(v) if isinstance(v, list) else 1
+            for v in brief.values()
+            if not isinstance(v, (str, int, float, bool))
+        )
+
+        # Print a short summary to stdout (for skill to pick up)
+        print(json.dumps(brief, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

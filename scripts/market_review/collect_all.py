@@ -18,6 +18,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 
+from shared.tool_logger import ToolLogger
+
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
@@ -72,87 +74,91 @@ def main():
     prev_start, prev_end = _month_range(prev)
     sections = [s.strip() for s in args.sections.split(",")]
 
-    shared_kwargs = {
-        "period_start": period_start,
-        "period_end": period_end,
-        "prev_start": prev_start,
-        "prev_end": prev_end,
-    }
-
-    # Import collectors based on requested sections
-    collectors: dict[str, tuple] = {}
-
-    if "categories" in sections:
-        from scripts.market_review.collectors.market_categories import collect_market_categories
-        collectors["categories"] = (collect_market_categories, shared_kwargs)
-
-    if "our" in sections:
-        from scripts.market_review.collectors.our_performance import collect_our_performance
-        collectors["our"] = (collect_our_performance, shared_kwargs)
-
-    if "competitors" in sections:
-        from scripts.market_review.collectors.competitors_brands import collect_competitors_brands
-        collectors["competitors"] = (collect_competitors_brands, shared_kwargs)
-
-    if "models_ours" in sections:
-        from scripts.market_review.collectors.top_models_ours import collect_top_models_ours
-        collectors["models_ours"] = (collect_top_models_ours, shared_kwargs)
-
-    if "models_rivals" in sections:
-        from scripts.market_review.collectors.top_models_rivals import collect_top_models_rivals
-        collectors["models_rivals"] = (collect_top_models_rivals, shared_kwargs)
-
-    if "competitor_deep" in sections:
-        from scripts.market_review.collectors.competitor_deep_dive import collect_competitor_deep_dive
-        collectors["competitor_deep"] = (collect_competitor_deep_dive, shared_kwargs)
-
-    if "discovery" in sections:
-        from scripts.market_review.collectors.discovery_brands import collect_discovery_brands
-        collectors["discovery"] = (collect_discovery_brands, shared_kwargs)
-
-    if "new_items" in sections:
-        from scripts.market_review.collectors.new_items import collect_new_items
-        collectors["new_items"] = (collect_new_items, shared_kwargs)
-
-    # Run collectors in parallel
-    t0 = time.time()
-    results = {}
-    errors = {}
-
-    with ThreadPoolExecutor(max_workers=4) as pool:
-        futures = {
-            pool.submit(run_collector, name, func, kwargs): name
-            for name, (func, kwargs) in collectors.items()
+    tl = ToolLogger("market-review")
+    with tl.run(period_start=period_start, period_end=period_end) as run_meta:
+        shared_kwargs = {
+            "period_start": period_start,
+            "period_end": period_end,
+            "prev_start": prev_start,
+            "prev_end": prev_end,
         }
-        for future in as_completed(futures):
-            name, result, error = future.result()
-            if error:
-                errors[name] = error
-                print(f"[WARN] Collector {name} failed: {error}", file=sys.stderr)
-            else:
-                results[name] = result
-                print(f"[OK] Collector {name} done")
 
-    duration = round(time.time() - t0, 1)
+        # Import collectors based on requested sections
+        collectors: dict[str, tuple] = {}
 
-    # Build output
-    output = {
-        **results,
-        "meta": {
-            "month": args.month,
-            "period": {"start": period_start, "end": period_end},
-            "prev_period": {"start": prev_start, "end": prev_end},
-            "sections": sections,
-            "errors": errors,
-            "collection_duration_sec": duration,
-        },
-    }
+        if "categories" in sections:
+            from scripts.market_review.collectors.market_categories import collect_market_categories
+            collectors["categories"] = (collect_market_categories, shared_kwargs)
 
-    Path(args.output).write_text(json.dumps(output, ensure_ascii=False, indent=2, default=str))
-    print(f"\nData saved to {args.output} ({duration}s, {len(errors)} errors)")
+        if "our" in sections:
+            from scripts.market_review.collectors.our_performance import collect_our_performance
+            collectors["our"] = (collect_our_performance, shared_kwargs)
 
-    if errors:
-        sys.exit(1)
+        if "competitors" in sections:
+            from scripts.market_review.collectors.competitors_brands import collect_competitors_brands
+            collectors["competitors"] = (collect_competitors_brands, shared_kwargs)
+
+        if "models_ours" in sections:
+            from scripts.market_review.collectors.top_models_ours import collect_top_models_ours
+            collectors["models_ours"] = (collect_top_models_ours, shared_kwargs)
+
+        if "models_rivals" in sections:
+            from scripts.market_review.collectors.top_models_rivals import collect_top_models_rivals
+            collectors["models_rivals"] = (collect_top_models_rivals, shared_kwargs)
+
+        if "competitor_deep" in sections:
+            from scripts.market_review.collectors.competitor_deep_dive import collect_competitor_deep_dive
+            collectors["competitor_deep"] = (collect_competitor_deep_dive, shared_kwargs)
+
+        if "discovery" in sections:
+            from scripts.market_review.collectors.discovery_brands import collect_discovery_brands
+            collectors["discovery"] = (collect_discovery_brands, shared_kwargs)
+
+        if "new_items" in sections:
+            from scripts.market_review.collectors.new_items import collect_new_items
+            collectors["new_items"] = (collect_new_items, shared_kwargs)
+
+        # Run collectors in parallel
+        t0 = time.time()
+        results = {}
+        errors = {}
+
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            futures = {
+                pool.submit(run_collector, name, func, kwargs): name
+                for name, (func, kwargs) in collectors.items()
+            }
+            for future in as_completed(futures):
+                name, result, error = future.result()
+                if error:
+                    errors[name] = error
+                    print(f"[WARN] Collector {name} failed: {error}", file=sys.stderr)
+                else:
+                    results[name] = result
+                    print(f"[OK] Collector {name} done")
+
+        duration = round(time.time() - t0, 1)
+
+        # Build output
+        output = {
+            **results,
+            "meta": {
+                "month": args.month,
+                "period": {"start": period_start, "end": period_end},
+                "prev_period": {"start": prev_start, "end": prev_end},
+                "sections": sections,
+                "errors": errors,
+                "collection_duration_sec": duration,
+            },
+        }
+
+        Path(args.output).write_text(json.dumps(output, ensure_ascii=False, indent=2, default=str))
+        print(f"\nData saved to {args.output} ({duration}s, {len(errors)} errors)")
+
+        run_meta["items"] = len(results)
+        if errors:
+            run_meta["notes"] = f"collector errors: {', '.join(errors.keys())}"
+            sys.exit(1)
 
 
 if __name__ == "__main__":

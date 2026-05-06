@@ -1,10 +1,17 @@
 """Fire-and-forget tool run logger for Supabase.
 
-Usage:
+Usage (context manager — recommended):
     from shared.tool_logger import ToolLogger
+    tl = ToolLogger("finance-report")
+    with tl.run(period_start="2026-05-01", period_end="2026-05-31") as run_meta:
+        result = do_work()
+        run_meta["url"] = result.notion_url   # optional Notion page URL
+        run_meta["items"] = result.count       # optional items processed
+    # trigger and user are auto-read from RUN_TRIGGER / USER_EMAIL env vars
+
+Usage (manual):
     logger = ToolLogger("finance-report")
-    run_id = logger.start(trigger="manual", user="danila", version="v4")
-    # ... work ...
+    run_id = logger.start(trigger="manual", user="danila@wookiee.shop")
     logger.finish(run_id, status="success", result_url="...", details={...})
     # or:
     logger.error(run_id, stage="data_collection", message="timeout")
@@ -15,8 +22,9 @@ import json
 import logging
 import os
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Generator, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +48,46 @@ class ToolLogger:
 
     def __init__(self, tool_slug: str) -> None:
         self.tool_slug = tool_slug
+
+    @contextmanager
+    def run(
+        self,
+        trigger: Optional[str] = None,
+        user: Optional[str] = None,
+        **kwargs,
+    ) -> Generator[dict, None, None]:
+        """Context manager that auto-logs start/finish/error.
+
+        Reads USER_EMAIL and RUN_TRIGGER from env if not provided.
+        Caller receives a dict to optionally set:
+            run_meta["url"]   — Notion or other result URL
+            run_meta["items"] — count of items processed
+            run_meta["notes"] — free-form notes
+            run_meta["stage"] — error stage name (used if exception raised)
+        """
+        _trigger = trigger or os.getenv("RUN_TRIGGER", "manual")
+        _user = user or os.getenv("USER_EMAIL", "unknown")
+        run_id = self.start(trigger=_trigger, user=_user, **kwargs)
+        run_meta: dict = {}
+        try:
+            yield run_meta
+            self.finish(
+                run_id,
+                status="success",
+                result_url=run_meta.get("url", ""),
+                items_processed=run_meta.get("items", 0),
+                notes=run_meta.get("notes", ""),
+            )
+        except BaseException as e:
+            # SystemExit(0) = success (caller explicitly chose clean exit)
+            if isinstance(e, SystemExit) and e.code == 0:
+                self.finish(run_id, status="success",
+                            result_url=run_meta.get("url", ""),
+                            items_processed=run_meta.get("items", 0),
+                            notes=run_meta.get("notes", ""))
+            else:
+                self.error(run_id, stage=run_meta.get("stage", "main"), message=str(e))
+            raise
 
     def start(
         self,

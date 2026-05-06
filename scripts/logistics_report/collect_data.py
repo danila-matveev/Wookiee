@@ -18,6 +18,8 @@ from datetime import datetime, timedelta
 from pathlib import Path as _Path
 from dotenv import load_dotenv as _load_dotenv
 
+from shared.tool_logger import ToolLogger
+
 _load_dotenv(_Path(__file__).resolve().parents[2] / ".env")
 
 
@@ -348,19 +350,26 @@ def main() -> None:
     parser.add_argument("--output", default=None, help="Output JSON path")
     args = parser.parse_args()
 
-    data = collect_logistics(args.start, args.end)
+    tl = ToolLogger("logistics-report")
+    with tl.run(period_start=args.start, period_end=args.end) as run_meta:
+        data = collect_logistics(args.start, args.end)
 
-    output_path = args.output or f"/tmp/logistics-{args.start}_{args.end}.json"
-    Path(output_path).write_text(json.dumps(data, ensure_ascii=False, indent=2, default=str))
-    print(f"Collected: {output_path}")
-    print(f"Errors: {data['meta']['errors']}")
-    if data["meta"]["error_details"]:
-        for e in data["meta"]["error_details"]:
-            print(f"  - {e}")
+        output_path = args.output or f"/tmp/logistics-{args.start}_{args.end}.json"
+        _Path(output_path).write_text(json.dumps(data, ensure_ascii=False, indent=2, default=str))
+        print(f"Collected: {output_path}")
+        print(f"Errors: {data['meta']['errors']}")
+        if data["meta"]["error_details"]:
+            for e in data["meta"]["error_details"]:
+                print(f"  - {e}")
 
-    if data["meta"]["errors"] > 3:
-        print("GATE FAILED: too many errors")
-        sys.exit(1)
+        run_meta["items"] = data["meta"].get("sku_count", 0)
+        if data["meta"]["errors"]:
+            run_meta["notes"] = f"{data['meta']['errors']} errors"
+
+        if data["meta"]["errors"] > 3:
+            run_meta["stage"] = "gate_check"
+            print("GATE FAILED: too many errors")
+            sys.exit(1)
 
 
 if __name__ == "__main__":

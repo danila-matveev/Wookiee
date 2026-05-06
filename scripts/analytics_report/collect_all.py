@@ -19,6 +19,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timedelta
 
+from shared.tool_logger import ToolLogger
+
 from scripts.analytics_report.utils import compute_date_params, build_quality_flags
 from scripts.analytics_report.collectors.finance import collect_finance
 from scripts.analytics_report.collectors.advertising import collect_advertising
@@ -124,18 +126,23 @@ def main():
     parser.add_argument("--output", help="Save JSON to file (default: stdout)")
     args = parser.parse_args()
 
-    data = run_collection(args.start, args.end)
+    tl = ToolLogger("analytics-report")
+    with tl.run(period_start=args.start, period_end=args.end or args.start) as run_meta:
+        data = run_collection(args.start, args.end)
 
-    output = json.dumps(data, ensure_ascii=False, default=str)
-    if args.output:
-        with open(args.output, "w") as f:
-            f.write(output)
-        print(
-            f"Saved to {args.output} ({len(output)} bytes, {data['meta']['duration_sec']}s)",
-            file=sys.stderr,
-        )
-    else:
-        print(output)
+        output = json.dumps(data, ensure_ascii=False, default=str)
+        if args.output:
+            with open(args.output, "w") as f:
+                f.write(output)
+            print(
+                f"Saved to {args.output} ({len(output)} bytes, {data['meta']['duration_sec']}s)",
+                file=sys.stderr,
+            )
+        else:
+            print(output)
+
+        run_meta["items"] = len(data) - 1  # keys minus "meta"
+        run_meta["notes"] = f"duration={data['meta']['duration_sec']}s"
 
 
 if __name__ == "__main__":
