@@ -92,6 +92,7 @@ export interface BloggerListParams {
   marketer_id?: number;
   tag_id?: number;
   q?: string;
+  channel?: string;
   cursor?: string;
   limit?: number;
 }
