@@ -218,6 +218,8 @@ async def detect_meeting_ended(page: Page) -> bool:
         "text=Meeting ended",
         "text=Конференция завершена",
         "[data-testid='meeting-ended']",
+        "text=Чтобы пригласить других участников",  # bot is alone
+        "text=To invite other participants",
     ]
     for selector in selectors:
         try:
@@ -227,6 +229,14 @@ async def detect_meeting_ended(page: Page) -> bool:
             continue
     try:
         if "telemost" not in page.url:
+            return True
+    except Exception:
+        pass
+    # Bot is alone in the meeting (participant count badge == 1)
+    try:
+        badge = page.locator("button:has-text('Участники') >> text=/\\d+/")
+        text = (await badge.first.text_content(timeout=500) or "").strip()
+        if text == "1":
             return True
     except Exception:
         pass
