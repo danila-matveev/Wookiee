@@ -40,7 +40,9 @@ describe('fetchTools', () => {
   it('maps display_name to name', async () => {
     vi.mocked(supabase.from).mockReturnValue({
       select: vi.fn().mockReturnValue({
-        neq: vi.fn().mockResolvedValue({ data: [mockRow], error: null }),
+        neq: vi.fn().mockReturnValue({
+          eq: vi.fn().mockResolvedValue({ data: [mockRow], error: null }),
+        }),
       }),
     } as any)
 
@@ -52,7 +54,9 @@ describe('fetchTools', () => {
   it('returns empty array on null data', async () => {
     vi.mocked(supabase.from).mockReturnValue({
       select: vi.fn().mockReturnValue({
-        neq: vi.fn().mockResolvedValue({ data: null, error: { message: 'fail' } }),
+        neq: vi.fn().mockReturnValue({
+          eq: vi.fn().mockResolvedValue({ data: null, error: { message: 'fail' } }),
+        }),
       }),
     } as any)
 
@@ -64,7 +68,9 @@ describe('fetchTools', () => {
     const rowWithNulls = { ...mockRow, data_sources: null, depends_on: null, output_targets: null }
     vi.mocked(supabase.from).mockReturnValue({
       select: vi.fn().mockReturnValue({
-        neq: vi.fn().mockResolvedValue({ data: [rowWithNulls], error: null }),
+        neq: vi.fn().mockReturnValue({
+          eq: vi.fn().mockResolvedValue({ data: [rowWithNulls], error: null }),
+        }),
       }),
     } as any)
 
