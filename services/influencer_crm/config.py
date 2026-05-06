@@ -26,6 +26,7 @@ def _required(name: str) -> str:
 
 
 API_KEY: str = _required("INFLUENCER_CRM_API_KEY")
+SUPABASE_JWT_SECRET: str = os.getenv("SUPABASE_JWT_SECRET", "")
 
 _HOST = _required("POSTGRES_HOST")
 _PORT = os.getenv("POSTGRES_PORT", "5432")

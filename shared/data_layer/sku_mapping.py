@@ -21,6 +21,25 @@ __all__ = [
     "get_artikuly_full_info",
 ]
 
+# Load Supabase env once at module level
+if os.path.exists(SUPABASE_ENV_PATH):
+    load_dotenv(SUPABASE_ENV_PATH)
+
+
+def _get_supabase_conn() -> psycopg2.extensions.connection:
+    """Open a psycopg2 connection to Supabase product-matrix DB."""
+    host = os.getenv('POSTGRES_HOST', '')
+    user = os.getenv('POSTGRES_USER', '')
+    if not host or not user:
+        raise RuntimeError("POSTGRES_HOST and POSTGRES_USER must be set in database/sku/.env")
+    return psycopg2.connect(
+        host=host,
+        port=int(os.getenv('POSTGRES_PORT', 6543)),
+        database=os.getenv('POSTGRES_DB', 'postgres'),
+        user=user,
+        password=os.getenv('POSTGRES_PASSWORD', ''),
+    )
+
 
 def get_artikuly_statuses(cabinet_name: Optional[str] = None):
     """Получение статусов артикулов из Supabase.
@@ -28,19 +47,8 @@ def get_artikuly_statuses(cabinet_name: Optional[str] = None):
     Args:
         cabinet_name: Фильтр по кабинету ("ИП" или "ООО"). None = без фильтра.
     """
-    if os.path.exists(SUPABASE_ENV_PATH):
-        load_dotenv(SUPABASE_ENV_PATH)
-
-    supabase_config = {
-        'host': os.getenv('POSTGRES_HOST', 'aws-0-eu-central-1.pooler.supabase.com'),
-        'port': int(os.getenv('POSTGRES_PORT', 6543)),
-        'database': os.getenv('POSTGRES_DB', 'postgres'),
-        'user': os.getenv('POSTGRES_USER', 'postgres'),
-        'password': os.getenv('POSTGRES_PASSWORD', '')
-    }
-
     try:
-        conn = psycopg2.connect(**supabase_config)
+        conn = _get_supabase_conn()
         cur = conn.cursor()
 
         query = """
@@ -88,19 +96,8 @@ def get_artikul_to_submodel_mapping(cabinet_name: Optional[str] = None) -> dict:
     Args:
         cabinet_name: Фильтр по кабинету ("ИП" или "ООО"). None = без фильтра.
     """
-    if os.path.exists(SUPABASE_ENV_PATH):
-        load_dotenv(SUPABASE_ENV_PATH)
-
-    supabase_config = {
-        'host': os.getenv('POSTGRES_HOST', 'aws-0-eu-central-1.pooler.supabase.com'),
-        'port': int(os.getenv('POSTGRES_PORT', 6543)),
-        'database': os.getenv('POSTGRES_DB', 'postgres'),
-        'user': os.getenv('POSTGRES_USER', 'postgres'),
-        'password': os.getenv('POSTGRES_PASSWORD', '')
-    }
-
     try:
-        conn = psycopg2.connect(**supabase_config)
+        conn = _get_supabase_conn()
         cur = conn.cursor()
         query = """
             SELECT a.artikul, m.kod as model_kod, mo.kod as osnova_kod
@@ -136,19 +133,8 @@ def get_nm_to_article_mapping(cabinet_name: Optional[str] = None) -> dict:
     Args:
         cabinet_name: Фильтр по кабинету ("ИП" или "ООО"). None = без фильтра.
     """
-    if os.path.exists(SUPABASE_ENV_PATH):
-        load_dotenv(SUPABASE_ENV_PATH)
-
-    supabase_config = {
-        'host': os.getenv('POSTGRES_HOST', 'aws-0-eu-central-1.pooler.supabase.com'),
-        'port': int(os.getenv('POSTGRES_PORT', 6543)),
-        'database': os.getenv('POSTGRES_DB', 'postgres'),
-        'user': os.getenv('POSTGRES_USER', 'postgres'),
-        'password': os.getenv('POSTGRES_PASSWORD', '')
-    }
-
     try:
-        conn = psycopg2.connect(**supabase_config)
+        conn = _get_supabase_conn()
         cur = conn.cursor()
         query = """
             SELECT nomenklatura_wb, LOWER(artikul)
@@ -188,19 +174,8 @@ def get_model_statuses() -> dict:
     Если у модели-основы несколько моделей с разными статусами,
     берётся "худший" (Выводим > Архив > остальные).
     """
-    if os.path.exists(SUPABASE_ENV_PATH):
-        load_dotenv(SUPABASE_ENV_PATH)
-
-    supabase_config = {
-        'host': os.getenv('POSTGRES_HOST', 'aws-0-eu-central-1.pooler.supabase.com'),
-        'port': int(os.getenv('POSTGRES_PORT', 6543)),
-        'database': os.getenv('POSTGRES_DB', 'postgres'),
-        'user': os.getenv('POSTGRES_USER', 'postgres'),
-        'password': os.getenv('POSTGRES_PASSWORD', '')
-    }
-
     try:
-        conn = psycopg2.connect(**supabase_config)
+        conn = _get_supabase_conn()
         cur = conn.cursor()
 
         query = """
@@ -306,19 +281,8 @@ def get_model_statuses_mapped() -> dict:
 
 def get_artikuly_full_info():
     """Расширенная информация об артикулах из Supabase: статус, цвет, склейка."""
-    if os.path.exists(SUPABASE_ENV_PATH):
-        load_dotenv(SUPABASE_ENV_PATH)
-
-    supabase_config = {
-        'host': os.getenv('POSTGRES_HOST', 'aws-0-eu-central-1.pooler.supabase.com'),
-        'port': int(os.getenv('POSTGRES_PORT', 6543)),
-        'database': os.getenv('POSTGRES_DB', 'postgres'),
-        'user': os.getenv('POSTGRES_USER', 'postgres'),
-        'password': os.getenv('POSTGRES_PASSWORD', '')
-    }
-
     try:
-        conn = psycopg2.connect(**supabase_config)
+        conn = _get_supabase_conn()
         cur = conn.cursor()
 
         query = """

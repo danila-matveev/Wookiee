@@ -10,21 +10,10 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta
 
-# Load .env from project root
+from dotenv import load_dotenv
+
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-try:
-    from dotenv import load_dotenv
-    load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
-except ImportError:
-    # Manual .env parsing fallback
-    env_path = os.path.join(PROJECT_ROOT, ".env")
-    if os.path.exists(env_path):
-        with open(env_path) as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    key, _, value = line.partition("=")
-                    os.environ.setdefault(key.strip(), value.strip())
+load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
 
 from config import STAFF, EXCLUDED_IDS, CEO_ID
 
