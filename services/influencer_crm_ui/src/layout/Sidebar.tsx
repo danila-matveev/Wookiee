@@ -4,8 +4,6 @@ import {
   FileText,
   Layers,
   type LucideIcon,
-  Package,
-  Search,
   Users,
 } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
@@ -22,8 +20,6 @@ const items: NavItem[] = [
   { to: '/integrations', icon: Layers, label: 'Интеграции' },
   { to: '/calendar', icon: Calendar, label: 'Календарь' },
   { to: '/briefs', icon: FileText, label: 'Брифы' },
-  { to: '/products', icon: Package, label: 'Продукты' },
-  { to: '/search', icon: Search, label: 'Поиск' },
   { to: '/ops', icon: Activity, label: 'Ops' },
 ];
 
