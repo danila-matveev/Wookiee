@@ -35,6 +35,8 @@ def _parse_args() -> argparse.Namespace:
                    help="YYYY-MM-DD (specific mode)")
     p.add_argument("--weeks-back", type=int, default=12,
                    help="bootstrap depth (default 12)")
+    p.add_argument("--skip-db", action="store_true",
+                   help="write to Google Sheets only, skip Supabase write")
     return p.parse_args()
 
 
@@ -47,10 +49,12 @@ def main() -> int:
         week_from=args.date_from,
         week_to=args.date_to,
         weeks_back=args.weeks_back,
+        write_to_db=not args.skip_db,
     )
 
     print(f"status={result['status']}  added={result.get('rows_added', 0)}  "
           f"updated={result.get('rows_updated', 0)}  "
+          f"db_written={result.get('db_rows_written', 0)}  "
           f"unknown={len(result.get('unknown_uuids', []))}")
     return 0 if result.get("status") == "ok" else 1
 

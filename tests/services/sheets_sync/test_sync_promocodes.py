@@ -228,7 +228,9 @@ def test_run_mode_specific_calls_fetch_for_each_cabinet():
                return_value=2), \
          patch("services.sheets_sync.sync.sync_promocodes.upsert_pivot",
                return_value=(0, 2)) as mock_upsert, \
-         patch("services.sheets_sync.sync.sync_promocodes.write_dashboard_header"):
+         patch("services.sheets_sync.sync.sync_promocodes.write_dashboard_header"), \
+         patch("services.sheets_sync.sync.sync_promocodes.write_weekly_metrics",
+               return_value=1):
 
         from services.sheets_sync.sync.sync_promocodes import run
         result = run(
@@ -271,7 +273,9 @@ def test_run_auto_adds_unknown_uuids_from_api():
                return_value=1), \
          patch("services.sheets_sync.sync.sync_promocodes.upsert_pivot",
                return_value=(1, 1)), \
-         patch("services.sheets_sync.sync.sync_promocodes.write_dashboard_header"):
+         patch("services.sheets_sync.sync.sync_promocodes.write_dashboard_header"), \
+         patch("services.sheets_sync.sync.sync_promocodes.write_weekly_metrics",
+               return_value=1):
 
         from services.sheets_sync.sync.sync_promocodes import run
         result = run(

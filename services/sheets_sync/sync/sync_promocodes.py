@@ -18,6 +18,7 @@ from shared.clients.sheets_client import get_moscow_now
 
 from .promocodes.aggregate import aggregate_by_uuid
 from .promocodes.dashboard import compute_dashboard_summary, write_dashboard_header
+from .promocodes.db_io import write_weekly_metrics
 from .promocodes.dictionary import _truthy, parse_dictionary
 from .promocodes.legacy import ANALYTICS_HEADERS, format_analytics_row
 from .promocodes.pivot import (
@@ -44,6 +45,7 @@ __all__ = [
     "read_dictionary_sheet", "ensure_analytics_sheet",
     "_read_pivot_state", "ensure_analytics_dict_rows", "upsert_pivot",
     "write_dashboard_header",
+    "write_weekly_metrics",
     # Orchestrator
     "run",
 ]
@@ -79,12 +81,45 @@ def _cabinets_from_env() -> list[tuple[str, str]]:
 
 # ── Main entry point ─────────────────────────────────────────────────────────
 
+def _merge_for_db(
+    week_data: dict[tuple[str, str], dict],
+) -> dict[str, dict]:
+    """Merge per-(uuid, cabinet) metrics into per-uuid totals for DB write."""
+    merged: dict[str, dict] = {}
+    for (uuid, _cab), data in week_data.items():
+        m = data["metrics"]
+        if uuid not in merged:
+            merged[uuid] = {
+                "sales_rub": m["sales_rub"],
+                "ppvz_rub": m["ppvz_rub"],
+                "orders_count": m["orders_count"],
+                "returns_count": m["returns_count"],
+                "_disc_weighted": m["avg_discount_pct"] * m["orders_count"],
+                "_disc_orders": m["orders_count"],
+            }
+        else:
+            d = merged[uuid]
+            d["sales_rub"] += m["sales_rub"]
+            d["ppvz_rub"] += m["ppvz_rub"]
+            d["orders_count"] += m["orders_count"]
+            d["returns_count"] += m["returns_count"]
+            d["_disc_weighted"] += m["avg_discount_pct"] * m["orders_count"]
+            d["_disc_orders"] += m["orders_count"]
+
+    for d in merged.values():
+        n = d.pop("_disc_orders")
+        w = d.pop("_disc_weighted")
+        d["avg_discount_pct"] = (w / n) if n > 0 else 0.0
+    return merged
+
+
 def run(
     mode: str = "last_week",
     week_from: date | None = None,
     week_to: date | None = None,
     weeks_back: int = 12,
     cabinets: list[tuple[str, str]] | None = None,
+    write_to_db: bool = True,
 ) -> dict:
     """Main entry point. Returns status dict.
 
@@ -105,6 +140,7 @@ def run(
     # Pre-create rows for every (UUID, cabinet) declared in dictionary
     rows_added = ensure_analytics_dict_rows(ws, dictionary, uuid_row_map)
     rows_updated = 0
+    db_rows_written = 0
     unknown_set: set[str] = set()
     last_week_aggs: dict[str, dict] = {}
 
@@ -147,6 +183,12 @@ def run(
         rows_added += a
         rows_updated += u
 
+        if write_to_db and week_data:
+            merged = _merge_for_db(week_data)
+            written = write_weekly_metrics(week_start, merged)
+            db_rows_written += written
+            logger.info("DB: wrote %d rows for week %s", written, week_start)
+
     summary = compute_dashboard_summary(last_week_aggs, dictionary)
     write_dashboard_header(ws, summary, weeks)
 
@@ -159,5 +201,6 @@ def run(
         "cabinets": [c[0] for c in cabs],
         "rows_added": rows_added,
         "rows_updated": rows_updated,
+        "db_rows_written": db_rows_written,
         "unknown_uuids": sorted(unknown_set),
     }
