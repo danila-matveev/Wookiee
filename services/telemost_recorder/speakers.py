@@ -71,6 +71,12 @@ def resolve_speakers(
     if not participant_names:
         return {}
 
+    # Filter roster to only participants who were in this meeting (by name match)
+    roster_names = {e["name"] for e in employees}
+    known = [n for n in participant_names if n in roster_names]
+    # Fall back to all participant names if none matched the roster
+    resolved_participants = known if known else participant_names
+
     excerpt = "\n".join(f"[{s.speaker}]: {s.text}" for s in segments[:60])
 
     openrouter_key = os.getenv("OPENROUTER_API_KEY", "")
@@ -84,7 +90,7 @@ def resolve_speakers(
             {
                 "role": "user",
                 "content": (
-                    f"Meeting participants: {participant_names}\n"
+                    f"Meeting participants: {resolved_participants}\n"
                     f"Speaker labels in transcript: {speaker_labels}\n\n"
                     f"Transcript excerpt:\n{excerpt}\n\n"
                     "Map each speaker label to a participant name based on context clues "
@@ -105,8 +111,19 @@ def resolve_speakers(
         with urllib.request.urlopen(req, timeout=30) as resp:
             result = json.loads(resp.read())
         content = result["choices"][0]["message"]["content"].strip()
+        # Strip markdown code fences if present (```json ... ``` or ``` ... ```)
         if "```" in content:
-            content = content.split("```")[1].lstrip("json").strip()
+            inner = content.split("```")
+            # Take the first non-empty fenced block
+            for block in inner[1::2]:
+                block = block.lstrip("json").strip()
+                if block:
+                    content = block
+                    break
+        # Find JSON object even if LLM wraps it in prose
+        start, end = content.find("{"), content.rfind("}")
+        if start != -1 and end != -1:
+            content = content[start:end + 1]
         mapping = json.loads(content)
         return {k: v for k, v in mapping.items() if k in speaker_labels}
     except Exception as exc:

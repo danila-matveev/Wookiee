@@ -75,7 +75,10 @@ def test_start_on_linux_creates_sink_and_ffmpeg(tmp_path: Path) -> None:
     assert result is True
     assert cap._sink_module_id == 42
     assert cap._ffmpeg_proc is mock_ffmpeg
-    # pactl called with correct sink name
-    call_args = mock_run.call_args[0][0]
-    assert "module-null-sink" in call_args
-    assert "telemost_test-id" in " ".join(call_args)
+    # First pactl call loads the null sink
+    first_call_args = mock_run.call_args_list[0][0][0]
+    assert "module-null-sink" in first_call_args
+    assert "telemost_test-id" in " ".join(first_call_args)
+    # Subsequent calls set default sink and move existing inputs
+    all_calls = [c[0][0] for c in mock_run.call_args_list]
+    assert any("set-default-sink" in c for c in all_calls)

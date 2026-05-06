@@ -7,9 +7,12 @@ from pathlib import Path
 
 from playwright.async_api import Page
 
+from services.telemost_recorder.audio import AudioCapture
 from services.telemost_recorder.browser import launch_browser
 from services.telemost_recorder.config import BOT_NAME, JOIN_TIMEOUT, SCREENSHOT_INTERVAL, WAITING_ROOM_TIMEOUT
+from services.telemost_recorder.speakers import load_speakers, resolve_speakers
 from services.telemost_recorder.state import FailReason, Meeting, MeetingStatus
+from services.telemost_recorder.transcribe import transcribe_audio
 
 _URL_PATTERN = re.compile(
     r"^https?://(telemost\.yandex\.(ru|com)|telemost\.360\.yandex\.ru)/(j|join)/[a-zA-Z0-9_\-]+"
@@ -213,34 +216,38 @@ async def extract_participants(page: Page) -> list[str]:
 
 async def detect_meeting_ended(page: Page) -> bool:
     """Return True when Telemost signals the meeting has ended."""
-    selectors = [
+    # URL check first — fast and reliable: /j/ is only present in active meeting URLs
+    try:
+        if "/j/" not in page.url:
+            return True
+    except Exception:
+        pass
+
+    # Explicit "meeting ended" overlays
+    for selector in (
         "text=Встреча завершена",
         "text=Meeting ended",
         "text=Конференция завершена",
         "[data-testid='meeting-ended']",
-        "text=Чтобы пригласить других участников",  # bot is alone
+        "text=Чтобы пригласить других участников",  # bot is alone in the room
         "text=To invite other participants",
-    ]
-    for selector in selectors:
+    ):
         try:
             if await page.locator(selector).first.is_visible(timeout=200):
                 return True
         except Exception:
             continue
+
+    # Bot is alone: participant count badge shows "1"
     try:
-        # Meeting URL always contains /j/ — if it's gone, we left the meeting
-        if "/j/" not in page.url:
+        btn = page.locator("button").filter(has_text="Участники")
+        badge_text = (await btn.first.text_content(timeout=500) or "")
+        match = re.search(r"\d+", badge_text)
+        if match and match.group() == "1":
             return True
     except Exception:
         pass
-    # Bot is alone in the meeting (participant count badge == 1)
-    try:
-        badge = page.locator("button:has-text('Участники') >> text=/\\d+/")
-        text = (await badge.first.text_content(timeout=500) or "").strip()
-        if text == "1":
-            return True
-    except Exception:
-        pass
+
     return False
 
 
@@ -436,8 +443,18 @@ async def run_session(url: str, bot_name: str = BOT_NAME) -> None:
             meeting.transition(MeetingStatus.IN_MEETING)
             _emit({"status": "IN_MEETING", "meeting_id": meeting.meeting_id, "screenshot": meeting.screenshot_path})
 
-        # Start audio recording (no-op on macOS)
-        capture.start()
+        # Start audio recording (no-op on macOS / when TELEMOST_CAPTURE=false)
+        try:
+            capture.start()
+        except Exception as exc:
+            meeting.transition(MeetingStatus.FAILED, FailReason.RECORDING_FAILED)
+            _emit({
+                "status": "FAILED",
+                "reason": "RECORDING_FAILED",
+                "meeting_id": meeting.meeting_id,
+                "error": str(exc),
+            })
+            return
         meeting.transition(MeetingStatus.RECORDING)
         _emit({"status": "RECORDING", "meeting_id": meeting.meeting_id})
 
@@ -478,9 +495,6 @@ async def run_session(url: str, bot_name: str = BOT_NAME) -> None:
         return
 
     try:
-        from services.telemost_recorder.transcribe import transcribe_audio
-        from services.telemost_recorder.speakers import load_speakers, resolve_speakers
-
         segments = transcribe_audio(audio_path)
         employees = load_speakers()
         speaker_map = resolve_speakers(segments, meeting.participants, employees)
