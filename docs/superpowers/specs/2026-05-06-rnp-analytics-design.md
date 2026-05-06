@@ -82,11 +82,46 @@ JOIN через `nmid`: `content_analysis.vendorcode` → `LOWER(SPLIT_PART(...,
 
 JOIN через `nmid` → `content_analysis` (nmid → vendorcode → model). Расход внутр. рекламы берём из `abc_date.reclama` (согласованно с GAS).
 
-### 3.5 Google Sheets — лист «Блогеры»
+### 3.5 Google Sheets — три отдельных листа каналов внешней рекламы
 
-ID таблицы: env var `RNP_EXT_ADS_SHEET_ID`
+Одна таблица (env var `RNP_EXT_ADS_SHEET_ID` = `1h0NeYw_5Cn7mkI03QxUk_zkvJ7NGV1zFmAtXNW9euSU`) содержит три листа — по одному на канал. Каждый лист фильтруется по модели (Товар, col C).
 
-Колонки (0-indexed, от col A):
+#### Лист «Отчет АДС ежедневный» → канал `vk_contractor` (ВК рекламный кабинет)
+
+Колонки (0-indexed, **подтверждены скриншотом**):
+
+| Индекс | Название колонки | Назначение в API |
+|---|---|---|
+| 0 (A) | Дата | дата строки |
+| 1 (B) | Артикул | — |
+| 2 (C) | Товар | **фильтр по модели** |
+| 3 (D) | Цвет | — |
+| 4 (E) | Потраченные деньги с НДС | `vk_contractor_rub` |
+| 5 (F) | Охват | `vk_contractor_views` |
+| 6 (G) | Клики | `vk_contractor_clicks` |
+| 7 (H) | CPC с НДС | — (derived) |
+| 8 (I) | CPC р с НДС | — |
+| 9 (J) | CTR | — (derived) |
+| 10 (K) | Переходы по UTM | — |
+| 11 (L) | Заказы (UTM) | `vk_contractor_orders` |
+| 12 (M) | Стоимость заказа по UTM | — |
+| 13 (N) | CPO по UTM с НДС | — |
+
+#### Лист «Отчет ADB ежедневный» → канал `adb` (Adblogger / Посевы)
+
+Структура колонок **аналогична АДС** (ожидается тот же шаблон — уточнить при реализации). Фильтр — col C (Товар). Маппинг на API-каналы (`vk_seeds` / `seeds_contractor`) определяется во время реализации (по наличию суб-полей или отдельных колонок).
+
+#### Лист «Отчет EPC ежедневный» → канал `epc` (предположительно Яндекс / другой платный канал)
+
+Структура колонок **предположительно аналогична АДС** — уточнить при реализации (название листа может быть «EPS» — точное написание проверить в таблице). Фильтр — col C (Товар).
+
+> **Неопределённость:** Точное соответствие листов ADB/EPC бизнес-каналам (`vk_seeds`, `seeds_contractor`, `yandex_contractor`) уточняется у Артёма при реализации. Возможно, ADB → Посевы ВК (`vk_seeds`), EPC → Яндекс (`yandex_contractor`), при этом блогеры хранятся в отдельной таблице (env `RNP_BLOGGERS_SHEET_ID`).
+
+### 3.6 Google Sheets — лист «Блогеры» (influencer-кампании)
+
+Отдельная таблица (env var `RNP_BLOGGERS_SHEET_ID` или может быть частью `RNP_EXT_ADS_SHEET_ID` — уточнить).
+
+Колонки (0-indexed, из исходного GAS-скрипта):
 
 | Индекс | Содержание |
 |---|---|
@@ -98,30 +133,7 @@ ID таблицы: env var `RNP_EXT_ADS_SHEET_ID`
 | 28 (AC) | Корзины (может быть пустым) |
 | 30 (AE) | Заказы (может быть пустым) |
 
-Если за период есть бюджет, но все строки stats пустые → флаг `no_stats=true` (отображаем «Нет данных» для views/clicks).
-
-### 3.6 Google Sheets — лист «Внешняя реклама» (ВК/Яндекс/Посевы)
-
-Та же таблица `RNP_EXT_ADS_SHEET_ID`, лист с ВК/Яндекс кампаниями. **Точное название листа нужно уточнить у Артёма** — в GAS-скрипте оно захардкожено как константа. До уточнения реализация читает лист по индексу 1 (второй лист таблицы).
-
-| Индекс | Содержание |
-|---|---|
-| 0 | Дата |
-| 1 | Тип кампании (строка — маппинг ниже) |
-| 5 | Маркетплейс (WB / OZON) |
-| 6 | Модель |
-| 8 | Бюджет, ₽ |
-| 11 | Показы |
-| 12 | Клики |
-
-Маппинг типов:
-
-| Значение в Sheets | Канал в API |
-|---|---|
-| `АДС` | ВК подрядчик (`vk_contractor`) |
-| `Adblogger Света` | Посевы ВК (`vk_seeds`) |
-| `Adblogger Внешний лид` | Посевы подрядчик (`seeds_contractor`) |
-| `ЯПС` | Яндекс подрядчик (`yandex_contractor`) |
+Если за период есть бюджет, но все строки stats пустые → флаг `no_stats=true`.
 
 ---
 
@@ -227,9 +239,10 @@ ID таблицы: env var `RNP_EXT_ADS_SHEET_ID`
       "yandex_contractor_views": 800,
       "yandex_contractor_clicks": 60,
       "ctr_yandex_contractor": 7.50,
+      "margin_before_ads_rub": 422500,
+      "margin_before_ads_pct": 26.4,
       "margin_rub": 238000,
       "margin_pct": 14.9,
-      "margin_before_ads_pct": 26.4,
       "sales_forecast_rub": 1601000,
       "margin_forecast_rub": 232000,
       "margin_forecast_pct": 14.5
@@ -371,13 +384,16 @@ ID таблицы: env var `RNP_EXT_ADS_SHEET_ID`
 | 68 | `yandex_contractor_clicks` | Sheets col 12 |
 | 69 | `ctr_yandex_contractor` | computed |
 
-### Блок 12. Маржа (70–72)
+### Блок 12. Маржа (70–73)
 
 | # | Название | Поле API | Источник | Формула |
 |---|---|---|---|---|
-| 70 | Маржинальная прибыль, ₽ | `margin_rub` | abc_date | SUM(marga - nds - reclama_vn - reclama_vn_vk - reclama_vn_creators) |
-| 71 | Маржа, % | `margin_pct` | computed | margin_rub / sales_rub × 100 |
-| 72 | Маржа до рекламы, % | `margin_before_ads_pct` | computed | (margin_rub + adv_total) / sales_rub × 100 |
+| 70 | Маржа до рекламы, ₽ | `margin_before_ads_rub` | computed | margin_rub + adv_total_rub |
+| 71 | Маржа до рекламы, % | `margin_before_ads_pct` | computed | margin_before_ads_rub / sales_rub × 100 |
+| 72 | Маржинальная прибыль (после рекламы), ₽ | `margin_rub` | abc_date | SUM(marga - nds - reclama_vn - reclama_vn_vk - reclama_vn_creators) |
+| 73 | Маржа (после рекламы), % | `margin_pct` | computed | margin_rub / sales_rub × 100 |
+
+> **Архитектурная особенность:** оба значения — до и после рекламы — являются первоклассными метриками, отображаются в summary-карточках и в основном чарте "Маржа". Маржа до рекламы показывает «потенциал» модели; маржа после рекламы — реальный результат.
 
 ### Блок 13. Прогноз (73–75)
 
@@ -387,9 +403,9 @@ ID таблицы: env var `RNP_EXT_ADS_SHEET_ID`
 | 74 | Маржинальная прибыль (прогноз), ₽ | `margin_forecast_rub` | см. §6.3 |
 | 75 | Маржинальность, % (прогноз) | `margin_forecast_pct` | margin_forecast_rub / sales_forecast_rub × 100 |
 
-**Итого: 76/76 метрик покрыты.** Источники:
+**Итого: 77/76 метрик покрыты** (76 исходных GAS-метрик + `margin_before_ads_rub` как отдельное поле для UI). Источники:
 - WB PostgreSQL (abc_date + orders + content_analysis + wb_adv): метрики 0–29, 70–75
-- Google Sheets (Блогеры + Внешняя реклама): метрики 30–69
+- Google Sheets (Блогеры + 3 листа каналов): метрики 30–69
 
 ---
 
@@ -398,7 +414,8 @@ ID таблицы: env var `RNP_EXT_ADS_SHEET_ID`
 ### 6.1 Прибыль внутренней рекламы (прогноз)
 
 ```python
-margin_before_ads_pct = (margin_rub + adv_total_rub) / sales_rub  # доля маржи до рекламы
+margin_before_ads_rub = margin_rub + adv_total_rub              # маржа до вычета рекламы
+margin_before_ads_pct = margin_before_ads_rub / sales_rub        # доля маржи до рекламы
 adv_orders_rub = orders_internal_qty * (orders_rub / orders_qty)   # выручка с рекл. заказов
 adv_sales_rub = adv_orders_rub * buyout_forecast
 adv_internal_profit_forecast = adv_sales_rub * margin_before_ads_pct - adv_internal_rub
@@ -481,7 +498,7 @@ def detect_phase(margin_pct: float, drr_total: float) -> str:
 RnpPage (src/pages/analytics/rnp.tsx)
 ├── RnpHelpBlock          — общая инструкция (collapsible, один раз сверху)
 ├── RnpFilters            — модель, период, маркетплейс, кнопка «Обновить»
-├── RnpSummaryCards       — 4 карточки: Заказы / Продажи / Маржа% / ДРР итого
+├── RnpSummaryCards       — 6 карточек (см. ниже)
 └── RnpTabs               — 6 вкладок
     ├── Tab "Заказы & Продажи"
     ├── Tab "Воронка"
@@ -491,14 +508,29 @@ RnpPage (src/pages/analytics/rnp.tsx)
     └── Tab "Маржа & Прогноз"
 ```
 
-### 9.1 RnpFilters
+### 9.1 RnpSummaryCards
+
+Шесть карточек, итог за весь выбранный период (сумма всех недель):
+
+| Карточка | Поле | Акцент |
+|---|---|---|
+| Заказы | `orders_qty` + `orders_rub` | нейтральный |
+| Продажи | `sales_qty` + `sales_rub` | нейтральный |
+| Маржа **до** рекламы | `margin_before_ads_pct` + `margin_before_ads_rub` | **синий** — «потенциал» |
+| Маржа **после** рекламы | `margin_pct` + `margin_rub` | **зелёный/красный** по фазе |
+| ДРР итого | `drr_total_from_orders` | красный если > порога |
+| Прогноз маржи | `margin_forecast_pct` + `margin_forecast_rub` | нейтральный |
+
+Обе маржи стоят рядом — пользователь видит «эффект рекламы» = разницу между ними одним взглядом.
+
+### 9.2 RnpFilters
 
 - **Модель**: `<Select>` — список моделей из отдельного endpoint `GET /api/rnp/models`
 - **Период**: date picker с auto-snap Mon→Sun; пресеты «4 нед.», «8 нед.», «12 нед.», «Свой»
 - **Маркетплейс**: `<SegmentedControl>` «WB» | «WB + OZON» | «OZON» (OZON disabled, badge «скоро»)
 - State в URL через `useSearchParams` — дашборд bookmarkable/shareable
 
-### 9.2 Система графиков (Recharts)
+### 9.3 Система графиков (Recharts)
 
 **Базовый паттерн для каждого таба:**
 ```tsx
@@ -524,7 +556,7 @@ const [hidden, setHidden] = useState<Set<string>>(new Set())
 | Реклама итого | Bar: adv_internal + adv_external (stacked); Line: drr_total_from_orders (правая ось) | Расход/ДРР по каналам |
 | Внутренняя реклама | Bar: adv_views; Line: adv_clicks; Line: ctr_internal (правая ось); Bar: orders_internal_qty | CPC/CPO/CPM/ROMI |
 | Внешняя реклама | Grouped Bar: blogger + vk_c + vk_s + s_c + ya_c по неделям; Line: ctr_external | Расход/Просмотры/Клики/CTR по каналам + Прибыль/ROMI блогеров |
-| Маржа & Прогноз | Bar: margin_rub (phase color); Line: margin_pct; Line: margin_before_ads_pct (правая ось) | Маржа/Прогноз/ДРР |
+| Маржа & Прогноз | Bar: margin_rub (phase color) + Bar: margin_before_ads_rub (серый, stacked-like overlay); Line: margin_pct (правая ось); Line: margin_before_ads_pct (правая ось, пунктир) | Маржа до/после рекламы / Прогноз / Разница (эффект рекламы) |
 
 **Toggle:** клик по легенде скрывает/показывает серию. Активное состояние отображается opacity.
 
