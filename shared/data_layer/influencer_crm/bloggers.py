@@ -26,6 +26,7 @@ FROM crm.bloggers b
 WHERE b.archived_at IS NULL
   {status_filter}
   {marketer_filter}
+  {channel_filter}
   {cursor_filter}
 ORDER BY b.updated_at DESC, b.id DESC
 LIMIT :limit
@@ -40,6 +41,7 @@ def list_bloggers(
     status: str | None = None,
     marketer_id: int | None = None,
     q: str | None = None,
+    channel: str | None = None,
 ) -> tuple[list[BloggerOut], str | None]:
     """Return (rows, next_cursor). Rows length ≤ limit.
 
@@ -60,6 +62,15 @@ def list_bloggers(
         marketer_filter = "AND b.default_marketer_id = :marketer_id"
         params["marketer_id"] = marketer_id
 
+    channel_filter = ""
+    if channel:
+        channel_filter = (
+            "AND b.id IN ("
+            "  SELECT blogger_id FROM crm.blogger_channels WHERE channel = :channel"
+            ")"
+        )
+        params["channel"] = channel
+
     cursor_filter = ""
     decoded = decode_cursor(cursor)
     if decoded is not None:
@@ -73,6 +84,7 @@ def list_bloggers(
     sql = _LIST_SQL.format(
         status_filter=status_filter,
         marketer_filter=marketer_filter,
+        channel_filter=channel_filter,
         cursor_filter=cursor_filter,
     )
 

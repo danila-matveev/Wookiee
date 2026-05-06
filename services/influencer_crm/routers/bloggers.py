@@ -33,10 +33,12 @@ def list_bloggers(
     status_filter: str | None = Query(default=None, alias="status"),
     marketer_id: int | None = None,
     q: str | None = None,
+    channel: str | None = Query(default=None),
 ) -> Page[BloggerOut]:
     items, next_cursor = repo.list_bloggers(
         session, limit=limit, cursor=cursor,
         status=status_filter, marketer_id=marketer_id, q=q,
+        channel=channel,
     )
     return Page[BloggerOut](items=items, next_cursor=next_cursor)
 

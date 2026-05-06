@@ -52,6 +52,7 @@ def list_integrations(
     blogger_id: int | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
+    q: str | None = None,
 ) -> tuple[list[IntegrationOut], str | None]:
     params: dict[str, Any] = {"limit": limit + 1}
     where: list[str] = []
@@ -74,6 +75,9 @@ def list_integrations(
     if date_to:
         where.append("AND i.publish_date <= :date_to")
         params["date_to"] = date_to
+    if q:
+        where.append("AND LOWER(b.display_handle) LIKE LOWER(:q_pattern)")
+        params["q_pattern"] = f"%{q}%"
 
     decoded = decode_cursor(cursor)
     if decoded is not None:

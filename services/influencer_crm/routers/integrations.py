@@ -33,12 +33,14 @@ def list_integrations(
     blogger_id: int | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
+    q: str | None = Query(default=None),
 ) -> Page[IntegrationOut]:
     items, next_cursor = repo.list_integrations(
         session, limit=limit, cursor=cursor,
         stage_in=stage_in, marketplace=marketplace,
         marketer_id=marketer_id, blogger_id=blogger_id,
         date_from=date_from, date_to=date_to,
+        q=q,
     )
     return Page[IntegrationOut](items=items, next_cursor=next_cursor)
 
