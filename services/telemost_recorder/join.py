@@ -228,7 +228,8 @@ async def detect_meeting_ended(page: Page) -> bool:
         except Exception:
             continue
     try:
-        if "telemost" not in page.url:
+        # Meeting URL always contains /j/ — if it's gone, we left the meeting
+        if "/j/" not in page.url:
             return True
     except Exception:
         pass
