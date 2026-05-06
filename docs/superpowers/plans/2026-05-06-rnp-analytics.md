@@ -19,6 +19,7 @@
 - `services/analytics_api/__init__.py`
 - `services/analytics_api/app.py` — FastAPI: /health, /api/rnp/models, /api/rnp/weeks
 - `services/analytics_api/requirements.txt`
+- `tests/analytics_api/__init__.py` — empty, makes pytest discover the module
 - `tests/analytics_api/test_rnp_metrics.py` — unit tests for derived metric logic
 - `wookiee-hub/src/types/rnp.ts` — TypeScript types for API response
 - `wookiee-hub/src/api/rnp.ts` — API client (fetch wrapper)
@@ -215,7 +216,7 @@ def fetch_rnp_wb_daily(
             ca = {r[0]: r for r in cur.fetchall()}
 
             # ── wb_adv: internal ad views/clicks/orders ────────────────────────
-            # Subquery resolves nmid→model via content_analysis (verify JOIN at impl time)
+            # nmid→model resolved via `nomenclature` table (confirmed pattern from advertising.py)
             cur.execute("""
                 SELECT
                     wa.date::date   AS dt,
@@ -223,11 +224,9 @@ def fetch_rnp_wb_daily(
                     SUM(wa.clicks)  AS adv_clicks,
                     SUM(wa.orders)  AS adv_orders
                 FROM wb_adv wa
-                WHERE wa.nmid IN (
-                    SELECT DISTINCT nmid
-                    FROM content_analysis
-                    WHERE LOWER(SPLIT_PART(vendorcode, '/', 1)) = %s
-                )
+                JOIN (SELECT DISTINCT nmid, vendorcode FROM nomenclature) n
+                  ON wa.nmid = n.nmid
+                WHERE LOWER(SPLIT_PART(n.vendorcode, '/', 1)) = %s
                   AND wa.date::date BETWEEN %s AND %s
                 GROUP BY 1
             """, (m, date_from, date_to))
