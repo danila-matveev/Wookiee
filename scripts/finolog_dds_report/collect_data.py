@@ -188,7 +188,7 @@ def main() -> None:
     parser.add_argument("--output", default=None, help="Output JSON path")
     args = parser.parse_args()
 
-    tl = ToolLogger("finolog-dds-report")
+    tl = ToolLogger("/finolog-dds-report")
     with tl.run(period_start=args.start, period_end=args.end) as run_meta:
         data = collect_finolog_dds(args.start, args.end)
 

@@ -74,7 +74,7 @@ def main():
     prev_start, prev_end = _month_range(prev)
     sections = [s.strip() for s in args.sections.split(",")]
 
-    tl = ToolLogger("market-review")
+    tl = ToolLogger("/market-review")
     with tl.run(period_start=period_start, period_end=period_end) as run_meta:
         shared_kwargs = {
             "period_start": period_start,

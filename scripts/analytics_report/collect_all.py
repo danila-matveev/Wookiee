@@ -126,7 +126,7 @@ def main():
     parser.add_argument("--output", help="Save JSON to file (default: stdout)")
     args = parser.parse_args()
 
-    tl = ToolLogger("analytics-report")
+    tl = ToolLogger("/analytics-report")
     with tl.run(period_start=args.start, period_end=args.end or args.start) as run_meta:
         data = run_collection(args.start, args.end)
 

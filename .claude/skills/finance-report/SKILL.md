@@ -132,7 +132,7 @@ Record the run start in Supabase tool_runs:
 PYTHONPATH=. python3 -c "
 import os; from dotenv import load_dotenv; load_dotenv()
 from shared.tool_logger import ToolLogger
-logger = ToolLogger('finance-report')
+logger = ToolLogger('/finance-report')
 run_id = logger.start(
     trigger=os.getenv('RUN_TRIGGER', 'manual'),
     user=os.getenv('USER_EMAIL', 'unknown'),
@@ -366,7 +366,7 @@ Record the run completion:
 ```bash
 PYTHONPATH=. python3 -c "
 from shared.tool_logger import ToolLogger
-logger = ToolLogger('finance-report')
+logger = ToolLogger('/finance-report')
 logger.finish('{RUN_ID}',
     status='success',
     result_url='{NOTION_URL}',

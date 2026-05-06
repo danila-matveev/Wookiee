@@ -184,7 +184,7 @@ def main():
     target = parse_date_arg(sys.argv[1] if len(sys.argv) > 1 else None)
     print(f"[daily-brief] target date: {target.isoformat()}")
 
-    tl = ToolLogger("daily-brief")
+    tl = ToolLogger("/daily-brief")
     with tl.run(period_start=target.isoformat(), period_end=target.isoformat()) as run_meta:
         brief = build_brief(target)
 

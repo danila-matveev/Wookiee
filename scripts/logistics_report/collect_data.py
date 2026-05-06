@@ -350,7 +350,7 @@ def main() -> None:
     parser.add_argument("--output", default=None, help="Output JSON path")
     args = parser.parse_args()
 
-    tl = ToolLogger("logistics-report")
+    tl = ToolLogger("/logistics-report")
     with tl.run(period_start=args.start, period_end=args.end) as run_meta:
         data = collect_logistics(args.start, args.end)
 

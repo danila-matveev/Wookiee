@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import type { AgentRun, RunsFilter } from '../types/activity'
+import type { AgentRun, RunsFilter, ToolRun, ToolRunsFilter } from '../types/activity'
 
 export const AGENT_TO_LABEL: Record<string, string> = {
   'margin-analyst': 'Аналитический отчёт',
@@ -86,4 +86,62 @@ export async function fetchRunsByToolSlug(toolSlug: string, limit = 5): Promise<
     return []
   }
   return fetchRuns({ agentNames }, limit)
+}
+
+// ─── tool_runs ──────────────────────────────────────────────────────────────
+
+export async function fetchToolRuns(filter?: ToolRunsFilter, limit = 50): Promise<ToolRun[]> {
+  let query = supabase
+    .from('tool_runs')
+    .select('id, tool_slug, tool_version, status, trigger_type, triggered_by, environment, period_start, period_end, started_at, finished_at, duration_sec, result_url, items_processed, output_sections, error_stage, error_message, notes, model_used, tokens_input, tokens_output')
+    .order('started_at', { ascending: false })
+    .limit(limit)
+
+  if (filter?.toolSlugs && filter.toolSlugs.length > 0) {
+    query = query.in('tool_slug', filter.toolSlugs)
+  }
+  if (filter?.status) {
+    query = query.eq('status', filter.status)
+  }
+  if (filter?.dateFrom) {
+    query = query.gte('started_at', filter.dateFrom)
+  }
+  if (filter?.dateTo) {
+    query = query.lte('started_at', filter.dateTo)
+  }
+
+  const { data, error } = await query
+
+  if (error) {
+    console.error('fetchToolRuns error:', error)
+    return []
+  }
+
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    toolSlug: row.tool_slug,
+    toolVersion: row.tool_version,
+    status: row.status,
+    triggerType: row.trigger_type,
+    triggeredBy: row.triggered_by,
+    environment: row.environment,
+    periodStart: row.period_start,
+    periodEnd: row.period_end,
+    startedAt: row.started_at,
+    finishedAt: row.finished_at,
+    durationSec: row.duration_sec,
+    resultUrl: row.result_url,
+    itemsProcessed: row.items_processed,
+    outputSections: row.output_sections,
+    errorStage: row.error_stage,
+    errorMessage: row.error_message,
+    notes: row.notes,
+    modelUsed: row.model_used,
+    tokensInput: row.tokens_input,
+    tokensOutput: row.tokens_output,
+  }))
+}
+
+export async function fetchToolRunsBySlug(toolSlug: string, limit = 5): Promise<ToolRun[]> {
+  return fetchToolRuns({ toolSlugs: [toolSlug] }, limit)
 }
