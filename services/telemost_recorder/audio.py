@@ -70,6 +70,35 @@ class AudioCapture:
         )
         return True
 
+    def reroute_streams(self) -> None:
+        """Move any sink-inputs not yet on our sink. Call periodically during meeting."""
+        if not self._sink_name or platform.system() != "Linux":
+            return
+        inputs = subprocess.run(
+            ["pactl", "list", "short", "sink-inputs"],
+            capture_output=True, text=True,
+        )
+        for line in inputs.stdout.strip().splitlines():
+            if not line.strip():
+                continue
+            parts = line.split()
+            input_id, sink_id = parts[0], parts[1] if len(parts) > 1 else ""
+            sinks = subprocess.run(
+                ["pactl", "list", "short", "sinks"],
+                capture_output=True, text=True,
+            )
+            our_sink_id = None
+            for sline in sinks.stdout.strip().splitlines():
+                sp = sline.split()
+                if len(sp) >= 2 and sp[1] == self._sink_name:
+                    our_sink_id = sp[0]
+                    break
+            if our_sink_id and sink_id != our_sink_id:
+                subprocess.run(
+                    ["pactl", "move-sink-input", input_id, self._sink_name],
+                    capture_output=True,
+                )
+
     def stop(self) -> Optional[Path]:
         """Stop recording. Returns audio path if file is non-empty, else None."""
         if self._ffmpeg_proc is not None:
