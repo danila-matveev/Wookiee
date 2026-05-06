@@ -1,0 +1,81 @@
+import platform
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from services.telemost_recorder.audio import AudioCapture
+
+
+def test_audio_path_property(tmp_path: Path) -> None:
+    cap = AudioCapture(meeting_id="abc123", output_dir=tmp_path)
+    assert cap.audio_path == tmp_path / "audio.opus"
+
+
+def test_start_returns_false_when_capture_disabled(tmp_path: Path) -> None:
+    cap = AudioCapture(meeting_id="abc123", output_dir=tmp_path)
+    with patch("services.telemost_recorder.audio.TELEMOST_CAPTURE", False):
+        result = cap.start()
+    assert result is False
+
+
+def test_start_returns_false_on_macos(tmp_path: Path) -> None:
+    cap = AudioCapture(meeting_id="abc123", output_dir=tmp_path)
+    with patch("services.telemost_recorder.audio.TELEMOST_CAPTURE", True), \
+         patch("platform.system", return_value="Darwin"):
+        result = cap.start()
+    assert result is False
+
+
+def test_stop_without_start_returns_none(tmp_path: Path) -> None:
+    cap = AudioCapture(meeting_id="abc123", output_dir=tmp_path)
+    result = cap.stop()
+    assert result is None
+
+
+def test_stop_returns_none_when_audio_file_missing(tmp_path: Path) -> None:
+    cap = AudioCapture(meeting_id="abc123", output_dir=tmp_path)
+    mock_proc = MagicMock()
+    cap._ffmpeg_proc = mock_proc
+    result = cap.stop()
+    mock_proc.terminate.assert_called_once()
+    assert result is None
+
+
+def test_stop_returns_path_when_audio_file_exists(tmp_path: Path) -> None:
+    cap = AudioCapture(meeting_id="abc123", output_dir=tmp_path)
+    audio_file = tmp_path / "audio.opus"
+    audio_file.write_bytes(b"fake opus data")
+    mock_proc = MagicMock()
+    mock_sink_id = 5
+    cap._ffmpeg_proc = mock_proc
+    cap._sink_module_id = mock_sink_id
+    with patch("subprocess.run") as mock_run:
+        result = cap.stop()
+    mock_run.assert_called_once_with(
+        ["pactl", "unload-module", "5"],
+        capture_output=True,
+    )
+    assert result == audio_file
+
+
+def test_start_on_linux_creates_sink_and_ffmpeg(tmp_path: Path) -> None:
+    cap = AudioCapture(meeting_id="test-id-123", output_dir=tmp_path)
+    mock_pactl = MagicMock()
+    mock_pactl.returncode = 0
+    mock_pactl.stdout = "42\n"
+    mock_ffmpeg = MagicMock()
+
+    with patch("services.telemost_recorder.audio.TELEMOST_CAPTURE", True), \
+         patch("platform.system", return_value="Linux"), \
+         patch("subprocess.run", return_value=mock_pactl) as mock_run, \
+         patch("subprocess.Popen", return_value=mock_ffmpeg) as mock_popen:
+        result = cap.start()
+
+    assert result is True
+    assert cap._sink_module_id == 42
+    assert cap._ffmpeg_proc is mock_ffmpeg
+    # pactl called with correct sink name
+    call_args = mock_run.call_args[0][0]
+    assert "module-null-sink" in call_args
+    assert "telemost_test-id" in " ".join(call_args)
