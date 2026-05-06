@@ -38,6 +38,22 @@ class AudioCapture:
             raise RuntimeError(f"PulseAudio sink creation failed: {result.stderr}")
         self._sink_module_id = int(result.stdout.strip())
 
+        # Make our sink the default so new streams go here
+        subprocess.run(["pactl", "set-default-sink", self._sink_name], capture_output=True)
+
+        # Move any existing sink-inputs (Chromium WebRTC streams) to our sink
+        inputs = subprocess.run(
+            ["pactl", "list", "short", "sink-inputs"],
+            capture_output=True, text=True,
+        )
+        for line in inputs.stdout.strip().splitlines():
+            if line.strip():
+                input_id = line.split()[0]
+                subprocess.run(
+                    ["pactl", "move-sink-input", input_id, self._sink_name],
+                    capture_output=True,
+                )
+
         self._ffmpeg_proc = subprocess.Popen(
             [
                 "ffmpeg", "-y",
