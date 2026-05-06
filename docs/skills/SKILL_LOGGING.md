@@ -121,6 +121,7 @@ WHERE slug = '{TOOL_SLUG}';
 | abc-audit | `abc-audit` | ⏳ pending |
 | marketing-report | `marketing-report` | ⏳ pending |
 | funnel-report | `funnel-report` | ⏳ pending |
+| coo-report | `/coo-report` | ✅ через SKILL.md блок |
 
 ---
 

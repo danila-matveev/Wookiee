@@ -252,3 +252,45 @@ python3 -u modules/coo_report/collectors/finance.py 2>&1 | tee /tmp/debug.log
 - Проверка аномалий: ~1–2 минуты
 - Синтез и заполнение Notion: ~5–10 минут
 - **Итого:** ~20–40 минут (в зависимости от volume данных)
+
+---
+
+## Логирование (выполнить всегда в конце)
+
+Определи переменные для логирования:
+- `_log_status` = `success` или `error`
+- `_log_url` = URL страницы в Notion (например `https://www.notion.so/PAGE_ID`)
+- `_log_items` = количество моделей в отчёте (обычно 16)
+- `_log_notes` = краткое описание результата или ошибки (например "Отчёт 04.05–11.05.2026, 16 моделей, маржа 37.1%")
+- `_log_user` = значение USER_EMAIL из `.env` (или "unknown")
+
+Выполни через Supabase MCP:
+
+```sql
+WITH ins AS (
+  INSERT INTO tool_runs (
+    id, tool_slug, status, trigger_type, triggered_by,
+    result_url, items_processed, notes,
+    started_at, finished_at, duration_sec
+  ) VALUES (
+    gen_random_uuid(),
+    '/coo-report',
+    '_log_status',
+    'manual',
+    'user:_log_user',
+    '_log_url',
+    _log_items,
+    '_log_notes',
+    now() - interval 'N seconds',
+    now(),
+    N
+  )
+  RETURNING tool_slug, status
+)
+UPDATE tools SET
+  total_runs = total_runs + 1,
+  last_run_at = now(),
+  last_status = '_log_status',
+  updated_at = now()
+WHERE slug = '/coo-report';
+```
