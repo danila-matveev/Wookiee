@@ -23,6 +23,8 @@ const makeTool = (overrides: Partial<OperationsTool>): OperationsTool => ({
   totalRuns: 0,
   lastRunAt: null,
   lastStatus: null,
+  usageExamples: null,
+  docUrl: null,
   ...overrides,
 })
 
