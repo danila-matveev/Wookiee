@@ -24,6 +24,8 @@ function mapRow(row: any): OperationsTool {
     totalRuns: row.total_runs ?? 0,
     lastRunAt: row.last_run_at ?? null,
     lastStatus: row.last_status ?? null,
+    usageExamples: row.usage_examples ?? null,
+    docUrl: row.doc_url ?? null,
   }
 }
 
@@ -34,7 +36,8 @@ export async function fetchTools(): Promise<OperationsTool[]> {
       'slug, display_name, name_ru, type, category, status, version, ' +
       'description, how_it_works, run_command, data_sources, depends_on, ' +
       'output_targets, output_description, health_check, skill_md_path, ' +
-      'required_env_vars, total_runs, last_run_at, last_status'
+      'required_env_vars, total_runs, last_run_at, last_status, ' +
+      'usage_examples, doc_url'
     )
     .neq('status', 'archived')
     .eq('show_in_hub', true)

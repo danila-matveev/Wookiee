@@ -1,7 +1,10 @@
-import { X, Terminal, ArrowRight } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { X, Terminal, ArrowRight, CheckCircle2, XCircle, Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { OperationsTool } from '@/types/tool'
 import { ToolSkillViewer } from './tool-skill-viewer'
+import { fetchRunsByToolSlug } from '@/lib/activity-service'
+import type { AgentRun } from '@/types/activity'
 
 const STATUS_LABEL: Record<string, string> = {
   active:     'Активен',
@@ -22,6 +25,21 @@ const CATEGORY_LABEL: Record<string, string> = {
   publishing: 'Публикация',
   team:       'Команда',
   planning:   'Планирование',
+}
+
+function formatRunTime(iso: string): string {
+  const d = new Date(iso)
+  const day = String(d.getDate()).padStart(2, '0')
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const hours = String(d.getHours()).padStart(2, '0')
+  const minutes = String(d.getMinutes()).padStart(2, '0')
+  return `${day}.${month} ${hours}:${minutes}`
+}
+
+function formatDuration(ms: number | null): string {
+  if (ms === null) return '—'
+  if (ms >= 1000) return `${Math.round(ms / 1000)}с`
+  return `${ms}мс`
 }
 
 function formatLastRunPanel(iso: string): string {
@@ -49,6 +67,17 @@ interface ToolDetailPanelProps {
 }
 
 export function ToolDetailPanel({ tool, onClose }: ToolDetailPanelProps) {
+  const [recentRuns, setRecentRuns] = useState<AgentRun[]>([])
+  const [runsLoading, setRunsLoading] = useState(false)
+
+  useEffect(() => {
+    setRunsLoading(true)
+    fetchRunsByToolSlug(tool.slug, 5).then((runs) => {
+      setRecentRuns(runs)
+      setRunsLoading(false)
+    })
+  }, [tool.slug])
+
   return (
     <>
       {/* Backdrop */}
@@ -99,6 +128,24 @@ export function ToolDetailPanel({ tool, onClose }: ToolDetailPanelProps) {
               <pre className="text-[12px] text-foreground leading-relaxed whitespace-pre-wrap font-sans">
                 {tool.howItWorks}
               </pre>
+            </Section>
+          )}
+
+          {/* Usage examples */}
+          {tool.usageExamples && (
+            <Section label="Примеры использования">
+              <div className="space-y-1.5">
+                {tool.usageExamples.split('\n').filter(Boolean).map((ex, i) => (
+                  <div key={i} className="flex items-center gap-2 bg-muted/50 border border-border rounded-lg px-3 py-2">
+                    <code className="text-[12px] font-mono text-foreground">{ex}</code>
+                  </div>
+                ))}
+              </div>
+              {tool.docUrl && (
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Документация: <span className="font-mono">{tool.docUrl}</span>
+                </p>
+              )}
             </Section>
           )}
 
@@ -199,7 +246,29 @@ export function ToolDetailPanel({ tool, onClose }: ToolDetailPanelProps) {
                 </p>
               </div>
             </div>
-            <p className="text-[11px] text-muted-foreground mt-2">Детальная история запусков — Phase 2</p>
+          </Section>
+
+          <Section label="Последние запуски">
+            {runsLoading && (
+              <p className="text-[11px] text-muted-foreground">Загружаю...</p>
+            )}
+            {!runsLoading && recentRuns.length === 0 && (
+              <p className="text-[11px] text-muted-foreground">Нет данных о запусках</p>
+            )}
+            {!runsLoading && recentRuns.length > 0 && (
+              <div className="space-y-1.5">
+                {recentRuns.map((run) => (
+                  <div key={run.id} className="flex items-center gap-2">
+                    {run.status === 'success' && <CheckCircle2 size={12} className="text-green-600 shrink-0" />}
+                    {run.status === 'error' && <XCircle size={12} className="text-red-600 shrink-0" />}
+                    {run.status === 'timeout' && <Clock size={12} className="text-amber-600 shrink-0" />}
+                    <span className="font-mono text-[11px] text-foreground flex-1 truncate">{run.agentName}</span>
+                    <span className="text-[11px] text-muted-foreground w-10 text-right shrink-0">{formatDuration(run.durationMs)}</span>
+                    <span className="text-[11px] text-muted-foreground whitespace-nowrap shrink-0">{formatRunTime(run.startedAt)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </Section>
 
         </div>

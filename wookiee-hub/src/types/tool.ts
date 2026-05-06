@@ -30,6 +30,8 @@ export interface OperationsTool {
   totalRuns: number
   lastRunAt: string | null      // mapped from last_run_at (ISO string)
   lastStatus: string | null     // mapped from last_status
+  usageExamples: string | null  // mapped from usage_examples
+  docUrl: string | null         // mapped from doc_url
 }
 
 export type ToolCategoryFilter = ToolCategory | 'all'
