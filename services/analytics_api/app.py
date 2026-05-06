@@ -12,14 +12,25 @@ from datetime import date, timedelta
 from typing import Optional
 
 import jwt
+from jwt import PyJWKClient
 from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv()
 
-ANALYTICS_API_KEY     = os.getenv("ANALYTICS_API_KEY", "")
-SUPABASE_JWT_SECRET   = os.getenv("SUPABASE_JWT_SECRET", "")
+ANALYTICS_API_KEY = os.getenv("ANALYTICS_API_KEY", "")
+SUPABASE_URL      = os.getenv("SUPABASE_URL", "")
+
+_jwks_client: Optional[PyJWKClient] = None
+
+def _get_jwks_client() -> PyJWKClient:
+    global _jwks_client
+    if _jwks_client is None:
+        if not SUPABASE_URL:
+            raise RuntimeError("SUPABASE_URL not set in .env")
+        _jwks_client = PyJWKClient(f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json")
+    return _jwks_client
 GOOGLE_SA_FILE        = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE", "services/sheets_sync/credentials/google_sa.json")
 RNP_EXT_ADS_SHEET_ID  = os.getenv("RNP_EXT_ADS_SHEET_ID", "")
 RNP_BLOGGERS_SHEET_ID = os.getenv("RNP_BLOGGERS_SHEET_ID", "")
@@ -63,13 +74,12 @@ def _verify_auth(
 
 
 def _verify_supabase_jwt(token: str) -> None:
+    if not SUPABASE_URL:
+        raise HTTPException(403, "Bearer auth not configured (SUPABASE_URL missing)")
     try:
-        if SUPABASE_JWT_SECRET:
-            jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=["HS256"], audience="authenticated")
-        else:
-            payload = jwt.decode(token, options={"verify_signature": False})
-            if payload.get("role") != "authenticated":
-                raise HTTPException(403, "Token role must be 'authenticated'")
+        client = _get_jwks_client()
+        signing_key = client.get_signing_key_from_jwt(token)
+        jwt.decode(token, signing_key.key, algorithms=["ES256", "RS256", "HS256"], audience="authenticated")
     except jwt.ExpiredSignatureError:
         raise HTTPException(401, "Token expired")
     except jwt.InvalidTokenError as exc:

@@ -4,11 +4,22 @@ from __future__ import annotations
 from typing import Iterator, Optional
 
 import jwt
+from jwt import PyJWKClient
 from fastapi import Header, HTTPException, status
 from sqlalchemy.orm import Session
 
 from services.influencer_crm import config
 from shared.data_layer.influencer_crm._engine import session_factory
+
+_jwks_client: Optional[PyJWKClient] = None
+
+def _get_jwks_client() -> PyJWKClient:
+    global _jwks_client
+    if _jwks_client is None:
+        if not config.SUPABASE_URL:
+            raise RuntimeError("SUPABASE_URL not set in .env")
+        _jwks_client = PyJWKClient(f"{config.SUPABASE_URL}/auth/v1/.well-known/jwks.json")
+    return _jwks_client
 
 
 def verify_api_key(
@@ -34,16 +45,18 @@ def verify_api_key(
 
 
 def _verify_supabase_jwt(token: str) -> None:
-    if not config.SUPABASE_JWT_SECRET:
+    if not config.SUPABASE_URL:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Bearer auth not configured on server (SUPABASE_JWT_SECRET missing)",
+            detail="Bearer auth not configured (SUPABASE_URL missing)",
         )
     try:
+        client = _get_jwks_client()
+        signing_key = client.get_signing_key_from_jwt(token)
         jwt.decode(
             token,
-            config.SUPABASE_JWT_SECRET,
-            algorithms=["HS256"],
+            signing_key.key,
+            algorithms=["ES256", "RS256", "HS256"],
             audience="authenticated",
         )
     except jwt.ExpiredSignatureError:
