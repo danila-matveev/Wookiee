@@ -22,7 +22,7 @@ function SubSidebarItem({ item }: SubSidebarItemProps) {
       data-slot="sub-sidebar-item"
       className={({ isActive }) =>
         cn(
-          "flex items-center gap-2 px-3 py-2 rounded-md text-[13px] transition-colors duration-100",
+          "flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[12px] transition-colors duration-100",
           isActive
             ? "bg-accent-soft text-accent font-semibold"
             : "text-text-dim hover:bg-bg-hover hover:text-foreground font-medium"
