@@ -43,7 +43,7 @@ CHECKS: list[tuple[str, str, object]] = [
     ),
     (
         "promo_stats_weekly RLS enabled",
-        "SELECT rowsecurity FROM pg_class "
+        "SELECT relrowsecurity FROM pg_class "
         "WHERE relname='promo_stats_weekly' "
         "AND relnamespace=(SELECT oid FROM pg_namespace WHERE nspname='marketing')",
         True,
@@ -104,11 +104,14 @@ CHECKS: list[tuple[str, str, object]] = [
 ]
 
 
-def run_check(cur, label: str, sql: str, expected: object) -> bool:
+def run_check(conn, label: str, sql: str, expected: object) -> bool:
     try:
-        cur.execute(sql)
-        result = cur.fetchone()[0]
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            row = cur.fetchone()
+            result = row[0] if row is not None else None
     except Exception as exc:
+        conn.rollback()
         print(f"  ✗ {label}: ERROR — {exc}")
         return False
     ok = result == expected
@@ -126,10 +129,9 @@ def main() -> int:
 
     failures = 0
     print("Marketing schema smoke test\n" + "=" * 40)
-    with conn.cursor() as cur:
-        for label, sql, expected in CHECKS:
-            if not run_check(cur, label, sql, expected):
-                failures += 1
+    for label, sql, expected in CHECKS:
+        if not run_check(conn, label, sql, expected):
+            failures += 1
     conn.close()
 
     print("\n" + ("All checks passed ✓" if failures == 0 else f"{failures} check(s) FAILED ✗"))
