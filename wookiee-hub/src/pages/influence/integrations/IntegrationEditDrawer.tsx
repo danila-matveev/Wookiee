@@ -11,7 +11,7 @@ import type {
   Outcome,
   Stage,
 } from '@/api/crm/integrations';
-import { STAGES } from '@/api/crm/integrations';
+import { STAGE_LABELS, STAGES } from '@/api/crm/integrations';
 import { useIntegration, useUpsertIntegration } from '@/hooks/crm/use-integrations';
 import { Button } from '@/components/crm/ui/Button';
 import { Drawer } from '@/components/crm/ui/Drawer';
@@ -19,17 +19,6 @@ import { EmptyState } from '@/components/crm/ui/EmptyState';
 import { Input } from '@/components/crm/ui/Input';
 import { Select } from '@/components/crm/ui/Select';
 import { Textarea } from '@/components/crm/ui/Textarea';
-
-const STAGE_LABELS: Record<Stage, string> = {
-  переговоры: 'Переговоры',
-  согласовано: 'Согласовано',
-  отправка_комплекта: 'Отправка комплекта',
-  контент: 'Контент',
-  запланировано: 'Запланировано',
-  аналитика: 'Аналитика',
-  завершено: 'Завершено',
-  архив: 'Архив',
-};
 
 const CHANNEL_OPTIONS: { value: Channel; label: string }[] = [
   { value: 'instagram', label: 'Instagram' },

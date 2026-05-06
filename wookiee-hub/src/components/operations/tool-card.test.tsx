@@ -25,6 +25,8 @@ const tool: OperationsTool = {
   totalRuns: 5,
   lastRunAt: '2026-05-04T09:00:00Z',
   lastStatus: 'success',
+  usageExamples: null,
+  docUrl: null,
 }
 
 describe('ToolCard', () => {
