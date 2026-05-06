@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "fetch_rnp_wb_daily",
     "fetch_rnp_models_wb",
+    "resolve_wb_key",
     "fetch_rnp_sheets_digital",
     "fetch_rnp_sheets_bloggers",
     "aggregate_to_weeks",
@@ -50,25 +51,51 @@ def fetch_rnp_models_wb() -> list[dict]:
 
     Returns only models with statuses: "Продается" (8), "Выводим" (9), "Запуск" (14).
     Skips models where artikul_modeli IS NULL.
-    Multiple modeli records with the same wb_key are collapsed — MIN(kod) used as label.
+    Models sharing the same WB article prefix are collapsed — MIN(kod) is the label.
 
     Returns list of dicts: [{"label": str, "value": str}, ...]
-    where value = LOWER(SPLIT_PART(artikul_modeli, '/', 1)) — the WB filter key.
+    where value = LOWER(MIN(kod)) — the display-name key used throughout the API.
+    The actual WB article prefix (which may differ, e.g. "компбел-ж-бесшов" for Vuki)
+    is resolved internally via resolve_wb_key() when querying the WB database.
     """
     conn = _get_supabase_connection()
     try:
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT
-                    MIN(kod) AS label,
-                    LOWER(SPLIT_PART(artikul_modeli, '/', 1)) AS wb_key
+                    MIN(kod)       AS label,
+                    LOWER(MIN(kod)) AS display_key
+                FROM modeli
+                WHERE artikul_modeli IS NOT NULL
+                  AND status_id IN (8, 9, 14)
+                GROUP BY LOWER(SPLIT_PART(artikul_modeli, '/', 1))
+                ORDER BY LOWER(MIN(kod))
+            """)
+            return [{"label": row[0], "value": row[1]} for row in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def resolve_wb_key(display_model: str) -> str:
+    """Map a display model key (LOWER(MIN(kod))) to the WB article prefix.
+
+    For most models, display key = WB key (e.g. "wendy" → "wendy").
+    For legacy Vuki, "vuki" → "компбел-ж-бесшов".
+    Falls back to returning display_model unchanged if no match found.
+    """
+    conn = _get_supabase_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT LOWER(SPLIT_PART(artikul_modeli, '/', 1)) AS wb_key
                 FROM modeli
                 WHERE artikul_modeli IS NOT NULL
                   AND status_id IN (8, 9, 14)
                 GROUP BY wb_key
-                ORDER BY wb_key
-            """)
-            return [{"label": row[0], "value": row[1]} for row in cur.fetchall()]
+                HAVING LOWER(MIN(kod)) = %s
+            """, (display_model,))
+            row = cur.fetchone()
+            return row[0] if row else display_model
     finally:
         conn.close()
 

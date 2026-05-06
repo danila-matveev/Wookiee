@@ -139,9 +139,12 @@ def rnp_weeks(
         fetch_rnp_sheets_digital,
         fetch_rnp_sheets_bloggers,
         aggregate_to_weeks,
+        resolve_wb_key,
     )
 
-    daily_rows = fetch_rnp_wb_daily(model, date_from, date_to)
+    # model = display key (e.g. "vuki"); wb_key = actual WB article prefix (e.g. "компбел-ж-бесшов")
+    wb_key = resolve_wb_key(model)
+    daily_rows = fetch_rnp_wb_daily(wb_key, date_from, date_to)
 
     ext_ads_available = True
     sheets_data: dict = {}
