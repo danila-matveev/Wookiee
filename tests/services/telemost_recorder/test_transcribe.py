@@ -1,109 +1,160 @@
 from pathlib import Path
 from unittest.mock import MagicMock, call, patch
 
-from yandex.cloud.ai.stt.v3 import stt_pb2
-from yandex.cloud.operation import operation_pb2, operation_service_pb2
-
 from services.telemost_recorder.transcribe import (
     TranscriptSegment,
-    _parse_streaming_responses,
+    _get_duration,
+    _transcribe_chunk,
     transcribe_audio,
 )
 
 
-def _make_streaming_response(channel_tag: str, text: str, start_ms: int, end_ms: int):
-    word = stt_pb2.Word(text=text, start_time_ms=start_ms, end_time_ms=end_ms)
-    alt = stt_pb2.Alternative(text=text, words=[word], start_time_ms=start_ms, end_time_ms=end_ms)
-    update = stt_pb2.AlternativeUpdate(alternatives=[alt], channel_tag=channel_tag)
-    resp = stt_pb2.StreamingResponse()
-    resp.final.CopyFrom(update)
-    return resp
+def test_transcript_segment_dataclass():
+    seg = TranscriptSegment(speaker="Speaker 0", start_ms=1000, end_ms=2000, text="Привет")
+    assert seg.speaker == "Speaker 0"
+    assert seg.start_ms == 1000
+    assert seg.end_ms == 2000
+    assert seg.text == "Привет"
 
 
-def _make_done_operation(responses: list) -> operation_pb2.Operation:
-    response_list = stt_pb2.StreamingResponseList(streaming_responses=responses)
-    op = operation_pb2.Operation(id="op-123", done=True)
-    op.response.Pack(response_list)
-    return op
-
-
-def _mock_channels(mock_stt_stub, mock_ops_stub):
-    """Return a side_effect for grpc.secure_channel that yields the right stub."""
-    stt_channel = MagicMock()
-    stt_channel.__enter__ = lambda s: s
-    stt_channel.__exit__ = MagicMock(return_value=False)
-
-    ops_channel = MagicMock()
-    ops_channel.__enter__ = lambda s: s
-    ops_channel.__exit__ = MagicMock(return_value=False)
-
-    with patch("services.telemost_recorder.transcribe.stt_service_pb2_grpc.AsyncRecognizerStub",
-               return_value=mock_stt_stub), \
-         patch("services.telemost_recorder.transcribe.operation_service_pb2_grpc.OperationServiceStub",
-               return_value=mock_ops_stub), \
-         patch("grpc.secure_channel", side_effect=[stt_channel, ops_channel]), \
-         patch("time.sleep"):
-        yield
-
-
-def test_transcribe_audio_returns_segments(tmp_path):
+def test_get_duration_parses_ffprobe_output(tmp_path):
     audio = tmp_path / "audio.opus"
-    audio.write_bytes(b"fakeaudio")
+    audio.write_bytes(b"fake")
+    mock_result = MagicMock()
+    mock_result.stdout = "87.420000\n"
+    with patch("subprocess.run", return_value=mock_result) as mock_run:
+        dur = _get_duration(audio)
+    assert dur == 87.42
+    cmd = mock_run.call_args[0][0]
+    assert "ffprobe" in cmd
+    assert str(audio) in cmd
 
-    r1 = _make_streaming_response("1", "Добрый день", 480, 1200)
-    r2 = _make_streaming_response("2", "Привет", 1300, 1800)
-    done_op = _make_done_operation([r1, r2])
 
-    pending_op = operation_pb2.Operation(id="op-123", done=False)
+def test_transcribe_chunk_returns_segment():
+    mock_resp = MagicMock()
+    mock_resp.ok = True
+    mock_resp.json.return_value = {"result": "Добрый день команда"}
+    with patch("requests.post", return_value=mock_resp):
+        seg = _transcribe_chunk(b"audiodata", offset_ms=5000)
+    assert seg is not None
+    assert seg.text == "Добрый день команда"
+    assert seg.start_ms == 5000
+    assert seg.end_ms == 5000 + 30 * 1000
+    assert seg.speaker == "Speaker 0"
 
-    mock_stt = MagicMock()
-    mock_stt.RecognizeFile.return_value = operation_pb2.Operation(id="op-123")
-    mock_ops = MagicMock()
-    mock_ops.Get.side_effect = [pending_op, done_op]
 
-    from contextlib import contextmanager
-    @contextmanager
-    def _ctx():
-        with patch("services.telemost_recorder.transcribe.stt_service_pb2_grpc.AsyncRecognizerStub",
-                   return_value=mock_stt), \
-             patch("services.telemost_recorder.transcribe.operation_service_pb2_grpc.OperationServiceStub",
-                   return_value=mock_ops), \
-             patch("grpc.secure_channel") as mc, \
-             patch("time.sleep"):
-            ch = MagicMock()
-            ch.__enter__ = lambda s: s
-            ch.__exit__ = MagicMock(return_value=False)
-            mc.return_value = ch
-            yield
+def test_transcribe_chunk_empty_result_returns_none():
+    mock_resp = MagicMock()
+    mock_resp.ok = True
+    mock_resp.json.return_value = {"result": ""}
+    with patch("requests.post", return_value=mock_resp):
+        seg = _transcribe_chunk(b"audiodata", offset_ms=0)
+    assert seg is None
 
-    with _ctx():
+
+def test_transcribe_chunk_whitespace_result_returns_none():
+    mock_resp = MagicMock()
+    mock_resp.ok = True
+    mock_resp.json.return_value = {"result": "   "}
+    with patch("requests.post", return_value=mock_resp):
+        seg = _transcribe_chunk(b"audiodata", offset_ms=0)
+    assert seg is None
+
+
+def test_transcribe_chunk_http_error_returns_none():
+    mock_resp = MagicMock()
+    mock_resp.ok = False
+    with patch("requests.post", return_value=mock_resp):
+        seg = _transcribe_chunk(b"audiodata", offset_ms=0)
+    assert seg is None
+
+
+def test_transcribe_audio_two_chunks(tmp_path):
+    audio = tmp_path / "audio.opus"
+    audio.write_bytes(b"fake")
+
+    # duration = 50s → 2 chunks: [0-30], [30-50]
+    mock_ffprobe = MagicMock()
+    mock_ffprobe.stdout = "50.0\n"
+    mock_ffmpeg = MagicMock()
+
+    def fake_run(cmd, **kwargs):
+        if "ffprobe" in cmd:
+            return mock_ffprobe
+        return mock_ffmpeg
+
+    responses = [
+        MagicMock(ok=True, json=lambda: {"result": "Привет мир"}),
+        MagicMock(ok=True, json=lambda: {"result": "Пока мир"}),
+    ]
+    with patch("subprocess.run", side_effect=fake_run), \
+         patch("os.unlink"), \
+         patch("tempfile.mkstemp", return_value=(0, "/tmp/fake.ogg")), \
+         patch("os.close"), \
+         patch("pathlib.Path.read_bytes", return_value=b"chunkdata"), \
+         patch("requests.post", side_effect=responses), \
+         patch("time.sleep"):
         segments = transcribe_audio(audio)
 
     assert len(segments) == 2
-    assert segments[0].speaker == "Speaker 1"
-    assert segments[0].text == "Добрый день"
-    assert segments[0].start_ms == 480
-    assert segments[1].speaker == "Speaker 2"
-    assert segments[1].text == "Привет"
+    assert segments[0].text == "Привет мир"
+    assert segments[0].start_ms == 0
+    assert segments[1].text == "Пока мир"
+    assert segments[1].start_ms == 30000
 
 
-def test_parse_streaming_responses_sorted(tmp_path):
-    r1 = _make_streaming_response("0", "Второй", 2000, 2500)
-    r2 = _make_streaming_response("0", "Первый", 100, 500)
-    segments = _parse_streaming_responses([r1, r2])
-    assert [s.start_ms for s in segments] == [100, 2000]
+def test_transcribe_audio_skips_silent_chunks(tmp_path):
+    audio = tmp_path / "audio.opus"
+    audio.write_bytes(b"fake")
+
+    mock_ffprobe = MagicMock()
+    mock_ffprobe.stdout = "60.0\n"
+    mock_ffmpeg = MagicMock()
+
+    def fake_run(cmd, **kwargs):
+        if "ffprobe" in cmd:
+            return mock_ffprobe
+        return mock_ffmpeg
+
+    responses = [
+        MagicMock(ok=True, json=lambda: {"result": ""}),   # silent chunk
+        MagicMock(ok=True, json=lambda: {"result": "Текст"}),
+    ]
+    with patch("subprocess.run", side_effect=fake_run), \
+         patch("os.unlink"), \
+         patch("tempfile.mkstemp", return_value=(0, "/tmp/fake.ogg")), \
+         patch("os.close"), \
+         patch("pathlib.Path.read_bytes", return_value=b"chunkdata"), \
+         patch("requests.post", side_effect=responses), \
+         patch("time.sleep"):
+        segments = transcribe_audio(audio)
+
+    assert len(segments) == 1
+    assert segments[0].text == "Текст"
+    assert segments[0].start_ms == 30000
 
 
-def test_parse_streaming_responses_empty():
-    assert _parse_streaming_responses([]) == []
+def test_transcribe_audio_exact_30s_one_chunk(tmp_path):
+    audio = tmp_path / "audio.opus"
+    audio.write_bytes(b"fake")
 
+    mock_ffprobe = MagicMock()
+    mock_ffprobe.stdout = "30.0\n"
+    mock_ffmpeg = MagicMock()
 
-def test_parse_streaming_responses_skips_empty_text():
-    resp = _make_streaming_response("0", "   ", 0, 100)
-    assert _parse_streaming_responses([resp]) == []
+    def fake_run(cmd, **kwargs):
+        if "ffprobe" in cmd:
+            return mock_ffprobe
+        return mock_ffmpeg
 
+    with patch("subprocess.run", side_effect=fake_run), \
+         patch("os.unlink"), \
+         patch("tempfile.mkstemp", return_value=(0, "/tmp/fake.ogg")), \
+         patch("os.close"), \
+         patch("pathlib.Path.read_bytes", return_value=b"chunkdata"), \
+         patch("requests.post", return_value=MagicMock(ok=True, json=lambda: {"result": "Тест"})), \
+         patch("time.sleep"):
+        segments = transcribe_audio(audio)
 
-def test_transcript_segment_dataclass():
-    seg = TranscriptSegment(speaker="Speaker 1", start_ms=1000, end_ms=2000, text="Привет")
-    assert seg.speaker == "Speaker 1"
-    assert seg.start_ms == 1000
+    assert len(segments) == 1
+    assert segments[0].start_ms == 0
