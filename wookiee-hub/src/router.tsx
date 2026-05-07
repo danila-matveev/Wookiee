@@ -2,6 +2,16 @@ import { createBrowserRouter, Navigate } from "react-router-dom"
 import { AppShell } from "@/components/layout/app-shell"
 import { ProtectedRoute } from "@/components/auth/protected-route"
 import { LoginPage } from "@/pages/auth/login"
+import { CatalogLayout } from "@/components/layout/catalog-layout"
+import { MatrixPage } from "@/pages/catalog/matrix"
+import { ColorsPage } from "@/pages/catalog/colors"
+import { SkleykiPage } from "@/pages/catalog/skleyki"
+import { KategoriiPage } from "@/pages/catalog/references/kategorii"
+import { KollekciiPage } from "@/pages/catalog/references/kollekcii"
+import { FabrikiPage } from "@/pages/catalog/references/fabriki"
+import { ImporteryPage } from "@/pages/catalog/references/importery"
+import { RazmeryPage } from "@/pages/catalog/references/razmery"
+import { StatusyPage } from "@/pages/catalog/references/statusy"
 import { ToolsPage } from "@/pages/operations/tools"
 import { ActivityPage } from "@/pages/operations/activity"
 import { HealthPage } from "@/pages/operations/health"
@@ -18,6 +28,26 @@ export const router = createBrowserRouter([
   {
     path: "/login",
     element: <LoginPage />,
+  },
+  {
+    element: (
+      <ProtectedRoute>
+        <CatalogLayout />
+      </ProtectedRoute>
+    ),
+    children: [
+      { path: "/catalog",                              element: <Navigate to="/catalog/matrix" replace /> },
+      { path: "/catalog/matrix",                      element: <MatrixPage /> },
+      { path: "/catalog/colors",                      element: <ColorsPage /> },
+      { path: "/catalog/skleyki",                     element: <SkleykiPage /> },
+      { path: "/catalog/references",                  element: <Navigate to="/catalog/references/kategorii" replace /> },
+      { path: "/catalog/references/kategorii",        element: <KategoriiPage /> },
+      { path: "/catalog/references/kollekcii",        element: <KollekciiPage /> },
+      { path: "/catalog/references/fabriki",          element: <FabrikiPage /> },
+      { path: "/catalog/references/importery",        element: <ImporteryPage /> },
+      { path: "/catalog/references/razmery",          element: <RazmeryPage /> },
+      { path: "/catalog/references/statusy",          element: <StatusyPage /> },
+    ],
   },
   {
     element: (
