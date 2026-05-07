@@ -7,81 +7,437 @@ import { computeCompleteness } from "./color-utils"
 export async function fetchKategorii() {
   const { data, error } = await supabase
     .from("kategorii")
-    .select("id, nazvanie")
+    .select("id, nazvanie, opisanie")
     .order("id")
   if (error) throw error
-  return data as { id: number; nazvanie: string }[]
+  return data as { id: number; nazvanie: string; opisanie: string | null }[]
 }
 
 export async function fetchKollekcii() {
   const { data, error } = await supabase
     .from("kollekcii")
-    .select("id, nazvanie")
+    .select("id, nazvanie, opisanie, god_zapuska")
     .order("nazvanie")
   if (error) throw error
-  return data as { id: number; nazvanie: string }[]
+  return data as { id: number; nazvanie: string; opisanie: string | null; god_zapuska: number | null }[]
 }
 
 export async function fetchFabriki() {
   const { data, error } = await supabase
     .from("fabriki")
-    .select("id, nazvanie, strana")
+    .select("id, nazvanie, strana, gorod, kontakt, email, wechat, specializaciya, leadtime_dni, notes")
     .order("nazvanie")
   if (error) throw error
-  return data as { id: number; nazvanie: string; strana: string | null }[]
+  return data as {
+    id: number
+    nazvanie: string
+    strana: string | null
+    gorod: string | null
+    kontakt: string | null
+    email: string | null
+    wechat: string | null
+    specializaciya: string | null
+    leadtime_dni: number | null
+    notes: string | null
+  }[]
 }
 
 export async function fetchImportery() {
   const { data, error } = await supabase
     .from("importery")
-    .select("id, nazvanie, nazvanie_en, inn, adres")
+    .select(
+      "id, nazvanie, nazvanie_en, inn, adres, short_name, kpp, ogrn, bank, rs, ks, bik, kontakt, telefon",
+    )
     .order("id")
   if (error) throw error
-  return data as { id: number; nazvanie: string; nazvanie_en: string | null; inn: string | null; adres: string | null }[]
+  return data as {
+    id: number
+    nazvanie: string
+    nazvanie_en: string | null
+    inn: string | null
+    adres: string | null
+    short_name: string | null
+    kpp: string | null
+    ogrn: string | null
+    bank: string | null
+    rs: string | null
+    ks: string | null
+    bik: string | null
+    kontakt: string | null
+    telefon: string | null
+  }[]
 }
 
 export async function fetchRazmery() {
   const { data, error } = await supabase
     .from("razmery")
-    .select("id, nazvanie, poryadok")
+    .select("id, nazvanie, poryadok, ru, eu, china")
     .order("poryadok")
   if (error) throw error
-  return data as { id: number; nazvanie: string; poryadok: number }[]
+  return data as {
+    id: number
+    nazvanie: string
+    poryadok: number
+    ru: string | null
+    eu: string | null
+    china: string | null
+  }[]
 }
 
 export async function fetchStatusy() {
   const { data, error } = await supabase
     .from("statusy")
-    .select("id, nazvanie, tip")
+    .select("id, nazvanie, tip, color")
     .order("id")
   if (error) throw error
-  return data as { id: number; nazvanie: string; tip: string }[]
+  return data as { id: number; nazvanie: string; tip: string; color: string | null }[]
+}
+
+// ─── New reference fetchers (Wave 0 tables) ───────────────────────────────
+
+export interface SemeystvoCveta {
+  id: number
+  kod: string
+  nazvanie: string
+  opisanie: string | null
+  poryadok: number | null
+}
+
+export async function fetchSemeystvaCvetov(): Promise<SemeystvoCveta[]> {
+  const { data, error } = await supabase
+    .from("semeystva_cvetov")
+    .select("id, kod, nazvanie, opisanie, poryadok")
+    .order("poryadok", { ascending: true, nullsFirst: false })
+    .order("id")
+  if (error) throw error
+  return (data ?? []) as SemeystvoCveta[]
+}
+
+export interface Upakovka {
+  id: number
+  nazvanie: string
+  tip: string | null
+  price_yuan: number | null
+  dlina_cm: number | null
+  shirina_cm: number | null
+  vysota_cm: number | null
+  obem_l: number | null
+  srok_izgotovleniya_dni: number | null
+  file_link: string | null
+  notes: string | null
+  poryadok: number | null
+}
+
+export async function fetchUpakovki(): Promise<Upakovka[]> {
+  const { data, error } = await supabase
+    .from("upakovki")
+    .select(
+      "id, nazvanie, tip, price_yuan, dlina_cm, shirina_cm, vysota_cm, obem_l, srok_izgotovleniya_dni, file_link, notes, poryadok",
+    )
+    .order("poryadok", { ascending: true, nullsFirst: false })
+    .order("id")
+  if (error) throw error
+  return (data ?? []) as Upakovka[]
+}
+
+export interface KanalProdazh {
+  id: number
+  kod: string
+  nazvanie: string
+  short: string | null
+  color: string | null
+  active: boolean | null
+  poryadok: number | null
+}
+
+export async function fetchKanalyProdazh(): Promise<KanalProdazh[]> {
+  const { data, error } = await supabase
+    .from("kanaly_prodazh")
+    .select("id, kod, nazvanie, short, color, active, poryadok")
+    .order("poryadok", { ascending: true, nullsFirst: false })
+    .order("id")
+  if (error) throw error
+  return (data ?? []) as KanalProdazh[]
+}
+
+export interface Sertifikat {
+  id: number
+  nazvanie: string
+  tip: string | null
+  nomer: string | null
+  data_vydachi: string | null
+  data_okonchaniya: string | null
+  organ_sertifikacii: string | null
+  file_url: string | null
+  gruppa_sertifikata: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+export async function fetchSertifikaty(): Promise<Sertifikat[]> {
+  const { data, error } = await supabase
+    .from("sertifikaty")
+    .select(
+      "id, nazvanie, tip, nomer, data_vydachi, data_okonchaniya, organ_sertifikacii, file_url, gruppa_sertifikata, created_at, updated_at",
+    )
+    .order("nazvanie")
+  if (error) throw error
+  return (data ?? []) as Sertifikat[]
 }
 
 // ─── Reference mutations ───────────────────────────────────────────────────
 
-export async function insertKategoriya(data: { nazvanie: string }) {
+// kategorii
+export interface KategoriyaPayload {
+  nazvanie: string
+  opisanie?: string | null
+}
+
+export async function insertKategoriya(data: KategoriyaPayload): Promise<void> {
   const { error } = await supabase.from("kategorii").insert(data)
   if (error) throw new Error(error.message)
 }
 
-export async function insertKollekciya(data: { nazvanie: string }) {
+export async function updateKategoriya(id: number, patch: Partial<KategoriyaPayload>): Promise<void> {
+  const { error } = await supabase.from("kategorii").update(patch).eq("id", id)
+  if (error) throw new Error(error.message)
+}
+
+export async function deleteKategoriya(id: number): Promise<void> {
+  const { error } = await supabase.from("kategorii").delete().eq("id", id)
+  if (error) throw new Error(error.message)
+}
+
+// kollekcii
+export interface KollekciyaPayload {
+  nazvanie: string
+  opisanie?: string | null
+  god_zapuska?: number | null
+}
+
+export async function insertKollekciya(data: KollekciyaPayload): Promise<void> {
   const { error } = await supabase.from("kollekcii").insert(data)
   if (error) throw new Error(error.message)
 }
 
-export async function insertFabrika(data: { nazvanie: string; strana?: string }) {
+export async function updateKollekciya(id: number, patch: Partial<KollekciyaPayload>): Promise<void> {
+  const { error } = await supabase.from("kollekcii").update(patch).eq("id", id)
+  if (error) throw new Error(error.message)
+}
+
+export async function deleteKollekciya(id: number): Promise<void> {
+  const { error } = await supabase.from("kollekcii").delete().eq("id", id)
+  if (error) throw new Error(error.message)
+}
+
+// fabriki
+export interface FabrikaPayload {
+  nazvanie: string
+  strana?: string | null
+  gorod?: string | null
+  kontakt?: string | null
+  email?: string | null
+  wechat?: string | null
+  specializaciya?: string | null
+  leadtime_dni?: number | null
+  notes?: string | null
+}
+
+export async function insertFabrika(data: FabrikaPayload): Promise<void> {
   const { error } = await supabase.from("fabriki").insert(data)
   if (error) throw new Error(error.message)
 }
 
-export async function insertImporter(data: { nazvanie: string; nazvanie_en?: string; inn?: string; adres?: string }) {
+export async function updateFabrika(id: number, patch: Partial<FabrikaPayload>): Promise<void> {
+  const { error } = await supabase.from("fabriki").update(patch).eq("id", id)
+  if (error) throw new Error(error.message)
+}
+
+export async function deleteFabrika(id: number): Promise<void> {
+  const { error } = await supabase.from("fabriki").delete().eq("id", id)
+  if (error) throw new Error(error.message)
+}
+
+// importery
+export interface ImporterPayload {
+  nazvanie: string
+  nazvanie_en?: string | null
+  inn?: string | null
+  adres?: string | null
+  short_name?: string | null
+  kpp?: string | null
+  ogrn?: string | null
+  bank?: string | null
+  rs?: string | null
+  ks?: string | null
+  bik?: string | null
+  kontakt?: string | null
+  telefon?: string | null
+}
+
+export async function insertImporter(data: ImporterPayload): Promise<void> {
   const { error } = await supabase.from("importery").insert(data)
   if (error) throw new Error(error.message)
 }
 
-export async function insertRazmer(data: { nazvanie: string; poryadok: number }) {
+export async function updateImporter(id: number, patch: Partial<ImporterPayload>): Promise<void> {
+  const { error } = await supabase.from("importery").update(patch).eq("id", id)
+  if (error) throw new Error(error.message)
+}
+
+export async function deleteImporter(id: number): Promise<void> {
+  const { error } = await supabase.from("importery").delete().eq("id", id)
+  if (error) throw new Error(error.message)
+}
+
+// razmery
+export interface RazmerPayload {
+  nazvanie: string
+  poryadok: number
+  ru?: string | null
+  eu?: string | null
+  china?: string | null
+}
+
+export async function insertRazmer(data: RazmerPayload): Promise<void> {
   const { error } = await supabase.from("razmery").insert(data)
+  if (error) throw new Error(error.message)
+}
+
+export async function updateRazmer(id: number, patch: Partial<RazmerPayload>): Promise<void> {
+  const { error } = await supabase.from("razmery").update(patch).eq("id", id)
+  if (error) throw new Error(error.message)
+}
+
+export async function deleteRazmer(id: number): Promise<void> {
+  const { error } = await supabase.from("razmery").delete().eq("id", id)
+  if (error) throw new Error(error.message)
+}
+
+// statusy
+export interface StatusPayload {
+  nazvanie: string
+  tip: string
+  color?: string | null
+}
+
+export async function insertStatus(data: StatusPayload): Promise<void> {
+  const { error } = await supabase.from("statusy").insert(data)
+  if (error) throw new Error(error.message)
+}
+
+export async function updateStatus(id: number, patch: Partial<StatusPayload>): Promise<void> {
+  const { error } = await supabase.from("statusy").update(patch).eq("id", id)
+  if (error) throw new Error(error.message)
+}
+
+export async function deleteStatus(id: number): Promise<void> {
+  const { error } = await supabase.from("statusy").delete().eq("id", id)
+  if (error) throw new Error(error.message)
+}
+
+// semeystva_cvetov
+export interface SemeystvoCvetaPayload {
+  kod: string
+  nazvanie: string
+  opisanie?: string | null
+  poryadok?: number | null
+}
+
+export async function insertSemeystvoCveta(data: SemeystvoCvetaPayload): Promise<void> {
+  const { error } = await supabase.from("semeystva_cvetov").insert(data)
+  if (error) throw new Error(error.message)
+}
+
+export async function updateSemeystvoCveta(id: number, patch: Partial<SemeystvoCvetaPayload>): Promise<void> {
+  const { error } = await supabase.from("semeystva_cvetov").update(patch).eq("id", id)
+  if (error) throw new Error(error.message)
+}
+
+export async function deleteSemeystvoCveta(id: number): Promise<void> {
+  const { error } = await supabase.from("semeystva_cvetov").delete().eq("id", id)
+  if (error) throw new Error(error.message)
+}
+
+// upakovki
+export interface UpakovkaPayload {
+  nazvanie: string
+  tip?: string | null
+  price_yuan?: number | null
+  dlina_cm?: number | null
+  shirina_cm?: number | null
+  vysota_cm?: number | null
+  obem_l?: number | null
+  srok_izgotovleniya_dni?: number | null
+  file_link?: string | null
+  notes?: string | null
+  poryadok?: number | null
+}
+
+export async function insertUpakovka(data: UpakovkaPayload): Promise<void> {
+  const { error } = await supabase.from("upakovki").insert(data)
+  if (error) throw new Error(error.message)
+}
+
+export async function updateUpakovka(id: number, patch: Partial<UpakovkaPayload>): Promise<void> {
+  const { error } = await supabase.from("upakovki").update(patch).eq("id", id)
+  if (error) throw new Error(error.message)
+}
+
+export async function deleteUpakovka(id: number): Promise<void> {
+  const { error } = await supabase.from("upakovki").delete().eq("id", id)
+  if (error) throw new Error(error.message)
+}
+
+// kanaly_prodazh
+export interface KanalProdazhPayload {
+  kod: string
+  nazvanie: string
+  short?: string | null
+  color?: string | null
+  active?: boolean | null
+  poryadok?: number | null
+}
+
+export async function insertKanalProdazh(data: KanalProdazhPayload): Promise<void> {
+  const { error } = await supabase.from("kanaly_prodazh").insert(data)
+  if (error) throw new Error(error.message)
+}
+
+export async function updateKanalProdazh(id: number, patch: Partial<KanalProdazhPayload>): Promise<void> {
+  const { error } = await supabase.from("kanaly_prodazh").update(patch).eq("id", id)
+  if (error) throw new Error(error.message)
+}
+
+export async function deleteKanalProdazh(id: number): Promise<void> {
+  const { error } = await supabase.from("kanaly_prodazh").delete().eq("id", id)
+  if (error) throw new Error(error.message)
+}
+
+// sertifikaty
+export interface SertifikatPayload {
+  nazvanie: string
+  tip?: string | null
+  nomer?: string | null
+  data_vydachi?: string | null
+  data_okonchaniya?: string | null
+  organ_sertifikacii?: string | null
+  file_url?: string | null
+  gruppa_sertifikata?: string | null
+}
+
+export async function insertSertifikat(data: SertifikatPayload): Promise<void> {
+  const { error } = await supabase.from("sertifikaty").insert(data)
+  if (error) throw new Error(error.message)
+}
+
+export async function updateSertifikat(id: number, patch: Partial<SertifikatPayload>): Promise<void> {
+  const { error } = await supabase.from("sertifikaty").update(patch).eq("id", id)
+  if (error) throw new Error(error.message)
+}
+
+export async function deleteSertifikat(id: number): Promise<void> {
+  const { error } = await supabase.from("sertifikaty").delete().eq("id", id)
   if (error) throw new Error(error.message)
 }
 
