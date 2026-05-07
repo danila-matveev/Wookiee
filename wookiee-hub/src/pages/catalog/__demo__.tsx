@@ -1,14 +1,8 @@
-import { InDevelopment } from "./_stub"
+// Wire-up to the real atomic UI demo from A3 (lives in components/catalog/ui/__demo__.tsx).
+// Page-level wrapper exposes `DemoPage` for router.tsx.
 
-// TODO(wave-1-A3): A3 will replace this with the full atomic UI demo
-// (Tooltip, LevelBadge, StatusBadge, CompletenessRing, fields, RefModal,
-//  ColumnsManager, BulkActionsBar, CommandPalette).
+import CatalogUiDemo from "@/components/catalog/ui/__demo__"
 
 export function DemoPage() {
-  return (
-    <InDevelopment
-      title="UI Demo"
-      hint="Демо atomic-компонентов появится после мерджа Wave 1 A3."
-    />
-  )
+  return <CatalogUiDemo />
 }
