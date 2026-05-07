@@ -792,38 +792,126 @@ export interface SkleykaRow {
   importer_nazvanie: string | null
   created_at: string | null
   updated_at: string | null
+  /** Канал — заполняется на уровне fetcher (для смешанных списков). */
+  channel?: 'wb' | 'ozon'
+  /** Кол-во SKU в склейке — нужно для колонки «Заполненность». */
+  count_tovary?: number
+}
+
+async function fetchSkleykiWithCounts(
+  table: 'skleyki_wb' | 'skleyki_ozon',
+  junction: 'tovary_skleyki_wb' | 'tovary_skleyki_ozon',
+  channel: 'wb' | 'ozon',
+): Promise<SkleykaRow[]> {
+  const [skRes, jRes] = await Promise.all([
+    supabase
+      .from(table)
+      .select("id, nazvanie, importer_id, importery(nazvanie), created_at, updated_at")
+      .order("nazvanie"),
+    supabase.from(junction).select("skleyka_id"),
+  ])
+  if (skRes.error) throw skRes.error
+  if (jRes.error) throw jRes.error
+
+  const counts = new Map<number, number>()
+  for (const row of (jRes.data ?? []) as { skleyka_id: number }[]) {
+    counts.set(row.skleyka_id, (counts.get(row.skleyka_id) ?? 0) + 1)
+  }
+
+  return (skRes.data as any[]).map((s) => ({
+    id: s.id,
+    nazvanie: s.nazvanie,
+    importer_id: s.importer_id,
+    importer_nazvanie: s.importery?.nazvanie ?? null,
+    created_at: s.created_at,
+    updated_at: s.updated_at,
+    channel,
+    count_tovary: counts.get(s.id) ?? 0,
+  }))
 }
 
 export async function fetchSkleykiWb(): Promise<SkleykaRow[]> {
-  const { data, error } = await supabase
-    .from("skleyki_wb")
-    .select("id, nazvanie, importer_id, importery(nazvanie), created_at, updated_at")
-    .order("nazvanie")
-  if (error) throw error
-  return (data as any[]).map((s) => ({
-    id: s.id,
-    nazvanie: s.nazvanie,
-    importer_id: s.importer_id,
-    importer_nazvanie: s.importery?.nazvanie ?? null,
-    created_at: s.created_at,
-    updated_at: s.updated_at,
-  }))
+  return fetchSkleykiWithCounts('skleyki_wb', 'tovary_skleyki_wb', 'wb')
 }
 
 export async function fetchSkleykiOzon(): Promise<SkleykaRow[]> {
+  return fetchSkleykiWithCounts('skleyki_ozon', 'tovary_skleyki_ozon', 'ozon')
+}
+
+/** Создать новую склейку. Возвращает её id. */
+export async function createSkleyka(
+  nazvanie: string,
+  channel: 'wb' | 'ozon',
+  importerId?: number | null,
+): Promise<{ id: number }> {
+  const table = channel === 'wb' ? 'skleyki_wb' : 'skleyki_ozon'
+  const payload: Record<string, unknown> = { nazvanie }
+  if (importerId != null) payload.importer_id = importerId
   const { data, error } = await supabase
-    .from("skleyki_ozon")
-    .select("id, nazvanie, importer_id, importery(nazvanie), created_at, updated_at")
-    .order("nazvanie")
-  if (error) throw error
-  return (data as any[]).map((s) => ({
-    id: s.id,
-    nazvanie: s.nazvanie,
-    importer_id: s.importer_id,
-    importer_nazvanie: s.importery?.nazvanie ?? null,
-    created_at: s.created_at,
-    updated_at: s.updated_at,
-  }))
+    .from(table)
+    .insert(payload)
+    .select("id")
+    .single()
+  if (error) throw new Error(error.message)
+  return data as { id: number }
+}
+
+/** Обновить название/импортёра склейки. */
+export async function updateSkleyka(
+  id: number,
+  channel: 'wb' | 'ozon',
+  patch: { nazvanie?: string; importer_id?: number | null },
+): Promise<void> {
+  const table = channel === 'wb' ? 'skleyki_wb' : 'skleyki_ozon'
+  const { error } = await supabase.from(table).update(patch).eq("id", id)
+  if (error) throw new Error(error.message)
+}
+
+/**
+ * Удалить склейку. Сначала чистит junction (отвязывает все SKU), затем удаляет
+ * запись самой склейки. Junction не имеет ON DELETE CASCADE — придётся ручками.
+ */
+export async function deleteSkleyka(id: number, channel: 'wb' | 'ozon'): Promise<void> {
+  const table = channel === 'wb' ? 'skleyki_wb' : 'skleyki_ozon'
+  const junction = channel === 'wb' ? 'tovary_skleyki_wb' : 'tovary_skleyki_ozon'
+  const { error: jErr } = await supabase.from(junction).delete().eq("skleyka_id", id)
+  if (jErr) throw new Error(jErr.message)
+  const { error } = await supabase.from(table).delete().eq("id", id)
+  if (error) throw new Error(error.message)
+}
+
+/**
+ * Поиск склеек по баркоду SKU в их составе. Возвращает Set из skleyka_id для
+ * указанного канала. Используется в SkleykaList для фильтрации по баркоду.
+ */
+export async function findSkleykiByBarkod(
+  barkodQuery: string,
+  channel: 'wb' | 'ozon',
+): Promise<Set<number>> {
+  const junction = channel === 'wb' ? 'tovary_skleyki_wb' : 'tovary_skleyki_ozon'
+  const q = barkodQuery.trim()
+  if (!q) return new Set()
+
+  const { data: tovary, error: tErr } = await supabase
+    .from("tovary")
+    .select("id, barkod")
+    .ilike("barkod", `%${q}%`)
+    .limit(500)
+  if (tErr) throw tErr
+  const tovarIds = ((tovary ?? []) as { id: number }[]).map((r) => r.id)
+  if (tovarIds.length === 0) return new Set()
+
+  const { data: links, error: lErr } = await supabase
+    .from(junction)
+    .select("skleyka_id")
+    .in("tovar_id", tovarIds)
+  if (lErr) throw lErr
+
+  const ids = new Set<number>()
+  for (const row of (links ?? []) as { skleyka_id: number }[]) {
+    ids.add(row.skleyka_id)
+  }
+  return ids
 }
 
 // ─── Artikuly registry ─────────────────────────────────────────────────────
