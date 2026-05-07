@@ -685,3 +685,68 @@ export async function fetchSkleykaDetail(id: number, channel: 'wb' | 'ozon'): Pr
     }),
   }
 }
+
+// ─── Sidebar counts ────────────────────────────────────────────────────────
+// TODO(wave-1-A2): replace stub with real parallel HEAD requests once A2 lands.
+// A2 should expose `fetchCatalogCounts()` returning real counts via supabase
+// `.select('*', { count: 'exact', head: true })` for each table in parallel.
+
+export interface CatalogCounts {
+  models: number | null
+  colors: number | null
+  artikuly: number | null
+  tovary: number | null
+  skleyki: number | null
+  kategorii: number | null
+  kollekcii: number | null
+  fabriki: number | null
+  importery: number | null
+  razmery: number | null
+  semeystva_cvetov: number | null
+  upakovki: number | null
+  kanaly_prodazh: number | null
+  sertifikaty: number | null
+}
+
+const COUNT_TABLES: Array<{ key: keyof CatalogCounts; table: string }> = [
+  { key: "models",           table: "modeli_osnova" },
+  { key: "colors",           table: "cveta" },
+  { key: "artikuly",         table: "artikuly" },
+  { key: "tovary",           table: "tovary" },
+  { key: "skleyki",          table: "sklejki" },
+  { key: "kategorii",        table: "kategorii" },
+  { key: "kollekcii",        table: "kollekcii" },
+  { key: "fabriki",          table: "fabriki" },
+  { key: "importery",        table: "importery" },
+  { key: "razmery",          table: "razmery" },
+  { key: "semeystva_cvetov", table: "semeystva_cvetov" },
+  { key: "upakovki",         table: "upakovki" },
+  { key: "kanaly_prodazh",   table: "kanaly_prodazh" },
+  { key: "sertifikaty",      table: "sertifikaty" },
+]
+
+export async function fetchCatalogCounts(): Promise<CatalogCounts> {
+  const initial = COUNT_TABLES.reduce((acc, { key }) => {
+    acc[key] = null
+    return acc
+  }, {} as CatalogCounts)
+
+  const results = await Promise.all(
+    COUNT_TABLES.map(async ({ key, table }) => {
+      try {
+        const { count, error } = await supabase
+          .from(table)
+          .select("*", { count: "exact", head: true })
+        if (error) return { key, count: null }
+        return { key, count: count ?? 0 }
+      } catch {
+        return { key, count: null }
+      }
+    }),
+  )
+
+  for (const { key, count } of results) {
+    initial[key] = count
+  }
+  return initial
+}
