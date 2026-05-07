@@ -673,7 +673,9 @@ export interface CvetRow {
   cvet: string | null
   color: string | null
   lastovica: string | null
+  hex: string | null
   semeystvo: string | null
+  semeystvo_id: number | null
   status_id: number | null
   created_at: string | null
   updated_at: string | null
@@ -685,7 +687,7 @@ export async function fetchCvetaWithUsage(): Promise<CvetRow[]> {
   const [cvetaRes, artikulyRes] = await Promise.all([
     supabase
       .from("cveta")
-      .select("id, color_code, cvet, color, lastovica, semeystvo, status_id, created_at, updated_at")
+      .select("id, color_code, cvet, color, lastovica, hex, semeystvo, semeystvo_id, status_id, created_at, updated_at")
       .order("color_code"),
     supabase
       .from("artikuly")
@@ -725,6 +727,8 @@ export interface ColorDetailArtikul {
   kategoriya: string | null
   tip_kollekcii: string | null
   nomenklatura_wb: number | null
+  artikul_ozon: string | null
+  status_id: number | null
   tovary_cnt: number
 }
 
@@ -732,36 +736,20 @@ export interface ColorDetail extends CvetRow {
   artikuly: ColorDetailArtikul[]
 }
 
-export async function fetchColorDetail(id: number): Promise<ColorDetail | null> {
-  const [cvetRes, artikulyRes] = await Promise.all([
-    supabase
-      .from("cveta")
-      .select("id, color_code, cvet, color, lastovica, semeystvo, status_id, created_at, updated_at")
-      .eq("id", id)
-      .single(),
-    supabase
-      .from("artikuly")
-      .select(`
-        id, artikul, nomenklatura_wb,
+const COLOR_DETAIL_ARTIKUL_SELECT = `
+        id, artikul, nomenklatura_wb, artikul_ozon, status_id,
         modeli(
           id, kod, model_osnova_id,
           modeli_osnova(id, kod, tip_kollekcii, kategorii(nazvanie))
         ),
         tovary(id)
-      `)
-      .eq("cvet_id", id),
-  ])
+      `
 
-  if (cvetRes.error) {
-    if (cvetRes.error.code === "PGRST116") return null
-    throw cvetRes.error
-  }
-  if (artikulyRes.error) throw artikulyRes.error
+const CVETA_DETAIL_SELECT =
+  "id, color_code, cvet, color, lastovica, hex, semeystvo, semeystvo_id, status_id, created_at, updated_at"
 
-  const cvet = cvetRes.data as any
-  const rawArts = (artikulyRes.data ?? []) as any[]
-
-  const artikuly = rawArts.map((a) => ({
+function buildColorDetail(cvet: any, rawArts: any[]): ColorDetail {
+  const artikuly: ColorDetailArtikul[] = rawArts.map((a) => ({
     id: a.id,
     artikul: a.artikul,
     model_kod: a.modeli?.kod ?? null,
@@ -770,6 +758,8 @@ export async function fetchColorDetail(id: number): Promise<ColorDetail | null> 
     kategoriya: a.modeli?.modeli_osnova?.kategorii?.nazvanie ?? null,
     tip_kollekcii: a.modeli?.modeli_osnova?.tip_kollekcii ?? null,
     nomenklatura_wb: a.nomenklatura_wb ?? null,
+    artikul_ozon: a.artikul_ozon ?? null,
+    status_id: a.status_id ?? null,
     tovary_cnt: (a.tovary ?? []).length,
   }))
 
@@ -781,6 +771,46 @@ export async function fetchColorDetail(id: number): Promise<ColorDetail | null> 
     modeli_cnt: modelsSet.size,
     artikuly,
   } as ColorDetail
+}
+
+export async function fetchColorDetail(id: number): Promise<ColorDetail | null> {
+  const [cvetRes, artikulyRes] = await Promise.all([
+    supabase
+      .from("cveta")
+      .select(CVETA_DETAIL_SELECT)
+      .eq("id", id)
+      .single(),
+    supabase
+      .from("artikuly")
+      .select(COLOR_DETAIL_ARTIKUL_SELECT)
+      .eq("cvet_id", id),
+  ])
+
+  if (cvetRes.error) {
+    if (cvetRes.error.code === "PGRST116") return null
+    throw cvetRes.error
+  }
+  if (artikulyRes.error) throw artikulyRes.error
+
+  return buildColorDetail(cvetRes.data, (artikulyRes.data ?? []) as any[])
+}
+
+export async function fetchColorDetailByCode(code: string): Promise<ColorDetail | null> {
+  const cvetRes = await supabase
+    .from("cveta")
+    .select(CVETA_DETAIL_SELECT)
+    .eq("color_code", code)
+    .maybeSingle()
+  if (cvetRes.error) throw cvetRes.error
+  if (!cvetRes.data) return null
+
+  const artikulyRes = await supabase
+    .from("artikuly")
+    .select(COLOR_DETAIL_ARTIKUL_SELECT)
+    .eq("cvet_id", (cvetRes.data as any).id)
+  if (artikulyRes.error) throw artikulyRes.error
+
+  return buildColorDetail(cvetRes.data, (artikulyRes.data ?? []) as any[])
 }
 
 // ─── Skleyki ───────────────────────────────────────────────────────────────
