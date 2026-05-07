@@ -1275,3 +1275,96 @@ export async function archiveModel(kod: string): Promise<void> {
     .in("artikul_id", artikulIds)
   if (tErr) throw new Error(tErr.message)
 }
+
+// ─── Bulk operations ───────────────────────────────────────────────────────
+
+export type TovarChannel = "wb" | "ozon" | "sayt" | "lamoda"
+
+const TOVAR_STATUS_FIELD: Record<TovarChannel, "status_id" | "status_ozon_id" | "status_sayt_id" | "status_lamoda_id"> = {
+  wb: "status_id",
+  ozon: "status_ozon_id",
+  sayt: "status_sayt_id",
+  lamoda: "status_lamoda_id",
+}
+
+/** Bulk-update status_id of modeli_osnova rows (addressed by kod). */
+export async function bulkUpdateModelStatus(kods: string[], statusId: number): Promise<void> {
+  if (kods.length === 0) return
+  const { error } = await supabase
+    .from("modeli_osnova")
+    .update({ status_id: statusId })
+    .in("kod", kods)
+  if (error) throw new Error(error.message)
+}
+
+/**
+ * Bulk-update status of tovary rows (addressed by barkod) on a specific channel.
+ * Channel determines which status field is updated:
+ *   wb     → status_id
+ *   ozon   → status_ozon_id
+ *   sayt   → status_sayt_id
+ *   lamoda → status_lamoda_id
+ */
+export async function bulkUpdateTovaryStatus(
+  barkods: string[],
+  statusId: number,
+  channel: TovarChannel,
+): Promise<void> {
+  if (barkods.length === 0) return
+  const field = TOVAR_STATUS_FIELD[channel]
+  const { error } = await supabase
+    .from("tovary")
+    .update({ [field]: statusId })
+    .in("barkod", barkods)
+  if (error) throw new Error(error.message)
+}
+
+/**
+ * Bulk-link tovary (by barkod) to a skleyka via the appropriate junction table.
+ * channel must be 'wb' or 'ozon' — only those have skleyki/junction tables.
+ */
+export async function bulkLinkTovaryToSkleyka(
+  barkods: string[],
+  skleykaId: number,
+  channel: "wb" | "ozon",
+): Promise<void> {
+  if (barkods.length === 0) return
+  const junction = channel === "wb" ? "tovary_skleyki_wb" : "tovary_skleyki_ozon"
+
+  // Resolve barkod → tovar_id
+  const { data: tovaryRows, error: tErr } = await supabase
+    .from("tovary")
+    .select("id, barkod")
+    .in("barkod", barkods)
+  if (tErr) throw new Error(tErr.message)
+  const ids = ((tovaryRows ?? []) as { id: number }[]).map((r) => r.id)
+  if (ids.length === 0) return
+
+  const rows = ids.map((tovar_id) => ({ tovar_id, skleyka_id: skleykaId }))
+  const { error } = await supabase.from(junction).upsert(rows, { onConflict: "tovar_id,skleyka_id" })
+  if (error) throw new Error(error.message)
+}
+
+/**
+ * Bulk-unlink tovary (by barkod) from any skleyka on the given channel.
+ * Removes all junction rows for these tovary on the channel — use
+ * bulkLinkTovaryToSkleyka to re-attach them elsewhere.
+ */
+export async function bulkUnlinkTovaryFromSkleyka(
+  barkods: string[],
+  channel: "wb" | "ozon",
+): Promise<void> {
+  if (barkods.length === 0) return
+  const junction = channel === "wb" ? "tovary_skleyki_wb" : "tovary_skleyki_ozon"
+
+  const { data: tovaryRows, error: tErr } = await supabase
+    .from("tovary")
+    .select("id")
+    .in("barkod", barkods)
+  if (tErr) throw new Error(tErr.message)
+  const ids = ((tovaryRows ?? []) as { id: number }[]).map((r) => r.id)
+  if (ids.length === 0) return
+
+  const { error } = await supabase.from(junction).delete().in("tovar_id", ids)
+  if (error) throw new Error(error.message)
+}
