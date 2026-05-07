@@ -1,4 +1,4 @@
-// Deterministic swatch color from color_code (no hex in DB)
+// Deterministic swatch color from color_code (fallback when hex is missing)
 export function swatchColor(colorCode: string): string {
   let hash = 0
   for (let i = 0; i < colorCode.length; i++) {
@@ -6,6 +6,53 @@ export function swatchColor(colorCode: string): string {
   }
   const h = Math.abs(hash) % 360
   return `hsl(${h}, 42%, 62%)`
+}
+
+// Resolve display swatch — prefer real hex from DB, fall back to deterministic hue.
+export function resolveSwatch(hex: string | null | undefined, colorCode: string): string {
+  if (hex && /^#[0-9A-Fa-f]{6}$/.test(hex)) return hex
+  return swatchColor(colorCode)
+}
+
+// ── HEX helpers ───────────────────────────────────────────────────────────
+
+export function isValidHex(hex: string | null | undefined): hex is string {
+  return !!hex && /^#[0-9A-Fa-f]{6}$/.test(hex)
+}
+
+export function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+  if (!isValidHex(hex)) return null
+  return {
+    r: parseInt(hex.slice(1, 3), 16),
+    g: parseInt(hex.slice(3, 5), 16),
+    b: parseInt(hex.slice(5, 7), 16),
+  }
+}
+
+/** Euclidean distance in RGB space. Both args must be valid hex (#RRGGBB). */
+export function colorDistance(hex1: string, hex2: string): number {
+  const a = hexToRgb(hex1)
+  const b = hexToRgb(hex2)
+  if (!a || !b) return Number.POSITIVE_INFINITY
+  const dr = a.r - b.r
+  const dg = a.g - b.g
+  const db = a.b - b.b
+  return Math.sqrt(dr * dr + dg * dg + db * db)
+}
+
+/** Find N most-similar colors (by RGB distance). Skips entries without valid hex. */
+export function findSimilarColors<T extends { hex: string | null }>(
+  target: { hex: string | null },
+  pool: T[],
+  limit = 6,
+): T[] {
+  if (!isValidHex(target.hex)) return []
+  return pool
+    .filter((c) => isValidHex(c.hex))
+    .map((c) => ({ c, d: colorDistance(target.hex as string, c.hex as string) }))
+    .sort((a, b) => a.d - b.d)
+    .slice(0, limit)
+    .map((x) => x.c)
 }
 
 // Relative date string
