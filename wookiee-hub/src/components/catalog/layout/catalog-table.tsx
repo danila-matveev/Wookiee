@@ -45,7 +45,7 @@ export function CatalogTable<T extends { id: number }>({
           {data.map((row) => (
             <tr
               key={row.id}
-              className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60 transition-colors"
+              className="group border-b border-stone-100 last:border-0 hover:bg-stone-50/60 transition-colors"
             >
               {columns.map((col) => (
                 <td
