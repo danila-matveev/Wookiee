@@ -1,12 +1,13 @@
-import { useLocation } from "react-router-dom"
+import { useLocation, useSearchParams } from "react-router-dom"
 import { ChevronRight, Search } from "lucide-react"
-import { useState, useEffect } from "react"
 
 const BREADCRUMB_MAP: Record<string, string> = {
   catalog: "Каталог",
-  matrix: "Матрица товаров",
+  matrix: "Матрица",
   colors: "Цвета",
-  skleyki: "Склейки МП",
+  artikuly: "Артикулы",
+  tovary: "Товары/SKU",
+  skleyki: "Склейки",
   references: "Справочники",
   kategorii: "Категории",
   kollekcii: "Коллекции",
@@ -14,32 +15,51 @@ const BREADCRUMB_MAP: Record<string, string> = {
   importery: "Юрлица",
   razmery: "Размеры",
   statusy: "Статусы",
+  "semeystva-cvetov": "Семейства цветов",
+  upakovki: "Упаковки",
+  "kanaly-prodazh": "Каналы продаж",
+  sertifikaty: "Сертификаты",
+  __demo__: "UI Demo",
 }
 
-export function CatalogTopBar() {
-  const { pathname } = useLocation()
-  const [searchOpen, setSearchOpen] = useState(false)
-
+// Map root catalog → "Каталог > Матрица" (matrix is the default)
+function buildCrumbs(pathname: string, modelKod: string | null, colorCode: string | null): string[] {
   const segments = pathname.split("/").filter(Boolean)
-  const crumbs = segments.map((s) => BREADCRUMB_MAP[s] ?? s)
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        e.preventDefault()
-        setSearchOpen(true)
-      }
-      if (e.key === "Escape") setSearchOpen(false)
+  const crumbs: string[] = []
+  for (const seg of segments) {
+    const label = BREADCRUMB_MAP[seg]
+    if (label) {
+      crumbs.push(label)
+    } else {
+      crumbs.push(seg)
     }
-    window.addEventListener("keydown", handler)
-    return () => window.removeEventListener("keydown", handler)
-  }, [])
+  }
+  // For pretty hub UX: when on /catalog (root) without children, append "Матрица"
+  if (segments.length === 1 && segments[0] === "catalog") {
+    crumbs.push("Матрица")
+  }
+  // Append modal context (?model=KOD or ?color=KOD) as a deeper crumb
+  if (modelKod) crumbs.push(modelKod)
+  else if (colorCode) crumbs.push(colorCode)
+  return crumbs
+}
+
+export interface CatalogTopBarProps {
+  onOpenSearch: () => void
+}
+
+export function CatalogTopBar({ onOpenSearch }: CatalogTopBarProps) {
+  const { pathname } = useLocation()
+  const [searchParams] = useSearchParams()
+  const modelKod = searchParams.get("model")
+  const colorCode = searchParams.get("color")
+  const crumbs = buildCrumbs(pathname, modelKod, colorCode)
 
   return (
-    <div className="h-14 border-b border-stone-200 bg-white flex items-center px-6 gap-4 shrink-0">
+    <div className="h-14 border-b border-stone-200 bg-white flex items-center px-6 gap-4 shrink-0 sticky top-0 z-20">
       <div className="flex items-center gap-2 text-sm text-stone-500 min-w-0 flex-1">
         {crumbs.map((c, i) => (
-          <span key={i} className="flex items-center gap-2">
+          <span key={`${c}-${i}`} className="flex items-center gap-2 min-w-0">
             {i > 0 && (
               <ChevronRight className="w-3.5 h-3.5 text-stone-300 shrink-0" />
             )}
@@ -56,8 +76,10 @@ export function CatalogTopBar() {
         ))}
       </div>
       <button
-        onClick={() => setSearchOpen(true)}
+        type="button"
+        onClick={onOpenSearch}
         className="flex items-center gap-2 px-3 py-1.5 text-sm text-stone-500 bg-stone-100 hover:bg-stone-200 rounded-md transition-colors min-w-[260px]"
+        aria-label="Открыть поиск по каталогу (⌘K)"
       >
         <Search className="w-3.5 h-3.5" />
         <span className="flex-1 text-left">Поиск по баркоду, артикулу…</span>
@@ -65,34 +87,6 @@ export function CatalogTopBar() {
           ⌘K
         </kbd>
       </button>
-
-      {/* Command palette placeholder */}
-      {searchOpen && (
-        <div
-          className="fixed inset-0 z-50 bg-stone-900/40 flex items-start justify-center pt-[10vh]"
-          onClick={() => setSearchOpen(false)}
-        >
-          <div
-            className="w-full max-w-xl bg-white rounded-xl shadow-2xl overflow-hidden border border-stone-200"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center gap-3 px-4 py-3 border-b border-stone-200">
-              <Search className="w-4 h-4 text-stone-400" />
-              <input
-                autoFocus
-                placeholder="Найти модель, цвет, баркод…"
-                className="flex-1 outline-none text-sm placeholder:text-stone-400"
-              />
-              <kbd className="text-[10px] text-stone-400 border border-stone-300 rounded px-1 py-0.5">
-                esc
-              </kbd>
-            </div>
-            <div className="p-6 text-center text-sm text-stone-400">
-              Поиск будет реализован в Спринте 4
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

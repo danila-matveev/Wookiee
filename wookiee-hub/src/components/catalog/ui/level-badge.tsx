@@ -1,6 +1,6 @@
 import { Tooltip } from "./tooltip"
 
-type Level = "model" | "variation" | "artikul" | "sku"
+export type Level = "model" | "variation" | "artikul" | "sku"
 
 const LEVEL_MAP: Record<Level, { label: string; cls: string }> = {
   model:     { label: "модель",   cls: "bg-blue-50   text-blue-700   ring-blue-600/20"   },
