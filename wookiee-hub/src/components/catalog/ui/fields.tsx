@@ -1,7 +1,7 @@
 import type { ReactNode } from "react"
 import { LevelBadge } from "./level-badge"
 
-type FieldLevel = "model" | "variation" | "artikul" | "sku"
+export type FieldLevel = "model" | "variation" | "artikul" | "sku"
 
 // ─── FieldWrap ───────────────────────────────────────────────
 interface FieldWrapProps {
