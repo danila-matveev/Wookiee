@@ -1,8 +1,11 @@
 import { useState } from "react"
 import { useLocation, Link } from "react-router-dom"
+import { useQuery } from "@tanstack/react-query"
 import {
   Package,
   Palette,
+  Tag,
+  Boxes,
   Layers,
   FolderTree,
   BookOpen,
@@ -10,14 +13,20 @@ import {
   Briefcase,
   Ruler,
   Sparkles,
+  Box,
+  Tv,
+  ShieldCheck,
   ChevronsLeft,
+  Settings,
 } from "lucide-react"
+import { fetchCatalogCounts, type CatalogCounts } from "@/lib/catalog/service"
 
 interface SidebarItem {
   key: string
   icon: React.ElementType
   label: string
   path: string
+  countKey?: keyof CatalogCounts
 }
 
 interface SidebarGroup {
@@ -27,29 +36,45 @@ interface SidebarGroup {
 
 const GROUPS: SidebarGroup[] = [
   {
-    title: "Каталог",
+    title: "Контент",
     items: [
-      { key: "matrix",  icon: Package, label: "Матрица товаров", path: "/catalog/matrix"  },
-      { key: "colors",  icon: Palette, label: "Цвета",            path: "/catalog/colors"  },
-      { key: "skleyki", icon: Layers,  label: "Склейки МП",       path: "/catalog/skleyki" },
+      { key: "matrix",   icon: Package,  label: "Базовые модели", path: "/catalog/matrix",   countKey: "models" },
+      { key: "colors",   icon: Palette,  label: "Цвета",           path: "/catalog/colors",   countKey: "colors" },
+      { key: "artikuly", icon: Tag,      label: "Артикулы",        path: "/catalog/artikuly", countKey: "artikuly" },
+      { key: "tovary",   icon: Boxes,    label: "Товары/SKU",      path: "/catalog/tovary",   countKey: "tovary" },
+      { key: "skleyki",  icon: Layers,   label: "Склейки",         path: "/catalog/skleyki",  countKey: "skleyki" },
     ],
   },
   {
     title: "Справочники",
     items: [
-      { key: "kategorii", icon: FolderTree, label: "Категории",     path: "/catalog/references/kategorii" },
-      { key: "kollekcii", icon: BookOpen,   label: "Коллекции",     path: "/catalog/references/kollekcii" },
-      { key: "fabriki",   icon: Building2,  label: "Производители", path: "/catalog/references/fabriki"   },
-      { key: "importery", icon: Briefcase,  label: "Юрлица",        path: "/catalog/references/importery" },
-      { key: "razmery",   icon: Ruler,      label: "Размеры",       path: "/catalog/references/razmery"   },
-      { key: "statusy",   icon: Sparkles,   label: "Статусы",       path: "/catalog/references/statusy"   },
+      { key: "kategorii",        icon: FolderTree,  label: "Категории",        path: "/catalog/references/kategorii",         countKey: "kategorii" },
+      { key: "kollekcii",        icon: BookOpen,    label: "Коллекции",        path: "/catalog/references/kollekcii",         countKey: "kollekcii" },
+      { key: "fabriki",          icon: Building2,   label: "Производители",    path: "/catalog/references/fabriki",           countKey: "fabriki" },
+      { key: "importery",        icon: Briefcase,   label: "Юрлица",           path: "/catalog/references/importery",         countKey: "importery" },
+      { key: "razmery",          icon: Ruler,       label: "Размеры",          path: "/catalog/references/razmery",           countKey: "razmery" },
+      { key: "semeystva-cvetov", icon: Sparkles,    label: "Семейства цветов", path: "/catalog/semeystva-cvetov",             countKey: "semeystva_cvetov" },
+      { key: "upakovki",         icon: Box,         label: "Упаковки",         path: "/catalog/upakovki",                     countKey: "upakovki" },
+      { key: "kanaly-prodazh",   icon: Tv,          label: "Каналы продаж",    path: "/catalog/kanaly-prodazh",               countKey: "kanaly_prodazh" },
+      { key: "sertifikaty",      icon: ShieldCheck, label: "Сертификаты",      path: "/catalog/sertifikaty",                  countKey: "sertifikaty" },
     ],
   },
 ]
 
+function formatCount(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "—"
+  return String(value)
+}
+
 export function CatalogSidebar() {
   const [collapsed, setCollapsed] = useState(false)
   const { pathname } = useLocation()
+
+  const { data: counts } = useQuery({
+    queryKey: ["catalog", "counts"],
+    queryFn: fetchCatalogCounts,
+    staleTime: 60_000,
+  })
 
   const isActive = (path: string) =>
     pathname === path || pathname.startsWith(path + "/")
@@ -66,12 +91,8 @@ export function CatalogSidebar() {
               W
             </div>
             <span
-              className="text-lg leading-none italic text-stone-900"
-              style={{ fontFamily: "'Instrument Serif', ui-serif, Georgia, serif" }}
+              className="cat-font-serif text-lg leading-none italic text-stone-900"
             >
-              Wookiee
-            </span>
-            <span className="text-[10px] text-stone-400 mt-1 uppercase tracking-wider">
               Каталог
             </span>
           </div>
@@ -82,8 +103,10 @@ export function CatalogSidebar() {
           </div>
         )}
         <button
+          type="button"
           onClick={() => setCollapsed(!collapsed)}
           className="text-stone-400 hover:text-stone-700 -mr-1 shrink-0"
+          aria-label={collapsed ? "Развернуть боковую панель" : "Свернуть боковую панель"}
         >
           <ChevronsLeft
             className={`w-4 h-4 transition-transform ${collapsed ? "rotate-180" : ""}`}
@@ -103,19 +126,31 @@ export function CatalogSidebar() {
             {g.items.map((item) => {
               const Icon = item.icon
               const active = isActive(item.path)
+              const count = item.countKey ? counts?.[item.countKey] : undefined
               return (
                 <Link
                   key={item.key}
                   to={item.path}
                   className={`flex items-center gap-2.5 py-1.5 text-sm transition-colors ${
                     active
-                      ? "bg-stone-900 text-white"
-                      : "text-stone-700 hover:bg-stone-100"
+                      ? "bg-stone-100 text-stone-900 font-medium"
+                      : "text-stone-700 hover:bg-stone-100/60"
                   } ${collapsed ? "justify-center px-0" : "px-4"}`}
                 >
                   <Icon className="w-4 h-4 shrink-0" />
                   {!collapsed && (
-                    <span className="flex-1 text-left truncate">{item.label}</span>
+                    <>
+                      <span className="flex-1 text-left truncate">{item.label}</span>
+                      {item.countKey && (
+                        <span
+                          className={`text-[10px] tabular-nums ${
+                            active ? "text-stone-500" : "text-stone-400"
+                          }`}
+                        >
+                          {formatCount(count)}
+                        </span>
+                      )}
+                    </>
                   )}
                 </Link>
               )
@@ -124,12 +159,22 @@ export function CatalogSidebar() {
         ))}
       </nav>
 
-      {/* Footer */}
+      {/* Footer — profile */}
       {!collapsed && (
-        <div className="border-t border-stone-200 p-3">
+        <div className="border-t border-stone-200 p-3 space-y-2">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-stone-700 to-stone-900 text-white flex items-center justify-center text-[11px] font-medium">
+              Д
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-medium text-stone-900 truncate">Данила</div>
+              <div className="text-[10px] text-stone-500">CEO · Wookiee</div>
+            </div>
+            <Settings className="w-3.5 h-3.5 text-stone-400" />
+          </div>
           <Link
             to="/operations/tools"
-            className="flex items-center gap-2 text-xs text-stone-500 hover:text-stone-700 transition-colors"
+            className="flex items-center gap-2 text-[11px] text-stone-500 hover:text-stone-700 transition-colors"
           >
             <span>← Назад в Hub</span>
           </Link>
