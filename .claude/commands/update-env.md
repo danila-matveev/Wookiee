@@ -42,8 +42,8 @@
    |---|---|
    | `sheets-sync` | `WB_API_KEY_*`, `OZON_*`, `SPREADSHEET_*`, `SUPABASE_*`, `SYNC_TEST_MODE` |
    | `wookiee-cron` | `WB_API_KEY_*`, `OZON_*`, `SUPABASE_*`, `TELEGRAM_*`, `OPENROUTER_API_KEY` |
-   | `wb-mcp-ip` | `WB_API_KEY_IP`, `WB_API_TOKEN_IP` |
-   | `wb-mcp-ooo` | `WB_API_KEY_OOO`, `WB_API_TOKEN_OOO` |
+   | `wb-mcp-ip` | `WB_API_KEY_IP` |
+   | `wb-mcp-ooo` | `WB_API_KEY_OOO` |
    | `bitrix24-mcp` | `BITRIX24_WEBHOOK_URL`, `Bitrix_rest_api` |
    | `wb-logistics-api` | `VASILY_*`, `WB_LOGISTICS_API_KEY` |
 

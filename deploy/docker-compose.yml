@@ -151,7 +151,7 @@ services:
     restart: unless-stopped
 
     environment:
-      - WB_API_TOKEN=${WB_API_TOKEN_IP}
+      - WB_API_TOKEN=${WB_API_KEY_IP}
       - MCP_TRANSPORT=http
       - MCP_PORT=8080
 
@@ -180,7 +180,7 @@ services:
     restart: unless-stopped
 
     environment:
-      - WB_API_TOKEN=${WB_API_TOKEN_OOO}
+      - WB_API_TOKEN=${WB_API_KEY_OOO}
       - MCP_TRANSPORT=http
       - MCP_PORT=8080
 
