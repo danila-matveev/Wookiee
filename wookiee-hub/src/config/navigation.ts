@@ -11,10 +11,25 @@ import {
   Kanban,
   CalendarDays,
   TrendingUp,
+  Package,
+  Palette,
+  Layers,
+  BookOpen,
 } from "lucide-react"
 import type { NavGroup } from "@/types/navigation"
 
 export const navigationGroups: NavGroup[] = [
+  {
+    id: "catalog",
+    icon: Package,
+    label: "Каталог",
+    items: [
+      { id: "catalog-matrix",     label: "Матрица товаров",  icon: Package,   path: "/catalog/matrix" },
+      { id: "catalog-colors",     label: "Цвета",             icon: Palette,   path: "/catalog/colors" },
+      { id: "catalog-skleyki",    label: "Склейки МП",        icon: Layers,    path: "/catalog/skleyki" },
+      { id: "catalog-references", label: "Справочники",       icon: BookOpen,  path: "/catalog/references/kategorii" },
+    ],
+  },
   {
     id: "operations",
     icon: LayoutGrid,
