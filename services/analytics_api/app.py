@@ -19,10 +19,14 @@ from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv()
 
-ANALYTICS_API_KEY = os.getenv("ANALYTICS_API_KEY", "")
-SUPABASE_URL      = os.getenv("SUPABASE_URL", "")
+ANALYTICS_API_KEY     = os.getenv("ANALYTICS_API_KEY", "")
+SUPABASE_URL          = os.getenv("SUPABASE_URL", "")
+GOOGLE_SA_FILE        = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE", "services/sheets_sync/credentials/google_sa.json")
+RNP_EXT_ADS_SHEET_ID  = os.getenv("RNP_EXT_ADS_SHEET_ID", "")
+RNP_BLOGGERS_SHEET_ID = os.getenv("RNP_BLOGGERS_SHEET_ID", "")
 
 _jwks_client: Optional[PyJWKClient] = None
+
 
 def _get_jwks_client() -> PyJWKClient:
     global _jwks_client
@@ -31,9 +35,6 @@ def _get_jwks_client() -> PyJWKClient:
             raise RuntimeError("SUPABASE_URL not set in .env")
         _jwks_client = PyJWKClient(f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json")
     return _jwks_client
-GOOGLE_SA_FILE        = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE", "services/sheets_sync/credentials/google_sa.json")
-RNP_EXT_ADS_SHEET_ID  = os.getenv("RNP_EXT_ADS_SHEET_ID", "")
-RNP_BLOGGERS_SHEET_ID = os.getenv("RNP_BLOGGERS_SHEET_ID", "")
 
 app = FastAPI(title="Analytics API", version="1.0.0")
 app.add_middleware(
