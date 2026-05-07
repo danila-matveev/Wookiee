@@ -16,6 +16,7 @@
 
 | Сервис | Документация |
 |---|---|
+| Analytics API (РНП — Рука на Пульсе) | [services/analytics_api/README.md](../services/analytics_api/README.md) · [API](api/RNP_ANALYTICS_API.md) |
 | ETL Pipeline (cron: sheets_sync) | [services/sheets_sync/README.md](../services/sheets_sync/README.md) |
 | WB Localization + API | [services/wb_localization/README.md](../services/wb_localization/README.md) |
 | Logistics Audit | [services/logistics_audit/README.md](../services/logistics_audit/README.md) |
