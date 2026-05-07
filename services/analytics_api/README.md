@@ -182,5 +182,7 @@ python3 -m pytest tests/analytics_api/test_rnp_metrics.py -v
 
 ```bash
 cd wookiee-hub && npm run build
-rsync -az --delete dist/ timeweb:/srv/hub/
+# ВАЖНО: Caddy bind-маунтит /home/danila/projects/wookiee/wookiee-hub/dist → /srv/hub.
+# Rsync идёт в директорию-источник, не в /srv/hub (это путь внутри контейнера).
+rsync -az --delete dist/ timeweb:/home/danila/projects/wookiee/wookiee-hub/dist/
 ```
