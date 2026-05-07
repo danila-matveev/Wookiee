@@ -974,28 +974,36 @@ export interface ArtikulRow {
 }
 
 export async function fetchArtikulyRegistry(): Promise<ArtikulRow[]> {
-  const { data, error } = await supabase
-    .from("artikuly")
-    .select(`
-      id, artikul, model_id, cvet_id, status_id, nomenklatura_wb, artikul_ozon,
-      created_at, updated_at,
-      cveta(color_code, cvet, color, hex),
-      modeli(
-        id, kod, model_osnova_id,
-        modeli_osnova(
-          id, kod, tip_kollekcii, nazvanie_etiketka,
-          kategorii(nazvanie),
-          kollekcii(nazvanie),
-          fabriki(nazvanie)
-        )
-      ),
-      tovary(id)
-    `)
-    .order("artikul")
-    .range(0, 4999)
-  if (error) throw error
+  // Supabase PostgREST default max-rows=1000.  Page through until short response.
+  const PAGE = 1000
+  const all: any[] = []
+  for (let offset = 0; ; offset += PAGE) {
+    const { data, error } = await supabase
+      .from("artikuly")
+      .select(`
+        id, artikul, model_id, cvet_id, status_id, nomenklatura_wb, artikul_ozon,
+        created_at, updated_at,
+        cveta(color_code, cvet, color, hex),
+        modeli(
+          id, kod, model_osnova_id,
+          modeli_osnova(
+            id, kod, tip_kollekcii, nazvanie_etiketka,
+            kategorii(nazvanie),
+            kollekcii(nazvanie),
+            fabriki(nazvanie)
+          )
+        ),
+        tovary(id)
+      `)
+      .order("artikul")
+      .range(offset, offset + PAGE - 1)
+    if (error) throw error
+    const rows = (data ?? []) as any[]
+    all.push(...rows)
+    if (rows.length < PAGE) break
+  }
 
-  return (data as any[]).map((a) => ({
+  return (all as any[]).map((a) => ({
     id: a.id,
     artikul: a.artikul,
     model_id: a.model_id,
@@ -1062,32 +1070,40 @@ export interface TovarRow {
 }
 
 export async function fetchTovaryRegistry(): Promise<TovarRow[]> {
-  const { data, error } = await supabase
-    .from("tovary")
-    .select(`
-      id, barkod, barkod_gs1, barkod_gs2, barkod_perehod, artikul_id, razmer_id,
-      status_id, status_ozon_id, status_sayt_id, status_lamoda_id,
-      sku_china_size, ozon_product_id, ozon_fbo_sku_id, lamoda_seller_sku,
-      created_at,
-      razmery(nazvanie),
-      artikuly(
-        artikul, nomenklatura_wb, artikul_ozon, cvet_id,
-        cveta(color_code, cvet, color, hex),
-        modeli(
-          kod, model_osnova_id,
-          modeli_osnova(
-            kod, nazvanie_etiketka,
-            kategorii(nazvanie),
-            kollekcii(nazvanie)
+  // PostgREST default max-rows=1000 ignores .range() above its cap.  Page through.
+  const PAGE = 1000
+  const all: any[] = []
+  for (let offset = 0; ; offset += PAGE) {
+    const { data, error } = await supabase
+      .from("tovary")
+      .select(`
+        id, barkod, barkod_gs1, barkod_gs2, barkod_perehod, artikul_id, razmer_id,
+        status_id, status_ozon_id, status_sayt_id, status_lamoda_id,
+        sku_china_size, ozon_product_id, ozon_fbo_sku_id, lamoda_seller_sku,
+        created_at,
+        razmery(nazvanie),
+        artikuly(
+          artikul, nomenklatura_wb, artikul_ozon, cvet_id,
+          cveta(color_code, cvet, color, hex),
+          modeli(
+            kod, model_osnova_id,
+            modeli_osnova(
+              kod, nazvanie_etiketka,
+              kategorii(nazvanie),
+              kollekcii(nazvanie)
+            )
           )
         )
-      )
-    `)
-    .order("id")
-    .range(0, 4999)
-  if (error) throw error
+      `)
+      .order("id")
+      .range(offset, offset + PAGE - 1)
+    if (error) throw error
+    const rows = (data ?? []) as any[]
+    all.push(...rows)
+    if (rows.length < PAGE) break
+  }
 
-  return (data as any[]).map((t) => {
+  return (all as any[]).map((t) => {
     const razmer = t.razmery?.nazvanie ?? null
     return {
       id: t.id,
