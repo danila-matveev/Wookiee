@@ -28,8 +28,10 @@ import {
 import {
   archiveModel,
   bulkUpdateModelStatus,
+  createModel,
   duplicateModel,
   fetchArtikulyRegistry,
+  fetchFabriki,
   fetchKategorii,
   fetchKollekcii,
   fetchMatrixList,
@@ -38,12 +40,14 @@ import {
   fetchTovaryRegistry,
   getUiPref,
   setUiPref,
+  updateModel,
 } from "@/lib/catalog/service"
 import type { MatrixRow, ModelDetail } from "@/lib/catalog/service"
 import { StatusBadge, CATALOG_STATUSES } from "@/components/catalog/ui/status-badge"
 import { CompletenessRing } from "@/components/catalog/ui/completeness-ring"
 import { Tooltip } from "@/components/catalog/ui/tooltip"
 import { BulkActionsBar } from "@/components/catalog/ui/bulk-actions-bar"
+import { LevelBadge, type Level } from "@/components/catalog/ui/level-badge"
 import {
   swatchColor,
   relativeDate,
@@ -93,10 +97,21 @@ function SidebarBlock({ title, badge, action, children }: {
   )
 }
 
-function FieldWrap({ label, children, hint, full }: { label: string; children: React.ReactNode; hint?: string; full?: boolean }) {
+function FieldWrap({
+  label, children, hint, full, level,
+}: {
+  label: string
+  children: React.ReactNode
+  hint?: string
+  full?: boolean
+  level?: Level
+}) {
   return (
     <div className={full ? "col-span-2" : ""}>
-      <label className="block text-[11px] uppercase tracking-wider text-stone-500 mb-1">{label}</label>
+      <div className="flex items-center gap-1.5 mb-1">
+        <label className="block text-[11px] uppercase tracking-wider text-stone-500">{label}</label>
+        {level && <LevelBadge level={level} />}
+      </div>
       {children}
       {hint && <div className="text-[10px] text-stone-400 mt-1">{hint}</div>}
     </div>
@@ -110,15 +125,171 @@ function ReadField({ value, mono }: { value: string | number | null | undefined;
   return <div className={`px-2.5 py-1.5 text-sm text-stone-900 ${mono ? "font-mono" : ""}`}>{value}</div>
 }
 
+// ─── Editable field shells (used inside ModelCard edit mode) ──────────────
+
+function EditTextField({
+  value, onChange, mono, placeholder,
+}: { value: string | number | null | undefined; onChange: (v: string) => void; mono?: boolean; placeholder?: string }) {
+  return (
+    <input
+      type="text"
+      value={value == null ? "" : String(value)}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      className={`w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md bg-white outline-none focus:border-stone-900 focus:ring-1 focus:ring-stone-900 ${mono ? "font-mono" : ""}`}
+    />
+  )
+}
+
+function EditNumberField({
+  value, onChange, suffix,
+}: { value: number | null | undefined; onChange: (v: number | null) => void; suffix?: string }) {
+  return (
+    <div className="relative">
+      <input
+        type="number"
+        value={value ?? ""}
+        onChange={(e) => {
+          const v = e.target.value
+          onChange(v === "" ? null : parseFloat(v))
+        }}
+        className="w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md bg-white outline-none focus:border-stone-900 focus:ring-1 focus:ring-stone-900 tabular-nums pr-10"
+      />
+      {suffix && (
+        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-stone-400">{suffix}</span>
+      )}
+    </div>
+  )
+}
+
+function EditSelectField<T extends string | number>({
+  value, onChange, options,
+}: {
+  value: T | null | undefined
+  onChange: (v: T | null) => void
+  options: { id: T; nazvanie: string }[]
+}) {
+  return (
+    <select
+      value={value == null ? "" : String(value)}
+      onChange={(e) => {
+        const raw = e.target.value
+        if (raw === "") return onChange(null)
+        const found = options.find((o) => String(o.id) === raw)
+        if (found) onChange(found.id)
+      }}
+      className="w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md bg-white outline-none focus:border-stone-900 focus:ring-1 focus:ring-stone-900"
+    >
+      <option value="">— не выбрано —</option>
+      {options.map((o) => (
+        <option key={String(o.id)} value={String(o.id)}>{o.nazvanie}</option>
+      ))}
+    </select>
+  )
+}
+
+const RAZMER_CHOICES = ["XS", "S", "M", "L", "XL", "XXL"] as const
+
+/** Chip-pill toggle для размерной линейки.
+ *  Read-mode: чипы серые с активными выделенными.  Edit: те же чипы, но кликабельны. */
+function SizeLineupField({
+  value, onChange, readonly,
+}: { value: string | null | undefined; onChange?: (v: string) => void; readonly?: boolean }) {
+  const tokens = (value ?? "")
+    .split(",")
+    .map((s) => s.trim().toUpperCase())
+    .filter(Boolean)
+  const selected = new Set<string>(tokens)
+  return (
+    <div className="flex flex-wrap gap-1.5 px-0.5 py-1">
+      {RAZMER_CHOICES.map((s) => {
+        const active = selected.has(s)
+        return (
+          <button
+            key={s}
+            type="button"
+            disabled={readonly}
+            onClick={() => {
+              if (readonly || !onChange) return
+              const next = new Set(selected)
+              if (next.has(s)) next.delete(s)
+              else next.add(s)
+              const ordered = RAZMER_CHOICES.filter((x) => next.has(x))
+              onChange(ordered.join(", "))
+            }}
+            className={`min-w-[36px] h-7 px-2 rounded-md border text-xs font-medium transition ${
+              active
+                ? "bg-stone-900 text-white border-stone-900"
+                : "bg-white text-stone-600 border-stone-300 " + (readonly ? "" : "hover:border-stone-400 cursor-pointer")
+            } ${readonly ? "cursor-default" : ""}`}
+          >
+            {s}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/** Per-field "level" (Базовый / Вариация / Артикул / SKU) — определяет где поле редактируется. */
+const FIELD_LEVEL: Record<string, Level> = {
+  kod: "model",
+  status_id: "model",
+  kategoriya: "model",
+  kategoriya_id: "model",
+  kollekciya: "model",
+  kollekciya_id: "model",
+  tip_kollekcii: "model",
+  fabrika: "model",
+  fabrika_id: "model",
+  razmery_modeli: "model",
+  material: "model",
+  sku_china: "model",
+  sostav_syrya: "model",
+  srok_proizvodstva: "model",
+  kratnost_koroba: "model",
+  ves_kg: "model",
+  dlina_cm: "model",
+  shirina_cm: "model",
+  vysota_cm: "model",
+  tnved: "model",
+  gruppa_sertifikata: "model",
+  nazvanie_etiketka: "model",
+  nazvanie_sayt: "model",
+  opisanie_sayt: "model",
+  composition: "model",
+  tegi: "model",
+  notion_link: "model",
+  upakovka: "model",
+}
+
 // ─── Model Card (5 tabs) — placeholder until B3 ships its replacement ─────
 
 function ModelCard({ modelId, onBack }: { modelId: number; onBack: () => void }) {
   const [tab, setTab] = useState<"opisanie" | "atributy" | "artikuly" | "sku" | "kontent">("opisanie")
+  const [isEditing, setIsEditing] = useState(false)
+  const [draft, setDraft] = useState<Partial<ModelDetail> | null>(null)
+  const [saving, setSaving] = useState(false)
+  const queryClient = useQueryClient()
+
   const { data: m, isLoading, error } = useQuery({
     queryKey: ["model-detail", modelId],
     queryFn: () => fetchModelDetail(modelId),
     staleTime: 2 * 60 * 1000,
   })
+
+  // Reference lookups for edit-mode selects.
+  const kategoriiQ = useQuery({ queryKey: ["kategorii"], queryFn: fetchKategorii, staleTime: 10 * 60 * 1000 })
+  const kollekciiQ = useQuery({ queryKey: ["kollekcii"], queryFn: fetchKollekcii, staleTime: 10 * 60 * 1000 })
+  const fabrikiQ = useQuery({ queryKey: ["fabriki"], queryFn: fetchFabriki, staleTime: 10 * 60 * 1000 })
+  const statusyQ = useQuery({ queryKey: ["statusy"], queryFn: fetchStatusy, staleTime: 30 * 60 * 1000 })
+
+  // Reset draft whenever a fresh model loads.
+  useEffect(() => {
+    if (m && draft === null) {
+      setDraft({})
+    }
+  }, [m, draft])
 
   if (isLoading) {
     return (
@@ -141,6 +312,72 @@ function ModelCard({ modelId, onBack }: { modelId: number; onBack: () => void })
   const attrKeys = ATTRIBUTES_BY_CATEGORY[m.kategoriya_id ?? 0] ?? []
   const attrFilled = attrKeys.filter((k) => (m as unknown as Record<string, unknown>)[k]).length
 
+  // Effective values: draft overrides if editing.
+  const effective: ModelDetail = isEditing && draft
+    ? ({ ...m, ...draft } as ModelDetail)
+    : m
+  const dirty = isEditing && draft && Object.keys(draft).length > 0
+  const setField = <K extends keyof ModelDetail>(key: K, value: ModelDetail[K]) => {
+    setDraft((prev) => ({ ...(prev ?? {}), [key]: value }))
+  }
+
+  const startEdit = () => { setDraft({}); setIsEditing(true) }
+  const cancelEdit = () => { setDraft({}); setIsEditing(false) }
+  const saveEdit = async () => {
+    if (!draft || Object.keys(draft).length === 0) {
+      setIsEditing(false)
+      return
+    }
+    setSaving(true)
+    try {
+      // Drop derived/relational fields the server does not accept.
+      const allowedKeys = new Set([
+        "kod", "status_id", "kategoriya_id", "kollekciya_id", "tip_kollekcii", "fabrika_id",
+        "razmery_modeli", "material", "sku_china", "sostav_syrya", "srok_proizvodstva",
+        "kratnost_koroba", "ves_kg", "dlina_cm", "shirina_cm", "vysota_cm",
+        "tnved", "gruppa_sertifikata",
+        "nazvanie_etiketka", "nazvanie_sayt", "opisanie_sayt", "composition", "tegi",
+        "notion_link", "notion_strategy_link", "yandex_disk_link", "upakovka",
+      ])
+      const patch: Record<string, unknown> = {}
+      for (const [k, v] of Object.entries(draft)) {
+        if (allowedKeys.has(k)) patch[k] = v
+      }
+      await updateModel(m.kod, patch as never)
+      await queryClient.invalidateQueries({ queryKey: ["model-detail", modelId] })
+      await queryClient.invalidateQueries({ queryKey: ["matrix-list"] })
+      setDraft({})
+      setIsEditing(false)
+    } catch (err) {
+      window.alert(`Не удалось сохранить: ${(err as Error).message}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const headerDuplicate = async () => {
+    const newKod = window.prompt(`Дублировать «${m.kod}»: введите новый kod`, `${m.kod}_copy`)
+    if (!newKod) return
+    try {
+      await duplicateModel(m.kod, newKod.trim())
+      await queryClient.invalidateQueries({ queryKey: ["matrix-list"] })
+      window.alert(`Создана модель ${newKod.trim()}`)
+    } catch (err) {
+      window.alert(`Не удалось дублировать: ${(err as Error).message}`)
+    }
+  }
+  const headerArchive = async () => {
+    const ok = window.confirm(`Архивировать «${m.kod}» и все связанные вариации/артикулы/SKU?`)
+    if (!ok) return
+    try {
+      await archiveModel(m.kod)
+      await queryClient.invalidateQueries({ queryKey: ["model-detail", modelId] })
+      await queryClient.invalidateQueries({ queryKey: ["matrix-list"] })
+    } catch (err) {
+      window.alert(`Не удалось архивировать: ${(err as Error).message}`)
+    }
+  }
+
   const TABS = [
     { id: "opisanie", label: "Описание" },
     { id: "atributy", label: "Атрибуты", count: `${attrFilled}/${attrKeys.length}` },
@@ -159,25 +396,60 @@ function ModelCard({ modelId, onBack }: { modelId: number; onBack: () => void })
           <div className="flex-1">
             <div className="text-xs text-stone-400 mb-0.5">
               Базовая модель · {m.kategoriya ?? "—"}
+              {isEditing && (
+                <span className="ml-2 inline-flex items-center px-1.5 py-px rounded text-[10px] uppercase tracking-wider bg-amber-100 text-amber-800">
+                  Черновик
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-3">
               <h2 className="text-2xl font-medium text-stone-900 cat-font-serif">{m.kod}</h2>
-              <StatusBadge statusId={m.status_id ?? 0} />
-              {m.nazvanie_sayt && (
-                <span className="text-sm text-stone-500 truncate max-w-[300px]">{m.nazvanie_sayt}</span>
+              <StatusBadge statusId={effective.status_id ?? 0} />
+              {effective.nazvanie_sayt && (
+                <span className="text-sm text-stone-500 truncate max-w-[300px]">{effective.nazvanie_sayt}</span>
               )}
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button className="px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-100 rounded-md flex items-center gap-1.5">
-              <Copy className="w-3.5 h-3.5" /> Дублировать
-            </button>
-            <button className="px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-100 rounded-md flex items-center gap-1.5">
-              <Archive className="w-3.5 h-3.5" /> В архив
-            </button>
-            <button className="px-3 py-1.5 text-xs text-white bg-stone-900 hover:bg-stone-800 rounded-md flex items-center gap-1.5">
-              <Edit3 className="w-3.5 h-3.5" /> Редактировать
-            </button>
+            {isEditing ? (
+              <>
+                <button
+                  onClick={cancelEdit}
+                  disabled={saving}
+                  className="px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-100 rounded-md flex items-center gap-1.5 disabled:opacity-60"
+                >
+                  Отмена
+                </button>
+                <button
+                  onClick={saveEdit}
+                  disabled={saving || !dirty}
+                  className="px-3 py-1.5 text-xs text-white bg-stone-900 hover:bg-stone-800 rounded-md flex items-center gap-1.5 disabled:opacity-60"
+                >
+                  {saving ? "Сохранение…" : "Сохранить"}
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={headerDuplicate}
+                  className="px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-100 rounded-md flex items-center gap-1.5"
+                >
+                  <Copy className="w-3.5 h-3.5" /> Дублировать
+                </button>
+                <button
+                  onClick={headerArchive}
+                  className="px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-100 rounded-md flex items-center gap-1.5"
+                >
+                  <Archive className="w-3.5 h-3.5" /> В архив
+                </button>
+                <button
+                  onClick={startEdit}
+                  className="px-3 py-1.5 text-xs text-white bg-stone-900 hover:bg-stone-800 rounded-md flex items-center gap-1.5"
+                >
+                  <Edit3 className="w-3.5 h-3.5" /> Редактировать
+                </button>
+              </>
+            )}
           </div>
         </div>
         <div className="px-6 flex gap-1">
@@ -204,11 +476,27 @@ function ModelCard({ modelId, onBack }: { modelId: number; onBack: () => void })
       <div className="flex-1 overflow-auto">
         <div className="max-w-7xl mx-auto px-6 py-6 grid grid-cols-3 gap-6">
           <div className="col-span-2 space-y-3">
-            {tab === "opisanie" && <TabOpisanie m={m} />}
-            {tab === "atributy" && <TabAtributy m={m} attrKeys={attrKeys} />}
+            {tab === "opisanie" && (
+              <TabOpisanie
+                m={effective}
+                isEditing={isEditing}
+                setField={setField}
+                kategorii={kategoriiQ.data ?? []}
+                kollekcii={kollekciiQ.data ?? []}
+                fabriki={fabrikiQ.data ?? []}
+                modelStatuses={(statusyQ.data ?? []).filter((s) => s.tip === "model")}
+              />
+            )}
+            {tab === "atributy" && <TabAtributy m={effective} attrKeys={attrKeys} />}
             {tab === "artikuly" && <TabArtikuly m={m} />}
             {tab === "sku" && <TabSKU m={m} />}
-            {tab === "kontent" && <TabKontent m={m} />}
+            {tab === "kontent" && (
+              <TabKontent
+                m={effective}
+                isEditing={isEditing}
+                setField={setField}
+              />
+            )}
           </div>
           <div className="col-span-1 space-y-4">
             <SidebarBlock title="Заполненность">
@@ -280,39 +568,186 @@ function ModelCard({ modelId, onBack }: { modelId: number; onBack: () => void })
   )
 }
 
-function TabOpisanie({ m }: { m: ModelDetail }) {
+interface TabOpisanieProps {
+  m: ModelDetail
+  isEditing: boolean
+  setField: <K extends keyof ModelDetail>(key: K, value: ModelDetail[K]) => void
+  kategorii: { id: number; nazvanie: string }[]
+  kollekcii: { id: number; nazvanie: string }[]
+  fabriki: { id: number; nazvanie: string }[]
+  modelStatuses: { id: number; nazvanie: string; tip: string; color: string | null }[]
+}
+
+function TabOpisanie({ m, isEditing, setField, kategorii, kollekcii, fabriki, modelStatuses }: TabOpisanieProps) {
   return (
     <>
       <Section label="Основное">
         <div className="grid grid-cols-2 gap-x-4 gap-y-4">
-          <FieldWrap label="Код модели"><ReadField value={m.kod} mono /></FieldWrap>
-          <FieldWrap label="Статус"><div className="px-2.5 py-1.5"><StatusBadge statusId={m.status_id ?? 0} /></div></FieldWrap>
-          <FieldWrap label="Категория"><ReadField value={m.kategoriya} /></FieldWrap>
-          <FieldWrap label="Коллекция"><ReadField value={m.kollekciya} /></FieldWrap>
-          <FieldWrap label="Тип коллекции"><ReadField value={m.tip_kollekcii} /></FieldWrap>
-          <FieldWrap label="Фабрика"><ReadField value={m.fabrika} /></FieldWrap>
+          <FieldWrap label="Код модели" level={FIELD_LEVEL.kod}>
+            <ReadField value={m.kod} mono />
+          </FieldWrap>
+          <FieldWrap label="Статус" level={FIELD_LEVEL.status_id}>
+            {isEditing ? (
+              <EditSelectField<number>
+                value={m.status_id ?? null}
+                onChange={(v) => setField("status_id", v)}
+                options={modelStatuses.map((s) => ({ id: s.id, nazvanie: s.nazvanie }))}
+              />
+            ) : (
+              <div className="px-2.5 py-1.5"><StatusBadge statusId={m.status_id ?? 0} /></div>
+            )}
+          </FieldWrap>
+          <FieldWrap label="Категория" level={FIELD_LEVEL.kategoriya}>
+            {isEditing ? (
+              <EditSelectField<number>
+                value={m.kategoriya_id ?? null}
+                onChange={(v) => setField("kategoriya_id", v)}
+                options={kategorii}
+              />
+            ) : (
+              <ReadField value={m.kategoriya} />
+            )}
+          </FieldWrap>
+          <FieldWrap label="Коллекция" level={FIELD_LEVEL.kollekciya}>
+            {isEditing ? (
+              <EditSelectField<number>
+                value={m.kollekciya_id ?? null}
+                onChange={(v) => setField("kollekciya_id", v)}
+                options={kollekcii}
+              />
+            ) : (
+              <ReadField value={m.kollekciya} />
+            )}
+          </FieldWrap>
+          <FieldWrap label="Тип коллекции" level={FIELD_LEVEL.tip_kollekcii}>
+            {isEditing ? (
+              <EditTextField value={m.tip_kollekcii} onChange={(v) => setField("tip_kollekcii", v)} />
+            ) : (
+              <ReadField value={m.tip_kollekcii} />
+            )}
+          </FieldWrap>
+          <FieldWrap label="Фабрика" level={FIELD_LEVEL.fabrika}>
+            {isEditing ? (
+              <EditSelectField<number>
+                value={m.fabrika_id ?? null}
+                onChange={(v) => setField("fabrika_id", v)}
+                options={fabriki}
+              />
+            ) : (
+              <ReadField value={m.fabrika} />
+            )}
+          </FieldWrap>
         </div>
       </Section>
       <Section label="Производство">
         <div className="grid grid-cols-2 gap-x-4 gap-y-4">
-          <FieldWrap label="Размерная линейка" full>
-            <ReadField value={m.razmery_modeli} />
+          <FieldWrap label="Размерная линейка" full level={FIELD_LEVEL.razmery_modeli}>
+            <SizeLineupField
+              value={m.razmery_modeli}
+              onChange={(v) => setField("razmery_modeli", v)}
+              readonly={!isEditing}
+            />
           </FieldWrap>
-          <FieldWrap label="Материал"><ReadField value={m.material} /></FieldWrap>
-          <FieldWrap label="SKU China"><ReadField value={m.sku_china} mono /></FieldWrap>
-          <FieldWrap label="Состав сырья" full><ReadField value={m.sostav_syrya} /></FieldWrap>
-          <FieldWrap label="Срок производства"><ReadField value={m.srok_proizvodstva} /></FieldWrap>
-          <FieldWrap label="Кратность короба"><ReadField value={m.kratnost_koroba} /></FieldWrap>
-          <FieldWrap label="Вес, кг"><ReadField value={m.ves_kg} mono /></FieldWrap>
-          <FieldWrap label="Длина, см"><ReadField value={m.dlina_cm} mono /></FieldWrap>
-          <FieldWrap label="Ширина, см"><ReadField value={m.shirina_cm} mono /></FieldWrap>
-          <FieldWrap label="Высота, см"><ReadField value={m.vysota_cm} mono /></FieldWrap>
+          <FieldWrap label="Материал" level={FIELD_LEVEL.material}>
+            {isEditing ? (
+              <EditTextField value={m.material} onChange={(v) => setField("material", v)} />
+            ) : (
+              <ReadField value={m.material} />
+            )}
+          </FieldWrap>
+          <FieldWrap label="SKU China" level={FIELD_LEVEL.sku_china}>
+            {isEditing ? (
+              <EditTextField value={m.sku_china} mono onChange={(v) => setField("sku_china", v)} />
+            ) : (
+              <ReadField value={m.sku_china} mono />
+            )}
+          </FieldWrap>
+          <FieldWrap label="Состав сырья" full level={FIELD_LEVEL.sostav_syrya}>
+            {isEditing ? (
+              <EditTextField value={m.sostav_syrya} onChange={(v) => setField("sostav_syrya", v)} />
+            ) : (
+              <ReadField value={m.sostav_syrya} />
+            )}
+          </FieldWrap>
+          <FieldWrap label="Срок производства" level={FIELD_LEVEL.srok_proizvodstva}>
+            {isEditing ? (
+              <EditTextField value={m.srok_proizvodstva} onChange={(v) => setField("srok_proizvodstva", v)} />
+            ) : (
+              <ReadField value={m.srok_proizvodstva} />
+            )}
+          </FieldWrap>
+          <FieldWrap label="Кратность короба" level={FIELD_LEVEL.kratnost_koroba}>
+            {isEditing ? (
+              <EditNumberField
+                value={m.kratnost_koroba}
+                onChange={(v) => setField("kratnost_koroba", v as never)}
+              />
+            ) : (
+              <ReadField value={m.kratnost_koroba} />
+            )}
+          </FieldWrap>
+          <FieldWrap label="Вес, кг" level={FIELD_LEVEL.ves_kg}>
+            {isEditing ? (
+              <EditNumberField
+                value={m.ves_kg}
+                onChange={(v) => setField("ves_kg", v as never)}
+                suffix="кг"
+              />
+            ) : (
+              <ReadField value={m.ves_kg} mono />
+            )}
+          </FieldWrap>
+          <FieldWrap label="Длина, см" level={FIELD_LEVEL.dlina_cm}>
+            {isEditing ? (
+              <EditNumberField
+                value={m.dlina_cm}
+                onChange={(v) => setField("dlina_cm", v as never)}
+                suffix="см"
+              />
+            ) : (
+              <ReadField value={m.dlina_cm} mono />
+            )}
+          </FieldWrap>
+          <FieldWrap label="Ширина, см" level={FIELD_LEVEL.shirina_cm}>
+            {isEditing ? (
+              <EditNumberField
+                value={m.shirina_cm}
+                onChange={(v) => setField("shirina_cm", v as never)}
+                suffix="см"
+              />
+            ) : (
+              <ReadField value={m.shirina_cm} mono />
+            )}
+          </FieldWrap>
+          <FieldWrap label="Высота, см" level={FIELD_LEVEL.vysota_cm}>
+            {isEditing ? (
+              <EditNumberField
+                value={m.vysota_cm}
+                onChange={(v) => setField("vysota_cm", v as never)}
+                suffix="см"
+              />
+            ) : (
+              <ReadField value={m.vysota_cm} mono />
+            )}
+          </FieldWrap>
         </div>
       </Section>
       <Section label="Юридическое">
         <div className="grid grid-cols-2 gap-x-4 gap-y-4">
-          <FieldWrap label="ТНВЭД"><ReadField value={m.tnved} mono /></FieldWrap>
-          <FieldWrap label="Группа сертификата"><ReadField value={m.gruppa_sertifikata} /></FieldWrap>
+          <FieldWrap label="ТНВЭД" level={FIELD_LEVEL.tnved}>
+            {isEditing ? (
+              <EditTextField value={m.tnved} mono onChange={(v) => setField("tnved", v)} />
+            ) : (
+              <ReadField value={m.tnved} mono />
+            )}
+          </FieldWrap>
+          <FieldWrap label="Группа сертификата" level={FIELD_LEVEL.gruppa_sertifikata}>
+            {isEditing ? (
+              <EditTextField value={m.gruppa_sertifikata} onChange={(v) => setField("gruppa_sertifikata", v)} />
+            ) : (
+              <ReadField value={m.gruppa_sertifikata} />
+            )}
+          </FieldWrap>
         </div>
       </Section>
     </>
@@ -336,7 +771,7 @@ function TabAtributy({ m, attrKeys }: { m: ModelDetail; attrKeys: string[] }) {
     >
       <div className="grid grid-cols-2 gap-x-4 gap-y-4">
         {attrKeys.map((key) => (
-          <FieldWrap key={key} label={ATTRIBUTE_LABELS[key] ?? key}>
+          <FieldWrap key={key} label={ATTRIBUTE_LABELS[key] ?? key} level="model">
             <ReadField value={(m as unknown as Record<string, unknown>)[key] as string | number | null | undefined} />
           </FieldWrap>
         ))}
@@ -458,50 +893,89 @@ function TabSKU({ m }: { m: ModelDetail }) {
   )
 }
 
-function TabKontent({ m }: { m: ModelDetail }) {
+interface TabKontentProps {
+  m: ModelDetail
+  isEditing: boolean
+  setField: <K extends keyof ModelDetail>(key: K, value: ModelDetail[K]) => void
+}
+
+function TabKontent({ m, isEditing, setField }: TabKontentProps) {
   return (
     <>
       <Section label="Контент">
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-x-4 gap-y-4">
-            <FieldWrap label="Название на этикетке">
-              <ReadField value={m.nazvanie_etiketka} />
+            <FieldWrap label="Название на этикетке" level={FIELD_LEVEL.nazvanie_etiketka}>
+              {isEditing ? (
+                <EditTextField value={m.nazvanie_etiketka} onChange={(v) => setField("nazvanie_etiketka", v)} />
+              ) : (
+                <ReadField value={m.nazvanie_etiketka} />
+              )}
             </FieldWrap>
-            <FieldWrap label="Название для сайта">
-              <ReadField value={m.nazvanie_sayt} />
+            <FieldWrap label="Название для сайта" level={FIELD_LEVEL.nazvanie_sayt}>
+              {isEditing ? (
+                <EditTextField value={m.nazvanie_sayt} onChange={(v) => setField("nazvanie_sayt", v)} />
+              ) : (
+                <ReadField value={m.nazvanie_sayt} />
+              )}
             </FieldWrap>
           </div>
-          <FieldWrap label="Описание для сайта" full>
-            <div className="px-2.5 py-1.5 text-sm text-stone-900 whitespace-pre-wrap">
-              {m.opisanie_sayt || <span className="text-stone-400 italic">не задано</span>}
-            </div>
+          <FieldWrap label="Описание для сайта" full level={FIELD_LEVEL.opisanie_sayt}>
+            {isEditing ? (
+              <textarea
+                value={m.opisanie_sayt ?? ""}
+                rows={4}
+                onChange={(e) => setField("opisanie_sayt", e.target.value as never)}
+                className="w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md bg-white outline-none focus:border-stone-900 focus:ring-1 focus:ring-stone-900 resize-none"
+              />
+            ) : (
+              <div className="px-2.5 py-1.5 text-sm text-stone-900 whitespace-pre-wrap">
+                {m.opisanie_sayt || <span className="text-stone-400 italic">не задано</span>}
+              </div>
+            )}
           </FieldWrap>
-          <FieldWrap label="Состав EN" full>
-            <ReadField value={m.composition} />
+          <FieldWrap label="Состав EN" full level={FIELD_LEVEL.composition}>
+            {isEditing ? (
+              <EditTextField value={m.composition} onChange={(v) => setField("composition", v)} />
+            ) : (
+              <ReadField value={m.composition} />
+            )}
           </FieldWrap>
-          <FieldWrap label="Теги" full>
-            <ReadField value={m.tegi} />
+          <FieldWrap label="Теги" full level={FIELD_LEVEL.tegi}>
+            {isEditing ? (
+              <EditTextField value={m.tegi} onChange={(v) => setField("tegi", v)} />
+            ) : (
+              <ReadField value={m.tegi} />
+            )}
           </FieldWrap>
         </div>
       </Section>
       <Section label="Ссылки на материалы" hint="Notion-карточка, стратегия, фотоконтент">
         <div className="space-y-3">
-          {m.notion_link ? (
-            <a
-              href={m.notion_link}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-2 px-3 py-2 bg-stone-50 hover:bg-stone-100 rounded-md text-sm"
-            >
-              <Link2 className="w-3.5 h-3.5 text-stone-500" />
-              <span className="flex-1 truncate text-stone-700">{m.notion_link}</span>
-              <ExternalLink className="w-3 h-3 text-stone-400 shrink-0" />
-            </a>
-          ) : (
-            <div className="text-sm text-stone-400 italic">Notion-карточка не задана</div>
-          )}
-          <FieldWrap label="Упаковка" full>
-            <ReadField value={m.upakovka} />
+          <FieldWrap label="Notion-карточка" full level={FIELD_LEVEL.notion_link}>
+            {isEditing ? (
+              <EditTextField value={m.notion_link} onChange={(v) => setField("notion_link", v)} />
+            ) : m.notion_link ? (
+              <a
+                href={m.notion_link}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-2 px-3 py-2 bg-stone-50 hover:bg-stone-100 rounded-md text-sm"
+              >
+                <Link2 className="w-3.5 h-3.5 text-stone-500" />
+                <span className="flex-1 truncate text-stone-700">{m.notion_link}</span>
+                <ExternalLink className="w-3 h-3 text-stone-400 shrink-0" />
+              </a>
+            ) : (
+              <div className="text-sm text-stone-400 italic">Notion-карточка не задана</div>
+            )}
+          </FieldWrap>
+          <FieldWrap label="Упаковка" full level={FIELD_LEVEL.upakovka}>
+            {isEditing ? (
+              <EditTextField value={m.upakovka} onChange={(v) => setField("upakovka", v)} />
+            ) : (
+              <ReadField value={m.upakovka} />
+            )}
           </FieldWrap>
         </div>
       </Section>
@@ -1524,6 +1998,7 @@ function TovaryTable() {
 export function MatrixPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [listTab, setListTab] = useState<"modeli_osnova" | "artikuly" | "tovary">("modeli_osnova")
+  const queryClient = useQueryClient()
 
   const modelKodParam = searchParams.get("model")
   const modelIdParam = searchParams.get("id")
@@ -1585,6 +2060,21 @@ export function MatrixPage() {
     [searchParams, setSearchParams],
   )
 
+  const handleNewModel = useCallback(async () => {
+    const kod = window.prompt("Код новой модели (latin, без пробелов):", "")
+    if (!kod || !kod.trim()) return
+    try {
+      const created = await createModel({ kod: kod.trim() })
+      await queryClient.invalidateQueries({ queryKey: ["matrix-list"] })
+      const next = new URLSearchParams(searchParams)
+      next.set("model", created)
+      next.delete("id")
+      setSearchParams(next)
+    } catch (err) {
+      window.alert(`Не удалось создать модель: ${(err as Error).message}`)
+    }
+  }, [queryClient, searchParams, setSearchParams])
+
   if (resolvedModelId != null) {
     return <ModelCard modelId={resolvedModelId} onBack={closeModel} />
   }
@@ -1624,7 +2114,10 @@ export function MatrixPage() {
             >
               <Download className="w-3.5 h-3.5" /> Экспорт
             </button>
-            <button className="px-3 py-1.5 text-xs text-white bg-stone-900 hover:bg-stone-800 rounded-md flex items-center gap-1.5">
+            <button
+              onClick={handleNewModel}
+              className="px-3 py-1.5 text-xs text-white bg-stone-900 hover:bg-stone-800 rounded-md flex items-center gap-1.5"
+            >
               <Plus className="w-3.5 h-3.5" /> Новая модель
             </button>
           </div>
