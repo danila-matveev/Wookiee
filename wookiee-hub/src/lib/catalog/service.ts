@@ -1397,3 +1397,218 @@ export async function setUiPref(scope: string, key: string, value: unknown): Pro
     )
   if (error) throw new Error(error.message)
 }
+
+// ─── Catalog counts (sidebar badges + global) ──────────────────────────────
+
+export interface CatalogCounts {
+  models: number
+  variations: number
+  articles: number
+  skus: number
+  colors: number
+  skleyki_wb: number
+  skleyki_ozon: number
+  kategorii: number
+  kollekcii: number
+  fabriki: number
+  importery: number
+  razmery: number
+  semeystva_cvetov: number
+  upakovki: number
+  kanaly_prodazh: number
+  sertifikaty: number
+  statusy: number
+}
+
+async function tableCount(table: string): Promise<number> {
+  const { count, error } = await supabase
+    .from(table)
+    .select("*", { head: true, count: "exact" })
+  if (error) throw new Error(error.message)
+  return count ?? 0
+}
+
+/**
+ * One-shot fetch of all counts used by the Sidebar. Run all queries in
+ * parallel so the round-trip is bounded by the slowest table.
+ */
+export async function fetchCatalogCounts(): Promise<CatalogCounts> {
+  const tables: (keyof CatalogCounts)[] = [
+    "models",
+    "variations",
+    "articles",
+    "skus",
+    "colors",
+    "skleyki_wb",
+    "skleyki_ozon",
+    "kategorii",
+    "kollekcii",
+    "fabriki",
+    "importery",
+    "razmery",
+    "semeystva_cvetov",
+    "upakovki",
+    "kanaly_prodazh",
+    "sertifikaty",
+    "statusy",
+  ]
+  const tableMap: Record<keyof CatalogCounts, string> = {
+    models: "modeli_osnova",
+    variations: "modeli",
+    articles: "artikuly",
+    skus: "tovary",
+    colors: "cveta",
+    skleyki_wb: "skleyki_wb",
+    skleyki_ozon: "skleyki_ozon",
+    kategorii: "kategorii",
+    kollekcii: "kollekcii",
+    fabriki: "fabriki",
+    importery: "importery",
+    razmery: "razmery",
+    semeystva_cvetov: "semeystva_cvetov",
+    upakovki: "upakovki",
+    kanaly_prodazh: "kanaly_prodazh",
+    sertifikaty: "sertifikaty",
+    statusy: "statusy",
+  }
+  const counts = await Promise.all(tables.map((k) => tableCount(tableMap[k])))
+  const out = {} as CatalogCounts
+  tables.forEach((k, i) => {
+    out[k] = counts[i]
+  })
+  return out
+}
+
+/**
+ * Sidebar counters keyed by kategoriya_id (for the "Категории" section).
+ * Returns a map { kategoriya_id → count } plus an extra `null` bucket for
+ * models without a category.
+ */
+export async function fetchModeliOsnovaCounts(): Promise<Record<number | "null", number>> {
+  const { data, error } = await supabase
+    .from("modeli_osnova")
+    .select("kategoriya_id")
+  if (error) throw new Error(error.message)
+  const acc: Record<number | "null", number> = { null: 0 }
+  for (const row of (data ?? []) as { kategoriya_id: number | null }[]) {
+    const k = row.kategoriya_id == null ? "null" : row.kategoriya_id
+    acc[k] = (acc[k] ?? 0) + 1
+  }
+  return acc
+}
+
+// ─── Global search (CommandPalette ⌘K) ─────────────────────────────────────
+
+export interface SearchHitModel {
+  id: number
+  kod: string
+  nazvanie_etiketka: string | null
+}
+
+export interface SearchHitColor {
+  id: number
+  color_code: string
+  cvet: string | null
+  color: string | null
+}
+
+export interface SearchHitArtikul {
+  id: number
+  artikul: string
+  nomenklatura_wb: number | null
+  artikul_ozon: string | null
+}
+
+export interface SearchHitTovar {
+  id: number
+  barkod: string
+  barkod_gs1: string | null
+}
+
+export interface GlobalSearchResult {
+  models: SearchHitModel[]
+  colors: SearchHitColor[]
+  articles: SearchHitArtikul[]
+  skus: SearchHitTovar[]
+}
+
+const SEARCH_LIMIT = 12
+
+function escapePgIlike(q: string): string {
+  // Strip PostgREST OR/list metacharacters that would break .or()
+  return q.replace(/[,()*%]/g, " ").trim()
+}
+
+/**
+ * Global multi-table search for the ⌘K CommandPalette.
+ * Searches:
+ *   modeli_osnova.kod, .nazvanie_etiketka
+ *   cveta.color_code, .cvet, .color
+ *   artikuly.artikul, .nomenklatura_wb (text-cast), .artikul_ozon
+ *   tovary.barkod, .barkod_gs1
+ *
+ * Each table runs in parallel; each capped at SEARCH_LIMIT results.
+ */
+export async function searchGlobal(query: string): Promise<GlobalSearchResult> {
+  const q = escapePgIlike(query)
+  if (!q) return { models: [], colors: [], articles: [], skus: [] }
+  const like = `%${q}%`
+
+  const [modelsRes, colorsRes, articlesRes, tovaryRes] = await Promise.all([
+    supabase
+      .from("modeli_osnova")
+      .select("id, kod, nazvanie_etiketka")
+      .or(`kod.ilike.${like},nazvanie_etiketka.ilike.${like}`)
+      .limit(SEARCH_LIMIT),
+    supabase
+      .from("cveta")
+      .select("id, color_code, cvet, color")
+      .or(`color_code.ilike.${like},cvet.ilike.${like},color.ilike.${like}`)
+      .limit(SEARCH_LIMIT),
+    supabase
+      .from("artikuly")
+      .select("id, artikul, nomenklatura_wb, artikul_ozon")
+      .or(`artikul.ilike.${like},artikul_ozon.ilike.${like}`)
+      .limit(SEARCH_LIMIT),
+    supabase
+      .from("tovary")
+      .select("id, barkod, barkod_gs1")
+      .or(`barkod.ilike.${like},barkod_gs1.ilike.${like}`)
+      .limit(SEARCH_LIMIT),
+  ])
+
+  if (modelsRes.error) throw new Error(modelsRes.error.message)
+  if (colorsRes.error) throw new Error(colorsRes.error.message)
+  if (articlesRes.error) throw new Error(articlesRes.error.message)
+  if (tovaryRes.error) throw new Error(tovaryRes.error.message)
+
+  // Numeric WB nomenclature search — only if query looks numeric.
+  let extraArticles: SearchHitArtikul[] = []
+  if (/^\d+$/.test(q)) {
+    const { data: extra, error: exErr } = await supabase
+      .from("artikuly")
+      .select("id, artikul, nomenklatura_wb, artikul_ozon")
+      .eq("nomenklatura_wb", Number(q))
+      .limit(SEARCH_LIMIT)
+    if (exErr) throw new Error(exErr.message)
+    extraArticles = (extra ?? []) as SearchHitArtikul[]
+  }
+
+  const articles = [...((articlesRes.data ?? []) as SearchHitArtikul[]), ...extraArticles]
+  // Dedupe articles by id
+  const seen = new Set<number>()
+  const dedup: SearchHitArtikul[] = []
+  for (const a of articles) {
+    if (seen.has(a.id)) continue
+    seen.add(a.id)
+    dedup.push(a)
+    if (dedup.length >= SEARCH_LIMIT) break
+  }
+
+  return {
+    models: (modelsRes.data ?? []) as SearchHitModel[],
+    colors: (colorsRes.data ?? []) as SearchHitColor[],
+    articles: dedup,
+    skus: (tovaryRes.data ?? []) as SearchHitTovar[],
+  }
+}
