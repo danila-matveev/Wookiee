@@ -1404,10 +1404,16 @@ export interface CatalogCounts {
   models: number
   variations: number
   articles: number
+  /** Sidebar alias for `articles`. */
+  artikuly: number
   skus: number
+  /** Sidebar alias for `skus`. */
+  tovary: number
   colors: number
   skleyki_wb: number
   skleyki_ozon: number
+  /** Sidebar alias: WB + OZON skleyki combined. */
+  skleyki: number
   kategorii: number
   kollekcii: number
   fabriki: number
@@ -1433,7 +1439,7 @@ async function tableCount(table: string): Promise<number> {
  * parallel so the round-trip is bounded by the slowest table.
  */
 export async function fetchCatalogCounts(): Promise<CatalogCounts> {
-  const tables: (keyof CatalogCounts)[] = [
+  const tables = [
     "models",
     "variations",
     "articles",
@@ -1451,8 +1457,8 @@ export async function fetchCatalogCounts(): Promise<CatalogCounts> {
     "kanaly_prodazh",
     "sertifikaty",
     "statusy",
-  ]
-  const tableMap: Record<keyof CatalogCounts, string> = {
+  ] as const
+  const tableMap = {
     models: "modeli_osnova",
     variations: "modeli",
     articles: "artikuly",
@@ -1470,12 +1476,15 @@ export async function fetchCatalogCounts(): Promise<CatalogCounts> {
     kanaly_prodazh: "kanaly_prodazh",
     sertifikaty: "sertifikaty",
     statusy: "statusy",
-  }
+  } as const satisfies Partial<Record<keyof CatalogCounts, string>>
   const counts = await Promise.all(tables.map((k) => tableCount(tableMap[k])))
   const out = {} as CatalogCounts
   tables.forEach((k, i) => {
     out[k] = counts[i]
   })
+  out.artikuly = out.articles
+  out.tovary = out.skus
+  out.skleyki = out.skleyki_wb + out.skleyki_ozon
   return out
 }
 
