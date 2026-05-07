@@ -2,6 +2,7 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/inter";
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=Instrument+Serif:ital@0;1&display=swap');
 
 @custom-variant dark (&:is(.dark *));
 
@@ -279,4 +280,34 @@
       transition-duration: 0.01ms !important;
     }
   }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CATALOG MODULE — Stone Design System (isolated scope)
+   Applied via .catalog-scope class on CatalogLayout wrapper.
+   This overrides the Hub's dark-purple theme for the catalog.
+   ═══════════════════════════════════════════════════════════ */
+
+.catalog-scope {
+  color-scheme: light;
+
+  /* Stone palette CSS variables */
+  --cat-surface:        255 255 255;
+  --cat-surface-alt:    250 250 249;
+  --cat-surface-hover:  245 245 244;
+  --cat-text-primary:   28  25  23;
+  --cat-text-secondary: 68  64  60;
+  --cat-text-muted:     120 113 108;
+  --cat-text-dim:       168 162 158;
+  --cat-border:         231 229 228;
+  --cat-border-sub:     245 245 244;
+
+  font-family: 'DM Sans', system-ui, sans-serif;
+  background-color: rgb(250 250 249);
+  color: rgb(28 25 23);
+  -webkit-font-smoothing: antialiased;
+}
+
+.catalog-scope .cat-font-serif {
+  font-family: 'Instrument Serif', ui-serif, Georgia, serif;
 }
