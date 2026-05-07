@@ -1041,3 +1041,237 @@ export async function fetchSkleykaDetail(id: number, channel: 'wb' | 'ozon'): Pr
     }),
   }
 }
+
+// ─── Cveta mutations ───────────────────────────────────────────────────────
+
+export interface CvetPayload {
+  color_code: string
+  cvet?: string | null
+  color?: string | null
+  lastovica?: string | null
+  hex?: string | null
+  semeystvo_id?: number | null
+  semeystvo?: string | null
+  status_id?: number | null
+}
+
+export async function insertCvet(data: CvetPayload): Promise<{ id: number }> {
+  const { data: row, error } = await supabase
+    .from("cveta")
+    .insert(data)
+    .select("id")
+    .single()
+  if (error) throw new Error(error.message)
+  return row as { id: number }
+}
+
+export async function updateCvet(id: number, patch: Partial<CvetPayload>): Promise<void> {
+  const { error } = await supabase.from("cveta").update(patch).eq("id", id)
+  if (error) throw new Error(error.message)
+}
+
+/**
+ * Soft-delete a colour by switching it to the "Архив" status (tip='color').
+ * No real DELETE — references in artikuly may exist.
+ */
+export async function deleteCvet(id: number): Promise<void> {
+  const archiveId = await getArchiveStatusId("color")
+  if (archiveId == null) throw new Error("Status 'Архив' (tip='color') not found in DB")
+  const { error } = await supabase.from("cveta").update({ status_id: archiveId }).eq("id", id)
+  if (error) throw new Error(error.message)
+}
+
+// ─── Modeli operations (create / update / duplicate / archive cascade) ────
+
+export interface ModelOsnovaPayload {
+  kod: string
+  kategoriya_id?: number | null
+  kollekciya_id?: number | null
+  fabrika_id?: number | null
+  status_id?: number | null
+  tip_kollekcii?: string | null
+  material?: string | null
+  sostav_syrya?: string | null
+  composition?: string | null
+  razmery_modeli?: string | null
+  sku_china?: string | null
+  upakovka?: string | null
+  upakovka_id?: number | null
+  ves_kg?: number | null
+  dlina_cm?: number | null
+  shirina_cm?: number | null
+  vysota_cm?: number | null
+  kratnost_koroba?: number | null
+  srok_proizvodstva?: string | null
+  komplektaciya?: string | null
+  nazvanie_etiketka?: string | null
+  nazvanie_sayt?: string | null
+  opisanie_sayt?: string | null
+  details?: string | null
+  description?: string | null
+  tegi?: string | null
+  notion_link?: string | null
+  notion_strategy_link?: string | null
+  yandex_disk_link?: string | null
+  stepen_podderzhki?: string | null
+  forma_chashki?: string | null
+  regulirovka?: string | null
+  zastezhka?: string | null
+  dlya_kakoy_grudi?: string | null
+  posadka_trusov?: string | null
+  vid_trusov?: string | null
+  naznachenie?: string | null
+  stil?: string | null
+  po_nastroeniyu?: string | null
+  tnved?: string | null
+  gruppa_sertifikata?: string | null
+}
+
+/** Create a new modeli_osnova row. Returns inserted kod. */
+export async function createModel(payload: ModelOsnovaPayload): Promise<string> {
+  const { data, error } = await supabase
+    .from("modeli_osnova")
+    .insert(payload)
+    .select("kod")
+    .single()
+  if (error) throw new Error(error.message)
+  return (data as { kod: string }).kod
+}
+
+/** Partial update of any modeli_osnova fields, addressed by kod. */
+export async function updateModel(kod: string, patch: Partial<ModelOsnovaPayload>): Promise<void> {
+  const { error } = await supabase.from("modeli_osnova").update(patch).eq("kod", kod)
+  if (error) throw new Error(error.message)
+}
+
+/**
+ * Duplicate a modeli_osnova row as a template — copies ONLY the modeli_osnova
+ * record (no modeli variations, no artikuly, no tovary).
+ */
+export async function duplicateModel(srcKod: string, newKod: string): Promise<string> {
+  const { data: src, error: srcErr } = await supabase
+    .from("modeli_osnova")
+    .select("*")
+    .eq("kod", srcKod)
+    .single()
+  if (srcErr) throw new Error(srcErr.message)
+  if (!src) throw new Error(`Source model ${srcKod} not found`)
+
+  const copy = { ...(src as Record<string, unknown>) }
+  delete copy.id
+  delete copy.created_at
+  delete copy.updated_at
+  copy.kod = newKod
+
+  const { data, error } = await supabase
+    .from("modeli_osnova")
+    .insert(copy)
+    .select("kod")
+    .single()
+  if (error) throw new Error(error.message)
+  return (data as { kod: string }).kod
+}
+
+/**
+ * Helper: resolve "Архив" status_id for a given tip, or fall back to "Скрыт"
+ * (used by lamoda which has no Архив variant). Returns null if neither exists.
+ */
+async function getArchiveStatusId(tip: string): Promise<number | null> {
+  const { data, error } = await supabase
+    .from("statusy")
+    .select("id, nazvanie")
+    .eq("tip", tip)
+    .in("nazvanie", ["Архив", "Скрыт"])
+  if (error) throw new Error(error.message)
+  const rows = (data ?? []) as { id: number; nazvanie: string }[]
+  const archive = rows.find((r) => r.nazvanie === "Архив")
+  if (archive) return archive.id
+  const hidden = rows.find((r) => r.nazvanie === "Скрыт")
+  return hidden?.id ?? null
+}
+
+/** Helper: resolve a status_id by (tip, nazvanie). */
+async function getStatusIdByName(tip: string, nazvanie: string): Promise<number | null> {
+  const { data, error } = await supabase
+    .from("statusy")
+    .select("id")
+    .eq("tip", tip)
+    .eq("nazvanie", nazvanie)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  return (data as { id: number } | null)?.id ?? null
+}
+
+/**
+ * Cascade-archive a model:
+ *   modeli_osnova.status_id        → Архив (tip='model')
+ *   artikuly.status_id (under it)  → Выводим (tip='artikul')
+ *   tovary.status_id               → Архив (tip='product')
+ *   tovary.status_ozon_id          → Архив (tip='product')
+ *   tovary.status_sayt_id          → Архив (tip='sayt')
+ *   tovary.status_lamoda_id        → Архив-or-Скрыт (tip='lamoda')
+ */
+export async function archiveModel(kod: string): Promise<void> {
+  const [modelArchive, artikulVyvodim, productArchive, saytArchive, lamodaArchive, mo] = await Promise.all([
+    getStatusIdByName("model", "Архив"),
+    getStatusIdByName("artikul", "Выводим"),
+    getStatusIdByName("product", "Архив"),
+    getStatusIdByName("sayt", "Архив"),
+    getArchiveStatusId("lamoda"),
+    supabase.from("modeli_osnova").select("id").eq("kod", kod).single(),
+  ])
+
+  if (mo.error) throw new Error(mo.error.message)
+  const modelOsnovaId = (mo.data as { id: number }).id
+
+  if (modelArchive == null) throw new Error("Status Архив (tip=model) not found")
+
+  // 1. modeli_osnova.status_id
+  const { error: moErr } = await supabase
+    .from("modeli_osnova")
+    .update({ status_id: modelArchive })
+    .eq("id", modelOsnovaId)
+  if (moErr) throw new Error(moErr.message)
+
+  // 2. Find variation ids (modeli) → artikuly under them
+  const { data: modeliRows, error: mErr } = await supabase
+    .from("modeli")
+    .select("id")
+    .eq("model_osnova_id", modelOsnovaId)
+  if (mErr) throw new Error(mErr.message)
+  const modelIds = ((modeliRows ?? []) as { id: number }[]).map((r) => r.id)
+  if (modelIds.length === 0) return
+
+  const { data: artRows, error: aErr } = await supabase
+    .from("artikuly")
+    .select("id")
+    .in("model_id", modelIds)
+  if (aErr) throw new Error(aErr.message)
+  const artikulIds = ((artRows ?? []) as { id: number }[]).map((r) => r.id)
+
+  if (artikulVyvodim != null && artikulIds.length > 0) {
+    const { error: artUpdErr } = await supabase
+      .from("artikuly")
+      .update({ status_id: artikulVyvodim })
+      .in("id", artikulIds)
+    if (artUpdErr) throw new Error(artUpdErr.message)
+  }
+
+  if (artikulIds.length === 0) return
+
+  // 3. tovary attached to those artikuly — update all 4 status fields atomically
+  const tovaryPatch: Record<string, number | null> = {}
+  if (productArchive != null) {
+    tovaryPatch.status_id = productArchive
+    tovaryPatch.status_ozon_id = productArchive
+  }
+  if (saytArchive != null) tovaryPatch.status_sayt_id = saytArchive
+  if (lamodaArchive != null) tovaryPatch.status_lamoda_id = lamodaArchive
+
+  if (Object.keys(tovaryPatch).length === 0) return
+  const { error: tErr } = await supabase
+    .from("tovary")
+    .update(tovaryPatch)
+    .in("artikul_id", artikulIds)
+  if (tErr) throw new Error(tErr.message)
+}
