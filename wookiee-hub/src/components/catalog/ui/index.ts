@@ -3,6 +3,7 @@ export { LevelBadge } from "./level-badge"
 export { CompletenessRing } from "./completeness-ring"
 export { ColorSwatch } from "./color-swatch"
 export { Tooltip } from "./tooltip"
+export { CommandPalette, type CommandPaletteProps } from "./command-palette"
 export {
   FieldWrap,
   TextField,
