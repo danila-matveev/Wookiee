@@ -953,9 +953,15 @@ export interface ArtikulRow {
   model_kod: string | null
   model_osnova_id: number | null
   model_osnova_kod: string | null
+  /** modeli_osnova.nazvanie_etiketka — нужно для search и колонки «Модель». */
+  nazvanie_etiketka: string | null
   cvet_id: number | null
   cvet_color_code: string | null
+  /** cveta.cvet (RU). */
   cvet_nazvanie: string | null
+  /** cveta.color (EN). */
+  color_en: string | null
+  cvet_hex: string | null
   status_id: number | null
   nomenklatura_wb: number | null
   artikul_ozon: string | null
@@ -963,6 +969,8 @@ export interface ArtikulRow {
   kategoriya: string | null
   kollekciya: string | null
   fabrika: string | null
+  created_at: string | null
+  updated_at: string | null
 }
 
 export async function fetchArtikulyRegistry(): Promise<ArtikulRow[]> {
@@ -970,11 +978,12 @@ export async function fetchArtikulyRegistry(): Promise<ArtikulRow[]> {
     .from("artikuly")
     .select(`
       id, artikul, model_id, cvet_id, status_id, nomenklatura_wb, artikul_ozon,
-      cveta(color_code, cvet),
+      created_at, updated_at,
+      cveta(color_code, cvet, color, hex),
       modeli(
         id, kod, model_osnova_id,
         modeli_osnova(
-          id, kod, tip_kollekcii,
+          id, kod, tip_kollekcii, nazvanie_etiketka,
           kategorii(nazvanie),
           kollekcii(nazvanie),
           fabriki(nazvanie)
@@ -983,6 +992,7 @@ export async function fetchArtikulyRegistry(): Promise<ArtikulRow[]> {
       tovary(id)
     `)
     .order("artikul")
+    .range(0, 4999)
   if (error) throw error
 
   return (data as any[]).map((a) => ({
@@ -992,9 +1002,12 @@ export async function fetchArtikulyRegistry(): Promise<ArtikulRow[]> {
     model_kod: a.modeli?.kod ?? null,
     model_osnova_id: a.modeli?.model_osnova_id ?? null,
     model_osnova_kod: a.modeli?.modeli_osnova?.kod ?? null,
+    nazvanie_etiketka: a.modeli?.modeli_osnova?.nazvanie_etiketka ?? null,
     cvet_id: a.cvet_id,
     cvet_color_code: a.cveta?.color_code ?? null,
     cvet_nazvanie: a.cveta?.cvet ?? null,
+    color_en: a.cveta?.color ?? null,
+    cvet_hex: a.cveta?.hex ?? null,
     status_id: a.status_id,
     nomenklatura_wb: a.nomenklatura_wb,
     artikul_ozon: a.artikul_ozon,
@@ -1002,6 +1015,8 @@ export async function fetchArtikulyRegistry(): Promise<ArtikulRow[]> {
     kategoriya: a.modeli?.modeli_osnova?.kategorii?.nazvanie ?? null,
     kollekciya: a.modeli?.modeli_osnova?.kollekcii?.nazvanie ?? null,
     fabrika: a.modeli?.modeli_osnova?.fabriki?.nazvanie ?? null,
+    created_at: a.created_at,
+    updated_at: a.updated_at,
   }))
 }
 
@@ -1010,12 +1025,29 @@ export async function fetchArtikulyRegistry(): Promise<ArtikulRow[]> {
 export interface TovarRow {
   id: number
   barkod: string
+  /** Дополнительные баркоды. */
+  barkod_gs1: string | null
+  barkod_gs2: string | null
+  barkod_perehod: string | null
   artikul_id: number | null
   artikul: string | null
   model_kod: string | null
+  model_osnova_id: number | null
   model_osnova_kod: string | null
+  /** modeli_osnova.nazvanie_etiketka — для composite search. */
+  nazvanie_etiketka: string | null
+  /** modeli_osnova.kollekciya / kategoriya — для group-by. */
+  kollekciya: string | null
+  kategoriya: string | null
   cvet_color_code: string | null
+  /** cveta.cvet (RU). */
+  cvet_ru: string | null
+  /** cveta.color (EN). */
+  color_en: string | null
+  cvet_hex: string | null
   razmer: string | null
+  /** razmery.kod в БД часто совпадает с nazvanie (XS/S/M/...). */
+  razmer_kod: string | null
   status_id: number | null
   status_ozon_id: number | null
   status_sayt_id: number | null
@@ -1026,21 +1058,28 @@ export interface TovarRow {
   ozon_product_id: number | null
   ozon_fbo_sku_id: number | null
   lamoda_seller_sku: string | null
+  created_at: string | null
 }
 
 export async function fetchTovaryRegistry(): Promise<TovarRow[]> {
   const { data, error } = await supabase
     .from("tovary")
     .select(`
-      id, barkod, artikul_id, razmer_id, status_id, status_ozon_id, status_sayt_id,
-      status_lamoda_id, sku_china_size, ozon_product_id, ozon_fbo_sku_id, lamoda_seller_sku,
+      id, barkod, barkod_gs1, barkod_gs2, barkod_perehod, artikul_id, razmer_id,
+      status_id, status_ozon_id, status_sayt_id, status_lamoda_id,
+      sku_china_size, ozon_product_id, ozon_fbo_sku_id, lamoda_seller_sku,
+      created_at,
       razmery(nazvanie),
       artikuly(
         artikul, nomenklatura_wb, artikul_ozon, cvet_id,
-        cveta(color_code),
+        cveta(color_code, cvet, color, hex),
         modeli(
           kod, model_osnova_id,
-          modeli_osnova(kod)
+          modeli_osnova(
+            kod, nazvanie_etiketka,
+            kategorii(nazvanie),
+            kollekcii(nazvanie)
+          )
         )
       )
     `)
@@ -1048,26 +1087,41 @@ export async function fetchTovaryRegistry(): Promise<TovarRow[]> {
     .range(0, 4999)
   if (error) throw error
 
-  return (data as any[]).map((t) => ({
-    id: t.id,
-    barkod: t.barkod,
-    artikul_id: t.artikul_id,
-    artikul: t.artikuly?.artikul ?? null,
-    model_kod: t.artikuly?.modeli?.kod ?? null,
-    model_osnova_kod: t.artikuly?.modeli?.modeli_osnova?.kod ?? null,
-    cvet_color_code: t.artikuly?.cveta?.color_code ?? null,
-    razmer: t.razmery?.nazvanie ?? null,
-    status_id: t.status_id,
-    status_ozon_id: t.status_ozon_id,
-    status_sayt_id: t.status_sayt_id,
-    status_lamoda_id: t.status_lamoda_id,
-    artikul_ozon: t.artikuly?.artikul_ozon ?? null,
-    nomenklatura_wb: t.artikuly?.nomenklatura_wb ?? null,
-    sku_china_size: t.sku_china_size,
-    ozon_product_id: t.ozon_product_id,
-    ozon_fbo_sku_id: t.ozon_fbo_sku_id,
-    lamoda_seller_sku: t.lamoda_seller_sku,
-  }))
+  return (data as any[]).map((t) => {
+    const razmer = t.razmery?.nazvanie ?? null
+    return {
+      id: t.id,
+      barkod: t.barkod,
+      barkod_gs1: t.barkod_gs1 ?? null,
+      barkod_gs2: t.barkod_gs2 ?? null,
+      barkod_perehod: t.barkod_perehod ?? null,
+      artikul_id: t.artikul_id,
+      artikul: t.artikuly?.artikul ?? null,
+      model_kod: t.artikuly?.modeli?.kod ?? null,
+      model_osnova_id: t.artikuly?.modeli?.model_osnova_id ?? null,
+      model_osnova_kod: t.artikuly?.modeli?.modeli_osnova?.kod ?? null,
+      nazvanie_etiketka: t.artikuly?.modeli?.modeli_osnova?.nazvanie_etiketka ?? null,
+      kollekciya: t.artikuly?.modeli?.modeli_osnova?.kollekcii?.nazvanie ?? null,
+      kategoriya: t.artikuly?.modeli?.modeli_osnova?.kategorii?.nazvanie ?? null,
+      cvet_color_code: t.artikuly?.cveta?.color_code ?? null,
+      cvet_ru: t.artikuly?.cveta?.cvet ?? null,
+      color_en: t.artikuly?.cveta?.color ?? null,
+      cvet_hex: t.artikuly?.cveta?.hex ?? null,
+      razmer,
+      razmer_kod: razmer,
+      status_id: t.status_id,
+      status_ozon_id: t.status_ozon_id,
+      status_sayt_id: t.status_sayt_id,
+      status_lamoda_id: t.status_lamoda_id,
+      artikul_ozon: t.artikuly?.artikul_ozon ?? null,
+      nomenklatura_wb: t.artikuly?.nomenklatura_wb ?? null,
+      sku_china_size: t.sku_china_size,
+      ozon_product_id: t.ozon_product_id,
+      ozon_fbo_sku_id: t.ozon_fbo_sku_id,
+      lamoda_seller_sku: t.lamoda_seller_sku,
+      created_at: t.created_at,
+    }
+  })
 }
 
 // ─── Skleyka detail ────────────────────────────────────────────────────────
