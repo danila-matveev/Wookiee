@@ -79,6 +79,49 @@ export interface Razmer {
   china?: string | null
 }
 
+// ─── New tables (Wave 0) ──────────────────────────────────────────────────
+
+export interface SemeystvoCveta {
+  id: number
+  kod: string
+  nazvanie: string
+  opisanie?: string | null
+  poryadok?: number | null
+}
+
+export interface Upakovka {
+  id: number
+  nazvanie: string
+  tip?: string | null
+  price_yuan?: number | null
+  dlina_cm?: number | null
+  shirina_cm?: number | null
+  vysota_cm?: number | null
+  obem_l?: number | null
+  srok_izgotovleniya_dni?: number | null
+  file_link?: string | null
+  notes?: string | null
+  poryadok?: number | null
+}
+
+export interface KanalProdazh {
+  id: number
+  kod: string
+  nazvanie: string
+  short?: string | null
+  color?: string | null
+  active?: boolean | null
+  poryadok?: number | null
+}
+
+export interface UiPreference {
+  id: number
+  scope: string
+  key: string
+  value: unknown
+  updated_at?: string | null
+}
+
 // ─── Cveta ────────────────────────────────────────────────────────────────
 //
 // ⚠ В реальной БД название колонок:
@@ -223,6 +266,24 @@ export interface SkleykaOzon {
   id: number
   nazvanie: string
   importer_id?: number | null
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+// ─── Sertifikaty ──────────────────────────────────────────────────────────
+
+export interface Sertifikat {
+  id: number
+  nazvanie: string
+  tip?: string | null
+  nomer?: string | null
+  /** ISO date (yyyy-mm-dd). */
+  data_vydachi?: string | null
+  /** ISO date (yyyy-mm-dd). */
+  data_okonchaniya?: string | null
+  organ_sertifikacii?: string | null
+  file_url?: string | null
+  gruppa_sertifikata?: string | null
   created_at?: string | null
   updated_at?: string | null
 }
