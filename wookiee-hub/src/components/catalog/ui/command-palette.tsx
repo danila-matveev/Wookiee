@@ -18,11 +18,17 @@ export interface CommandResult {
   onPick?: (r: CommandResult) => void
 }
 
+/**
+ * SearchGlobalResult — flexible shape so both the live service (raw DB rows)
+ * and tests/demo (already-shaped CommandResult[]) work.  Each bucket is `any[]`
+ * because the service returns rows like `{id, kod, color_code, ...}` that we
+ * adapt to CommandResult inside the palette.
+ */
 export interface SearchGlobalResult {
-  models?: CommandResult[]
-  colors?: CommandResult[]
-  articles?: CommandResult[]
-  skus?: CommandResult[]
+  models?: any[]
+  colors?: any[]
+  articles?: any[]
+  skus?: any[]
 }
 
 interface CommandPaletteProps {
@@ -89,10 +95,10 @@ export function CommandPalette({ open, onClose, onPick, searchFn }: CommandPalet
         }
         const r = await fn(q)
         const flat: CommandResult[] = [
-          ...(r.models ?? []),
-          ...(r.colors ?? []),
-          ...(r.articles ?? []),
-          ...(r.skus ?? []),
+          ...adaptModels(r.models),
+          ...adaptColors(r.colors),
+          ...adaptArticles(r.articles),
+          ...adaptSkus(r.skus),
         ]
         setResults(flat)
       } catch {
@@ -207,4 +213,81 @@ async function loadSearchGlobal(): Promise<
   } catch {
     return null
   }
+}
+
+// ─── Adapters: raw service rows → CommandResult ────────────────────────────
+// The service returns shapes like `{id, kod, nazvanie_etiketka}` for models,
+// `{id, color_code, cvet, color}` for colors, etc.  We also accept rows that
+// are already CommandResult-shaped (for tests/demo).
+
+function isCommandResult(x: unknown): x is CommandResult {
+  return !!x && typeof x === "object" && "category" in x && "label" in x
+}
+
+function adaptModels(rows: unknown[] = []): CommandResult[] {
+  return rows.map((row) => {
+    if (isCommandResult(row)) return row
+    const r = row as { id: number; kod: string; nazvanie_etiketka?: string | null }
+    return {
+      id: `model-${r.id}`,
+      category: "Модели",
+      label: r.kod,
+      sub: r.nazvanie_etiketka ?? undefined,
+      target: `/catalog/matrix?model=${encodeURIComponent(r.kod)}`,
+    }
+  })
+}
+
+function adaptColors(rows: unknown[] = []): CommandResult[] {
+  return rows.map((row) => {
+    if (isCommandResult(row)) return row
+    const r = row as { id: number; color_code: string; cvet?: string | null; color?: string | null }
+    const sub = [r.cvet, r.color].filter(Boolean).join(" / ") || undefined
+    return {
+      id: `color-${r.id}`,
+      category: "Цвета",
+      label: r.color_code,
+      sub,
+      target: `/catalog/colors?color=${r.id}`,
+    }
+  })
+}
+
+function adaptArticles(rows: unknown[] = []): CommandResult[] {
+  return rows.map((row) => {
+    if (isCommandResult(row)) return row
+    const r = row as {
+      id: number
+      artikul: string
+      nomenklatura_wb?: number | null
+      artikul_ozon?: string | null
+    }
+    const sub = [
+      r.nomenklatura_wb ? `WB ${r.nomenklatura_wb}` : null,
+      r.artikul_ozon ? `OZON ${r.artikul_ozon}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ") || undefined
+    return {
+      id: `art-${r.id}`,
+      category: "Артикулы",
+      label: r.artikul,
+      sub,
+      target: `/catalog/artikuly?id=${r.id}`,
+    }
+  })
+}
+
+function adaptSkus(rows: unknown[] = []): CommandResult[] {
+  return rows.map((row) => {
+    if (isCommandResult(row)) return row
+    const r = row as { id: number; barkod: string; barkod_gs1?: string | null }
+    return {
+      id: `sku-${r.id}`,
+      category: "SKU",
+      label: r.barkod,
+      sub: r.barkod_gs1 ? `GS1 ${r.barkod_gs1}` : undefined,
+      target: `/catalog/tovary?id=${r.id}`,
+    }
+  })
 }
