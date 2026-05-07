@@ -3,6 +3,7 @@ import { Outlet, useSearchParams } from "react-router-dom"
 import { CatalogSidebar } from "@/components/catalog/layout/catalog-sidebar"
 import { CatalogTopBar } from "@/components/catalog/layout/catalog-topbar"
 import { CommandPalette } from "@/components/catalog/ui/command-palette"
+import { ModelCardModal } from "@/pages/catalog/model-card"
 
 export function CatalogLayout() {
   const [paletteOpen, setPaletteOpen] = useState(false)
@@ -50,6 +51,7 @@ export function CatalogLayout() {
         </main>
       </div>
       <CommandPalette open={paletteOpen} onClose={closePalette} />
+      <ModelCardModal />
     </div>
   )
 }
