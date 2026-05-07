@@ -17,9 +17,11 @@ export interface RnpWeek {
   buyout_pct: number | null
   sales_rub: number | null
   avg_sale_rub: number | null
-  // Воронка
+  // Воронка (intra-source: всё из content_analysis)
   clicks_total: number | null
   cart_total: number | null
+  funnel_orders_qty: number | null
+  funnel_buyouts_qty: number | null
   cr_card_to_cart: number | null
   cr_cart_to_order: number | null
   cr_total: number | null

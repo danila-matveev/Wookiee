@@ -53,6 +53,7 @@ def _make_day(dt_str, **kwargs):
         "adv_internal_rub": 50000, "margin_rub": 80000,
         "orders_rub": 600000, "orders_spp_rub": 540000,
         "clicks_total": 5000, "cart_total": 300,
+        "funnel_orders_qty": 100, "funnel_buyouts_qty": 87,
         "adv_views": 2000, "adv_clicks": 150, "adv_orders": 20,
     }
     defaults.update(kwargs)
@@ -97,3 +98,37 @@ def test_aggregate_margin_before_ads():
     week = aggregate_to_weeks(rows, {})[0]
     # margin_before_ads = 80000 + 50000 (internal) + 0 (no sheets) = 130000
     assert week["margin_before_ads_rub"] == pytest.approx(130000)
+
+
+def test_aggregate_cr_uses_funnel_orders_not_financial():
+    """CR должен считаться от funnel_orders_qty (CA), НЕ от orders_qty (abc_date).
+
+    Это методологический фикс: до правки cr_total использовал orders_qty из
+    abc_date, что давало смешанный источник (числитель abc / знаменатель CA).
+    """
+    # 600 финансовых заказов (abc_date) vs 685 воронка (CA) — реальный кейс Wendy
+    rows = [_make_day("2025-03-03",
+                      orders_qty=600, funnel_orders_qty=685,
+                      clicks_total=57622, cart_total=3549)]
+    week = aggregate_to_weeks(rows, {})[0]
+    # cr_total = funnel_orders / clicks * 100 = 685/57622*100 ≈ 1.189
+    assert week["cr_total"] == pytest.approx(685 / 57622 * 100, rel=0.001)
+    # cr_cart_to_order = funnel_orders / cart * 100 = 685/3549*100 ≈ 19.30
+    assert week["cr_cart_to_order"] == pytest.approx(685 / 3549 * 100, rel=0.001)
+    # cr_card_to_cart не зависит от orders — 3549/57622*100 ≈ 6.16
+    assert week["cr_card_to_cart"] == pytest.approx(3549 / 57622 * 100, rel=0.001)
+
+
+def test_aggregate_exposes_both_order_counts():
+    """Воронка и финансы — два разных источника, оба видны в API."""
+    rows = [_make_day("2025-03-03", orders_qty=600, funnel_orders_qty=685)]
+    week = aggregate_to_weeks(rows, {})[0]
+    assert week["orders_qty"] == 600              # abc_date — деньги
+    assert week["funnel_orders_qty"] == 685       # CA — воронка
+    assert week["funnel_buyouts_qty"] == 87       # из defaults
+
+
+def test_aggregate_funnel_buyout_visible():
+    rows = [_make_day("2025-03-03", funnel_buyouts_qty=42)]
+    week = aggregate_to_weeks(rows, {})[0]
+    assert week["funnel_buyouts_qty"] == 42

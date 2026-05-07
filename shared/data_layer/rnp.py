@@ -146,15 +146,20 @@ def fetch_rnp_wb_daily(
             """, (m, date_from, date_to))
             ord_ = {r[0]: r for r in cur.fetchall()}
 
-            # ── content_analysis: funnel clicks + cart ─────────────────────────
+            # ── content_analysis: full funnel (clicks, carts, orders, buyouts) ─
+            # Источник истины для воронки и CR. orders/buyouts здесь — funnel-level
+            # (отличаются от abc_date.count_orders, который финансовый).
             cur.execute("""
                 SELECT
                     date::date              AS dt,
                     SUM(opencardcount)      AS clicks_total,
-                    SUM(addtocartcount)     AS cart_total
+                    SUM(addtocartcount)     AS cart_total,
+                    SUM(orderscount)        AS funnel_orders_qty,
+                    SUM(buyoutscount)       AS funnel_buyouts_qty
                 FROM content_analysis
                 WHERE LOWER(SPLIT_PART(vendorcode, '/', 1)) = %s
                   AND date::date BETWEEN %s AND %s
+                  AND brandname = 'Wookiee'
                 GROUP BY 1
             """, (m, date_from, date_to))
             ca = {r[0]: r for r in cur.fetchall()}
@@ -187,22 +192,24 @@ def fetch_rnp_wb_daily(
     for dt in all_dates:
         a = abc.get(dt, (None,) * 6)
         o = ord_.get(dt, (None,) * 3)
-        c = ca.get(dt, (None,) * 3)
+        c = ca.get(dt, (None,) * 5)
         w = adv.get(dt, (None,) * 4)
         result.append({
             "date": dt,
-            "orders_qty":       _f(a[1]),
-            "sales_qty":        _f(a[2]),
-            "sales_rub":        _f(a[3]),
-            "adv_internal_rub": _f(a[4]),
-            "margin_rub":       _f(a[5]),
-            "orders_rub":       _f(o[1]),
-            "orders_spp_rub":   _f(o[2]),
-            "clicks_total":     _f(c[1]),
-            "cart_total":       _f(c[2]),
-            "adv_views":        _f(w[1]),
-            "adv_clicks":       _f(w[2]),
-            "adv_orders":       _f(w[3]),
+            "orders_qty":         _f(a[1]),
+            "sales_qty":          _f(a[2]),
+            "sales_rub":          _f(a[3]),
+            "adv_internal_rub":   _f(a[4]),
+            "margin_rub":         _f(a[5]),
+            "orders_rub":         _f(o[1]),
+            "orders_spp_rub":     _f(o[2]),
+            "clicks_total":       _f(c[1]),
+            "cart_total":         _f(c[2]),
+            "funnel_orders_qty":  _f(c[3]),
+            "funnel_buyouts_qty": _f(c[4]),
+            "adv_views":          _f(w[1]),
+            "adv_clicks":         _f(w[2]),
+            "adv_orders":         _f(w[3]),
         })
     return result
 
@@ -405,7 +412,7 @@ def aggregate_to_weeks(
         def db_sum(field: str) -> float:
             return sum(r[field] or 0 for r in rows)
 
-        orders_qty          = db_sum("orders_qty")
+        orders_qty          = db_sum("orders_qty")           # abc_date — финансы
         sales_qty           = db_sum("sales_qty")
         sales_rub           = db_sum("sales_rub")
         adv_internal_rub    = db_sum("adv_internal_rub")
@@ -414,6 +421,8 @@ def aggregate_to_weeks(
         orders_spp_rub      = db_sum("orders_spp_rub")
         clicks_total        = db_sum("clicks_total")
         cart_total          = db_sum("cart_total")
+        funnel_orders_qty   = db_sum("funnel_orders_qty")    # CA — воронка
+        funnel_buyouts_qty  = db_sum("funnel_buyouts_qty")   # CA — воронка
         adv_views           = db_sum("adv_views")
         adv_clicks          = db_sum("adv_clicks")
         orders_internal_qty = db_sum("adv_orders")
@@ -509,12 +518,14 @@ def aggregate_to_weeks(
             "buyout_pct":   _safe_div(sales_qty * 100, orders_qty),
             "sales_rub":    sales_rub or None,
             "avg_sale_rub": _safe_div(sales_rub, sales_qty),
-            # Воронка
-            "clicks_total":     clicks_total or None,
-            "cart_total":       cart_total or None,
-            "cr_card_to_cart":  _safe_div(cart_total * 100, clicks_total),
-            "cr_cart_to_order": _safe_div(orders_qty * 100, cart_total),
-            "cr_total":         _safe_div(orders_qty * 100, clicks_total),
+            # Воронка (все CR — intra-source: content_analysis only)
+            "clicks_total":       clicks_total or None,
+            "cart_total":         cart_total or None,
+            "funnel_orders_qty":  funnel_orders_qty or None,
+            "funnel_buyouts_qty": funnel_buyouts_qty or None,
+            "cr_card_to_cart":    _safe_div(cart_total * 100, clicks_total),
+            "cr_cart_to_order":   _safe_div(funnel_orders_qty * 100, cart_total),
+            "cr_total":           _safe_div(funnel_orders_qty * 100, clicks_total),
             # Реклама итого
             "adv_total_rub":           adv_total_rub or None,
             "drr_total_from_sales":    _safe_div(adv_total_rub * 100, sales_rub),

@@ -20,6 +20,12 @@ export function TabFunnel({ weeks }: Props) {
 
   return (
     <div className="space-y-4">
+      <p className="text-xs text-muted-foreground italic">
+        Воронка считается по данным карточек товаров WB (<code>content_analysis</code>). Заказы в воронке могут
+        отличаться от финансовых заказов на вкладке «Заказы» на 10–15% — это нормально:
+        финансовый счётчик учитывает отмены и корректировки после оформления.
+      </p>
+
       <ResponsiveContainer width="100%" height={320}>
         <ComposedChart data={weeks} margin={{ top: 4, right: 48, bottom: 0, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
@@ -42,7 +48,7 @@ export function TabFunnel({ weeks }: Props) {
         <table className="w-full text-xs border-collapse">
           <thead>
             <tr className="border-b">
-              {["Неделя", "Клики", "Корзина", "CR клик→заказ", "CR карточка→корзина", "CR корзина→заказ"].map(h => (
+              {["Неделя", "Клики", "Корзина", "Заказы (воронка)", "Выкупы (воронка)", "CR клик→заказ", "CR карточка→корзина", "CR корзина→заказ"].map(h => (
                 <th key={h} className="text-left py-1 px-2 font-medium text-muted-foreground">{h}</th>
               ))}
             </tr>
@@ -53,6 +59,8 @@ export function TabFunnel({ weeks }: Props) {
                 <td className="py-1 px-2 font-medium" style={{ color: PHASE_COLORS[w.phase] }}>{w.week_label}</td>
                 <td className="py-1 px-2">{fmt(w.clicks_total)}</td>
                 <td className="py-1 px-2">{fmt(w.cart_total)}</td>
+                <td className="py-1 px-2">{fmt(w.funnel_orders_qty)}</td>
+                <td className="py-1 px-2">{fmt(w.funnel_buyouts_qty)}</td>
                 <td className="py-1 px-2">{fmt(w.cr_total, 2)}{w.cr_total !== null ? "%" : ""}</td>
                 <td className="py-1 px-2">{fmt(w.cr_card_to_cart, 2)}{w.cr_card_to_cart !== null ? "%" : ""}</td>
                 <td className="py-1 px-2">{fmt(w.cr_cart_to_order, 2)}{w.cr_cart_to_order !== null ? "%" : ""}</td>

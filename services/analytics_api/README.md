@@ -116,6 +116,24 @@ python3 -m pytest tests/analytics_api/test_rnp_metrics.py -v
 
 14 тестов покрывают `_safe_div`, `_week_start`, `_detect_phase`, `aggregate_to_weeks`.
 
+## Воронка vs финансы — два разных счётчика заказов
+
+В API возвращаются **два независимых поля** для количества заказов:
+
+| Поле | Источник | Назначение |
+|---|---|---|
+| `orders_qty` | `abc_date.count_orders` | Финансы (карточки, выручка, маржа) — деньги |
+| `funnel_orders_qty` | `content_analysis.orderscount` | Воронка (CR клик→заказ, CR корзина→заказ) |
+| `funnel_buyouts_qty` | `content_analysis.buyoutscount` | Воронка (выкупы) |
+
+**Они могут отличаться на 10–15%** — это нормально:
+- `abc_date` — финансовая таблица: учитывает отмены, корректировки, возвраты
+- `content_analysis` — карточки товаров: моментный счётчик при оформлении заказа
+
+**Все CR (`cr_card_to_cart`, `cr_cart_to_order`, `cr_total`) считаются intra-source — только из `content_analysis`.** Раньше `cr_total` смешивал источники (`orders_qty` из abc / `clicks_total` из CA), что давало занижение CR на ~12–15%. Исправлено в коммите `2026-05-07`.
+
+Запросы к `content_analysis` фильтруются по `brandname = 'Wookiee'` (включает оба юрлица: ООО ВУКИ и ИП Медведева).
+
 ## Известные ограничения и TODO
 
 1. **`SUPABASE_JWT_SECRET` пока не задан** — JWT декодится без проверки подписи (fallback). Безопасно достаточно (проверяется `role=authenticated`), но для прод-уровня нужно добавить секрет из Supabase Dashboard → Settings → API → JWT Secret.
@@ -135,7 +153,7 @@ python3 -m pytest tests/analytics_api/test_rnp_metrics.py -v
 
 6. **buyout_pct — лаговый показатель** (3-21 дн. задержка). В UI отображается как информационный, не как причина изменения маржи.
 
-7. **CRO (cr_card_to_cart, cr_cart_to_order, cr_total)** — расхождение ~20% с PowerBI из-за фильтров `content_analysis`, см. `docs/database/DATA_QUALITY_NOTES.md`.
+7. **Остаточное расхождение opens vs PowerBI ~20%** — методология DAX отличается от наших SQL-сумм. Принимаем как известное расхождение; внутренне все CR консистентны (intra-source). См. `docs/database/DATA_QUALITY_NOTES.md` п.4.
 
 ## Файлы
 
