@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, call, patch
 
 from services.telemost_recorder.transcribe import (
     TranscriptSegment,
+    _CHUNK_SECS,
     _get_duration,
     _transcribe_chunk,
     transcribe_audio,
@@ -39,7 +40,7 @@ def test_transcribe_chunk_returns_segment():
     assert seg is not None
     assert seg.text == "Добрый день команда"
     assert seg.start_ms == 5000
-    assert seg.end_ms == 5000 + 30 * 1000
+    assert seg.end_ms == 5000 + _CHUNK_SECS * 1000
     assert seg.speaker == "Speaker 0"
 
 
@@ -73,9 +74,9 @@ def test_transcribe_audio_two_chunks(tmp_path):
     audio = tmp_path / "audio.opus"
     audio.write_bytes(b"fake")
 
-    # duration = 50s → 2 chunks: [0-30], [30-50]
+    # duration = 40s → 2 chunks: [0-25], [25-40]
     mock_ffprobe = MagicMock()
-    mock_ffprobe.stdout = "50.0\n"
+    mock_ffprobe.stdout = "40.0\n"
     mock_ffmpeg = MagicMock()
 
     def fake_run(cmd, **kwargs):
@@ -100,7 +101,7 @@ def test_transcribe_audio_two_chunks(tmp_path):
     assert segments[0].text == "Привет мир"
     assert segments[0].start_ms == 0
     assert segments[1].text == "Пока мир"
-    assert segments[1].start_ms == 30000
+    assert segments[1].start_ms == _CHUNK_SECS * 1000
 
 
 def test_transcribe_audio_skips_silent_chunks(tmp_path):
@@ -108,7 +109,7 @@ def test_transcribe_audio_skips_silent_chunks(tmp_path):
     audio.write_bytes(b"fake")
 
     mock_ffprobe = MagicMock()
-    mock_ffprobe.stdout = "60.0\n"
+    mock_ffprobe.stdout = "40.0\n"
     mock_ffmpeg = MagicMock()
 
     def fake_run(cmd, **kwargs):
@@ -131,15 +132,15 @@ def test_transcribe_audio_skips_silent_chunks(tmp_path):
 
     assert len(segments) == 1
     assert segments[0].text == "Текст"
-    assert segments[0].start_ms == 30000
+    assert segments[0].start_ms == _CHUNK_SECS * 1000
 
 
-def test_transcribe_audio_exact_30s_one_chunk(tmp_path):
+def test_transcribe_audio_exact_chunk_one_chunk(tmp_path):
     audio = tmp_path / "audio.opus"
     audio.write_bytes(b"fake")
 
     mock_ffprobe = MagicMock()
-    mock_ffprobe.stdout = "30.0\n"
+    mock_ffprobe.stdout = f"{_CHUNK_SECS}.0\n"
     mock_ffmpeg = MagicMock()
 
     def fake_run(cmd, **kwargs):

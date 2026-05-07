@@ -11,7 +11,7 @@ import requests
 from services.telemost_recorder.config import SPEECHKIT_API_KEY, YANDEX_FOLDER_ID
 
 _SYNC_URL = "https://stt.api.cloud.yandex.net/speech/v1/stt:recognize"
-_CHUNK_SECS = 30
+_CHUNK_SECS = 25
 _REQUEST_DELAY = 0.1
 
 
