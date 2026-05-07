@@ -571,6 +571,7 @@ export async function fetchTovaryRegistry(): Promise<TovarRow[]> {
       )
     `)
     .order("id")
+    .range(0, 4999)
   if (error) throw error
 
   return (data as any[]).map((t) => ({
