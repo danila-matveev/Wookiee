@@ -24,6 +24,17 @@ export interface Status {
   color?: string | null
 }
 
+// ─── Field ownership level ────────────────────────────────────────────────
+
+/**
+ * Каждое поле каталога живёт на одном из 4 уровней иерархии:
+ *  - model       → modeli_osnova
+ *  - variation   → modeli
+ *  - artikul     → artikuly
+ *  - sku         → tovary
+ */
+export type FieldLevel = "model" | "variation" | "artikul" | "sku"
+
 // ─── Reference types ──────────────────────────────────────────────────────
 
 export interface Kategoriya {
@@ -286,4 +297,237 @@ export interface Sertifikat {
   gruppa_sertifikata?: string | null
   created_at?: string | null
   updated_at?: string | null
+}
+
+// ─── ATTRIBUTES_BY_CATEGORY + FIELD_LEVEL ─────────────────────────────────
+//
+// Скопировано из эталонного MVP (`redesign + PIX/wookiee_matrix_mvp_v4.jsx`)
+// и расширено под актуальные ID `kategorii` в БД (Wave 0):
+//   1 Комплект белья │ 2 Трусы │ 3 Боди женское │ 4 Леггинсы │ 5 Лонгслив
+//   6 Рашгард       │ 7 Топ   │ 8 Футболка     │ 10 Велосипедки │ 11 Бюстгалтер
+//
+// Привязка ID-категорий ↔ массив атрибутов сохраняется. Wave 2 уточнит
+// списки опций для категорий, не покрытых MVP (леггинсы, лонгслив, рашгард,
+// футболка, велосипедки) — пока используем минимальный «общий» набор.
+
+export type AttributeFieldType =
+  | "text"
+  | "number"
+  | "select"
+  | "multiselect"
+  | "textarea"
+
+export interface AttributeFieldDef {
+  /** Колонка в `modeli_osnova`. */
+  key: string
+  label: string
+  type: AttributeFieldType
+  options?: string[]
+}
+
+const STEPEN_PODDERZHKI: AttributeFieldDef = {
+  key: "stepen_podderzhki",
+  label: "Степень поддержки",
+  type: "select",
+  options: ["Низкая", "Средняя", "Высокая"],
+}
+
+const FORMA_CHASHKI: AttributeFieldDef = {
+  key: "forma_chashki",
+  label: "Форма чашки",
+  type: "select",
+  options: ["Без формованной чашки", "Pull-on", "Формованная", "Push-up"],
+}
+
+const REGULIROVKA: AttributeFieldDef = {
+  key: "regulirovka",
+  label: "Регулировка",
+  type: "select",
+  options: [
+    "Без регулировки",
+    "Регулируемые бретели",
+    "Регулируемая застёжка",
+  ],
+}
+
+const ZASTEZHKA: AttributeFieldDef = {
+  key: "zastezhka",
+  label: "Застёжка",
+  type: "select",
+  options: ["Без застёжки", "Крючки", "Застёжка спереди", "Магнитная"],
+}
+
+const DLYA_KAKOY_GRUDI: AttributeFieldDef = {
+  key: "dlya_kakoy_grudi",
+  label: "Для какой груди",
+  type: "select",
+  options: ["Для любой", "Малая/средняя", "Средняя/большая", "Большая"],
+}
+
+const POSADKA_TRUSOV: AttributeFieldDef = {
+  key: "posadka_trusov",
+  label: "Посадка трусов",
+  type: "select",
+  options: ["Низкая", "Средняя", "Высокая"],
+}
+
+const VID_TRUSOV: AttributeFieldDef = {
+  key: "vid_trusov",
+  label: "Вид трусов",
+  type: "select",
+  options: ["Слипы", "Бразилианы", "Хипстеры", "Стринги", "Танга", "Шортики"],
+}
+
+const NAZNACHENIE: AttributeFieldDef = {
+  key: "naznachenie",
+  label: "Назначение",
+  type: "select",
+  options: ["Повседневное", "Спорт", "Премиум", "Сон"],
+}
+
+const STIL: AttributeFieldDef = { key: "stil", label: "Стиль", type: "text" }
+
+const PO_NASTROENIYU: AttributeFieldDef = {
+  key: "po_nastroeniyu",
+  label: "По настроению",
+  type: "text",
+}
+
+/** Полный реестр всех известных атрибутов (для динамических форм). */
+export const ALL_ATTRIBUTES: Record<string, AttributeFieldDef> = {
+  stepen_podderzhki: STEPEN_PODDERZHKI,
+  forma_chashki: FORMA_CHASHKI,
+  regulirovka: REGULIROVKA,
+  zastezhka: ZASTEZHKA,
+  dlya_kakoy_grudi: DLYA_KAKOY_GRUDI,
+  posadka_trusov: POSADKA_TRUSOV,
+  vid_trusov: VID_TRUSOV,
+  naznachenie: NAZNACHENIE,
+  stil: STIL,
+  po_nastroeniyu: PO_NASTROENIYU,
+}
+
+/**
+ * `kategoriya_id` → массив атрибутов, отображаемых в карточке модели.
+ *
+ * MVP покрывал 5 категорий (id 1–5 в моке). Здесь сопоставлено с
+ * реальными id из БД (см. таблицу `kategorii`):
+ *   1  Комплект белья  →  все базовые атрибуты
+ *   2  Трусы           →  трусы + общие
+ *   3  Боди            →  верх + общие
+ *   4  Леггинсы        →  спортивные общие         // TODO Wave 2: уточнить
+ *   5  Лонгслив        →  спортивные общие         // TODO Wave 2: уточнить
+ *   6  Рашгард         →  спортивные общие         // TODO Wave 2: уточнить
+ *   7  Топ             →  верх + общие
+ *   8  Футболка        →  спортивные общие         // TODO Wave 2: уточнить
+ *   10 Велосипедки     →  спортивные общие         // TODO Wave 2: уточнить
+ *   11 Бюстгалтер      →  верх (бра) + общие
+ */
+export const ATTRIBUTES_BY_CATEGORY: Record<number, AttributeFieldDef[]> = {
+  1: [
+    STEPEN_PODDERZHKI,
+    FORMA_CHASHKI,
+    REGULIROVKA,
+    ZASTEZHKA,
+    DLYA_KAKOY_GRUDI,
+    POSADKA_TRUSOV,
+    VID_TRUSOV,
+    NAZNACHENIE,
+    STIL,
+    PO_NASTROENIYU,
+  ],
+  2: [POSADKA_TRUSOV, VID_TRUSOV, NAZNACHENIE, STIL, PO_NASTROENIYU],
+  3: [
+    STEPEN_PODDERZHKI,
+    FORMA_CHASHKI,
+    DLYA_KAKOY_GRUDI,
+    NAZNACHENIE,
+    STIL,
+    PO_NASTROENIYU,
+  ],
+  4: [NAZNACHENIE, STIL, PO_NASTROENIYU],
+  5: [NAZNACHENIE, STIL, PO_NASTROENIYU],
+  6: [NAZNACHENIE, STIL, PO_NASTROENIYU],
+  7: [STEPEN_PODDERZHKI, NAZNACHENIE, STIL, PO_NASTROENIYU],
+  8: [NAZNACHENIE, STIL, PO_NASTROENIYU],
+  10: [NAZNACHENIE, STIL, PO_NASTROENIYU],
+  11: [
+    STEPEN_PODDERZHKI,
+    FORMA_CHASHKI,
+    REGULIROVKA,
+    ZASTEZHKA,
+    DLYA_KAKOY_GRUDI,
+    NAZNACHENIE,
+    STIL,
+    PO_NASTROENIYU,
+  ],
+}
+
+/**
+ * Какое поле редактируется на каком уровне иерархии.
+ * Скопировано из MVP (`wookiee_matrix_mvp_v4.jsx`, строки ~272–294).
+ */
+export const FIELD_LEVEL: Record<string, FieldLevel> = {
+  // Модель (modeli_osnova)
+  kod: "model",
+  kategoriya_id: "model",
+  kollekciya_id: "model",
+  fabrika_id: "model",
+  tip_kollekcii: "model",
+  material: "model",
+  sostav_syrya: "model",
+  composition: "model",
+  razmery_modeli: "model",
+  kratnost_koroba: "model",
+  ves_kg: "model",
+  dlina_cm: "model",
+  shirina_cm: "model",
+  vysota_cm: "model",
+  srok_proizvodstva: "model",
+  sku_china: "model",
+  tnved: "model",
+  gruppa_sertifikata: "model",
+  notion_link: "model",
+  notion_strategy_link: "model",
+  yandex_disk_link: "model",
+  upakovka_id: "model",
+  // Атрибуты — на уровне модели
+  stepen_podderzhki: "model",
+  forma_chashki: "model",
+  regulirovka: "model",
+  zastezhka: "model",
+  dlya_kakoy_grudi: "model",
+  posadka_trusov: "model",
+  vid_trusov: "model",
+  naznachenie: "model",
+  stil: "model",
+  po_nastroeniyu: "model",
+  // Контент — на уровне модели
+  nazvanie_etiketka: "model",
+  nazvanie_sayt: "model",
+  opisanie_sayt: "model",
+  tegi: "model",
+
+  // Вариация (modeli)
+  importer_id: "variation",
+  artikul_modeli: "variation",
+  nabor: "variation",
+  rossiyskiy_razmer: "variation",
+
+  // Артикул (artikuly)
+  cvet_id: "artikul",
+  nomenklatura_wb: "artikul",
+  artikul_ozon: "artikul",
+
+  // SKU (tovary)
+  barkod: "sku",
+  razmer_id: "sku",
+  sku_china_size: "sku",
+  status_obshiy: "sku",
+  status_ozon: "sku",
+  status_sayt: "sku",
+  status_lamoda: "sku",
+  ozon_product_id: "sku",
+  ozon_fbo_sku_id: "sku",
+  lamoda_seller_sku: "sku",
 }
