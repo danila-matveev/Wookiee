@@ -1,0 +1,1170 @@
+[
+  {
+    "id": 1,
+    "color_code": "31",
+    "color": null,
+    "cvet": "БАЗА СИНГВЕР",
+    "semeystvo": null,
+    "status_id": null
+  },
+  {
+    "id": 138,
+    "color_code": "WE021",
+    "color": "yellow",
+    "cvet": "yellow",
+    "semeystvo": null,
+    "status_id": null
+  },
+  {
+    "id": 139,
+    "color_code": "TLW-01",
+    "color": "obsidian",
+    "cvet": "obsidian",
+    "semeystvo": null,
+    "status_id": null
+  },
+  {
+    "id": 140,
+    "color_code": "TLW-02",
+    "color": "storm",
+    "cvet": "storm",
+    "semeystvo": null,
+    "status_id": null
+  },
+  {
+    "id": 141,
+    "color_code": "TLW-03",
+    "color": "wineberry",
+    "cvet": "wineberry",
+    "semeystvo": null,
+    "status_id": null
+  },
+  {
+    "id": 142,
+    "color_code": "TLW-04",
+    "color": "umber",
+    "cvet": "umber",
+    "semeystvo": null,
+    "status_id": null
+  },
+  {
+    "id": 143,
+    "color_code": "TLW-05",
+    "color": "stone",
+    "cvet": "stone",
+    "semeystvo": null,
+    "status_id": null
+  },
+  {
+    "id": 2,
+    "color_code": "2",
+    "color": "Black",
+    "cvet": "Black",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 3,
+    "color_code": "1",
+    "color": "White",
+    "cvet": "White",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 9,
+    "color_code": "6",
+    "color": "Light blue",
+    "cvet": "Light blue",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 8,
+    "color_code": "4",
+    "color": "Red",
+    "cvet": "Red",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 5,
+    "color_code": "9",
+    "color": "Brown",
+    "cvet": "Brown",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 7,
+    "color_code": "36",
+    "color": "Dark grey",
+    "cvet": "Dark grey",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 6,
+    "color_code": "w3",
+    "color": "Wine red",
+    "cvet": "Wine red",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 10,
+    "color_code": "w6",
+    "color": "Bright yellow",
+    "cvet": "Bright yellow",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 23,
+    "color_code": "27",
+    "color": "Royal blue",
+    "cvet": "Royal blue",
+    "semeystvo": null,
+    "status_id": 14
+  },
+  {
+    "id": 4,
+    "color_code": "3",
+    "color": "Nude",
+    "cvet": "Nude",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 17,
+    "color_code": "5",
+    "color": "Peach",
+    "cvet": "Peach",
+    "semeystvo": null,
+    "status_id": 14
+  },
+  {
+    "id": 13,
+    "color_code": "11",
+    "color": "Silver grey",
+    "cvet": "Silver grey",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 15,
+    "color_code": "24",
+    "color": "Navy blue",
+    "cvet": "Navy blue",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 14,
+    "color_code": "35",
+    "color": "Military green",
+    "cvet": "Military green",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 20,
+    "color_code": "w1",
+    "color": "Lavender",
+    "cvet": "Lavender",
+    "semeystvo": null,
+    "status_id": 14
+  },
+  {
+    "id": 12,
+    "color_code": "w7",
+    "color": "Pale pink",
+    "cvet": "Pale pink",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 16,
+    "color_code": "w5",
+    "color": "Emerald green",
+    "cvet": "Emerald green",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 11,
+    "color_code": "w11",
+    "color": "Ivory",
+    "cvet": "Ivory",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 22,
+    "color_code": "w8",
+    "color": "Light brown",
+    "cvet": "Light brown",
+    "semeystvo": null,
+    "status_id": 14
+  },
+  {
+    "id": 19,
+    "color_code": "w13",
+    "color": "Affogato",
+    "cvet": "Affogato",
+    "semeystvo": null,
+    "status_id": 13
+  },
+  {
+    "id": 21,
+    "color_code": "32",
+    "color": "Dark purple",
+    "cvet": "Dark purple",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 27,
+    "color_code": "28",
+    "color": "Shinny pink",
+    "cvet": "Shinny pink",
+    "semeystvo": null,
+    "status_id": 14
+  },
+  {
+    "id": 26,
+    "color_code": "21",
+    "color": "Light purple",
+    "cvet": "Light purple",
+    "semeystvo": null,
+    "status_id": 14
+  },
+  {
+    "id": 25,
+    "color_code": "26",
+    "color": "Pink orange",
+    "cvet": "Pink orange",
+    "semeystvo": null,
+    "status_id": 14
+  },
+  {
+    "id": 28,
+    "color_code": "8",
+    "color": "Orange 2",
+    "cvet": "Orange 2",
+    "semeystvo": null,
+    "status_id": 14
+  },
+  {
+    "id": 24,
+    "color_code": "w4",
+    "color": "Forest green",
+    "cvet": "Forest green",
+    "semeystvo": null,
+    "status_id": 14
+  },
+  {
+    "id": 32,
+    "color_code": "w2",
+    "color": "Dark green",
+    "cvet": "Dark green",
+    "semeystvo": null,
+    "status_id": 14
+  },
+  {
+    "id": 30,
+    "color_code": "w10",
+    "color": "Lime",
+    "cvet": "Lime",
+    "semeystvo": null,
+    "status_id": 14
+  },
+  {
+    "id": 35,
+    "color_code": "25",
+    "color": "Light green",
+    "cvet": "Light green",
+    "semeystvo": null,
+    "status_id": 14
+  },
+  {
+    "id": 33,
+    "color_code": "15",
+    "color": "Sky blue",
+    "cvet": "Sky blue",
+    "semeystvo": null,
+    "status_id": 9
+  },
+  {
+    "id": 29,
+    "color_code": "12",
+    "color": "Blue 6",
+    "cvet": "Blue 6",
+    "semeystvo": null,
+    "status_id": 12
+  },
+  {
+    "id": 34,
+    "color_code": "w12",
+    "color": "Pale green",
+    "cvet": "Pale green",
+    "semeystvo": null,
+    "status_id": 14
+  },
+  {
+    "id": 37,
+    "color_code": "23",
+    "color": "Orange red",
+    "cvet": "Orange red",
+    "semeystvo": null,
+    "status_id": 12
+  },
+  {
+    "id": 40,
+    "color_code": "13",
+    "color": "Rose pink",
+    "cvet": "Rose pink",
+    "semeystvo": null,
+    "status_id": 12
+  },
+  {
+    "id": 42,
+    "color_code": "17",
+    "color": "Date red 2",
+    "cvet": "Date red 2",
+    "semeystvo": null,
+    "status_id": 12
+  },
+  {
+    "id": 31,
+    "color_code": "16",
+    "color": "Dark pink",
+    "cvet": "Dark pink",
+    "semeystvo": null,
+    "status_id": 9
+  },
+  {
+    "id": 43,
+    "color_code": "18",
+    "color": "Yellow",
+    "cvet": "Yellow",
+    "semeystvo": null,
+    "status_id": 12
+  },
+  {
+    "id": 41,
+    "color_code": "14",
+    "color": "Purple",
+    "cvet": "Purple",
+    "semeystvo": null,
+    "status_id": 9
+  },
+  {
+    "id": 44,
+    "color_code": "19",
+    "color": "Green",
+    "cvet": "Green",
+    "semeystvo": null,
+    "status_id": 12
+  },
+  {
+    "id": 36,
+    "color_code": "7",
+    "color": "Shock green",
+    "cvet": "Shock green",
+    "semeystvo": null,
+    "status_id": 9
+  },
+  {
+    "id": 38,
+    "color_code": "29",
+    "color": "Violet",
+    "cvet": "Violet",
+    "semeystvo": null,
+    "status_id": 9
+  },
+  {
+    "id": 39,
+    "color_code": "10",
+    "color": "Watermelon red",
+    "cvet": "Watermelon red",
+    "semeystvo": null,
+    "status_id": 12
+  },
+  {
+    "id": 45,
+    "color_code": "34",
+    "color": "Royal yellow",
+    "cvet": "Royal yellow",
+    "semeystvo": null,
+    "status_id": 12
+  },
+  {
+    "id": 59,
+    "color_code": "22leo",
+    "color": "Brown leo",
+    "cvet": "Brown leo",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 61,
+    "color_code": "87zb",
+    "color": "Ivory zebra",
+    "cvet": "Ivory zebra",
+    "semeystvo": null,
+    "status_id": 9
+  },
+  {
+    "id": 60,
+    "color_code": "22zb",
+    "color": "Brown zebra",
+    "cvet": "Brown zebra",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 62,
+    "color_code": "36leo",
+    "color": "Dark grey leo",
+    "cvet": "Dark grey leo",
+    "semeystvo": null,
+    "status_id": 9
+  },
+  {
+    "id": 63,
+    "color_code": "36zb",
+    "color": "Dark grey zebra",
+    "cvet": "Dark grey zebra",
+    "semeystvo": null,
+    "status_id": 9
+  },
+  {
+    "id": 64,
+    "color_code": "87leo",
+    "color": "Ivory leo",
+    "cvet": "Ivory leo",
+    "semeystvo": null,
+    "status_id": 9
+  },
+  {
+    "id": 65,
+    "color_code": "29leo",
+    "color": "Light grey leo",
+    "cvet": "Light grey leo",
+    "semeystvo": null,
+    "status_id": 11
+  },
+  {
+    "id": 66,
+    "color_code": "29zb",
+    "color": "Light grey zebra",
+    "cvet": "Light grey zebra",
+    "semeystvo": null,
+    "status_id": 11
+  },
+  {
+    "id": 48,
+    "color_code": "wa1",
+    "color": "Black washed",
+    "cvet": "Black washed",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 50,
+    "color_code": "wa2",
+    "color": "Khaki washed",
+    "cvet": "Khaki washed",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 49,
+    "color_code": "wa4",
+    "color": "Denim washed",
+    "cvet": "Denim washed",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 51,
+    "color_code": "wa10",
+    "color": "Brown washed",
+    "cvet": "Brown washed",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 54,
+    "color_code": "wa7",
+    "color": "Blue washed",
+    "cvet": "Blue washed",
+    "semeystvo": null,
+    "status_id": 9
+  },
+  {
+    "id": 57,
+    "color_code": "wa5",
+    "color": "Olive washed",
+    "cvet": "Olive washed",
+    "semeystvo": null,
+    "status_id": 12
+  },
+  {
+    "id": 58,
+    "color_code": "wa11",
+    "color": "Chocolate washed",
+    "cvet": "Chocolate washed",
+    "semeystvo": null,
+    "status_id": 12
+  },
+  {
+    "id": 56,
+    "color_code": "wa6",
+    "color": "Cotton candy washed",
+    "cvet": "Cotton candy washed",
+    "semeystvo": null,
+    "status_id": 9
+  },
+  {
+    "id": 55,
+    "color_code": "wa8",
+    "color": "Barbie washed",
+    "cvet": "Barbie washed",
+    "semeystvo": null,
+    "status_id": 12
+  },
+  {
+    "id": 52,
+    "color_code": "wa9",
+    "color": "grey washed",
+    "cvet": "grey washed",
+    "semeystvo": null,
+    "status_id": 9
+  },
+  {
+    "id": 53,
+    "color_code": "wa3",
+    "color": "Purple washed",
+    "cvet": "Purple washed",
+    "semeystvo": null,
+    "status_id": 9
+  },
+  {
+    "id": 76,
+    "color_code": "222",
+    "color": "Black, Black, Black",
+    "cvet": "Black, Black, Black",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 78,
+    "color_code": "123",
+    "color": "White, Black, Nude",
+    "cvet": "White, Black, Nude",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 80,
+    "color_code": "111",
+    "color": "White, White, White",
+    "cvet": "White, White, White",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 77,
+    "color_code": "9w11w13",
+    "color": "Brown, Ivory, Affogato",
+    "cvet": "Brown, Ivory, Affogato",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 79,
+    "color_code": "6w6W1",
+    "color": "Light blue, Bright yellow, Lavender",
+    "cvet": "Light blue, Bright yellow, Lavender",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 18,
+    "color_code": "37",
+    "color": "Brownie",
+    "cvet": "Brownie",
+    "semeystvo": null,
+    "status_id": 14
+  },
+  {
+    "id": 46,
+    "color_code": "38",
+    "color": "Fig",
+    "cvet": "Fig",
+    "semeystvo": null,
+    "status_id": 12
+  },
+  {
+    "id": 67,
+    "color_code": "P1",
+    "color": "Heart pink",
+    "cvet": "Heart pink",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 69,
+    "color_code": "P2",
+    "color": "Heart grey",
+    "cvet": "Heart grey",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 68,
+    "color_code": "P4",
+    "color": "pinkflower1 wookiee pattern + White 1",
+    "cvet": "pinkflower1 wookiee pattern + White 1",
+    "semeystvo": null,
+    "status_id": 9
+  },
+  {
+    "id": 70,
+    "color_code": "P5",
+    "color": "Flower 2 wookiee pattern + White",
+    "cvet": "Flower 2 wookiee pattern + White",
+    "semeystvo": null,
+    "status_id": 9
+  },
+  {
+    "id": 71,
+    "color_code": "P3",
+    "color": "Camomile",
+    "cvet": "Camomile",
+    "semeystvo": null,
+    "status_id": 12
+  },
+  {
+    "id": 72,
+    "color_code": "P6",
+    "color": "flower 3 wookiee pattern + bright_yellow w6",
+    "cvet": "flower 3 wookiee pattern + bright_yellow w6",
+    "semeystvo": null,
+    "status_id": 12
+  },
+  {
+    "id": 73,
+    "color_code": "P7",
+    "color": "flower 3 wookiee pattern + Pale pink",
+    "cvet": "flower 3 wookiee pattern + Pale pink",
+    "semeystvo": null,
+    "status_id": 12
+  },
+  {
+    "id": 74,
+    "color_code": "P8",
+    "color": "Heart dark red",
+    "cvet": "Heart dark red",
+    "semeystvo": null,
+    "status_id": 14
+  },
+  {
+    "id": 75,
+    "color_code": "P9",
+    "color": "Heart dark pink",
+    "cvet": "Heart dark pink",
+    "semeystvo": null,
+    "status_id": 12
+  },
+  {
+    "id": 47,
+    "color_code": "39",
+    "color": "Light pink",
+    "cvet": "Light pink",
+    "semeystvo": null,
+    "status_id": 14
+  },
+  {
+    "id": 145,
+    "color_code": "STLW-01",
+    "color": "obsidian",
+    "cvet": "obsidian",
+    "semeystvo": null,
+    "status_id": null
+  },
+  {
+    "id": 146,
+    "color_code": "STLW-02",
+    "color": "wineberry",
+    "cvet": "wineberry",
+    "semeystvo": null,
+    "status_id": null
+  },
+  {
+    "id": 147,
+    "color_code": "STLW-03",
+    "color": "umber",
+    "cvet": "umber",
+    "semeystvo": null,
+    "status_id": null
+  },
+  {
+    "id": 148,
+    "color_code": "STLW-04",
+    "color": "ivory",
+    "cvet": "ivory",
+    "semeystvo": null,
+    "status_id": null
+  },
+  {
+    "id": 149,
+    "color_code": "STLW-05",
+    "color": "storm",
+    "cvet": "storm",
+    "semeystvo": null,
+    "status_id": null
+  },
+  {
+    "id": 91,
+    "color_code": "set 2",
+    "color": null,
+    "cvet": "айвори, белый, голубой",
+    "semeystvo": null,
+    "status_id": 12
+  },
+  {
+    "id": 113,
+    "color_code": "AU013",
+    "color": "dark blue",
+    "cvet": "темно-синий",
+    "semeystvo": null,
+    "status_id": 12
+  },
+  {
+    "id": 133,
+    "color_code": "WE013",
+    "color": "dark blue",
+    "cvet": "темно-синий",
+    "semeystvo": null,
+    "status_id": 12
+  },
+  {
+    "id": 81,
+    "color_code": "333",
+    "color": "Nude, Nude, Nude",
+    "cvet": "Nude, Nude, Nude",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 82,
+    "color_code": "93w7",
+    "color": "Brown, Nude, Pale pink",
+    "cvet": "Brown, Nude, Pale pink",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 85,
+    "color_code": "15w7",
+    "color": "White, Peach, Pale pink",
+    "cvet": "White, Peach, Pale pink",
+    "semeystvo": null,
+    "status_id": 12
+  },
+  {
+    "id": 83,
+    "color_code": "21136",
+    "color": "Black, Silver grey, Dark grey",
+    "cvet": "Black, Silver grey, Dark grey",
+    "semeystvo": null,
+    "status_id": 12
+  },
+  {
+    "id": 84,
+    "color_code": "22427",
+    "color": "Black, Navy blue, Royal blue",
+    "cvet": "Black, Navy blue, Royal blue",
+    "semeystvo": null,
+    "status_id": 12
+  },
+  {
+    "id": 86,
+    "color_code": "999",
+    "color": "Brown, brown, brown",
+    "cvet": "Brown, brown, brown",
+    "semeystvo": null,
+    "status_id": 12
+  },
+  {
+    "id": 90,
+    "color_code": "set 1",
+    "color": "Red, Black, Red heart white, Red flash white",
+    "cvet": "Red, Black, Red heart white, Red flash white",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 92,
+    "color_code": "set 3",
+    "color": "Pink flash, pink heart, pink, black",
+    "cvet": "Pink flash, pink heart, pink, black",
+    "semeystvo": null,
+    "status_id": 13
+  },
+  {
+    "id": 93,
+    "color_code": "set 4",
+    "color": "Blue flash, blue heart, blue, black",
+    "cvet": "Blue flash, blue heart, blue, black",
+    "semeystvo": null,
+    "status_id": 12
+  },
+  {
+    "id": 94,
+    "color_code": "set 5",
+    "color": "White, Black, Dark red heart red, Dark red flash red",
+    "cvet": "White, Black, Dark red heart red, Dark red flash red",
+    "semeystvo": null,
+    "status_id": 14
+  },
+  {
+    "id": 95,
+    "color_code": "set 6",
+    "color": "White, Black, Dark red heart peach, Dark red flash peach",
+    "cvet": "White, Black, Dark red heart peach, Dark red flash peach",
+    "semeystvo": null,
+    "status_id": 12
+  },
+  {
+    "id": 88,
+    "color_code": "36w311",
+    "color": "dark grey, wine red, silver grey",
+    "cvet": "dark grey, wine red, silver grey",
+    "semeystvo": null,
+    "status_id": 14
+  },
+  {
+    "id": 87,
+    "color_code": "36w3w11",
+    "color": "dark grey, wine red, ivory",
+    "cvet": "dark grey, wine red, ivory",
+    "semeystvo": null,
+    "status_id": 14
+  },
+  {
+    "id": 89,
+    "color_code": "36w83",
+    "color": "dark grey, light brown, nude",
+    "cvet": "dark grey, light brown, nude",
+    "semeystvo": null,
+    "status_id": 12
+  },
+  {
+    "id": 98,
+    "color_code": "AU001",
+    "color": "nude",
+    "cvet": "nude",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 100,
+    "color_code": "AU002",
+    "color": "black",
+    "cvet": "black",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 101,
+    "color_code": "AU003",
+    "color": "milky",
+    "cvet": "milky",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 104,
+    "color_code": "AU004",
+    "color": "lightgreen",
+    "cvet": "lightgreen",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 115,
+    "color_code": "AU005",
+    "color": "darkgreen",
+    "cvet": "darkgreen",
+    "semeystvo": null,
+    "status_id": 9
+  },
+  {
+    "id": 114,
+    "color_code": "AU006",
+    "color": "lilacpurple",
+    "cvet": "lilacpurple",
+    "semeystvo": null,
+    "status_id": 9
+  },
+  {
+    "id": 99,
+    "color_code": "AU007",
+    "color": "darkbeige",
+    "cvet": "darkbeige",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 102,
+    "color_code": "AU008",
+    "color": "lightbrown",
+    "cvet": "lightbrown",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 105,
+    "color_code": "AU010",
+    "color": "brown",
+    "cvet": "brown",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 103,
+    "color_code": "AU011",
+    "color": "white",
+    "cvet": "white",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 106,
+    "color_code": "AU009",
+    "color": "graphite",
+    "cvet": "graphite",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 107,
+    "color_code": "AU012",
+    "color": "winered",
+    "cvet": "winered",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 110,
+    "color_code": "AU015",
+    "color": "light pink",
+    "cvet": "light pink",
+    "semeystvo": null,
+    "status_id": 13
+  },
+  {
+    "id": 108,
+    "color_code": "AU017",
+    "color": "americano",
+    "cvet": "americano",
+    "semeystvo": null,
+    "status_id": 13
+  },
+  {
+    "id": 111,
+    "color_code": "AU016",
+    "color": "skin",
+    "cvet": "skin",
+    "semeystvo": null,
+    "status_id": 12
+  },
+  {
+    "id": 112,
+    "color_code": "AU018",
+    "color": "blue",
+    "cvet": "blue",
+    "semeystvo": null,
+    "status_id": 12
+  },
+  {
+    "id": 109,
+    "color_code": "AU019",
+    "color": "fig",
+    "cvet": "fig",
+    "semeystvo": null,
+    "status_id": 13
+  },
+  {
+    "id": 116,
+    "color_code": "AU020",
+    "color": "ivory",
+    "cvet": "ivory",
+    "semeystvo": null,
+    "status_id": 14
+  },
+  {
+    "id": 118,
+    "color_code": "WE001",
+    "color": "black",
+    "cvet": "black",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 120,
+    "color_code": "WE002",
+    "color": "light beige",
+    "cvet": "light beige",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 121,
+    "color_code": "WE003",
+    "color": "white",
+    "cvet": "white",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 124,
+    "color_code": "WE004",
+    "color": "coffee",
+    "cvet": "coffee",
+    "semeystvo": null,
+    "status_id": 12
+  },
+  {
+    "id": 136,
+    "color_code": "WE006",
+    "color": "green",
+    "cvet": "green",
+    "semeystvo": null,
+    "status_id": 9
+  },
+  {
+    "id": 125,
+    "color_code": "WE005",
+    "color": "pink",
+    "cvet": "pink",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 119,
+    "color_code": "WE007",
+    "color": "dark beige",
+    "cvet": "dark beige",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 117,
+    "color_code": "WE009",
+    "color": "brown",
+    "cvet": "brown",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 122,
+    "color_code": "WE008",
+    "color": "graphite",
+    "cvet": "graphite",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 128,
+    "color_code": "WE014",
+    "color": "winered",
+    "cvet": "winered",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 126,
+    "color_code": "WE011",
+    "color": "light grey",
+    "cvet": "light grey",
+    "semeystvo": null,
+    "status_id": 9
+  },
+  {
+    "id": 123,
+    "color_code": "WE010",
+    "color": "nude",
+    "cvet": "nude",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 127,
+    "color_code": "WE012",
+    "color": "light brown",
+    "cvet": "light brown",
+    "semeystvo": null,
+    "status_id": 8
+  },
+  {
+    "id": 129,
+    "color_code": "WE015",
+    "color": "light pink",
+    "cvet": "light pink",
+    "semeystvo": null,
+    "status_id": 13
+  },
+  {
+    "id": 132,
+    "color_code": "WE016",
+    "color": "skin",
+    "cvet": "skin",
+    "semeystvo": null,
+    "status_id": 12
+  },
+  {
+    "id": 130,
+    "color_code": "WE017",
+    "color": "americano",
+    "cvet": "americano",
+    "semeystvo": null,
+    "status_id": 13
+  },
+  {
+    "id": 134,
+    "color_code": "WE018",
+    "color": "blue",
+    "cvet": "blue",
+    "semeystvo": null,
+    "status_id": 14
+  },
+  {
+    "id": 131,
+    "color_code": "WE019",
+    "color": "fig",
+    "cvet": "fig",
+    "semeystvo": null,
+    "status_id": 13
+  },
+  {
+    "id": 135,
+    "color_code": "WE020",
+    "color": "ivory",
+    "cvet": "ivory",
+    "semeystvo": null,
+    "status_id": 14
+  },
+  {
+    "id": 137,
+    "color_code": "WE001,WE002,WE003",
+    "color": "black,light beige,white",
+    "cvet": "black,light beige,white",
+    "semeystvo": null,
+    "status_id": 14
+  }
+]
