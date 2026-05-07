@@ -419,71 +419,76 @@ async def run_session(url: str, bot_name: str = BOT_NAME) -> None:
     screenshot_dir.mkdir(parents=True, exist_ok=True)
     capture = AudioCapture(meeting_id=meeting.meeting_id, output_dir=screenshot_dir)
 
-    async with launch_browser() as (_, __, page):
-        await _execute_join(page, meeting, bot_name, screenshot_dir)
+    # Init PulseAudio null sink BEFORE Chromium launches so Chrome's dlopen(libpulse.so.0)
+    # finds our sink as the default and routes all audio there from the start.
+    try:
+        capture.start()
+    except Exception as exc:
+        meeting.transition(MeetingStatus.FAILED, FailReason.RECORDING_FAILED)
+        _emit({
+            "status": "FAILED",
+            "reason": "RECORDING_FAILED",
+            "meeting_id": meeting.meeting_id,
+            "error": str(exc),
+        })
+        return
 
-        if meeting.status == MeetingStatus.FAILED:
-            _emit({
-                "status": "FAILED",
-                "reason": meeting.fail_reason.value if meeting.fail_reason else "UNKNOWN",
-                "meeting_id": meeting.meeting_id,
-            })
-            return
+    try:
+        async with launch_browser() as (_, __, page):
+            await _execute_join(page, meeting, bot_name, screenshot_dir)
 
-        if meeting.status == MeetingStatus.WAITING_ROOM:
-            state = await _wait_for_admission(page, timeout=WAITING_ROOM_TIMEOUT)
-            if state != ScreenState.IN_MEETING:
-                meeting.transition(MeetingStatus.FAILED, FailReason.NOT_ADMITTED)
-                _emit({"status": "FAILED", "reason": "NOT_ADMITTED", "meeting_id": meeting.meeting_id})
+            if meeting.status == MeetingStatus.FAILED:
+                _emit({
+                    "status": "FAILED",
+                    "reason": meeting.fail_reason.value if meeting.fail_reason else "UNKNOWN",
+                    "meeting_id": meeting.meeting_id,
+                })
                 return
-            await _dismiss_modals(page)
-            await _mute_bot(page)
-            screenshot = await _save_screenshot(page, screenshot_dir, "screenshot_001")
-            meeting.screenshot_path = str(screenshot)
-            meeting.transition(MeetingStatus.IN_MEETING)
-            _emit({"status": "IN_MEETING", "meeting_id": meeting.meeting_id, "screenshot": meeting.screenshot_path})
 
-        # Start audio recording (no-op on macOS / when TELEMOST_CAPTURE=false)
-        try:
-            capture.start()
-        except Exception as exc:
-            meeting.transition(MeetingStatus.FAILED, FailReason.RECORDING_FAILED)
-            _emit({
-                "status": "FAILED",
-                "reason": "RECORDING_FAILED",
-                "meeting_id": meeting.meeting_id,
-                "error": str(exc),
-            })
-            return
-        meeting.transition(MeetingStatus.RECORDING)
-        _emit({"status": "RECORDING", "meeting_id": meeting.meeting_id})
+            if meeting.status == MeetingStatus.WAITING_ROOM:
+                state = await _wait_for_admission(page, timeout=WAITING_ROOM_TIMEOUT)
+                if state != ScreenState.IN_MEETING:
+                    meeting.transition(MeetingStatus.FAILED, FailReason.NOT_ADMITTED)
+                    _emit({"status": "FAILED", "reason": "NOT_ADMITTED", "meeting_id": meeting.meeting_id})
+                    return
+                await _dismiss_modals(page)
+                await _mute_bot(page)
+                screenshot = await _save_screenshot(page, screenshot_dir, "screenshot_001")
+                meeting.screenshot_path = str(screenshot)
+                meeting.transition(MeetingStatus.IN_MEETING)
+                _emit({"status": "IN_MEETING", "meeting_id": meeting.meeting_id, "screenshot": meeting.screenshot_path})
 
-        # Meeting loop
-        screenshot_n = 2
-        participant_tick = 0
-        elapsed = 0  # seconds since recording started
-        try:
-            while True:
-                await asyncio.sleep(SCREENSHOT_INTERVAL)
-                elapsed += SCREENSHOT_INTERVAL
-                await _save_screenshot(page, screenshot_dir, f"screenshot_{screenshot_n:03d}")
-                screenshot_n += 1
+            meeting.transition(MeetingStatus.RECORDING)
+            _emit({"status": "RECORDING", "meeting_id": meeting.meeting_id})
 
-                participant_tick += SCREENSHOT_INTERVAL
-                if participant_tick >= 60:
-                    meeting.participants = await extract_participants(page)
-                    participant_tick = 0
+            # Meeting loop
+            screenshot_n = 2
+            participant_tick = 0
+            elapsed = 0
+            try:
+                while True:
+                    await asyncio.sleep(SCREENSHOT_INTERVAL)
+                    elapsed += SCREENSHOT_INTERVAL
+                    await _save_screenshot(page, screenshot_dir, f"screenshot_{screenshot_n:03d}")
+                    screenshot_n += 1
 
-                # Grace period: don't exit for the first 90s after recording starts
-                # so the host has time to join before we trigger "bot is alone" detection
-                if elapsed >= 90 and await detect_meeting_ended(page):
-                    _emit({"status": "MEETING_ENDED_DETECTED", "meeting_id": meeting.meeting_id})
-                    break
-        except (asyncio.CancelledError, KeyboardInterrupt):
-            pass
+                    # Reroute any new Chrome audio streams that appeared after capture.start()
+                    capture.reroute_streams()
 
-    # Stop recording (browser already closed)
-    audio_path = capture.stop()
+                    participant_tick += SCREENSHOT_INTERVAL
+                    if participant_tick >= 60:
+                        meeting.participants = await extract_participants(page)
+                        participant_tick = 0
+
+                    # Grace period: don't exit for the first 90s so the host has time to join
+                    if elapsed >= 90 and await detect_meeting_ended(page):
+                        _emit({"status": "MEETING_ENDED_DETECTED", "meeting_id": meeting.meeting_id})
+                        break
+            except (asyncio.CancelledError, KeyboardInterrupt):
+                pass
+    finally:
+        # Stop recording — always runs even if browser errors
+        audio_path = capture.stop()
 
     # Transcribe
     meeting.transition(MeetingStatus.TRANSCRIBING)

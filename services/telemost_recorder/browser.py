@@ -1,3 +1,4 @@
+import os
 import platform
 import subprocess
 from collections.abc import AsyncIterator
@@ -86,7 +87,25 @@ async def launch_browser() -> AsyncIterator[tuple[Browser, BrowserContext, Page]
             await page.goto(url)
     """
     xvfb = _start_xvfb() if not HEADLESS else None
-    env = {"DISPLAY": ":99"} if (platform.system() == "Linux" and not HEADLESS) else {}
+    env: dict[str, str] = {}
+    if platform.system() == "Linux" and not HEADLESS:
+        env["DISPLAY"] = ":99"
+        # Chrome finds PulseAudio via dlopen(libpulse.so.0); it reads PULSE_SERVER
+        # to locate the socket. Without this, it silently falls back to null audio.
+        pulse_server = os.environ.get("PULSE_SERVER", "")
+        if not pulse_server:
+            try:
+                result = subprocess.run(
+                    ["pactl", "info"], capture_output=True, text=True, timeout=3
+                )
+                for line in result.stdout.splitlines():
+                    if line.startswith("Server String:"):
+                        pulse_server = line.split(":", 1)[1].strip()
+                        break
+            except Exception:
+                pass
+        if pulse_server:
+            env["PULSE_SERVER"] = pulse_server
 
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(
