@@ -68,13 +68,15 @@ async def test_monitor_returns_exit_code():
 
     assert result["exit_code"] == 0
     assert "ok" in result["logs"]
+    assert result["timed_out"] is False
 
 
 @pytest.mark.asyncio
 async def test_monitor_handles_timeout():
-    """When wait raises (timeout/error), monitor returns exit_code=-1."""
+    """When wait raises (timeout/error), monitor returns exit_code=-1 and timed_out=True."""
     container = MagicMock()
     container.wait.side_effect = Exception("read timeout")
+    container.logs.return_value = b"partial logs\n"
 
     fake_client = MagicMock()
     fake_client.containers.get.return_value = container
@@ -86,6 +88,7 @@ async def test_monitor_handles_timeout():
         result = await monitor_container("container_xyz", timeout_seconds=1)
 
     assert result["exit_code"] == -1
+    assert result["timed_out"] is True
 
 
 def test_list_orphan_containers():

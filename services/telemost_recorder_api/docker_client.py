@@ -37,7 +37,8 @@ def _get_client() -> docker.DockerClient:
 _RECORDER_ENV_KEYS = (
     "SPEECHKIT_API_KEY",
     "YANDEX_FOLDER_ID",
-    "BITRIX24_WEBHOOK_URL",
+    "Bitrix_rest_api",  # recorder's speakers.py reads this exact name
+    "OPENROUTER_API_KEY",  # recorder uses for LLM speaker resolution
     "TELEMOST_BOT_NAME",
 )
 
@@ -48,7 +49,6 @@ def spawn_recorder_container(
     meeting_url: str,
     data_dir: str,
     headless: bool = True,
-    max_minutes: Optional[int] = None,
 ) -> str:
     """Run telemost_recorder:latest detached. Returns container id."""
     client = _get_client()
@@ -62,8 +62,6 @@ def spawn_recorder_container(
         "--output-dir",
         f"/app/data/telemost/{meeting_id}",
     ]
-    if max_minutes is not None:
-        cmd.extend(["--max-minutes", str(max_minutes)])
 
     container = client.containers.run(
         _RECORDER_IMAGE,
@@ -89,18 +87,35 @@ def spawn_recorder_container(
 
 
 async def monitor_container(container_id: str, timeout_seconds: int) -> dict:
-    """Wait for container to exit (with timeout). Returns ``{exit_code, logs}``."""
+    """Wait for container to exit (with timeout). Returns dict with keys:
+    - exit_code: int (0=success, !=0=container reported failure, -1=other error)
+    - logs: str (last 200 lines)
+    - timed_out: bool (True iff wait timeout fired and container is likely still running)
+    """
     client = _get_client()
 
     def _wait() -> dict:
         try:
             c = client.containers.get(container_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("monitor_container: container %s not found", container_id)
+            return {"exit_code": -1, "logs": str(exc), "timed_out": False}
+        try:
             result = c.wait(timeout=timeout_seconds)
             logs = c.logs(tail=200).decode("utf-8", errors="replace")
-            return {"exit_code": result["StatusCode"], "logs": logs}
+            return {"exit_code": result["StatusCode"], "logs": logs, "timed_out": False}
         except Exception as exc:  # noqa: BLE001
-            logger.exception("monitor_container failed for %s", container_id)
-            return {"exit_code": -1, "logs": str(exc)}
+            # docker SDK raises on read timeout; container is still running.
+            # The caller is expected to call stop_container() to clean up.
+            logger.warning(
+                "monitor_container: wait failed for %s (likely timeout): %s",
+                container_id, exc,
+            )
+            try:
+                logs = c.logs(tail=200).decode("utf-8", errors="replace")
+            except Exception:  # noqa: BLE001
+                logs = str(exc)
+            return {"exit_code": -1, "logs": logs, "timed_out": True}
 
     return await asyncio.to_thread(_wait)
 
