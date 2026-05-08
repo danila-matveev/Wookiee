@@ -28,6 +28,22 @@ def _build_parser() -> argparse.ArgumentParser:
     join_p = sub.add_parser("join", help="Join a meeting and hold the session open")
     join_p.add_argument("url", help="Telemost meeting URL (telemost.yandex.ru/j/...)")
     join_p.add_argument("--name", default=None, help=f"Bot display name (default: {BOT_NAME!r})")
+    join_p.add_argument(
+        "--meeting-id",
+        default=None,
+        help=(
+            "Override meeting_id (UUID string). Used by the API service to keep "
+            "container artefacts in sync with telemost.meetings rows."
+        ),
+    )
+    join_p.add_argument(
+        "--output-dir",
+        default=None,
+        help=(
+            "Override output dir for screenshots/audio/transcript. Defaults to "
+            "data/telemost/<meeting_id>."
+        ),
+    )
 
     return parser
 
@@ -38,7 +54,12 @@ def main() -> None:
 
     if args.command == "join":
         try:
-            asyncio.run(run_session(args.url, bot_name=bot_name))
+            asyncio.run(run_session(
+                args.url,
+                bot_name=bot_name,
+                meeting_id=args.meeting_id,
+                output_dir=args.output_dir,
+            ))
         except KeyboardInterrupt:
             pass
 
