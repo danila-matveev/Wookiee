@@ -53,6 +53,10 @@ def _patch_app_lifespan():
             "services.telemost_recorder_api.app.recorder_loop",
             AsyncMock(return_value=None),
         ),
+        patch(
+            "services.telemost_recorder_api.app.postprocess_loop",
+            AsyncMock(return_value=None),
+        ),
     ]
 
 
