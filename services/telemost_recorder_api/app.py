@@ -15,7 +15,7 @@ from fastapi import FastAPI
 
 from services.telemost_recorder_api.config import LOG_LEVEL
 from services.telemost_recorder_api.db import close_pool, get_pool
-from services.telemost_recorder_api.routes import health
+from services.telemost_recorder_api.routes import health, telegram
 
 logging.basicConfig(
     level=LOG_LEVEL,
@@ -42,4 +42,5 @@ def create_app() -> FastAPI:
         lifespan=_lifespan,
     )
     app.include_router(health.router)
+    app.include_router(telegram.router)
     return app
