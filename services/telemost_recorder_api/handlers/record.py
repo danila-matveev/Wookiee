@@ -1,0 +1,95 @@
+"""/record <url> — auth, validate, enqueue with concurrent-recording uniqueness."""
+from __future__ import annotations
+
+import logging
+
+from services.telemost_recorder_api.auth import get_user_by_telegram_id
+from services.telemost_recorder_api.db import get_pool
+from services.telemost_recorder_api.telegram_client import tg_send_message
+from services.telemost_recorder_api.url_canon import (
+    canonicalize_telemost_url,
+    is_valid_telemost_url,
+)
+
+logger = logging.getLogger(__name__)
+
+_USAGE = (
+    "Использование: `/record <ссылка>`\n\n"
+    "Пример: `/record https://telemost.yandex.ru/j/abc-def-ghi`"
+)
+_BAD_URL = (
+    "Это не похоже на ссылку Я.Телемоста. Жду формат "
+    "`https://telemost.yandex.ru/j/<id>` или "
+    "`https://telemost.360.yandex.ru/j/<id>`."
+)
+_NOT_AUTHED = "Не нашёл твой Telegram-ID в Bitrix-roster. Напиши /start для инструкций."
+
+
+async def handle_record(chat_id: int, user_id: int, args: str) -> None:
+    user = await get_user_by_telegram_id(user_id)
+    if not user:
+        await tg_send_message(chat_id, _NOT_AUTHED)
+        return
+
+    args = args.strip()
+    if not args:
+        await tg_send_message(chat_id, _USAGE)
+        return
+
+    raw_url = args.split()[0]
+    if not is_valid_telemost_url(raw_url):
+        await tg_send_message(chat_id, _BAD_URL)
+        return
+
+    canonical = canonicalize_telemost_url(raw_url)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        new_id = await conn.fetchval(
+            """
+            INSERT INTO telemost.meetings
+                (source, triggered_by, meeting_url, organizer_id, invitees, status)
+            VALUES ('telegram', $1, $2, $1, '[]'::jsonb, 'queued')
+            ON CONFLICT (meeting_url)
+                WHERE status IN ('queued','recording','postprocessing')
+            DO NOTHING
+            RETURNING id
+            """,
+            user_id,
+            canonical,
+        )
+        if new_id is None:
+            existing = await conn.fetchrow(
+                """
+                SELECT id, status FROM telemost.meetings
+                WHERE meeting_url = $1
+                  AND status IN ('queued','recording','postprocessing')
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                canonical,
+            )
+            if existing is not None:
+                await tg_send_message(
+                    chat_id,
+                    f"Эта встреча уже в работе (id `{str(existing['id'])[:8]}`, "
+                    f"статус `{existing['status']}`). Дождись результата.",
+                )
+                return
+            # Race: existing record finished between INSERT and SELECT. Tell user to retry.
+            await tg_send_message(
+                chat_id,
+                "Не удалось поставить запись в очередь. Попробуй ещё раз через минуту.",
+            )
+            return
+
+    await tg_send_message(
+        chat_id,
+        f"Поставил в очередь. id `{str(new_id)[:8]}`. "
+        f"Пришлю summary в DM, когда встреча закончится.",
+    )
+    logger.info(
+        "Enqueued meeting %s by user %d for url %s",
+        new_id,
+        user_id,
+        canonical,
+    )

@@ -1,6 +1,6 @@
 """Telegram command dispatch.
 
-Phase 0 commands: /start, /help. /record /status /list arrive in subsequent
+Phase 0 commands: /start, /help, /record. /status /list arrive in subsequent
 tasks but the routing skeleton is here.
 """
 from __future__ import annotations
@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 
 from services.telemost_recorder_api.handlers.help import handle_help
+from services.telemost_recorder_api.handlers.record import handle_record
 from services.telemost_recorder_api.handlers.start import handle_start
 
 logger = logging.getLogger(__name__)
@@ -29,10 +30,12 @@ async def handle_update(update: dict) -> None:
         return  # Phase 1 will handle group leave
     logger.info("Cmd from user_id=%d: %s", user_id, text[:100])
 
-    cmd, _, _args = text.partition(" ")
+    cmd, _, args = text.partition(" ")
     cmd = cmd.split("@", 1)[0]  # strip @bot_username (group-style mention)
     if cmd == "/start":
         await handle_start(chat_id, user_id)
     elif cmd == "/help":
         await handle_help(chat_id)
-    # /record, /status, /list — Task 11
+    elif cmd == "/record":
+        await handle_record(chat_id, user_id, args)
+    # /status, /list — later tasks
