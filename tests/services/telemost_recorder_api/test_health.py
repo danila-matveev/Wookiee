@@ -46,6 +46,9 @@ def test_health_returns_ok_when_db_reachable():
     ), patch(
         "services.telemost_recorder_api.app.close_pool",
         AsyncMock(),
+    ), patch(
+        "services.telemost_recorder_api.app.recorder_loop",
+        AsyncMock(return_value=None),
     ):
         app = create_app()
         with TestClient(app) as client:
@@ -72,6 +75,9 @@ def test_health_returns_down_when_db_fails():
     ), patch(
         "services.telemost_recorder_api.app.close_pool",
         AsyncMock(),
+    ), patch(
+        "services.telemost_recorder_api.app.recorder_loop",
+        AsyncMock(return_value=None),
     ):
         app = create_app()
         with TestClient(app) as client:
@@ -89,6 +95,9 @@ def test_create_app_returns_fastapi_with_health_route():
     ), patch(
         "services.telemost_recorder_api.app.close_pool",
         AsyncMock(),
+    ), patch(
+        "services.telemost_recorder_api.app.recorder_loop",
+        AsyncMock(return_value=None),
     ):
         app = create_app()
 
