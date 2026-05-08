@@ -182,3 +182,132 @@ async def test_notify_failed_meeting_sends_error():
 
     assert any("ошибк" in m[1].lower() or "fail" in m[1].lower() for m in msgs)
     assert docs == []  # для failed transcript не шлём
+
+
+def test_format_summary_message_escapes_markdown_specials_in_title():
+    """Title with `*` / `_` / backticks must be escaped so Telegram parser doesn't fail."""
+    meeting = {
+        "id": _MEETING_ID,
+        "title": "*HOT* `release_v2` _draft_",
+        "started_at": datetime(2026, 5, 8, 10, 0, tzinfo=timezone.utc),
+        "duration_seconds": 600,
+        "summary": {
+            "participants": ["A*B"],
+            "topics": [],
+            "decisions": ["foo`bar`"],
+            "tasks": [],
+        },
+        "tags": ["sales_growth"],
+    }
+    msg = format_summary_message(meeting)
+    # Each special char must be backslash-escaped in the rendered string.
+    assert "\\*HOT\\*" in msg
+    assert "\\`release_v2\\`".replace("_", "\\_") in msg or "\\`release\\_v2\\`" in msg
+    assert "A\\*B" in msg
+    assert "foo\\`bar\\`" in msg
+    assert "sales\\_growth" in msg
+
+
+@pytest.mark.asyncio
+async def test_notify_skips_transcript_when_summary_send_fails():
+    """If summary send raises, we must NOT attempt transcript send."""
+    from services.telemost_recorder_api.telegram_client import TelegramAPIError
+
+    meeting_row = {
+        "id": _MEETING_ID,
+        "title": "Дейли",
+        "triggered_by": 555,
+        "started_at": datetime(2026, 5, 8, 10, 0, tzinfo=timezone.utc),
+        "duration_seconds": 1800,
+        "status": "done",
+        "summary": {"participants": ["Полина"], "topics": [], "decisions": [], "tasks": []},
+        "tags": [],
+        "processed_paragraphs": [{"speaker": "Полина", "start_ms": 0, "text": "ok"}],
+        "error": None,
+    }
+
+    class FakeConn:
+        async def fetchval(self, query, *args):
+            return datetime(2026, 5, 8, 11, 0, tzinfo=timezone.utc)
+
+        async def fetchrow(self, query, *args):
+            return meeting_row
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+    class FakePool:
+        def acquire(self):
+            return FakeConn()
+
+    docs: list = []
+
+    with patch(
+        "services.telemost_recorder_api.notifier.get_pool",
+        AsyncMock(return_value=FakePool()),
+    ), patch(
+        "services.telemost_recorder_api.notifier.tg_send_message",
+        AsyncMock(side_effect=TelegramAPIError("400 parse error")),
+    ), patch(
+        "services.telemost_recorder_api.notifier.tg_send_document",
+        AsyncMock(side_effect=lambda *a, **k: docs.append(1)),
+    ):
+        await notify_meeting_result(_MEETING_ID)
+
+    assert docs == []  # transcript must not be attempted after summary fails
+
+
+@pytest.mark.asyncio
+async def test_notify_continues_when_transcript_send_fails():
+    """Summary already delivered — a transcript-send failure must be logged, not raised."""
+    from services.telemost_recorder_api.telegram_client import TelegramAPIError
+
+    meeting_row = {
+        "id": _MEETING_ID,
+        "title": "Дейли",
+        "triggered_by": 555,
+        "started_at": datetime(2026, 5, 8, 10, 0, tzinfo=timezone.utc),
+        "duration_seconds": 1800,
+        "status": "done",
+        "summary": {"participants": ["Полина"], "topics": [], "decisions": [], "tasks": []},
+        "tags": [],
+        "processed_paragraphs": [{"speaker": "Полина", "start_ms": 0, "text": "ok"}],
+        "error": None,
+    }
+
+    class FakeConn:
+        async def fetchval(self, query, *args):
+            return datetime(2026, 5, 8, 11, 0, tzinfo=timezone.utc)
+
+        async def fetchrow(self, query, *args):
+            return meeting_row
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+    class FakePool:
+        def acquire(self):
+            return FakeConn()
+
+    msgs: list = []
+
+    with patch(
+        "services.telemost_recorder_api.notifier.get_pool",
+        AsyncMock(return_value=FakePool()),
+    ), patch(
+        "services.telemost_recorder_api.notifier.tg_send_message",
+        AsyncMock(side_effect=lambda c, t, **k: msgs.append(t)),
+    ), patch(
+        "services.telemost_recorder_api.notifier.tg_send_document",
+        AsyncMock(side_effect=TelegramAPIError("413 too large")),
+    ):
+        # Must not raise — summary was already sent.
+        await notify_meeting_result(_MEETING_ID)
+
+    assert len(msgs) == 1  # summary delivered

@@ -21,6 +21,19 @@ from services.telemost_recorder_api.telegram_client import (
 logger = logging.getLogger(__name__)
 
 
+_MD_SPECIAL = ("\\", "_", "*", "[", "]", "`")
+
+
+def _md_escape(s: str) -> str:
+    """Escape Telegram Markdown V1 specials so user-controlled text can't break parse_mode.
+
+    Telegram MarkdownV1 only treats *_[]` as syntax; backslash-escape works.
+    """
+    for ch in _MD_SPECIAL:
+        s = s.replace(ch, "\\" + ch)
+    return s
+
+
 def _ms_to_mmss(ms: int) -> str:
     s = ms // 1000
     return f"{s // 60:02d}:{s % 60:02d}"
@@ -36,7 +49,7 @@ def _fmt_duration(seconds: int | None) -> str:
 
 
 def format_summary_message(meeting: dict[str, Any]) -> str:
-    title = meeting.get("title") or "(без названия)"
+    title = _md_escape(meeting.get("title") or "(без названия)")
     started = (
         meeting["started_at"].strftime("%d.%m %H:%M")
         if meeting.get("started_at")
@@ -55,32 +68,36 @@ def format_summary_message(meeting: dict[str, Any]) -> str:
 
     participants = summary.get("participants") or []
     if participants:
-        lines.append(f"\n👥 *Участники:* {', '.join(participants)}")
+        joined = ", ".join(_md_escape(p) for p in participants)
+        lines.append(f"\n👥 *Участники:* {joined}")
 
     topics = summary.get("topics") or []
     if topics:
         lines.append("\n🎯 *Темы:*")
         for t in topics[:8]:
-            anchor = t.get("anchor") or ""
-            lines.append(f"• {t.get('title', '?')} {anchor}")
+            anchor = _md_escape(t.get("anchor") or "")
+            title_t = _md_escape(t.get("title", "?"))
+            lines.append(f"• {title_t} {anchor}")
 
     decisions = summary.get("decisions") or []
     if decisions:
         lines.append("\n✅ *Решения:*")
         for d in decisions[:6]:
-            lines.append(f"• {d}")
+            lines.append(f"• {_md_escape(d)}")
 
     tasks = summary.get("tasks") or []
     if tasks:
         lines.append("\n📋 *Задачи:*")
         for t in tasks[:8]:
-            assignee = t.get("assignee") or "—"
-            when = f" ({t['when']})" if t.get("when") else ""
-            lines.append(f"• {assignee} — {t.get('what', '?')}{when}")
+            assignee = _md_escape(t.get("assignee") or "—")
+            when = f" ({_md_escape(t['when'])})" if t.get("when") else ""
+            what = _md_escape(t.get("what", "?"))
+            lines.append(f"• {assignee} — {what}{when}")
 
     tags = meeting.get("tags") or []
     if tags:
-        lines.append(f"\n🏷 {', '.join(tags)}")
+        joined_tags = ", ".join(_md_escape(t) for t in tags)
+        lines.append(f"\n🏷 {joined_tags}")
 
     lines.append(f"\n_id_ `{str(meeting['id'])[:8]}`")
     return "\n".join(lines)
@@ -153,7 +170,8 @@ async def notify_meeting_result(meeting_id: UUID) -> None:
         try:
             await tg_send_message(
                 triggered_by,
-                f"❌ Запись `{str(meeting_id)[:8]}` завершилась ошибкой:\n```\n{err[:500]}\n```",
+                f"❌ Запись {str(meeting_id)[:8]} завершилась ошибкой:\n\n{err[:500]}",
+                parse_mode=None,
             )
         except TelegramAPIError:
             logger.exception("Failed to notify failure for %s", meeting_id)
