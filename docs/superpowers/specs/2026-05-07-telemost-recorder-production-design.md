@@ -387,9 +387,53 @@ recorder.os.wookiee.shop {
 0 4 * * *  cd /app && python scripts/telemost_audio_cleanup.py >> /proc/1/fd/1 2>&1
 ```
 
-### 7.5. Capacity check
+### 7.5. Capacity check (Phase 0 prerequisite)
 
-**Перед стартом:** `ssh timeweb "free -h"`. Recorder-контейнеры по 1.5GB RAM каждый, max 5 параллельных = 7.5GB пиково. Если памяти мало — лимит параллельности до 2-3 в config.
+**Обязательная проверка перед стартом Phase 0:**
+```bash
+ssh timeweb "free -h && df -h /home"
+```
+Решающие пороги:
+- Свободной RAM ≥ 8GB → `MAX_PARALLEL_RECORDINGS=5` (default)
+- 4-8GB → `MAX_PARALLEL_RECORDINGS=3`
+- < 4GB → `MAX_PARALLEL_RECORDINGS=2` + alert владельцу
+
+Disk: должно быть свободно > 10GB на `/home/danila/projects/wookiee/data` (запас на 30 дней audio).
+
+### 7.6. Bot avatar setup
+
+`services/telemost_recorder_api/assets/avatar.png` — 512×512 PNG, брендированный (микрофон + Wookiee). На старте сервис проверяет через `getMyPhoto`, если пусто — `setMyPhoto`. Aсset коммитим в репо.
+
+### 7.7. Telegram webhook setup runbook
+
+После деплоя выполнить **один раз**:
+```bash
+curl -X POST "https://api.telegram.org/bot${TELEMOST_BOT_TOKEN}/setWebhook" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://recorder.os.wookiee.shop/telegram/webhook",
+    "secret_token": "<TELEMOST_WEBHOOK_SECRET from .env>",
+    "allowed_updates": ["message", "callback_query"]
+  }'
+```
+Проверка: `getWebhookInfo` должен показать корректный URL и `pending_update_count=0`. Скрипт `scripts/telemost_setup_webhook.py` автоматизирует.
+
+### 7.8. Health-check details
+
+`GET /health` возвращает JSON:
+```json
+{
+  "status": "ok | degraded | down",
+  "checks": {
+    "db_ping_ms": 5,
+    "queue_size": 3,
+    "recording_count": 1,
+    "last_calendar_poll_at": "2026-05-08T10:23:14Z",
+    "last_calendar_poll_age_seconds": 47
+  }
+}
+```
+Пороги: `degraded` если `last_calendar_poll_age > 180s` или `db_ping_ms > 1000`. `down` если БД недоступна или queue не двигается > 30 минут.
 
 ---
 
@@ -438,24 +482,37 @@ recorder.os.wookiee.shop {
 ## 11. Phasing
 
 **Phase 0 — Telegram-only MVP (1 день):**
-- Migration `telemost.users`, `telemost.meetings`
+- Capacity check на сервере (см. §7.5)
+- Migration `telemost.users`, `telemost.meetings`, `telemost.processed_calendar_events`
 - FastAPI-сервис с `/telegram/webhook` + `/health`
-- Команды `/record`, `/status`, `/list`, `/help`
+- Команды `/record`, `/status`, `/list`, `/help`, `/start`
 - Auth-синк из Bitrix (раз в день + при старте)
-- Worker-loop (1 параллельная запись)
+- URL канонизация (§15.1)
+- Worker-loop (1 параллельная запись для Phase 0)
 - LLM-постпроцессор single-call
-- Telegram DM триггерщику со summary
-- Аватарка для бота
-- **Acceptance:** `/record <url>` → через ~50 минут DM с summary
+- Empty-meeting fallback (§15.4)
+- Telegram DM с idempotent защитой (§15.7)
+- Telegram message chunking (§15.5)
+- Recording timeouts (§15.3)
+- Audio upload в Supabase Storage после exit (§15.6)
+- `/list` privacy scope (§15.8)
+- Аватарка для бота (§7.6)
+- Webhook setup runbook (§7.7)
+- **Acceptance:** `/record <url>` → через ~50 минут DM с structured summary; commands `/list`, `/status` работают; `/help` показывает справку
 
 **Phase 1 — Calendar auto + multi-user (2 дня):**
-- Bitrix calendar poller (60s)
-- Дедуп по URL (через `processed_calendar_events`)
+- Bitrix calendar poller (60s, +5 минут вперёд каждый poll)
+- Дедуп между календарями по канонизированному URL
+- Wait-for-participants (§15.11) — первые 10 минут не выходим при тишине
+- Orphan container recovery (§15.12)
 - Распределение DM всем инвайтам с telegram_id
-- Opt-out маркер
+- Внешние участники (email, без telegram_id) — пропускаем (§15.13)
+- Opt-out маркер case-insensitive (§15.16)
 - Audio retention cron
 - Параллельность до 5 (с проверкой capacity)
-- **Acceptance:** ставишь встречу в Bitrix → через 60s в очереди → после встречи DM всем
+- Bot в group chat → leave (§15.15)
+- Telegram_id mismatch UX (§15.17)
+- **Acceptance:** ставишь встречу в Bitrix → через 60s в очереди → после встречи DM всем участникам с telegram_id
 
 **Phase 2 — Notion + Wookiee dictionary (1 день):**
 - Wookiee dictionary fetcher (Supabase product matrix + Bitrix users + YAML)
@@ -506,3 +563,122 @@ Per meeting (60 минут):
 - FastAPI patterns: [services/wb_logistics_api/app.py](../../../services/wb_logistics_api/app.py), [services/influencer_crm/app.py](../../../services/influencer_crm/app.py)
 - Bitrix calendar example: [modules/bitrix-analytics/fetch_data.py](../../../modules/bitrix-analytics/fetch_data.py)
 - Telegram Managed Bots API: https://core.telegram.org/bots/api
+
+---
+
+## 15. Edge cases & operational details
+
+### 15.1. URL canonicalization (Phase 0)
+`telemost.360.yandex.ru/j/{id}` и `telemost.yandex.ru/j/{id}` — одна встреча, разные URL. Канонизатор:
+```python
+def canonicalize_telemost_url(url: str) -> str:
+    # https://telemost.360.yandex.ru/j/123 → https://telemost.yandex.ru/j/123
+    parsed = urlparse(url)
+    host = parsed.netloc.replace("telemost.360.yandex.ru", "telemost.yandex.ru")
+    path = parsed.path.rstrip("/").lower()
+    return f"https://{host}{path}"
+```
+Использовать перед любым lookup-ом / INSERT-ом в `telemost.meetings`.
+
+### 15.2. Concurrent recording uniqueness (Phase 0)
+Partial unique index на активные записи:
+```sql
+CREATE UNIQUE INDEX idx_meetings_active_unique 
+ON telemost.meetings (meeting_url) 
+WHERE status IN ('queued','recording','postprocessing');
+```
+Логика enqueue: `INSERT ... ON CONFLICT DO NOTHING RETURNING id`. Если ничего не вернулось → запись уже идёт, сообщить триггерщику.
+
+### 15.3. Recording timeouts (Phase 0)
+Recorder-контейнер запускается с label `telemost.meeting_id=<uuid>`. Worker-loop мониторит:
+- **Hard limit** 4 часа: `docker stop` + mark `failed` reason=`max_duration_exceeded`
+- **Idle timeout** 10 минут: если recorder сообщает «бот один в комнате» (через stdout JSON-event) — exit graceful, mark `done` со специальным маркером `empty_recording`
+
+В существующем recorder (`services/telemost_recorder/join.py`) уже есть `detect_meeting_ended()` — добавить параллельно `detect_idle_alone(elapsed_seconds)`.
+
+### 15.4. Empty meeting handling (Phase 0)
+Если SpeechKit вернул 0 сегментов → пропускаем LLM-постпроцессор. Status сразу `done`, поле `summary = {"empty": true, "note": "no_speech_detected"}`. Notification: «Запись завершена, речи не было распознано (X минут тишины)».
+
+### 15.5. Telegram message size (Phase 0)
+Telegram caps текст 4096 символов, файл 20MB. Стратегия:
+- Короткий summary (≤2000 символов): участники + темы + 3 главных решения + ссылка «полный transcript»
+- Полный transcript отправляется как `.txt` attachment в том же DM
+- Если summary > 2000 → делим на 2 сообщения с пометкой `(1/2)`, `(2/2)`
+
+### 15.6. Audio upload to Supabase Storage (Phase 0)
+Recorder-контейнер пишет audio.opus в volume `data/telemost/{meeting_id}/`. После exit recorder-worker:
+1. Читает файл из volume
+2. Загружает в `telemost-audio` bucket: `meetings/{meeting_id}/audio.opus`
+3. Получает signed URL (TTL = audio_expires_at)
+4. Записывает signed_url в `audio_path`
+5. Удаляет локальный файл
+
+Если upload failed — оставить локально, ретраить, mark `error_field` но не блокировать постпроцессор (raw_segments всё равно есть).
+
+### 15.7. Idempotent notification (Phase 0)
+Добавить колонку `notified_at timestamptz` в `telemost.meetings`. Notifier перед отправкой DM:
+```sql
+UPDATE telemost.meetings SET notified_at = now() 
+WHERE id = $1 AND notified_at IS NULL 
+RETURNING notified_at;
+```
+Если ничего не вернулось — уже нотифицировано, skip.
+
+### 15.8. `/list` privacy scope (Phase 0)
+Запрос: только встречи где `triggered_by = $tg_id OR organizer_id = $tg_id OR invitees @> '[{"telegram_id": $tg_id}]'`. Тестировать с двумя пользователями.
+
+### 15.9. Bot avatar (Phase 0)
+Asset: `services/telemost_recorder_api/assets/avatar.png` (512×512 PNG, в репо). На старте `app.py`:
+```python
+async def setup_bot_avatar():
+    info = await tg_call("getMyProfilePhotos", limit=1)
+    if not info["result"]["photos"]:
+        with open("assets/avatar.png", "rb") as f:
+            await tg_call("setMyPhoto", files={"photo": f})
+```
+
+### 15.10. Webhook setup script (Phase 0)
+`scripts/telemost_setup_webhook.py` — вызывает Telegram setWebhook + setMyCommands + setMyDescription. Запускается один раз после деплоя или при ротации webhook secret.
+
+### 15.11. Wait-for-participants (Phase 1)
+В первые 10 минут после join recorder не считает «один в комнате» концом встречи. Конфиг: `MIN_WAIT_FOR_PARTICIPANTS_MINUTES=10`.
+
+### 15.12. Orphan container recovery (Phase 1)
+На старте API:
+```python
+async def reconcile_orphan_containers():
+    containers = docker.containers.list(filters={"label": "telemost.meeting_id"})
+    for c in containers:
+        meeting_id = c.labels["telemost.meeting_id"]
+        status = await db.fetchval("SELECT status FROM telemost.meetings WHERE id = $1", meeting_id)
+        if status in ('done', 'failed'):
+            c.stop(); c.remove()
+        elif status == 'recording':
+            # Контейнер живой и БД ожидает recording → продолжаем мониторить
+            asyncio.create_task(monitor_container(c, meeting_id))
+        else:
+            # status='queued' — контейнер не должен существовать → cleanup
+            c.stop(); c.remove()
+            await db.execute("UPDATE ... SET status='queued'")  # рестарт
+```
+
+### 15.13. External calendar attendees (Phase 1)
+Bitrix `calendar.event.get` возвращает `attendees` с типами `user` (Bitrix-сотрудники) и `email` (внешние). Внешних не пишем в `invitees`, нотификации им не шлём.
+
+### 15.14. Bitrix rate limits (Phase 1)
+Self-hosted Bitrix лимиты ~2 req/sec. Стратегия:
+- 1 запрос `calendar.event.get` без `OWNER_ID` возвращает все события (если admin webhook). Проверить во время имплементации, fallback — итерация по сотрудникам с `asyncio.sleep(0.5)` между запросами
+
+### 15.15. Bot in group chat (Phase 1)
+Если update.chat.type ∈ ('group','supergroup'): отправить «Я работаю только в личке. Напиши мне в DM: @wookiee_recorder_bot» + leave group.
+
+### 15.16. Opt-out marker matching (Phase 1)
+Регулярка: `re.search(r"\[no[\-_\s]?record\]|🚫", title, re.IGNORECASE)`. Маркер в title или description Bitrix-события — пропускаем.
+
+### 15.17. Telegram_id mismatch UX (Phase 0)
+Auth-error: «Не нашёл твой Telegram-ID в Bitrix-roster. Чтобы получить доступ: 1) Открой свой профиль в Bitrix24 → "Контактная информация" → "Telegram", 2) Введи `@matveev_danila` (без @ если требует), 3) Сохрани, 4) Через час напиши мне `/start` снова. Если что-то не работает — скинь скриншот @matveev_danila».
+
+### 15.18. Test fixtures (Phase 0)
+- `tests/conftest.py` — `mock_docker_client` fixture (возвращает фейковый `Container` с настраиваемым exit_code и labels)
+- `tests/conftest.py` — `mock_telegram_api` (httpx mock на api.telegram.org)
+- `tests/conftest.py` — `test_supabase_pool` (asyncpg pool на тестовую БД, очищается через `TRUNCATE` между тестами)
