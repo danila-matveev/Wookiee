@@ -1,15 +1,16 @@
 """Telegram command dispatch.
 
-Phase 0 commands: /start, /help, /record. /status /list arrive in subsequent
-tasks but the routing skeleton is here.
+Phase 0 commands: /start, /help, /record, /status, /list.
 """
 from __future__ import annotations
 
 import logging
 
 from services.telemost_recorder_api.handlers.help import handle_help
+from services.telemost_recorder_api.handlers.list_meetings import handle_list
 from services.telemost_recorder_api.handlers.record import handle_record
 from services.telemost_recorder_api.handlers.start import handle_start
+from services.telemost_recorder_api.handlers.status import handle_status
 
 logger = logging.getLogger(__name__)
 
@@ -38,4 +39,7 @@ async def handle_update(update: dict) -> None:
         await handle_help(chat_id)
     elif cmd == "/record":
         await handle_record(chat_id, user_id, args)
-    # /status, /list — later tasks
+    elif cmd == "/status":
+        await handle_status(chat_id, user_id)
+    elif cmd == "/list":
+        await handle_list(chat_id, user_id)
