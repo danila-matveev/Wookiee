@@ -6,7 +6,7 @@ Phase 0 loop:
 3. monitor_container with hard limit RECORDING_HARD_LIMIT_HOURS.
 4. On exit: stop container if timed_out, then read artefacts and transition to
    'postprocessing' or 'failed'. Postprocess worker (Task 17) picks it up next.
-5. Sleep 2s if processed, 5s if queue was empty. Repeat.
+5. Sleep _BUSY_SLEEP_SECONDS if processed, _IDLE_SLEEP_SECONDS if queue empty.
 
 Phase 1 will increase MAX_PARALLEL_RECORDINGS and add orphan reconciliation.
 """
@@ -31,6 +31,9 @@ from services.telemost_recorder_api.docker_client import (
 )
 
 logger = logging.getLogger(__name__)
+
+_BUSY_SLEEP_SECONDS = 2
+_IDLE_SLEEP_SECONDS = 5
 
 
 async def _pick_queued() -> Optional[dict]:
@@ -132,7 +135,8 @@ async def process_one() -> bool:
         return False
     meeting_id = pick["id"]
     logger.info("Recording meeting %s url=%s", meeting_id, pick["meeting_url"])
-    container_id = spawn_recorder_container(
+    container_id = await asyncio.to_thread(
+        spawn_recorder_container,
         meeting_id=meeting_id,
         meeting_url=pick["meeting_url"],
         data_dir=str(DATA_DIR),
@@ -141,7 +145,7 @@ async def process_one() -> bool:
     result = await monitor_container(container_id, timeout_seconds=timeout)
     if result.get("timed_out"):
         # Timeout: container is still running, kill it before finalizing.
-        stop_container(container_id)
+        await asyncio.to_thread(stop_container, container_id)
     await _finalize_recording(
         meeting_id,
         result["exit_code"],
@@ -164,4 +168,6 @@ async def run_forever() -> None:
         except Exception:  # noqa: BLE001
             logger.exception("recorder_worker.process_one crashed")
             processed = False
-        await asyncio.sleep(2 if processed else 5)
+        await asyncio.sleep(
+            _BUSY_SLEEP_SECONDS if processed else _IDLE_SLEEP_SECONDS
+        )
