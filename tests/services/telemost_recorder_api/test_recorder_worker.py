@@ -1,6 +1,7 @@
 """Tests for the recorder worker loop."""
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
@@ -146,11 +147,24 @@ async def test_finalize_marks_postprocessing_on_clean_exit_with_artefacts(tmp_pa
     with patch.object(recorder_worker, "DATA_DIR", tmp_path), patch(
         "services.telemost_recorder_api.workers.recorder_worker.get_pool",
         AsyncMock(return_value=FakePool()),
+    ), patch(
+        "services.telemost_recorder_api.workers.recorder_worker.upload_audio_to_storage",
+        AsyncMock(
+            return_value={
+                "signed_url": "https://example.supabase.co/storage/v1/object/sign/telemost-audio/xxx",
+                "expires_at": datetime(2026, 6, 1, tzinfo=timezone.utc),
+                "object_key": "meetings/x/audio.opus",
+            }
+        ),
     ):
         await recorder_worker._finalize_recording(_MEETING_ID, 0, "logs", False)
 
     assert "postprocessing" in captured["query"]
     assert captured["args"][0] == _MEETING_ID
+    assert captured["args"][2] == (
+        "https://example.supabase.co/storage/v1/object/sign/telemost-audio/xxx"
+    )
+    assert captured["args"][3] == datetime(2026, 6, 1, tzinfo=timezone.utc)
 
 
 @pytest.mark.asyncio

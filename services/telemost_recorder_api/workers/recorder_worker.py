@@ -18,7 +18,9 @@ import logging
 from typing import Optional
 from uuid import UUID
 
+from services.telemost_recorder_api.audio_uploader import upload_audio_to_storage
 from services.telemost_recorder_api.config import (
+    AUDIO_RETENTION_DAYS,
     DATA_DIR,
     MAX_PARALLEL_RECORDINGS,
     RECORDING_HARD_LIMIT_HOURS,
@@ -90,16 +92,36 @@ async def _finalize_recording(
 
     async with pool.acquire() as conn:
         if success:
+            audio_signed_url: Optional[str] = None
+            audio_expires = None
+            if has_audio:
+                try:
+                    upload = await upload_audio_to_storage(
+                        audio_path,
+                        meeting_id=meeting_id,
+                        ttl_days=AUDIO_RETENTION_DAYS,
+                    )
+                    audio_signed_url = upload["signed_url"]
+                    audio_expires = upload["expires_at"]
+                except Exception:  # noqa: BLE001
+                    logger.exception(
+                        "Audio upload failed for %s — leaving local",
+                        meeting_id,
+                    )
             await conn.execute(
                 """
                 UPDATE telemost.meetings
                 SET status='postprocessing',
                     ended_at=now(),
-                    raw_segments=$2::jsonb
+                    raw_segments=$2::jsonb,
+                    audio_path=$3,
+                    audio_expires_at=$4
                 WHERE id = $1
                 """,
                 meeting_id,
                 json.dumps(raw_segments or []),
+                audio_signed_url,
+                audio_expires,
             )
             logger.info(
                 "Recording %s ready for postprocess (segments=%d)",
