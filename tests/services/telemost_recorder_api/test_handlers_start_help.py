@@ -111,3 +111,35 @@ async def test_command_with_at_bot_username_is_normalized():
     ):
         await handle_update(_msg("/start@wookiee_recorder_bot"))
     assert len(sent) == 1
+
+
+@pytest.mark.asyncio
+async def test_bare_telemost_url_routes_to_record():
+    """If user sends a Telemost link without /record, treat it as /record <link>."""
+    forwarded: list = []
+
+    async def fake_record(chat_id, user_id, args):
+        forwarded.append((chat_id, user_id, args))
+
+    with patch(
+        "services.telemost_recorder_api.handlers.handle_record",
+        AsyncMock(side_effect=fake_record),
+    ):
+        await handle_update(_msg("https://telemost.360.yandex.ru/j/5655083346"))
+
+    assert len(forwarded) == 1
+    assert forwarded[0][2] == "https://telemost.360.yandex.ru/j/5655083346"
+
+
+@pytest.mark.asyncio
+async def test_plain_text_gets_hint():
+    """Random non-command, non-URL text gets a usage hint."""
+    sent: list = []
+    with patch(
+        "services.telemost_recorder_api.handlers.tg_send_message",
+        AsyncMock(side_effect=lambda c, t, **k: sent.append(t)),
+    ):
+        await handle_update(_msg("привет, можешь записать встречу?"))
+
+    assert len(sent) == 1
+    assert "/record" in sent[0]

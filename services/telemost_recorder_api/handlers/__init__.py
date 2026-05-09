@@ -11,6 +11,8 @@ from services.telemost_recorder_api.handlers.list_meetings import handle_list
 from services.telemost_recorder_api.handlers.record import handle_record
 from services.telemost_recorder_api.handlers.start import handle_start
 from services.telemost_recorder_api.handlers.status import handle_status
+from services.telemost_recorder_api.telegram_client import tg_send_message
+from services.telemost_recorder_api.url_canon import is_valid_telemost_url
 
 logger = logging.getLogger(__name__)
 
@@ -43,3 +45,15 @@ async def handle_update(update: dict) -> None:
         await handle_status(chat_id, user_id)
     elif cmd == "/list":
         await handle_list(chat_id, user_id)
+    elif is_valid_telemost_url(text):
+        # UX: bare Telemost link → treat as /record <text>
+        await handle_record(chat_id, user_id, text)
+    elif text.startswith("/"):
+        # Typo'd or unknown slash-command — stay silent (no spam).
+        return
+    else:
+        await tg_send_message(
+            chat_id,
+            "Не понял. Используй /record <ссылка> или просто пришли ссылку на Я.Телемост. /help — справка.",
+            parse_mode=None,
+        )
