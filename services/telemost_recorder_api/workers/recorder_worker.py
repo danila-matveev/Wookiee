@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Optional
+from typing import Any
 from uuid import UUID
 
 from services.telemost_recorder_api.audio_uploader import upload_audio_to_storage
@@ -37,9 +37,10 @@ logger = logging.getLogger(__name__)
 
 _BUSY_SLEEP_SECONDS = 2
 _IDLE_SLEEP_SECONDS = 5
+_LOG_PREVIEW_LEN = 500
 
 
-async def _pick_queued() -> Optional[dict]:
+async def _pick_queued() -> dict[str, Any] | None:
     """Atomically grab one queued row and transition to 'recording'.
 
     Uses FOR UPDATE SKIP LOCKED so concurrent workers don't fight over the
@@ -93,7 +94,7 @@ async def _finalize_recording(
 
     async with pool.acquire() as conn:
         if success:
-            audio_signed_url: Optional[str] = None
+            audio_signed_url: str | None = None
             audio_expires = None
             if has_audio:
                 try:
@@ -133,10 +134,13 @@ async def _finalize_recording(
             if timed_out:
                 error_msg = (
                     f"recorder timeout after {RECORDING_HARD_LIMIT_HOURS}h; "
-                    f"logs tail: {logs[-500:]}"
+                    f"logs tail: {logs[-_LOG_PREVIEW_LEN:]}"
                 )
             else:
-                error_msg = f"recorder exit_code={exit_code}; logs tail: {logs[-500:]}"
+                error_msg = (
+                    f"recorder exit_code={exit_code}; "
+                    f"logs tail: {logs[-_LOG_PREVIEW_LEN:]}"
+                )
             await conn.execute(
                 """
                 UPDATE telemost.meetings

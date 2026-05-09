@@ -23,6 +23,12 @@ logger = logging.getLogger(__name__)
 
 _MD_SPECIAL = ("\\", "_", "*", "[", "]", "`")
 
+_TOPIC_LIMIT = 8
+_DECISION_LIMIT = 6
+_TASK_LIMIT = 8
+_ERROR_PREVIEW_LEN = 500
+_ID_PREFIX_LEN = 8
+
 
 def _md_escape(s: str) -> str:
     """Escape Telegram Markdown V1 specials so user-controlled text can't break parse_mode.
@@ -74,7 +80,7 @@ def format_summary_message(meeting: dict[str, Any]) -> str:
     topics = summary.get("topics") or []
     if topics:
         lines.append("\n🎯 *Темы:*")
-        for t in topics[:8]:
+        for t in topics[:_TOPIC_LIMIT]:
             anchor = _md_escape(t.get("anchor") or "")
             title_t = _md_escape(t.get("title", "?"))
             lines.append(f"• {title_t} {anchor}")
@@ -82,13 +88,13 @@ def format_summary_message(meeting: dict[str, Any]) -> str:
     decisions = summary.get("decisions") or []
     if decisions:
         lines.append("\n✅ *Решения:*")
-        for d in decisions[:6]:
+        for d in decisions[:_DECISION_LIMIT]:
             lines.append(f"• {_md_escape(d)}")
 
     tasks = summary.get("tasks") or []
     if tasks:
         lines.append("\n📋 *Задачи:*")
-        for t in tasks[:8]:
+        for t in tasks[:_TASK_LIMIT]:
             assignee = _md_escape(t.get("assignee") or "—")
             when = f" ({_md_escape(t['when'])})" if t.get("when") else ""
             what = _md_escape(t.get("what", "?"))
@@ -99,7 +105,7 @@ def format_summary_message(meeting: dict[str, Any]) -> str:
         joined_tags = ", ".join(_md_escape(t) for t in tags)
         lines.append(f"\n🏷 {joined_tags}")
 
-    lines.append(f"\n_id_ `{str(meeting['id'])[:8]}`")
+    lines.append(f"\n_id_ `{str(meeting['id'])[:_ID_PREFIX_LEN]}`")
     return "\n".join(lines)
 
 
@@ -170,7 +176,7 @@ async def notify_meeting_result(meeting_id: UUID) -> None:
         try:
             await tg_send_message(
                 triggered_by,
-                f"❌ Запись {str(meeting_id)[:8]} завершилась ошибкой:\n\n{err[:500]}",
+                f"❌ Запись {str(meeting_id)[:_ID_PREFIX_LEN]} завершилась ошибкой:\n\n{err[:_ERROR_PREVIEW_LEN]}",
                 parse_mode=None,
             )
         except TelegramAPIError:
@@ -187,7 +193,7 @@ async def notify_meeting_result(meeting_id: UUID) -> None:
     paragraphs = meeting.get("processed_paragraphs") or []
     if paragraphs:
         transcript = build_transcript_text(paragraphs)
-        filename = f"transcript_{str(meeting_id)[:8]}.txt"
+        filename = f"transcript_{str(meeting_id)[:_ID_PREFIX_LEN]}.txt"
         try:
             await tg_send_document(
                 triggered_by,

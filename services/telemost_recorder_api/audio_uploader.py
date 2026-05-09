@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import TypedDict
 from uuid import UUID
 
 import httpx
@@ -18,19 +19,19 @@ logger = logging.getLogger(__name__)
 _BUCKET = "telemost-audio"
 
 
+class UploadResult(TypedDict):
+    signed_url: str
+    expires_at: datetime
+    object_key: str
+
+
 async def upload_audio_to_storage(
     audio_path: Path,
     *,
     meeting_id: UUID,
     ttl_days: int,
-) -> dict:
-    """Upload audio file to Supabase Storage and return a signed URL.
-
-    Returns a dict with keys:
-        - signed_url: full https URL to the signed object
-        - expires_at: timezone-aware datetime when the signed URL expires
-        - object_key: storage path within the bucket
-    """
+) -> UploadResult:
+    """Upload audio file to Supabase Storage and return a signed URL."""
     object_key = f"meetings/{meeting_id}/audio.opus"
     headers = {"Authorization": f"Bearer {SUPABASE_SERVICE_KEY}"}
 

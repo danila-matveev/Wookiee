@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 from services.telemost_recorder_api.db import get_pool
@@ -35,7 +35,7 @@ _JSONB_FIELDS = {
 }
 
 
-async def _pick_postprocessing() -> Optional[dict]:
+async def _pick_postprocessing() -> dict[str, Any] | None:
     """Select one row in 'postprocessing' status.
 
     Picking does NOT mutate status; the worker reads, processes, then
