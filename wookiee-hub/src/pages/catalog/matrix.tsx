@@ -2075,9 +2075,10 @@ export function MatrixPage() {
     }
   }, [queryClient, searchParams, setSearchParams])
 
-  if (resolvedModelId != null) {
-    return <ModelCard modelId={resolvedModelId} onBack={closeModel} />
-  }
+  // ?model=KOD now opens B3's <ModelCardModal /> as overlay from CatalogLayout.
+  // Inline `ModelCard` below is retained for reference but no longer mounted.
+  void resolvedModelId
+  void closeModel
 
   const rows = matrixQ.data ?? []
   const kategorii = kategoriiQ.data ?? []
