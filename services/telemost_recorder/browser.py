@@ -106,6 +106,12 @@ async def launch_browser() -> AsyncIterator[tuple[Browser, BrowserContext, Page]
                 pass
         if pulse_server:
             env["PULSE_SERVER"] = pulse_server
+        # AudioCapture exports PULSE_SINK so Chrome routes output to our null-sink.
+        # Without this, Chrome falls back to PulseAudio's "default" which isn't
+        # always our sink even after `pactl set-default-sink`.
+        pulse_sink = os.environ.get("PULSE_SINK", "")
+        if pulse_sink:
+            env["PULSE_SINK"] = pulse_sink
 
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(

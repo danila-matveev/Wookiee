@@ -1,3 +1,4 @@
+import os
 import platform
 import subprocess
 from dataclasses import dataclass, field
@@ -38,8 +39,12 @@ class AudioCapture:
             raise RuntimeError(f"PulseAudio sink creation failed: {result.stderr}")
         self._sink_module_id = int(result.stdout.strip())
 
-        # Make our sink the default so new streams go here
+        # Make our sink the default so new streams go here.
+        # set-default-sink is sometimes ignored by Chromium (it caches the sink at
+        # client connect time). Belt-and-suspenders: also export PULSE_SINK so any
+        # subprocess (Chromium) that reads it pins its output to our sink explicitly.
         subprocess.run(["pactl", "set-default-sink", self._sink_name], capture_output=True)
+        os.environ["PULSE_SINK"] = self._sink_name
 
         # Move any existing sink-inputs (Chromium WebRTC streams) to our sink
         inputs = subprocess.run(
