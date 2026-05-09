@@ -25,8 +25,22 @@ import {
   Box,
   Tv,
   ShieldCheck,
+  Megaphone,
+  Percent,
+  Hash,
 } from "lucide-react"
 import type { NavGroup } from "@/types/navigation"
+import { featureFlags } from "@/lib/feature-flags"
+
+const marketingGroup: NavGroup = {
+  id: "marketing",
+  icon: Megaphone,
+  label: "Маркетинг",
+  items: [
+    { id: "promo-codes",    label: "Промокоды",         icon: Percent, path: "/marketing/promo-codes"    },
+    { id: "search-queries", label: "Поисковые запросы", icon: Hash,    path: "/marketing/search-queries" },
+  ],
+}
 
 export const navigationGroups: NavGroup[] = [
   {
@@ -91,4 +105,5 @@ export const navigationGroups: NavGroup[] = [
       { id: "rnp", label: "Рука на пульсе", icon: Activity, path: "/analytics/rnp" },
     ],
   },
+  ...(featureFlags.marketing ? [marketingGroup] : []),
 ]
