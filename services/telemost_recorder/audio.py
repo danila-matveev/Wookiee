@@ -1,3 +1,4 @@
+import logging
 import os
 import platform
 import subprocess
@@ -6,6 +7,30 @@ from pathlib import Path
 from typing import Optional
 
 from services.telemost_recorder.config import AUDIO_BITRATE, MAX_RECORDING_MINUTES, TELEMOST_CAPTURE
+
+logger = logging.getLogger(__name__)
+
+
+def _pa_state(label: str) -> None:
+    """Log PulseAudio sinks + sink-inputs + clients for diagnostics."""
+    try:
+        sinks = subprocess.run(
+            ["pactl", "list", "short", "sinks"],
+            capture_output=True, text=True, timeout=3,
+        ).stdout.strip()
+        si = subprocess.run(
+            ["pactl", "list", "short", "sink-inputs"],
+            capture_output=True, text=True, timeout=3,
+        ).stdout.strip()
+        clients = subprocess.run(
+            ["pactl", "list", "short", "clients"],
+            capture_output=True, text=True, timeout=3,
+        ).stdout.strip()
+        logger.warning("PA[%s] sinks: %s", label, sinks.replace("\n", " | ") or "(none)")
+        logger.warning("PA[%s] sink-inputs: %s", label, si.replace("\n", " | ") or "(none)")
+        logger.warning("PA[%s] clients: %s", label, clients.replace("\n", " | ") or "(none)")
+    except Exception as e:
+        logger.warning("PA[%s] probe failed: %s", label, e)
 
 
 @dataclass
@@ -45,6 +70,7 @@ class AudioCapture:
         # subprocess (Chromium) that reads it pins its output to our sink explicitly.
         subprocess.run(["pactl", "set-default-sink", self._sink_name], capture_output=True)
         os.environ["PULSE_SINK"] = self._sink_name
+        _pa_state("after-create-sink")
 
         # Move any existing sink-inputs (Chromium WebRTC streams) to our sink
         inputs = subprocess.run(
@@ -79,6 +105,7 @@ class AudioCapture:
         """Move any sink-inputs not yet on our sink. Call periodically during meeting."""
         if not self._sink_name or platform.system() != "Linux":
             return
+        _pa_state("reroute-tick")
         inputs = subprocess.run(
             ["pactl", "list", "short", "sink-inputs"],
             capture_output=True, text=True,
