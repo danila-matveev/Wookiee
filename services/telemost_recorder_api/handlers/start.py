@@ -1,35 +1,74 @@
-"""/start command — auth check + welcome."""
+"""/start command — auth check + welcome with active-recording banner."""
 from __future__ import annotations
 
+from typing import Any
+
 from services.telemost_recorder_api.auth import get_user_by_telegram_id
+from services.telemost_recorder_api.db import get_pool
+from services.telemost_recorder_api.handlers._format import fmt_active_row, md_escape
+from services.telemost_recorder_api.keyboards import AUTH_FAIL, WELCOME
 from services.telemost_recorder_api.telegram_client import tg_send_message
 
-_WELCOME = """Привет, {name}!
+_AUTH_FAIL = (
+    "🔒 *Доступ ограничен*\n\n"
+    "Я работаю только с командой Wookiee. "
+    "Не нашёл твой Telegram в Bitrix24-roster.\n\n"
+    "*Как получить доступ:*\n"
+    "1️⃣ Открой свой профиль в Bitrix24\n"
+    "2️⃣ В поле «Telegram» впиши свой numeric ID или @username\n"
+    "3️⃣ Сохрани — синхронизация раз в час\n"
+    "4️⃣ Через час напиши мне /start снова\n\n"
+    "Если что-то не так — напиши @matveev\\_danila."
+)
 
-Я Wookiee Recorder — записываю встречи Я.Телемоста и присылаю summary.
 
-Команды:
-• `/record <ссылка>` — записать встречу
-• `/status` — твои активные/последние записи
-• `/list` — последние 10 встреч с твоим участием
-• `/help` — справка
-"""
+async def _fetch_active_meetings(user_id: int) -> list[dict[str, Any]]:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT id, title, started_at, status
+            FROM telemost.meetings
+            WHERE triggered_by = $1
+              AND status IN ('queued','recording','postprocessing')
+            ORDER BY created_at DESC
+            """,
+            user_id,
+        )
+    return [dict(r) for r in rows]
 
-_AUTH_FAIL = """Не нашёл твой Telegram-ID в Bitrix-roster.
 
-Чтобы получить доступ:
-1. Открой свой профиль в Bitrix24 → «Контактная информация» → «Telegram»
-2. Введи `@matveev_danila` (либо свой numeric ID)
-3. Сохрани
-4. Через час напиши мне `/start` снова
-
-Если что-то не работает — скинь скриншот @matveev_danila."""
+def _format_welcome(name: str, active: list[dict[str, Any]]) -> str:
+    name_safe = md_escape(name)
+    parts: list[str] = []
+    if active:
+        parts.append("🔴 *Сейчас в работе:*")
+        parts.extend(fmt_active_row(m) for m in active)
+        parts.append("")
+        parts.append("———")
+        parts.append("")
+    parts.append(f"Привет, {name_safe}! 👋")
+    parts.append("")
+    parts.append(
+        "Я *Wookiee Recorder* — записываю встречи Я.Телемоста, "
+        "расшифровываю и присылаю summary с темами, решениями и задачами."
+    )
+    parts.append("")
+    parts.append("📌 *Как работать:*")
+    parts.append("1. Пришли мне ссылку на встречу (или `/record <url>`)")
+    parts.append("2. Я зайду в неё через ~30 сек как «Wookiee Recorder»")
+    parts.append("3. Через ~5 мин после конца получишь summary в DM")
+    parts.append("")
+    parts.append("Поехали? Пришли мне ссылку 👇")
+    return "\n".join(parts)
 
 
 async def handle_start(chat_id: int, user_id: int) -> None:
     user = await get_user_by_telegram_id(user_id)
     if user is None:
-        await tg_send_message(chat_id, _AUTH_FAIL)
+        await tg_send_message(chat_id, _AUTH_FAIL, reply_markup=AUTH_FAIL)
         return
     name = user.get("short_name") or user["name"]
-    await tg_send_message(chat_id, _WELCOME.format(name=name))
+    active = await _fetch_active_meetings(user_id)
+    text = _format_welcome(name, active)
+    await tg_send_message(chat_id, text, reply_markup=WELCOME)

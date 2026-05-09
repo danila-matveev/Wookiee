@@ -5,6 +5,7 @@ import logging
 
 from services.telemost_recorder_api.auth import get_user_by_telegram_id
 from services.telemost_recorder_api.db import get_pool
+from services.telemost_recorder_api.handlers._format import status_emoji
 from services.telemost_recorder_api.telegram_client import tg_send_message
 from services.telemost_recorder_api.url_canon import (
     canonicalize_telemost_url,
@@ -14,15 +15,34 @@ from services.telemost_recorder_api.url_canon import (
 logger = logging.getLogger(__name__)
 
 _USAGE = (
-    "Использование: `/record <ссылка>`\n\n"
-    "Пример: `/record https://telemost.yandex.ru/j/abc-def-ghi`"
+    "📎 *Использование:* `/record <ссылка>`\n\n"
+    "Пример: `/record https://telemost.yandex.ru/j/abc-def-ghi`\n\n"
+    "💡 Можешь просто прислать ссылку без команды."
 )
 _BAD_URL = (
-    "Это не похоже на ссылку Я.Телемоста. Жду формат "
-    "`https://telemost.yandex.ru/j/<id>` или "
-    "`https://telemost.360.yandex.ru/j/<id>`."
+    "🤔 Это не похоже на ссылку Я.Телемоста.\n\n"
+    "Жду формат:\n"
+    "• `https://telemost.yandex.ru/j/<id>`\n"
+    "• `https://telemost.360.yandex.ru/j/<id>`"
 )
-_NOT_AUTHED = "Не нашёл твой Telegram-ID в Bitrix-roster. Напиши /start для инструкций."
+_NOT_AUTHED = "🔒 Сначала /start — нужно проверить доступ."
+
+_ACK = (
+    "✅ *Принял ссылку*\n\n"
+    "🚀 Иду на встречу — зайду через ~30 сек как «Wookiee Recorder».\n\n"
+    "⏱ После завершения через ~5 мин получишь:\n"
+    "• Summary с темами, решениями и задачами\n"
+    "• Полный transcript как `.txt` файл"
+)
+
+
+def _duplicate_message(status: str) -> str:
+    return (
+        "ℹ️ *Эта встреча уже в работе*\n\n"
+        "Кто-то (возможно ты) уже поставил её на запись. "
+        "Пришлю summary тому, кто её поставил.\n\n"
+        f"Статус: {status_emoji(status)} `{status}`"
+    )
 
 
 async def handle_record(chat_id: int, user_id: int, args: str) -> None:
@@ -69,24 +89,15 @@ async def handle_record(chat_id: int, user_id: int, args: str) -> None:
                 canonical,
             )
             if existing is not None:
-                await tg_send_message(
-                    chat_id,
-                    f"Эта встреча уже в работе (id `{str(existing['id'])[:8]}`, "
-                    f"статус `{existing['status']}`). Дождись результата.",
-                )
+                await tg_send_message(chat_id, _duplicate_message(existing["status"]))
                 return
-            # Race: existing record finished between INSERT and SELECT. Tell user to retry.
             await tg_send_message(
                 chat_id,
-                "Не удалось поставить запись в очередь. Попробуй ещё раз через минуту.",
+                "⚠️ Не удалось поставить запись в очередь. Попробуй ещё раз через минуту.",
             )
             return
 
-    await tg_send_message(
-        chat_id,
-        f"Поставил в очередь. id `{str(new_id)[:8]}`. "
-        f"Пришлю summary в DM, когда встреча закончится.",
-    )
+    await tg_send_message(chat_id, _ACK)
     logger.info(
         "Enqueued meeting %s by user %d for url %s",
         new_id,

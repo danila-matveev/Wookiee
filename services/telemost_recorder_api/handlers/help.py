@@ -3,20 +3,24 @@ from __future__ import annotations
 
 from services.telemost_recorder_api.telegram_client import tg_send_message
 
-_HELP = """*Wookiee Recorder — справка*
-
-`/record <ссылка>` — поставить встречу в очередь записи. Поддерживаются ссылки `telemost.yandex.ru/j/...` и `telemost.360.yandex.ru/j/...`.
-
-`/status` — твои активные записи (`queued` / `recording` / `postprocessing`) и 5 последних завершённых.
-
-`/list` — 10 последних встреч, где ты триггерщик/организатор/инвайт.
-
-После завершения записи я пришлю в DM:
-• краткий summary с темами, решениями и задачами
-• полный transcript как `.txt` attachment
-
-Аудио хранится 30 дней, текст — бессрочно.
-"""
+_HELP = (
+    "🎙 *Wookiee Recorder*\n\n"
+    "📝 *Команды:*\n"
+    "• `/record <ссылка>` — записать встречу\n"
+    "• `/status` — активные + последние записи\n"
+    "• `/list` — последние 10 встреч\n"
+    "• `/start` — главное меню\n"
+    "• `/help` — эта справка\n\n"
+    "💡 *Лайфхак:* можешь не писать `/record` — "
+    "просто пришли ссылку на Я.Телемост, я сам всё пойму.\n\n"
+    "🔁 *Что я возвращаю после встречи:*\n"
+    "• краткий summary с темами, решениями и задачами\n"
+    "• полный transcript как `.txt` файл\n\n"
+    "🔒 *Хранение:*\n"
+    "• Аудио — 30 дней\n"
+    "• Текст и summary — бессрочно\n\n"
+    "❓ Вопросы → @matveev\\_danila"
+)
 
 
 async def handle_help(chat_id: int) -> None:

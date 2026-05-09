@@ -72,6 +72,66 @@ async def test_tg_send_message_chunks_long_text():
 
 
 @pytest.mark.asyncio
+async def test_tg_send_message_passes_reply_markup():
+    sent = []
+
+    async def fake_call(method, **payload):
+        sent.append(payload)
+        return {"message_id": len(sent)}
+
+    markup = {"inline_keyboard": [[{"text": "Test", "callback_data": "x"}]]}
+    with patch(
+        "services.telemost_recorder_api.telegram_client.tg_call",
+        AsyncMock(side_effect=fake_call),
+    ):
+        await tg_send_message(chat_id=999, text="hi", reply_markup=markup)
+    assert len(sent) == 1
+    assert sent[0]["reply_markup"] == markup
+
+
+@pytest.mark.asyncio
+async def test_tg_send_message_chunked_attaches_markup_to_last_chunk_only():
+    sent = []
+
+    async def fake_call(method, **payload):
+        sent.append(payload)
+        return {"message_id": len(sent)}
+
+    markup = {"inline_keyboard": [[{"text": "Test", "callback_data": "x"}]]}
+    with patch(
+        "services.telemost_recorder_api.telegram_client.tg_call",
+        AsyncMock(side_effect=fake_call),
+    ):
+        await tg_send_message(chat_id=999, text="x" * 5000, reply_markup=markup)
+    assert len(sent) == 2
+    assert "reply_markup" not in sent[0]
+    assert sent[1]["reply_markup"] == markup
+
+
+@pytest.mark.asyncio
+async def test_tg_answer_callback_query_dismisses_spinner():
+    sent = []
+
+    async def fake_call(method, **payload):
+        sent.append((method, payload))
+        return True
+
+    from services.telemost_recorder_api.telegram_client import tg_answer_callback_query
+
+    with patch(
+        "services.telemost_recorder_api.telegram_client.tg_call",
+        AsyncMock(side_effect=fake_call),
+    ):
+        await tg_answer_callback_query("cq-42", text="hi", show_alert=True)
+    assert len(sent) == 1
+    method, payload = sent[0]
+    assert method == "answerCallbackQuery"
+    assert payload["callback_query_id"] == "cq-42"
+    assert payload["text"] == "hi"
+    assert payload["show_alert"] is True
+
+
+@pytest.mark.asyncio
 async def test_tg_send_document_uses_multipart():
     captured = {}
 

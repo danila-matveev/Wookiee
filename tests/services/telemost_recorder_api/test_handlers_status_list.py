@@ -71,8 +71,9 @@ async def test_status_shows_active_and_recent():
 
     assert sent
     assert "Дейли" in sent[0]
-    assert "recording" in sent[0]
+    assert "🔴" in sent[0]  # recording status emoji
     assert "Бренд-стратегия" in sent[0]
+    assert "✅" in sent[0]  # done status emoji
 
 
 @pytest.mark.asyncio

@@ -104,9 +104,9 @@ async def test_record_enqueues_meeting():
         await handle_update(
             _msg("/record https://telemost.360.yandex.ru/j/abc")
         )
-    # Confirmation should mention the new id (truncated) and that it's queued
-    assert any(str(new_id)[:8] in s for s in sent)
-    assert any("очередь" in s.lower() for s in sent)
+    # New UX ack: friendly "Принял ссылку / Иду на встречу" — no raw ID exposed
+    assert sent
+    assert "принял" in sent[0].lower() or "иду" in sent[0].lower()
 
 
 @pytest.mark.asyncio
@@ -181,4 +181,4 @@ async def test_record_strips_whitespace_and_extra_args():
     ):
         await handle_update(_msg("/record   https://telemost.yandex.ru/j/abc   trailing"))
     assert sent
-    assert str(new_id)[:8] in sent[0]
+    assert "принял" in sent[0].lower() or "иду" in sent[0].lower()

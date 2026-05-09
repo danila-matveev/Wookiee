@@ -39,29 +39,52 @@ async def tg_send_message(
     text: str,
     parse_mode: Optional[str] = "Markdown",
     disable_web_page_preview: bool = True,
+    reply_markup: Optional[dict] = None,
 ) -> None:
-    """Send a text message to a chat. Auto-chunk if longer than 4000 chars."""
+    """Send a text message to a chat. Auto-chunks if longer than 4000 chars.
+
+    If reply_markup is provided and chunking happens, the markup is attached
+    only to the final chunk so navigation buttons appear at the bottom.
+    """
     if len(text) <= _CHUNK_SIZE:
-        await tg_call(
-            "sendMessage",
-            chat_id=chat_id,
-            text=text,
-            parse_mode=parse_mode,
-            disable_web_page_preview=disable_web_page_preview,
-        )
+        payload: dict[str, Any] = {
+            "chat_id": chat_id,
+            "text": text,
+            "parse_mode": parse_mode,
+            "disable_web_page_preview": disable_web_page_preview,
+        }
+        if reply_markup is not None:
+            payload["reply_markup"] = reply_markup
+        await tg_call("sendMessage", **payload)
         return
 
     chunks = [text[i : i + _CHUNK_SIZE] for i in range(0, len(text), _CHUNK_SIZE)]
     total = len(chunks)
     for idx, chunk in enumerate(chunks, start=1):
         prefixed = f"({idx}/{total}) {chunk}"
-        await tg_call(
-            "sendMessage",
-            chat_id=chat_id,
-            text=prefixed,
-            parse_mode=parse_mode,
-            disable_web_page_preview=disable_web_page_preview,
-        )
+        payload = {
+            "chat_id": chat_id,
+            "text": prefixed,
+            "parse_mode": parse_mode,
+            "disable_web_page_preview": disable_web_page_preview,
+        }
+        if idx == total and reply_markup is not None:
+            payload["reply_markup"] = reply_markup
+        await tg_call("sendMessage", **payload)
+
+
+async def tg_answer_callback_query(
+    callback_query_id: str,
+    text: Optional[str] = None,
+    show_alert: bool = False,
+) -> None:
+    """Dismiss the spinner on an inline button. Call within ~10s of receipt."""
+    payload: dict[str, Any] = {"callback_query_id": callback_query_id}
+    if text:
+        payload["text"] = text
+    if show_alert:
+        payload["show_alert"] = True
+    await tg_call("answerCallbackQuery", **payload)
 
 
 async def tg_send_document(
