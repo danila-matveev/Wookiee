@@ -22,6 +22,7 @@ from services.telemost_recorder_api.audio_uploader import upload_audio_to_storag
 from services.telemost_recorder_api.config import (
     AUDIO_RETENTION_DAYS,
     DATA_DIR,
+    HOST_DATA_DIR,
     MAX_PARALLEL_RECORDINGS,
     RECORDING_HARD_LIMIT_HOURS,
 )
@@ -161,7 +162,11 @@ async def process_one() -> bool:
         spawn_recorder_container,
         meeting_id=meeting_id,
         meeting_url=pick["meeting_url"],
-        data_dir=str(DATA_DIR),
+        # HOST_DATA_DIR (not DATA_DIR): when the API is containerised and
+        # talks to host docker.sock, the daemon resolves the volume source
+        # against the host filesystem. DATA_DIR (=/app/data/telemost inside
+        # the API container) would mount an empty/non-existent host dir.
+        data_dir=str(HOST_DATA_DIR),
     )
     timeout = RECORDING_HARD_LIMIT_HOURS * 3600
     result = await monitor_container(container_id, timeout_seconds=timeout)

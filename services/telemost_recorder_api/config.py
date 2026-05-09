@@ -60,4 +60,10 @@ LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 
 # Paths
 DATA_DIR: Path = _PROJECT_ROOT / "data" / "telemost"
+# When the API runs inside a container that talks to the host docker.sock,
+# spawned recorder containers must mount the *host* path, not the API
+# container's internal /app/data/telemost. Defaults to DATA_DIR so local
+# dev / tests work without extra config; production docker-compose sets
+# TELEMOST_HOST_DATA_DIR=/home/danila/projects/wookiee/data/telemost.
+HOST_DATA_DIR: Path = Path(os.getenv("TELEMOST_HOST_DATA_DIR", str(DATA_DIR)))
 ASSETS_DIR: Path = Path(__file__).resolve().parent / "assets"
