@@ -1,0 +1,24 @@
+FROM python:3.11-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    TZ=Europe/Moscow
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY services/telemost_recorder_api/requirements.txt /app/requirements.txt
+RUN pip install -r /app/requirements.txt
+
+COPY services/telemost_recorder_api/ /app/services/telemost_recorder_api/
+COPY shared/ /app/shared/
+COPY scripts/telemost_setup_webhook.py /app/scripts/
+
+EXPOSE 8006
+
+CMD ["uvicorn", "services.telemost_recorder_api.app:create_app", \
+     "--factory", "--host", "0.0.0.0", "--port", "8006"]

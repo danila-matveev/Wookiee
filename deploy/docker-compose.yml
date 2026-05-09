@@ -266,6 +266,48 @@ services:
           cpus: '0.25'
           memory: 256M
 
+  # ── Telemost Recorder API: Telegram bot + recorder orchestrator ──
+  telemost-recorder-api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.telemost_recorder_api
+    container_name: telemost_recorder_api
+    restart: unless-stopped
+
+    env_file:
+      - ../.env
+
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TZ=Europe/Moscow
+      # API container talks to host docker.sock; spawned recorder containers
+      # must mount the *host* artefact dir, not /app/data/telemost (the API
+      # container's view). See services/telemost_recorder_api/config.py.
+      - TELEMOST_HOST_DATA_DIR=/home/danila/projects/wookiee/data/telemost
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ../data/telemost:/app/data/telemost
+
+    networks:
+      - n8n-docker-caddy_default
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8006/health"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1024M
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
 networks:
   n8n-docker-caddy_default:
     external: true

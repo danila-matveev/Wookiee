@@ -383,17 +383,32 @@ async def _execute_join(
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-async def join_meeting(url: str, bot_name: str = BOT_NAME) -> Meeting:
+async def join_meeting(
+    url: str,
+    bot_name: str = BOT_NAME,
+    meeting_id: str | None = None,
+    output_dir: str | None = None,
+) -> Meeting:
     """
     Join a meeting and return when state is determined. Browser closes on return.
     Use in tests to get a Meeting result without holding the process open.
+
+    Both ``meeting_id`` and ``output_dir`` are optional overrides used by the API
+    service when it spawns recorder containers. Omitting them preserves the
+    historical behaviour: a fresh UUID is generated and artefacts land in
+    ``data/telemost/<meeting_id>``.
     """
     meeting = Meeting(url=url)
+    if meeting_id is not None:
+        meeting.meeting_id = meeting_id
     if not validate_url(url):
         meeting.transition(MeetingStatus.FAILED, FailReason.INVALID_URL)
         return meeting
 
-    screenshot_dir = Path("data/telemost") / meeting.meeting_id
+    screenshot_dir = (
+        Path(output_dir) if output_dir is not None
+        else Path("data/telemost") / meeting.meeting_id
+    )
     screenshot_dir.mkdir(parents=True, exist_ok=True)
 
     async with launch_browser() as (_, __, page):
@@ -402,20 +417,35 @@ async def join_meeting(url: str, bot_name: str = BOT_NAME) -> Meeting:
     return meeting
 
 
-async def run_session(url: str, bot_name: str = BOT_NAME) -> None:
+async def run_session(
+    url: str,
+    bot_name: str = BOT_NAME,
+    meeting_id: str | None = None,
+    output_dir: str | None = None,
+) -> None:
     """
     Join a meeting, record audio, transcribe after meeting ends.
     Holds the browser open until meeting ends or Ctrl+C.
+
+    Both ``meeting_id`` and ``output_dir`` are optional overrides used by the API
+    service when it spawns recorder containers. Omitting them preserves the
+    historical behaviour: a fresh UUID is generated and artefacts land in
+    ``data/telemost/<meeting_id>``.
     """
     from services.telemost_recorder.audio import AudioCapture
 
     meeting = Meeting(url=url)
+    if meeting_id is not None:
+        meeting.meeting_id = meeting_id
     if not validate_url(url):
         meeting.transition(MeetingStatus.FAILED, FailReason.INVALID_URL)
         _emit({"status": "FAILED", "reason": "INVALID_URL", "message": "Ссылка не похожа на Яндекс Телемост"})
         return
 
-    screenshot_dir = Path("data/telemost") / meeting.meeting_id
+    screenshot_dir = (
+        Path(output_dir) if output_dir is not None
+        else Path("data/telemost") / meeting.meeting_id
+    )
     screenshot_dir.mkdir(parents=True, exist_ok=True)
     capture = AudioCapture(meeting_id=meeting.meeting_id, output_dir=screenshot_dir)
 

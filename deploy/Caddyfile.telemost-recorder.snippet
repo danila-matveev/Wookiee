@@ -1,0 +1,9 @@
+# Telemost Recorder API — Caddy site block (фрагмент для сервера)
+# Добавь этот блок в /home/danila/n8n-docker-caddy/caddy_config/Caddyfile
+# и сделай `docker compose restart caddy` (или `caddy reload`).
+#
+# Контейнер telemost_recorder_api должен быть в сети n8n-docker-caddy_default.
+
+recorder.os.wookiee.shop {
+    reverse_proxy telemost_recorder_api:8006
+}

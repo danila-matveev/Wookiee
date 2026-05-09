@@ -1,108 +1,58 @@
-import { useState } from "react"
-import { X } from "lucide-react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
+import { MoreHorizontal, Pencil, Plus, Trash2, Search } from "lucide-react"
 
-interface FieldDef {
-  key: string
-  label: string
-  type?: "text" | "number"
-  placeholder?: string
-}
+// ─── Re-export atomic RefModal (Wave 1) ────────────────────────────────────
+//
+// Pages should `import { RefModal } from "./_shared"` to get the shared
+// extended modal with text/number/textarea/select/multiselect/file_url/date/
+// checkbox support.
+export { RefModal } from "@/components/catalog/ui/ref-modal"
+export type {
+  RefFieldDef,
+  RefFieldType,
+  RefFieldOption,
+} from "@/components/catalog/ui/ref-modal"
 
-interface RefModalProps {
-  title: string
-  fields: FieldDef[]
-  initialValues?: Record<string, string>
-  onSave: (values: Record<string, string>) => Promise<void>
-  onClose: () => void
-}
-
-export function RefModal({ title, fields, initialValues = {}, onSave, onClose }: RefModalProps) {
-  const [values, setValues] = useState<Record<string, string>>(
-    Object.fromEntries(fields.map((f) => [f.key, initialValues[f.key] ?? ""]))
-  )
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const handleSave = async () => {
-    setSaving(true)
-    setError(null)
-    try {
-      await onSave(values)
-      onClose()
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Ошибка сохранения")
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div
-        className="bg-white rounded-xl border border-stone-200 shadow-2xl w-full max-w-md p-6 space-y-4"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-medium text-stone-900">{title}</h3>
-          <button onClick={onClose} className="p-1 hover:bg-stone-100 rounded-md">
-            <X className="w-4 h-4 text-stone-500" />
-          </button>
-        </div>
-        <div className="space-y-3">
-          {fields.map((f) => (
-            <div key={f.key}>
-              <label className="block text-[11px] uppercase tracking-wider text-stone-500 mb-1">{f.label}</label>
-              <input
-                type={f.type ?? "text"}
-                value={values[f.key] ?? ""}
-                onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
-                placeholder={f.placeholder}
-                className="w-full px-3 py-2 text-sm border border-stone-200 rounded-md bg-white outline-none focus:border-stone-400"
-              />
-            </div>
-          ))}
-        </div>
-        {error && <div className="text-xs text-red-500">{error}</div>}
-        <div className="flex justify-end gap-2 pt-2">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-xs text-stone-700 hover:bg-stone-100 rounded-md"
-          >
-            Отмена
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="px-4 py-2 text-xs text-white bg-stone-900 hover:bg-stone-800 disabled:opacity-50 rounded-md"
-          >
-            {saving ? "Сохранение…" : "Сохранить"}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
+// ─── Page header ───────────────────────────────────────────────────────────
 
 interface PageHeaderProps {
   title: string
+  /** Subtitle shown right under the H1 — describes what this reference is. */
+  subtitle?: string
   count: number
   isLoading: boolean
+  /**
+   * Action buttons rendered to the right of the metadata block.
+   * Typically the «+ Добавить» button.
+   */
+  actions?: ReactNode
 }
 
-export function PageHeader({ title, count, isLoading }: PageHeaderProps) {
+export function PageHeader({
+  title,
+  subtitle,
+  count,
+  isLoading,
+  actions,
+}: PageHeaderProps) {
   return (
     <div className="mb-5">
       <div className="text-[11px] uppercase tracking-wider text-stone-400 mb-1">
         Справочник
       </div>
-      <div className="flex items-end justify-between">
-        <h1
-          className="text-3xl text-stone-900"
-          style={{ fontFamily: "'Instrument Serif', ui-serif, Georgia, serif" }}
-        >
-          {title}
-        </h1>
-        <div className="flex items-center gap-3">
+      <div className="flex items-end justify-between gap-4">
+        <div className="min-w-0">
+          <h1
+            className="text-3xl text-stone-900 italic"
+            style={{ fontFamily: "'Instrument Serif', ui-serif, Georgia, serif" }}
+          >
+            {title}
+          </h1>
+          {subtitle && (
+            <p className="text-sm text-stone-500 mt-1 max-w-2xl">{subtitle}</p>
+          )}
+        </div>
+        <div className="flex items-center gap-3 shrink-0">
           {isLoading ? (
             <span className="text-sm text-stone-400">Загрузка…</span>
           ) : (
@@ -110,14 +60,53 @@ export function PageHeader({ title, count, isLoading }: PageHeaderProps) {
               {count} записей
             </span>
           )}
-          <span className="text-xs text-stone-400 bg-stone-100 px-2 py-0.5 rounded-md">
-            только чтение
-          </span>
+          {actions}
         </div>
       </div>
     </div>
   )
 }
+
+// ─── Add button + Search ───────────────────────────────────────────────────
+
+interface AddButtonProps {
+  onClick: () => void
+  label?: string
+}
+
+export function AddButton({ onClick, label = "Добавить" }: AddButtonProps) {
+  return (
+    <button
+      onClick={onClick}
+      className="px-3 py-1.5 text-xs text-white bg-stone-900 hover:bg-stone-800 rounded-md flex items-center gap-1.5 transition-colors"
+    >
+      <Plus className="w-3.5 h-3.5" /> {label}
+    </button>
+  )
+}
+
+interface SearchBoxProps {
+  value: string
+  onChange: (v: string) => void
+  placeholder?: string
+}
+
+export function SearchBox({ value, onChange, placeholder = "Поиск…" }: SearchBoxProps) {
+  return (
+    <div className="relative mb-4">
+      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-stone-400 pointer-events-none" />
+      <input
+        type="search"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full max-w-md pl-8 pr-3 py-1.5 text-sm border border-stone-200 rounded-md bg-white outline-none focus:border-stone-400 placeholder:text-stone-400"
+      />
+    </div>
+  )
+}
+
+// ─── Error / Skeleton ──────────────────────────────────────────────────────
 
 interface ErrorBlockProps {
   message: string
@@ -165,4 +154,161 @@ export function SkeletonTable({
       ))}
     </div>
   )
+}
+
+// ─── Row actions (Edit / Delete) ──────────────────────────────────────────
+//
+// Renders a small button with a trailing dropdown menu. Designed to be placed
+// in the last column of every reference table.
+
+interface RowActionsProps {
+  onEdit: () => void
+  onDelete: () => void
+}
+
+export function RowActions({ onEdit, onDelete }: RowActionsProps) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false)
+    }
+    document.addEventListener("mousedown", onClick)
+    document.addEventListener("keydown", onKey)
+    return () => {
+      document.removeEventListener("mousedown", onClick)
+      document.removeEventListener("keydown", onKey)
+    }
+  }, [open])
+
+  return (
+    <div className="relative inline-block" ref={ref}>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          setOpen((v) => !v)
+        }}
+        className="p-1 rounded hover:bg-stone-200/60 text-stone-500 hover:text-stone-900 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+        aria-label="Действия"
+      >
+        <MoreHorizontal className="w-4 h-4" />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-7 z-20 min-w-[140px] py-1 bg-white border border-stone-200 rounded-md shadow-lg">
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false)
+              onEdit()
+            }}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-100 text-left"
+          >
+            <Pencil className="w-3.5 h-3.5" /> Редактировать
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false)
+              onDelete()
+            }}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 text-left"
+          >
+            <Trash2 className="w-3.5 h-3.5" /> Удалить
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Confirm dialog (delete confirmation) ────────────────────────────────
+
+interface ConfirmDialogProps {
+  open: boolean
+  title: string
+  message?: string
+  confirmLabel?: string
+  cancelLabel?: string
+  onConfirm: () => void | Promise<void>
+  onCancel: () => void
+  destructive?: boolean
+}
+
+export function ConfirmDialog({
+  open,
+  title,
+  message,
+  confirmLabel = "Удалить",
+  cancelLabel = "Отмена",
+  onConfirm,
+  onCancel,
+  destructive = true,
+}: ConfirmDialogProps) {
+  const [busy, setBusy] = useState(false)
+  if (!open) return null
+
+  const handleConfirm = async () => {
+    setBusy(true)
+    try {
+      await onConfirm()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-stone-900/40 flex items-center justify-center p-4"
+      onClick={onCancel}
+    >
+      <div
+        className="w-full max-w-sm bg-white rounded-xl shadow-2xl border border-stone-200 overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-5 py-4 border-b border-stone-200">
+          <h3 className="text-base font-medium text-stone-900">{title}</h3>
+          {message && <p className="text-xs text-stone-500 mt-1">{message}</p>}
+        </div>
+        <div className="flex items-center justify-end gap-2 px-5 py-3 bg-stone-50">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-3 py-1.5 text-sm text-stone-700 hover:bg-stone-200/60 rounded-md"
+          >
+            {cancelLabel}
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirm}
+            disabled={busy}
+            className={
+              destructive
+                ? "px-3 py-1.5 text-sm text-white bg-red-600 hover:bg-red-700 rounded-md disabled:opacity-50"
+                : "px-3 py-1.5 text-sm text-white bg-stone-900 hover:bg-stone-800 rounded-md disabled:opacity-50"
+            }
+          >
+            {busy ? "…" : confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── PageShell (wraps every reference page consistently) ─────────────────
+
+interface PageShellProps {
+  children: ReactNode
+}
+
+export function PageShell({ children }: PageShellProps) {
+  return <div className="px-6 py-6 max-w-6xl">{children}</div>
 }
