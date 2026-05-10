@@ -7,7 +7,6 @@ import { Badge } from "@/components/crm/ui/Badge"
 import { DateRange } from "@/components/marketing/DateRange"
 import { UpdateBar } from "@/components/marketing/UpdateBar"
 import { KpiCard } from "@/components/marketing/KpiCard"
-import { numToNumber } from "@/lib/marketing-helpers"
 
 const FIRST = '2025-07-28'
 const LAST  = new Date().toISOString().slice(0, 10)
@@ -26,8 +25,8 @@ export function PromoCodesTable() {
     const byId = new Map<number, { qty: number; sales: number }>()
     for (const w of inRange) {
       const cur = byId.get(w.promo_code_id) ?? { qty: 0, sales: 0 }
-      cur.qty   += numToNumber(w.orders_count)
-      cur.sales += numToNumber(w.sales_rub)
+      cur.qty   += w.orders_count
+      cur.sales += w.sales_rub
       byId.set(w.promo_code_id, cur)
     }
     return promos.map((p) => ({ ...p, qty: byId.get(p.id)?.qty ?? 0, sales: byId.get(p.id)?.sales ?? 0 }))
@@ -92,8 +91,11 @@ export function PromoCodesTable() {
               const lab  = p.status === 'unidentified' ? 'Не идентиф.' : p.qty === 0 ? 'Нет данных' : 'Активен'
               const avg  = p.qty > 0 ? Math.round(p.sales / p.qty) : 0
               return (
-                <tr key={p.id} onClick={() => setQ('open', String(p.id))}
-                    className="cursor-pointer transition-colors hover:bg-muted/50">
+                <tr key={p.id}
+                    tabIndex={0}
+                    onClick={() => setQ('open', String(p.id))}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setQ('open', String(p.id)) } }}
+                    className="cursor-pointer transition-colors hover:bg-muted/50 focus:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset">
                   <td className="px-2 py-2.5"><span className="font-mono text-xs text-foreground">{p.code.length > 24 ? p.code.slice(0, 24) + '…' : p.code}</span></td>
                   <td className="px-2 py-2.5"><Badge tone="secondary">{p.channel ?? '—'}</Badge></td>
                   <td className="px-2 py-2.5 text-sm tabular-nums text-foreground/80">{p.discount_pct != null ? `${p.discount_pct}%` : '—'}</td>
