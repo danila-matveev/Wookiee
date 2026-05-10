@@ -15,6 +15,7 @@ import { BloggersPage } from "@/pages/influence/bloggers/BloggersPage"
 import { IntegrationsKanbanPage } from "@/pages/influence/integrations/IntegrationsKanbanPage"
 import { CalendarPage } from "@/pages/influence/calendar/CalendarPage"
 import { RnpPage } from "@/pages/analytics/rnp"
+import { featureFlags } from "@/lib/feature-flags"
 
 // Lazy-load all catalog pages — they live in an isolated `.catalog-scope`
 // and load their own data; no need to ship them in the main bundle.
@@ -65,6 +66,13 @@ const SertifikatyPage = lazy(() =>
 )
 const DemoPage = lazy(() =>
   import("@/pages/catalog/__demo__").then((m) => ({ default: m.DemoPage })),
+)
+
+const PromoCodesPage = lazy(() =>
+  import("@/pages/marketing/promo-codes").then((m) => ({ default: m.PromoCodesPage })),
+)
+const SearchQueriesPage = lazy(() =>
+  import("@/pages/marketing/search-queries").then((m) => ({ default: m.SearchQueriesPage })),
 )
 
 function CatalogFallback() {
@@ -132,6 +140,13 @@ export const router = createBrowserRouter([
       { path: "/influence/calendar",     element: <CalendarPage /> },
       { path: "/analytics",              element: <Navigate to="/analytics/rnp" replace /> },
       { path: "/analytics/rnp",          element: <RnpPage /> },
+      ...(featureFlags.marketing
+        ? [
+            { path: "/marketing",                element: <Navigate to="/marketing/promo-codes" replace /> },
+            { path: "/marketing/promo-codes",    element: withFallback(<PromoCodesPage />) },
+            { path: "/marketing/search-queries", element: withFallback(<SearchQueriesPage />) },
+          ]
+        : []),
     ],
   },
 ])
