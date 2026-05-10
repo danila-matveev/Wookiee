@@ -247,7 +247,11 @@ function SectionGroup({ icon, label, rows, collapsed, onToggle, statsMap, onOpen
               className="cursor-pointer transition-colors border-b border-border/50 hover:bg-muted/50 focus:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset">
             <td className="px-2 py-2"><span className="font-mono text-xs text-foreground">{it.query_text}</span></td>
             <td className="px-2 py-2 text-xs text-muted-foreground truncate">{it.ww_code ?? it.nomenklatura_wb ?? ''}</td>
-            <td className="px-2 py-2"><Badge tone="secondary">{it.purpose ?? '—'}</Badge></td>
+            <td className="px-2 py-2">
+              {it.purpose
+                ? <Badge tone="secondary">{it.purpose}</Badge>
+                : <span className="text-muted-foreground/60 text-xs">—</span>}
+            </td>
             <td className="px-2 py-2 text-xs text-muted-foreground truncate">{it.campaign_name ?? ''}</td>
             <td className="px-2 py-2 text-right tabular-nums text-sm text-foreground/80">{s.frequency > 0 ? fmt(s.frequency) : ''}</td>
             <td className="px-2 py-2 text-right tabular-nums text-sm text-foreground/80">{s.transitions > 0 ? fmt(s.transitions) : ''}</td>
