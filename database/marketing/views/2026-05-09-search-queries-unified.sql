@@ -35,7 +35,7 @@ SELECT
   sa.campaign_name                     AS campaign_name,
   sa.purpose                           AS purpose,
   NULL::text                           AS model_hint,
-  NULL::text                           AS creator_ref,
+  sa.creator_ref                       AS creator_ref,
   sa.status                            AS status,
   sa.created_at                        AS created_at,
   sa.updated_at                        AS updated_at
