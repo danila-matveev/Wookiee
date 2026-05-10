@@ -7,6 +7,7 @@ import { Badge } from "@/components/crm/ui/Badge"
 import { DateRange } from "@/components/marketing/DateRange"
 import { UpdateBar } from "@/components/marketing/UpdateBar"
 import { KpiCard } from "@/components/marketing/KpiCard"
+import { PromoDetailPanel } from "./PromoDetailPanel"
 
 const FIRST = '2025-07-28'
 const LAST  = new Date().toISOString().slice(0, 10)
@@ -117,6 +118,13 @@ export function PromoCodesTable() {
           </tfoot>
         </table>
       </div>
+      {(() => {
+        const openParam = params.get('open')
+        const openId = openParam ? Number(openParam) : null
+        return openId != null && Number.isFinite(openId) && openId > 0
+          ? <PromoDetailPanel promoId={openId} onClose={() => setQ('open', null)} />
+          : null
+      })()}
     </QueryStatusBoundary>
   )
 }

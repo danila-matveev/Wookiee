@@ -25,3 +25,19 @@ export async function fetchPromoStatsWeekly(): Promise<PromoStatWeekly[]> {
     avg_check: numToNumber(r.avg_check as never),
   }))
 }
+
+export async function fetchPromoStatsForCode(promoCodeId: number): Promise<PromoStatWeekly[]> {
+  const { data, error } = await supabase.schema('marketing').from('promo_stats_weekly')
+    .select('*').eq('promo_code_id', promoCodeId).order('week_start', { ascending: true })
+  if (error) throw error
+  return ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+    promo_code_id: r.promo_code_id as number,
+    week_start: r.week_start as string,
+    sales_rub: numToNumber(r.sales_rub as never),
+    payout_rub: numToNumber(r.payout_rub as never),
+    orders_count: numToNumber(r.orders_count as never),
+    returns_count: numToNumber(r.returns_count as never),
+    avg_discount_pct: numToNumber(r.avg_discount_pct as never),
+    avg_check: numToNumber(r.avg_check as never),
+  }))
+}
