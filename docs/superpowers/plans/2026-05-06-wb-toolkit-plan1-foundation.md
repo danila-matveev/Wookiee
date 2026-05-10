@@ -1502,4 +1502,4 @@ git commit -m "docs: add README with quick start and tool overview"
 **Следующие планы:**
 - [Plan 2](2026-05-06-wb-toolkit-plan2-localization.md) — Оптимизатор ИЛ (Фазы 1-3 + Sheets)
 - [Plan 3](2026-05-06-wb-toolkit-plan3-audit.md) — Аудит переплат (Excel + ETL)
-- [Plan 4](2026-05-06-wb-toolkit-plan4-docs.md) — Документация
+- Plan 4 — Документация (TBD, файл будет создан позже)

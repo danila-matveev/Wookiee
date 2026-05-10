@@ -39,6 +39,7 @@ whitelist:
   # (services/<name>/ с __init__.py + config.py) — не флагать в structure_conventions.
   structure_conventions_exceptions:
     - services/creative_kb     # PoC/MVP — пока только prompts/ + tests/, entry-point ещё не реализован
+    - services/influencer_crm_ui  # TypeScript/Vite frontend — не Python-модуль, __init__.py не нужен
 
 checks:
   unpushed_work:           { default: auto_commit_push }
