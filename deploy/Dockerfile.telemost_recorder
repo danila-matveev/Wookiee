@@ -44,6 +44,11 @@ COPY . /app
 ENV DISPLAY=:99
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
+# Force non-headless Chromium: Playwright's chrome-headless-shell binary doesn't
+# emit WebRTC inbound audio to PulseAudio sinks (PA logs show clients connected
+# but null-sink stays silent). Full Chromium under Xvfb does. The browser.py
+# `_start_xvfb()` helper handles the virtual display when HEADLESS=False.
+ENV TELEMOST_HEADLESS=false
 
 COPY deploy/telemost_entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
