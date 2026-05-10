@@ -3,7 +3,7 @@ import { Drawer } from "@/components/crm/ui/Drawer"
 import { Badge } from "@/components/crm/ui/Badge"
 import { EmptyState } from "@/components/crm/ui/EmptyState"
 import { StatusEditor } from "@/components/marketing/StatusEditor"
-import { useSearchQueries, useSearchQueryWeekly } from "@/hooks/marketing/use-search-queries"
+import { useSearchQueries, useSearchQueryWeekly, useUpdateSearchQueryStatus } from "@/hooks/marketing/use-search-queries"
 import { parseUnifiedId } from "@/lib/marketing-helpers"
 import type { SearchQueryRow, SearchQueryWeeklyStat } from "@/types/marketing"
 
@@ -21,6 +21,7 @@ const lCls = "block text-[11px] uppercase tracking-wider text-muted-foreground f
 export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose }: SearchQueryDetailPanelProps) {
   const { data: items = [], isLoading: itemsLoading } = useSearchQueries()
   const item: SearchQueryRow | undefined = items.find((i) => i.unified_id === unifiedId)
+  const updateStatus = useUpdateSearchQueryStatus()
 
   let parsed: { source: 'branded_queries' | 'substitute_articles'; id: number } | null = null
   try { parsed = parseUnifiedId(unifiedId) } catch { parsed = null }
@@ -48,7 +49,14 @@ export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose }:
       ) : (
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-1.5 flex-wrap">
-            <StatusEditor status={item.status} onChange={() => {}} disabled />
+            <StatusEditor
+              status={item.status}
+              onChange={(s) => updateStatus.mutate({ unifiedId: item.unified_id, status: s })}
+              disabled={updateStatus.isPending}
+            />
+            {updateStatus.isError && (
+              <span className="text-xs text-danger">Не удалось сохранить статус</span>
+            )}
             {item.purpose && <Badge tone="secondary">{item.purpose}</Badge>}
             {item.campaign_name && <Badge tone="info">{item.campaign_name}</Badge>}
           </div>

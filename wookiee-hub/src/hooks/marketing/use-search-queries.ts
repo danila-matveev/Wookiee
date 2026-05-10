@@ -5,10 +5,11 @@ import {
   fetchSearchQueries,
   fetchSearchQueryStats,
   fetchSearchQueryWeekly,
+  updateSearchQueryStatus,
   type BrandQueryCreate,
   type SubstituteArticleCreate,
 } from '@/api/marketing/search-queries'
-import type { SearchQueryRow } from '@/types/marketing'
+import type { SearchQueryRow, SearchQueryStatus } from '@/types/marketing'
 
 export const searchQueriesKeys = {
   all:    ['marketing', 'search-queries'] as const,
@@ -67,6 +68,23 @@ export function useCreateBrandQuery() {
     onError: (_err: unknown, _input: BrandQueryCreate, ctx?: { prev: SearchQueryRow[] }) => {
       if (ctx?.prev) qc.setQueryData(searchQueriesKeys.list(), ctx.prev)
     },
+    onSettled: () => qc.invalidateQueries({ queryKey: searchQueriesKeys.list() }),
+  })
+}
+
+export function useUpdateSearchQueryStatus() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ unifiedId, status }: { unifiedId: string; status: SearchQueryStatus }) =>
+      updateSearchQueryStatus(unifiedId, status),
+    onMutate: async ({ unifiedId, status }) => {
+      await qc.cancelQueries({ queryKey: searchQueriesKeys.list() })
+      const prev = qc.getQueryData<SearchQueryRow[]>(searchQueriesKeys.list()) ?? []
+      const next = prev.map((r) => (r.unified_id === unifiedId ? { ...r, status } : r))
+      qc.setQueryData(searchQueriesKeys.list(), next)
+      return { prev }
+    },
+    onError: (_e, _v, ctx) => { if (ctx?.prev) qc.setQueryData(searchQueriesKeys.list(), ctx.prev) },
     onSettled: () => qc.invalidateQueries({ queryKey: searchQueriesKeys.list() }),
   })
 }
