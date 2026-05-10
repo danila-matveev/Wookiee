@@ -196,7 +196,7 @@ export function RowActions({ onEdit, onDelete }: RowActionsProps) {
           e.stopPropagation()
           setOpen((v) => !v)
         }}
-        className="p-1 rounded hover:bg-stone-200/60 text-stone-500 hover:text-stone-900 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+        className="p-1 rounded hover:bg-stone-200/60 text-stone-400 hover:text-stone-900 opacity-40 group-hover:opacity-100 focus:opacity-100 transition-opacity"
         aria-label="Действия"
       >
         <MoreHorizontal className="w-4 h-4" />

@@ -13,7 +13,7 @@ import { ColumnsManager, type ColumnDef } from "@/components/catalog/ui/columns-
 import { BulkActionsBar } from "@/components/catalog/ui/bulk-actions-bar"
 import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
 
-// 17 columns; first 9 default-visible
+// 17 columns; all default-visible per Final Report MINOR fix.
 const TOVARY_COLUMNS: ColumnDef[] = [
   { key: "barkod",          label: "Баркод",          default: true },
   { key: "artikul",         label: "Артикул",         default: true },
@@ -24,14 +24,14 @@ const TOVARY_COLUMNS: ColumnDef[] = [
   { key: "ozon_art",        label: "OZON-артикул",    default: true },
   { key: "status_wb",       label: "Статус WB",       default: true,  badge: "канал" },
   { key: "status_ozon",     label: "Статус OZON",     default: true,  badge: "канал" },
-  { key: "status_sayt",     label: "Статус Сайт",     default: false, badge: "канал" },
-  { key: "status_lamoda",   label: "Статус Lamoda",   default: false, badge: "канал" },
-  { key: "barkod_gs1",      label: "Баркод GS1",      default: false },
-  { key: "barkod_gs2",      label: "Баркод GS2",      default: false },
-  { key: "barkod_perehod",  label: "Баркод перехода", default: false },
-  { key: "cena_wb",         label: "Цена WB",         default: false },
-  { key: "cena_ozon",       label: "Цена OZON",       default: false },
-  { key: "created",         label: "Дата создания",   default: false },
+  { key: "status_sayt",     label: "Статус Сайт",     default: true,  badge: "канал" },
+  { key: "status_lamoda",   label: "Статус Lamoda",   default: true,  badge: "канал" },
+  { key: "barkod_gs1",      label: "Баркод GS1",      default: true },
+  { key: "barkod_gs2",      label: "Баркод GS2",      default: true },
+  { key: "barkod_perehod",  label: "Баркод перехода", default: true },
+  { key: "cena_wb",         label: "Цена WB",         default: true },
+  { key: "cena_ozon",       label: "Цена OZON",       default: true },
+  { key: "created",         label: "Дата создания",   default: true },
 ]
 
 const DEFAULT_COLUMNS = TOVARY_COLUMNS.filter((c) => c.default).map((c) => c.key)

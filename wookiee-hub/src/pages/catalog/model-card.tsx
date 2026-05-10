@@ -1271,15 +1271,15 @@ function CardSidebar({
   hexByCvet: Map<number, string | null>
   openColor: (colorCode: string) => void
 }) {
-  // Real completeness using the shared helper.
-  // TODO Wave 3: вынести в shared util `completenessFor(model)` с весами полей.
-  const completeness = useMemo(
-    () => computeCompleteness(m as unknown as Record<string, unknown>),
-    [m],
-  )
+  // Ring % and "X/Y" text must agree — both reflect category-specific
+  // attribute fill ratio. Earlier the ring used `computeCompleteness` (weighted
+  // across all model fields) while the text counted only AttributeFieldDef
+  // entries, which produced 70% ring vs "10/10" text.
+  void computeCompleteness
   const attrFilled = attrs.filter(
     (a) => Boolean((m as unknown as Record<string, unknown>)[a.key]),
   ).length
+  const completeness = attrs.length > 0 ? attrFilled / attrs.length : 0
 
   // Unique cveta in model.
   const cvetaList = useMemo(() => {

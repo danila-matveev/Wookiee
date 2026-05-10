@@ -18,6 +18,21 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    // Manual chunks to keep main bundle under ~700KB.
+    // Heavy libraries get their own chunks so they cache independently across deploys.
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ["react", "react-dom", "react-router-dom"],
+          query: ["@tanstack/react-query"],
+          supabase: ["@supabase/supabase-js"],
+          icons: ["lucide-react"],
+        },
+      },
+    },
+    chunkSizeWarningLimit: 700,
+  },
   test: {
     environment: "jsdom",
     setupFiles: ["./src/setupTests.ts"],
