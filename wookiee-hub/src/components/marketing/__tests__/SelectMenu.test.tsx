@@ -18,8 +18,8 @@ describe('SelectMenu', () => {
     render(<SelectMenu value="" options={['A','B','C']} onChange={handle} />)
     await userEvent.click(screen.getByRole('button'))
     await userEvent.keyboard('{ArrowDown}{ArrowDown}{Enter}')
-    // cmdk default behavior — first ArrowDown highlights first item
-    expect(handle).toHaveBeenCalled()
+    // Two ArrowDowns: __empty__ (pos 0) → A (pos 1) → B (pos 2)
+    expect(handle).toHaveBeenCalledWith('B')
   })
 
   it('Esc closes popover', async () => {

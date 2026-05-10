@@ -54,6 +54,7 @@ export function SelectMenu({
             disabled={disabled}
             aria-label={label ?? placeholder}
             aria-expanded={open}
+            aria-haspopup="listbox"
             className={cn(
               "w-full flex items-center justify-between rounded-md border px-2.5 py-1.5 text-sm bg-card hover:border-foreground/20 transition-colors",
               "border-border focus:outline-none focus-visible:ring-1 focus-visible:ring-ring",
@@ -78,7 +79,7 @@ export function SelectMenu({
                 {opts.length > 5 && <CommandInput placeholder="Поиск…" />}
                 <CommandList className="max-h-[240px]">
                   <CommandEmpty>{emptyHint}</CommandEmpty>
-                  <CommandItem value="__empty__" onSelect={() => { onChange(""); setOpen(false) }}>
+                  <CommandItem value="__empty__" forceMount onSelect={() => { onChange(""); setOpen(false) }}>
                     <span className="text-muted-foreground">—</span>
                   </CommandItem>
                   {opts.map((o) => (
@@ -89,8 +90,8 @@ export function SelectMenu({
                   ))}
                   {allowAdd && (
                     <>
-                      <CommandSeparator />
-                      <CommandItem value="__add__" onSelect={() => setAdding(true)}>
+                      <CommandSeparator alwaysRender />
+                      <CommandItem value="__add__" forceMount onSelect={() => setAdding(true)}>
                         <Plus className="w-3 h-3 mr-1.5" aria-hidden /> {newValueLabel}
                       </CommandItem>
                     </>
