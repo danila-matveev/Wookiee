@@ -21,9 +21,7 @@ export function UpdateBar({ lastUpdate, weeksCovered, status = "unknown", onSync
       {weeksCovered && (
         <>
           <span className="text-muted-foreground/50">·</span>
-          <span className={status === "failed" ? "text-[color:var(--wk-red)]" : "text-[color:var(--wk-green)]"}>
-            {weeksCovered}
-          </span>
+          <span className={color}>{weeksCovered}</span>
         </>
       )}
       {onSync && (
