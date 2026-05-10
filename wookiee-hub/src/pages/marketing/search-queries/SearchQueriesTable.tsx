@@ -2,6 +2,7 @@ import { useMemo, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { Search } from "lucide-react"
 import { useSearchQueries, useSearchQueryStats } from "@/hooks/marketing/use-search-queries"
+import { useLastSync } from "@/hooks/marketing/use-sync-log"
 import { QueryStatusBoundary } from "@/components/crm/ui/QueryStatusBoundary"
 import { Badge } from "@/components/crm/ui/Badge"
 import { SectionHeader } from "@/components/marketing/SectionHeader"
@@ -9,6 +10,7 @@ import { DateRange } from "@/components/marketing/DateRange"
 import { UpdateBar } from "@/components/marketing/UpdateBar"
 import type { SearchQueryGroup, SearchQueryRow, SearchQueryStatsAgg } from "@/types/marketing"
 import { SearchQueryDetailPanel } from "./SearchQueryDetailPanel"
+import { formatDateTime } from "@/lib/format"
 
 const FIRST = '2025-07-28'
 const LAST  = new Date().toISOString().slice(0, 10)
@@ -46,6 +48,7 @@ export function SearchQueriesTable() {
 
   const { data: items = [], isLoading: lq, error: eq } = useSearchQueries()
   const { data: statsRows = [], isLoading: ls, error: es } = useSearchQueryStats(dateFrom, dateTo)
+  const { data: lastSync } = useLastSync('search_queries_sync')
 
   const statsMap = useMemo(() => {
     const m = new Map<string, SearchQueryStatsAgg>()
@@ -103,7 +106,11 @@ export function SearchQueriesTable() {
   return (
     <QueryStatusBoundary isLoading={lq || ls} error={eq ?? es}>
       <div className="flex flex-col h-full">
-        <UpdateBar />
+        <UpdateBar
+          lastUpdate={lastSync?.finished_at ? formatDateTime(lastSync.finished_at) : undefined}
+          weeksCovered={lastSync?.weeks_covered ?? undefined}
+          status={lastSync?.status === 'failed' ? 'failed' : lastSync?.status === 'success' ? 'success' : 'unknown'}
+        />
 
         <div className="px-6 pt-3 pb-2 flex flex-col gap-2 border-b border-border bg-card">
           <div className="flex items-center gap-1.5 flex-wrap">

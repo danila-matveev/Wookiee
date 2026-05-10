@@ -2,12 +2,14 @@ import { useMemo } from "react"
 import { useSearchParams } from "react-router-dom"
 import { Search } from "lucide-react"
 import { usePromoCodes, usePromoStatsWeekly } from "@/hooks/marketing/use-promo-codes"
+import { useLastSync } from "@/hooks/marketing/use-sync-log"
 import { QueryStatusBoundary } from "@/components/crm/ui/QueryStatusBoundary"
 import { Badge } from "@/components/crm/ui/Badge"
 import { DateRange } from "@/components/marketing/DateRange"
 import { UpdateBar } from "@/components/marketing/UpdateBar"
 import { KpiCard } from "@/components/marketing/KpiCard"
 import { PromoDetailPanel } from "./PromoDetailPanel"
+import { formatDateTime } from "@/lib/format"
 
 const FIRST = '2025-07-28'
 const LAST  = new Date().toISOString().slice(0, 10)
@@ -20,6 +22,7 @@ export function PromoCodesTable() {
 
   const { data: promos = [], isLoading: lp, error: ep } = usePromoCodes()
   const { data: weekly = [], isLoading: lw, error: ew } = usePromoStatsWeekly()
+  const { data: lastSync } = useLastSync('promo_codes_sync')
 
   const enriched = useMemo(() => {
     const inRange = weekly.filter((w) => w.week_start >= dateFrom && w.week_start <= dateTo)
@@ -58,7 +61,11 @@ export function PromoCodesTable() {
         <KpiCard label="Ср. чек, ₽" value={totals.qty > 0 ? fmtR(Math.round(totals.sales / totals.qty)) : '—'} />
       </div>
 
-      <UpdateBar />
+      <UpdateBar
+        lastUpdate={lastSync?.finished_at ? formatDateTime(lastSync.finished_at) : undefined}
+        weeksCovered={lastSync?.weeks_covered ?? undefined}
+        status={lastSync?.status === 'failed' ? 'failed' : lastSync?.status === 'success' ? 'success' : 'unknown'}
+      />
 
       <div className="px-6 py-2 border-b border-border flex items-center gap-3 bg-card flex-wrap">
         <div className="relative flex-1 max-w-xs">
