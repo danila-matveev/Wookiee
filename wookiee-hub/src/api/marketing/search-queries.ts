@@ -2,6 +2,24 @@ import { supabase } from '@/lib/supabase'
 import type { SearchQueryRow, SearchQueryStatsAgg, SearchQueryWeeklyStat, SearchQueryStatus } from '@/types/marketing'
 import { parseUnifiedId } from '@/lib/marketing-helpers'
 
+export interface BrandQueryCreate {
+  query: string
+  canonical_brand: string
+  model_osnova_id?: number | null
+  notes?: string
+}
+
+export async function createBrandQuery(input: BrandQueryCreate): Promise<void> {
+  const { error } = await supabase.schema('crm').from('branded_queries').insert({
+    query: input.query.trim(),
+    canonical_brand: input.canonical_brand.trim().toLowerCase(),
+    model_osnova_id: input.model_osnova_id ?? null,
+    status: 'active',
+    notes: input.notes ?? null,
+  })
+  if (error) throw error
+}
+
 export async function fetchSearchQueries(): Promise<SearchQueryRow[]> {
   const { data, error } = await supabase
     .schema('marketing').from('search_queries_unified')
