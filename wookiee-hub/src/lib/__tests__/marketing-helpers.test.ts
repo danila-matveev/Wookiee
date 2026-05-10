@@ -6,6 +6,7 @@ describe('parseUnifiedId', () => {
   it('parses S-prefix', () => expect(parseUnifiedId('S100')).toEqual({ source: 'substitute_articles', id: 100 }))
   it('throws on bad prefix', () => expect(() => parseUnifiedId('X1')).toThrow())
   it('throws on non-numeric', () => expect(() => parseUnifiedId('Sabc')).toThrow())
+  it('throws on prefix-only input', () => expect(() => parseUnifiedId('B')).toThrow())
 })
 
 describe('numToNumber', () => {

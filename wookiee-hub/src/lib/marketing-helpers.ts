@@ -1,6 +1,7 @@
 export type SearchQuerySource = 'branded_queries' | 'substitute_articles'
 
 export function parseUnifiedId(unifiedId: string): { source: SearchQuerySource; id: number } {
+  if (unifiedId.length < 2) throw new Error(`Invalid unified_id: ${unifiedId}`)
   const prefix = unifiedId[0]
   const id = Number(unifiedId.slice(1))
   if (Number.isNaN(id)) throw new Error(`Invalid unified_id: ${unifiedId}`)

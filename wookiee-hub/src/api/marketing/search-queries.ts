@@ -29,6 +29,7 @@ export async function fetchSearchQueryWeekly(substituteArticleId: number): Promi
 
 export async function updateSearchQueryStatus(unifiedId: string, status: SearchQueryStatus): Promise<void> {
   const { source, id } = parseUnifiedId(unifiedId)
+  // source tables (branded_queries, substitute_articles) live in the crm schema
   const { error } = await supabase
     .schema('crm').from(source)
     .update({ status, updated_at: new Date().toISOString() })

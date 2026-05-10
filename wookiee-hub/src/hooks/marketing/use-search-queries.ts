@@ -23,6 +23,7 @@ export function useSearchQueryWeekly(substituteArticleId: number | null) {
   return useQuery({
     queryKey: searchQueriesKeys.weekly(substituteArticleId ?? -1),
     queryFn: () => fetchSearchQueryWeekly(substituteArticleId!),
+    staleTime: 60_000,
     enabled: substituteArticleId != null,
   })
 }
