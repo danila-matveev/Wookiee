@@ -88,8 +88,8 @@ export function PromoCodesTable() {
           </thead>
           <tbody className="divide-y divide-border/50">
             {filtered.map((p) => {
-              const tone = p.status === 'unidentified' ? 'warning' : p.qty === 0 ? 'secondary' : 'success'
-              const lab  = p.status === 'unidentified' ? 'Не идентиф.' : p.qty === 0 ? 'Нет данных' : 'Активен'
+              const tone = p.status === 'expired' ? 'warning' : p.status === 'archived' ? 'secondary' : p.status === 'paused' ? 'info' : p.qty === 0 ? 'secondary' : 'success'
+              const lab  = p.status === 'expired' ? 'Истёк' : p.status === 'archived' ? 'Архив' : p.status === 'paused' ? 'На паузе' : p.qty === 0 ? 'Нет данных' : 'Активен'
               const avg  = p.qty > 0 ? Math.round(p.sales / p.qty) : 0
               return (
                 <tr key={p.id}

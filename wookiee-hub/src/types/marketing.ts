@@ -1,5 +1,5 @@
 export type SearchQueryGroup = 'brand' | 'external' | 'cr_general' | 'cr_personal'
-export type SearchQueryStatus = 'active' | 'free' | 'archive'
+export type SearchQueryStatus = 'active' | 'paused' | 'archived'
 
 export interface SearchQueryRow {
   unified_id: string                      // 'B1' | 'S42'
@@ -36,7 +36,7 @@ export interface SearchQueryWeeklyStat {
   orders: number
 }
 
-export type PromoStatus = 'active' | 'unidentified' | 'archive'
+export type PromoStatus = 'active' | 'paused' | 'expired' | 'archived'
 
 export interface PromoCodeRow {
   id: number

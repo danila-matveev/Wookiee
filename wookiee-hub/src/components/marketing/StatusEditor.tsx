@@ -3,9 +3,9 @@ import { Check, ChevronDown } from "lucide-react"
 import { Badge } from "@/components/crm/ui/Badge"
 
 const STATUSES = {
-  active:  { label: "Используется", tone: "success"   as const },
-  free:    { label: "Свободен",     tone: "info"       as const },
-  archive: { label: "Архив",        tone: "secondary"  as const },
+  active:   { label: "Используется", tone: "success"   as const },
+  paused:   { label: "На паузе",     tone: "info"       as const },
+  archived: { label: "Архив",        tone: "secondary"  as const },
 }
 type Status = keyof typeof STATUSES
 

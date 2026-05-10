@@ -38,8 +38,8 @@ export function PromoDetailPanel({ promoId, onClose }: PromoDetailPanelProps) {
       ) : (
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-1.5">
-            <Badge tone={promo.status === 'unidentified' ? 'warning' : promo.status === 'archive' ? 'secondary' : 'success'}>
-              {promo.status === 'unidentified' ? 'Не идентиф.' : promo.status === 'archive' ? 'Архив' : 'Активен'}
+            <Badge tone={promo.status === 'expired' ? 'warning' : promo.status === 'archived' ? 'secondary' : promo.status === 'paused' ? 'info' : 'success'}>
+              {promo.status === 'expired' ? 'Истёк' : promo.status === 'archived' ? 'Архив' : promo.status === 'paused' ? 'На паузе' : 'Активен'}
             </Badge>
             {promo.channel && <Badge tone="secondary">{promo.channel}</Badge>}
           </div>
