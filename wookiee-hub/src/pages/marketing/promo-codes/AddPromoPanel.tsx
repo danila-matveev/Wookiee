@@ -42,7 +42,11 @@ export function AddPromoPanel({ onClose }: AddPromoPanelProps) {
       })
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не удалось создать промокод')
+      if (err && typeof err === 'object' && 'code' in err && (err as { code?: string }).code === '23505') {
+        setError('Промокод с таким кодом уже существует')
+      } else {
+        setError(err instanceof Error ? err.message : 'Не удалось создать промокод')
+      }
     }
   }
 
@@ -80,6 +84,7 @@ export function AddPromoPanel({ onClose }: AddPromoPanelProps) {
             placeholder="SUMMER20"
             autoFocus
             autoComplete="off"
+            style={{ textTransform: 'uppercase' }}
           />
         </div>
 
@@ -132,6 +137,7 @@ export function AddPromoPanel({ onClose }: AddPromoPanelProps) {
               type="date"
               value={validUntil}
               onChange={(e) => setValidUntil(e.target.value)}
+              min={validFrom || undefined}
             />
           </div>
         </div>
