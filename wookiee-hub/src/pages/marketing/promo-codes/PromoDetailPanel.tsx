@@ -17,8 +17,8 @@ const fmtR = (n: number) => `${n.toLocaleString('ru-RU')} ₽`
 const lCls = "block text-[11px] uppercase tracking-wider text-muted-foreground font-medium mb-1"
 
 export function PromoDetailPanel({ promoId, onClose }: PromoDetailPanelProps) {
-  const { data: promos = [] } = usePromoCodes()
-  const { data: weekly = [], isLoading: weeklyLoading } = useQuery<PromoStatWeekly[]>({
+  const { data: promos = [], isLoading: promosLoading } = usePromoCodes()
+  const { data: weekly = [], isLoading: weeklyLoading, error: weeklyError } = useQuery<PromoStatWeekly[]>({
     queryKey: ['marketing', 'promo-codes', 'for-code', promoId],
     queryFn: () => fetchPromoStatsForCode(promoId),
     enabled: promoId > 0,
@@ -31,7 +31,9 @@ export function PromoDetailPanel({ promoId, onClose }: PromoDetailPanelProps) {
 
   return (
     <Drawer open={true} onClose={onClose} title={promo?.code ?? 'Промокод'}>
-      {!promo ? (
+      {promosLoading ? (
+        <div className="text-sm text-muted-foreground p-4">Загрузка…</div>
+      ) : !promo ? (
         <EmptyState title="Промокод не найден" description="Возможно, он удалён или ID неверен." />
       ) : (
         <div className="flex flex-col gap-4">
@@ -94,6 +96,8 @@ export function PromoDetailPanel({ promoId, onClose }: PromoDetailPanelProps) {
             <div className={lCls + ' mb-2'}>По неделям</div>
             {weeklyLoading ? (
               <div className="text-sm text-muted-foreground">Загрузка…</div>
+            ) : weeklyError ? (
+              <EmptyState title="Ошибка загрузки" description="Не удалось загрузить данные по неделям." />
             ) : weekly.length === 0 ? (
               <EmptyState title="По неделям" description="Данные появятся после понедельника." />
             ) : (
