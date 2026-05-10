@@ -2,6 +2,31 @@ import { supabase } from '@/lib/supabase'
 import type { PromoCodeRow, PromoStatWeekly } from '@/types/marketing'
 import { numToNumber } from '@/lib/marketing-helpers'
 
+export interface PromoCreate {
+  code: string
+  name?: string
+  external_uuid?: string
+  channel?: string
+  discount_pct?: number
+  valid_from?: string
+  valid_until?: string
+}
+
+export async function createPromoCode(input: PromoCreate): Promise<PromoCodeRow> {
+  const { data, error } = await supabase.schema('crm').from('promo_codes').insert({
+    code: input.code.toUpperCase().trim(),
+    name: input.name ?? null,
+    external_uuid: input.external_uuid ?? null,
+    channel: input.channel ?? null,
+    discount_pct: input.discount_pct ?? null,
+    valid_from: input.valid_from || null,
+    valid_until: input.valid_until || null,
+    status: 'active',
+  }).select('*').single()
+  if (error) throw error
+  return data as PromoCodeRow
+}
+
 export async function fetchPromoCodes(): Promise<PromoCodeRow[]> {
   const { data, error } = await supabase.schema('marketing').from('promo_codes').select('*').order('updated_at', { ascending: false })
   if (error) throw error
