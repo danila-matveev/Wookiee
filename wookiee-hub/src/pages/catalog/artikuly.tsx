@@ -12,7 +12,7 @@ import { BulkActionsBar } from "@/components/catalog/ui/bulk-actions-bar"
 import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
 import { useSearchParams } from "react-router-dom"
 
-// 11 columns; first 7 default-visible
+// 11 columns; all default-visible per Final Report MINOR fix.
 const ARTIKULY_COLUMNS: ColumnDef[] = [
   { key: "artikul",         label: "Артикул",         default: true },
   { key: "model",           label: "Модель",          default: true },
@@ -21,10 +21,10 @@ const ARTIKULY_COLUMNS: ColumnDef[] = [
   { key: "wb_nom",          label: "WB-номенклатура", default: true },
   { key: "ozon_art",        label: "OZON-артикул",    default: true },
   { key: "created",         label: "Создан",          default: true },
-  { key: "updated",         label: "Обновлён",        default: false },
-  { key: "kategoriya",      label: "Категория",       default: false },
-  { key: "kollekciya",      label: "Коллекция",       default: false },
-  { key: "fabrika",         label: "Производитель",   default: false },
+  { key: "updated",         label: "Обновлён",        default: true },
+  { key: "kategoriya",      label: "Категория",       default: true },
+  { key: "kollekciya",      label: "Коллекция",       default: true },
+  { key: "fabrika",         label: "Производитель",   default: true },
 ]
 
 const DEFAULT_COLUMNS = ARTIKULY_COLUMNS.filter((c) => c.default).map((c) => c.key)

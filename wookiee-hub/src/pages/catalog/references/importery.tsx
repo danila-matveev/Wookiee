@@ -1,5 +1,15 @@
 import { useMemo, useState } from "react"
 import { CatalogTable, type TableColumn } from "@/components/catalog/layout/catalog-table"
+
+/**
+ * Strip trailing ".0"/".00" that Supabase sometimes returns for numeric-cast
+ * columns (ИНН/КПП/ОГРН stored as strings but historically came from sheets
+ * as floats). Returns "—" for null/empty.
+ */
+function formatNumeric(v: string | null | undefined): string {
+  if (v == null || v === "") return "—"
+  return String(v).replace(/\.0+$/, "")
+}
 import { useReferenceCrud } from "./_use-reference"
 import {
   fetchImportery,
@@ -91,17 +101,17 @@ export function ImporteryPage() {
     {
       key: "inn",
       label: "ИНН",
-      render: (r) => <span className="text-stone-700 font-mono text-xs">{r.inn ?? "—"}</span>,
+      render: (r) => <span className="text-stone-700 font-mono text-xs">{formatNumeric(r.inn)}</span>,
     },
     {
       key: "kpp",
       label: "КПП",
-      render: (r) => <span className="text-stone-700 font-mono text-xs">{r.kpp ?? "—"}</span>,
+      render: (r) => <span className="text-stone-700 font-mono text-xs">{formatNumeric(r.kpp)}</span>,
     },
     {
       key: "ogrn",
       label: "ОГРН",
-      render: (r) => <span className="text-stone-700 font-mono text-xs">{r.ogrn ?? "—"}</span>,
+      render: (r) => <span className="text-stone-700 font-mono text-xs">{formatNumeric(r.ogrn)}</span>,
     },
     {
       key: "bank",
