@@ -5,12 +5,16 @@ import { PageHeader } from "@/components/crm/layout/PageHeader"
 import { Button } from "@/components/crm/ui/Button"
 import { SearchQueriesTable } from "./search-queries/SearchQueriesTable"
 import { AddBrandQueryPanel } from "./search-queries/AddBrandQueryPanel"
+import { AddWWPanel } from "./search-queries/AddWWPanel"
 
 function AddMenu() {
   const [params, setParams] = useSearchParams()
 
   const openBrand = () =>
     setParams((p) => { p.set('add', 'brand'); return p })
+
+  const openWW = () =>
+    setParams((p) => { p.set('add', 'ww'); return p })
 
   return (
     <DropdownMenu.Root>
@@ -34,12 +38,10 @@ function AddMenu() {
             Брендированный запрос
           </DropdownMenu.Item>
           <DropdownMenu.Item
-            disabled
-            title="Скоро (Task 2.6)"
-            className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground cursor-not-allowed outline-none data-[disabled]:opacity-50"
+            onSelect={openWW}
+            className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted cursor-pointer outline-none data-[highlighted]:bg-muted"
           >
             WW-код
-            <span className="ml-auto text-[10px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground">Скоро</span>
           </DropdownMenu.Item>
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
@@ -65,6 +67,7 @@ export function SearchQueriesPage() {
       </div>
       <SearchQueriesTable />
       {addParam === 'brand' && <AddBrandQueryPanel onClose={closeAdd} />}
+      {addParam === 'ww' && <AddWWPanel onClose={closeAdd} />}
     </div>
   )
 }

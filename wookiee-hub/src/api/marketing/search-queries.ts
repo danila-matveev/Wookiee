@@ -2,6 +2,33 @@ import { supabase } from '@/lib/supabase'
 import type { SearchQueryRow, SearchQueryStatsAgg, SearchQueryWeeklyStat, SearchQueryStatus } from '@/types/marketing'
 import { parseUnifiedId } from '@/lib/marketing-helpers'
 
+export interface SubstituteArticleCreate {
+  code: string
+  artikul_id: number
+  purpose: string                       // channel slug (validated against marketing.channels)
+  nomenklatura_wb?: string | null
+  campaign_name?: string | null         // creator_ref auto-derived by trigger
+}
+
+export async function createSubstituteArticle(input: SubstituteArticleCreate): Promise<void> {
+  // Soft-validate channel slug
+  const { data: ch, error: chErr } = await supabase
+    .schema('marketing').from('channels')
+    .select('slug').eq('slug', input.purpose).maybeSingle()
+  if (chErr) throw chErr
+  if (!ch) throw new Error(`Неизвестный канал: ${input.purpose}. Добавьте через справочник каналов.`)
+
+  const { error } = await supabase.schema('crm').from('substitute_articles').insert({
+    code: input.code.trim(),
+    artikul_id: input.artikul_id,
+    purpose: input.purpose,
+    nomenklatura_wb: input.nomenklatura_wb ?? null,
+    campaign_name: input.campaign_name?.trim() || null,
+    status: 'active',
+  })
+  if (error) throw error
+}
+
 export interface BrandQueryCreate {
   query: string
   canonical_brand: string
