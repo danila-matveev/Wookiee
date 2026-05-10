@@ -119,7 +119,10 @@ export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose }:
             ) : weeklyLoading ? (
               <div className="text-sm text-muted-foreground">Загрузка…</div>
             ) : weeklyError ? (
-              <EmptyState title="Ошибка загрузки" description="Не удалось загрузить недельную статистику." />
+              <>
+                {(() => { console.error('[SearchQueryDetailPanel] weekly load error', weeklyError); return null })()}
+                <EmptyState title="Ошибка загрузки" description="Не удалось загрузить недельную статистику." />
+              </>
             ) : sliced.length === 0 ? (
               <EmptyState title="По неделям" description="Нет данных за выбранный период." />
             ) : (
@@ -169,7 +172,7 @@ function Row({ label, value, bold }: RowProps) {
 
 function SubRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between pl-4 -mt-0.5">
+    <div className="flex items-center justify-between pl-4 !-mt-1.5">
       <span className="text-[11px] text-muted-foreground">{label}</span>
       <span className="text-[11px] text-muted-foreground tabular-nums">{value}</span>
     </div>
