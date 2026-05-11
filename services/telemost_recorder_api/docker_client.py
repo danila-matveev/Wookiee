@@ -48,7 +48,7 @@ def spawn_recorder_container(
     meeting_id: UUID,
     meeting_url: str,
     data_dir: str,
-    headless: bool = True,
+    headless: bool = False,
 ) -> str:
     """Run telemost_recorder:latest detached. Returns container id."""
     client = _get_client()
