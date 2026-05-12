@@ -53,7 +53,7 @@ async def spawn_recorder(
             """
             INSERT INTO telemost.meetings
                 (source, triggered_by, meeting_url, organizer_id, invitees, status)
-            VALUES ('dev-loop', $1, $2, $1, '[]'::jsonb, 'queued')
+            VALUES ('telegram', $1, $2, $1, '[]'::jsonb, 'queued')
             RETURNING id
             """,
             body.triggered_by,
