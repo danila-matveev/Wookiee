@@ -17,7 +17,7 @@ import {
   useState,
   type ReactNode,
 } from "react"
-import { useSearchParams } from "react-router-dom"
+import { Link, useSearchParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   Archive,
@@ -1144,32 +1144,126 @@ function TabContent({ m, draft, setDraft, editing, modelOsnovaId }: TabContentPr
       </Section>
 
       {pickingSert && (
-        <RefModal
-          title="Привязать сертификат"
-          fields={[
-            {
-              key: "sertifikat_id",
-              label: "Сертификат",
-              type: "select",
-              required: true,
-              options: availableSerts.map((s) => ({
-                value: s.id,
-                label: `${s.nazvanie}${s.nomer ? " · № " + s.nomer : ""}`,
-              })),
-              full: true,
-            },
-          ]}
-          onSave={async (vals) => {
-            const id = Number(vals.sertifikat_id)
-            if (!Number.isFinite(id)) return
-            await linkMut.mutateAsync(id)
-            setPickingSert(false)
-          }}
-          onCancel={() => setPickingSert(false)}
-          saveLabel="Привязать"
-        />
+        sertifikatyQ.isLoading || availableSerts.length === 0 ? (
+          <SertPickerEmptyModal
+            loading={sertifikatyQ.isLoading}
+            onCancel={() => setPickingSert(false)}
+          />
+        ) : (
+          <RefModal
+            title="Привязать сертификат"
+            fields={[
+              {
+                key: "sertifikat_id",
+                label: "Сертификат",
+                type: "select",
+                required: true,
+                options: availableSerts.map((s) => ({
+                  value: s.id,
+                  label: `${s.nazvanie}${s.nomer ? " · № " + s.nomer : ""}`,
+                })),
+                full: true,
+              },
+            ]}
+            onSave={async (vals) => {
+              const id = Number(vals.sertifikat_id)
+              if (!Number.isFinite(id)) return
+              await linkMut.mutateAsync(id)
+              setPickingSert(false)
+            }}
+            onCancel={() => setPickingSert(false)}
+            saveLabel="Привязать"
+          />
+        )
       )}
     </>
+  )
+}
+
+// ─── Empty/loading cert-picker modal (W1.7) ────────────────────────────────
+//
+// RefModal не поддерживает кастомный footer / disabled submit без значения,
+// поэтому при пустом списке (нет ни одного сертификата в БД или все уже
+// привязаны) показываем отдельную лёгкую модалку: сообщение + ссылка на
+// справочник сертификатов + disabled-кнопка «Привязать».
+function SertPickerEmptyModal({
+  loading, onCancel,
+}: {
+  loading: boolean
+  onCancel: () => void
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCancel()
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [onCancel])
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-stone-900/40 flex items-center justify-center p-4"
+      onClick={onCancel}
+    >
+      <div
+        className="w-full max-w-lg bg-white rounded-xl shadow-2xl overflow-hidden border border-stone-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-3 border-b border-stone-200">
+          <h2
+            className="cat-font-serif text-xl text-stone-900 italic"
+            style={{ fontFamily: "'Instrument Serif', ui-serif, Georgia, serif" }}
+          >
+            Привязать сертификат
+          </h2>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="p-1 hover:bg-stone-100 rounded"
+            aria-label="Close"
+          >
+            <X className="w-4 h-4 text-stone-500" />
+          </button>
+        </div>
+        <div className="px-5 py-6 space-y-3">
+          <div>
+            <label className="block text-[11px] uppercase tracking-wider text-stone-500 mb-1">
+              Сертификат
+            </label>
+            <div className="w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md bg-stone-50 text-stone-400 italic">
+              {loading ? "Загрузка…" : "Нет доступных сертификатов"}
+            </div>
+          </div>
+          {!loading && (
+            <Link
+              to="/catalog/sertifikaty"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-sm text-stone-700 hover:text-stone-900 underline underline-offset-2"
+            >
+              Создать сертификат
+              <ExternalLink className="w-3 h-3" />
+            </Link>
+          )}
+        </div>
+        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-stone-200 bg-stone-50">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-3 py-1.5 text-sm text-stone-700 hover:bg-stone-100 rounded-md"
+          >
+            Отмена
+          </button>
+          <button
+            type="button"
+            disabled
+            className="px-3 py-1.5 text-sm text-white bg-stone-900 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Привязать
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
