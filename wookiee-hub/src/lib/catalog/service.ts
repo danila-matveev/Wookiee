@@ -13,23 +13,178 @@ export async function fetchKategorii() {
   return data as { id: number; nazvanie: string; opisanie: string | null }[]
 }
 
+// ─── Атрибуты — registry (W6.1) ────────────────────────────────────────────
+//
+// Полный реестр атрибутов: label, type, options. До W6.1 хранилось хардкодом
+// в `src/types/catalog.ts::ALL_ATTRIBUTES`. Теперь — таблица `atributy`
+// (миграция 022). Связь категория↔атрибут — через `kategoriya_atributy`
+// (миграция 016 + FK `atribut_id` из 022).
+//
+// W6.2: type='url' допускает кастомные пользовательские поля (Я.Диск, ссылка).
+
+export type AtributType =
+  | "text"
+  | "number"
+  | "textarea"
+  | "select"
+  | "multiselect"
+  | "file_url"
+  | "url"
+  | "date"
+  | "checkbox"
+  | "pills"
+
+export interface Atribut {
+  id: number
+  key: string
+  label: string
+  type: AtributType
+  options: string[]
+  default_value: string | null
+  helper_text: string | null
+}
+
+export interface AtributPayload {
+  key: string
+  label: string
+  type: AtributType
+  options?: string[]
+  default_value?: string | null
+  helper_text?: string | null
+}
+
+export async function fetchAtributy(): Promise<Atribut[]> {
+  const { data, error } = await supabase
+    .from("atributy")
+    .select("id, key, label, type, options, default_value, helper_text")
+    .order("label")
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((r: any) => ({
+    id: r.id as number,
+    key: r.key as string,
+    label: r.label as string,
+    type: r.type as AtributType,
+    options: Array.isArray(r.options) ? (r.options as string[]) : [],
+    default_value: (r.default_value ?? null) as string | null,
+    helper_text: (r.helper_text ?? null) as string | null,
+  }))
+}
+
+export async function fetchAtributById(id: number): Promise<Atribut | null> {
+  const { data, error } = await supabase
+    .from("atributy")
+    .select("id, key, label, type, options, default_value, helper_text")
+    .eq("id", id)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  if (!data) return null
+  const r = data as any
+  return {
+    id: r.id as number,
+    key: r.key as string,
+    label: r.label as string,
+    type: r.type as AtributType,
+    options: Array.isArray(r.options) ? (r.options as string[]) : [],
+    default_value: (r.default_value ?? null) as string | null,
+    helper_text: (r.helper_text ?? null) as string | null,
+  }
+}
+
+export async function insertAtribut(payload: AtributPayload): Promise<Atribut> {
+  const row = {
+    key: payload.key,
+    label: payload.label,
+    type: payload.type,
+    options: payload.options ?? [],
+    default_value: payload.default_value ?? null,
+    helper_text: payload.helper_text ?? null,
+  }
+  const { data, error } = await supabase
+    .from("atributy")
+    .insert(row)
+    .select("id, key, label, type, options, default_value, helper_text")
+    .single()
+  if (error) throw new Error(error.message)
+  const r = data as any
+  return {
+    id: r.id as number,
+    key: r.key as string,
+    label: r.label as string,
+    type: r.type as AtributType,
+    options: Array.isArray(r.options) ? (r.options as string[]) : [],
+    default_value: (r.default_value ?? null) as string | null,
+    helper_text: (r.helper_text ?? null) as string | null,
+  }
+}
+
+export async function updateAtribut(
+  id: number,
+  patch: Partial<AtributPayload>,
+): Promise<void> {
+  const row: Record<string, unknown> = {}
+  if (patch.label !== undefined) row.label = patch.label
+  if (patch.type !== undefined) row.type = patch.type
+  if (patch.options !== undefined) row.options = patch.options
+  if (patch.default_value !== undefined) row.default_value = patch.default_value
+  if (patch.helper_text !== undefined) row.helper_text = patch.helper_text
+  // `key` иммутабелен после save — игнорируем patch.key.
+  const { error } = await supabase.from("atributy").update(row).eq("id", id)
+  if (error) throw new Error(error.message)
+}
+
+export async function deleteAtribut(id: number): Promise<void> {
+  // Pre-check: не удаляем, если атрибут используется хотя бы в одной категории.
+  const { count, error: countErr } = await supabase
+    .from("kategoriya_atributy")
+    .select("id", { count: "exact", head: true })
+    .eq("atribut_id", id)
+  if (countErr) throw new Error(countErr.message)
+  if ((count ?? 0) > 0) {
+    throw new Error(
+      `Нельзя удалить: атрибут используется в ${count} категори${
+        (count ?? 0) === 1 ? "и" : "ях"
+      }. Сначала отвяжите его в Категориях.`,
+    )
+  }
+  const { error } = await supabase.from("atributy").delete().eq("id", id)
+  if (error) throw new Error(error.message)
+}
+
 /**
- * Список ключей атрибутов, привязанных к категории.
+ * Атрибуты, привязанные к категории, в порядке `poryadok`.
  *
- * Источник истины — таблица `kategoriya_atributy` (migration 016, W2.2).
- * До W2.2 маппинг хранился в коде (`ATTRIBUTES_BY_CATEGORY` в `types/catalog.ts`).
- *
- * AttributeFieldDef (label/type/options) — пока в коде в `ALL_ATTRIBUTES`,
- * полноценный registry атрибутов в БД — задача W6.1.
+ * Источник истины — таблица `kategoriya_atributy` (миграция 016, W2.2) +
+ * FK `atribut_id` → `atributy` (миграция 022, W6.1). Возвращает полный объект
+ * `Atribut` (id, key, label, type, options, …) — model-card.tsx использует
+ * label/type/options напрямую, без вторичного маппинга через `ALL_ATTRIBUTES`.
  */
-export async function fetchAttributesForCategory(kategoriyaId: number): Promise<string[]> {
+export async function fetchAttributesForCategory(
+  kategoriyaId: number,
+): Promise<Atribut[]> {
   const { data, error } = await supabase
     .from("kategoriya_atributy")
-    .select("atribut_key, poryadok")
+    .select(
+      "poryadok, atributy:atribut_id(id, key, label, type, options, default_value, helper_text)",
+    )
     .eq("kategoriya_id", kategoriyaId)
+    .not("atribut_id", "is", null)
     .order("poryadok")
-  if (error) throw error
-  return (data ?? []).map((r) => r.atribut_key as string)
+  if (error) throw new Error(error.message)
+  return (data ?? [])
+    .map((r: any) => {
+      const a = r.atributy
+      if (!a) return null
+      return {
+        id: a.id as number,
+        key: a.key as string,
+        label: a.label as string,
+        type: a.type as AtributType,
+        options: Array.isArray(a.options) ? (a.options as string[]) : [],
+        default_value: (a.default_value ?? null) as string | null,
+        helper_text: (a.helper_text ?? null) as string | null,
+      } satisfies Atribut
+    })
+    .filter((x): x is Atribut => x != null)
 }
 
 export async function fetchKollekcii() {
@@ -2304,6 +2459,7 @@ export interface CatalogCounts {
   kanaly_prodazh: number
   sertifikaty: number
   statusy: number
+  atributy: number
 }
 
 async function tableCount(table: string): Promise<number> {
@@ -2339,6 +2495,7 @@ export async function fetchCatalogCounts(): Promise<CatalogCounts> {
     "kanaly_prodazh",
     "sertifikaty",
     "statusy",
+    "atributy",
   ] as const
   const tableMap = {
     models: "modeli_osnova",
@@ -2360,6 +2517,7 @@ export async function fetchCatalogCounts(): Promise<CatalogCounts> {
     kanaly_prodazh: "kanaly_prodazh",
     sertifikaty: "sertifikaty",
     statusy: "statusy",
+    atributy: "atributy",
   } as const satisfies Partial<Record<keyof CatalogCounts, string>>
   const counts = await Promise.all(tables.map((k) => tableCount(tableMap[k])))
   const out = {} as CatalogCounts

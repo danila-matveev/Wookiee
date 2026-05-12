@@ -45,3 +45,5 @@ export type {
 } from "./command-palette"
 
 export { AssetUploader } from "./asset-uploader"
+
+export { AttributeControl } from "./attribute-control"

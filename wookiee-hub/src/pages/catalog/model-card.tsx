@@ -39,9 +39,7 @@ import {
 
 import { supabase } from "@/lib/supabase"
 import {
-  ALL_ATTRIBUTES,
   FIELD_LEVEL,
-  type AttributeFieldDef,
   type FieldLevel as FieldLevelKind,
 } from "@/types/catalog"
 import {
@@ -52,6 +50,7 @@ import {
   duplicateModel,
   fetchAllTags,
   fetchAttributesForCategory,
+  type Atribut,
   fetchBrendy,
   fetchCvetaWithUsage,
   fetchFabriki,
@@ -82,6 +81,7 @@ import {
 } from "@/lib/catalog/service"
 import {
   AssetUploader,
+  AttributeControl,
   CompletenessRing,
   FieldWrap,
   LevelBadge,
@@ -89,7 +89,6 @@ import {
   RefModal,
   SelectField,
   StatusBadge,
-  StringSelectField,
   TagsCombobox,
   TextField,
   TextareaField,
@@ -879,18 +878,16 @@ function TabDescription({
 // ─── Tab 2: Attributes (dynamic per category) ──────────────────────────────
 
 function TabAttributes({ m, draft, setDraft, editing }: TabContentProps) {
-  // W2.2: связь kategoriya ↔ atribut_key уезжает в БД (`kategoriya_atributy`).
-  // ALL_ATTRIBUTES остаётся в коде как registry метаданных (label/type/options)
-  // до W6.1.
+  // W6.1: реестр атрибутов в БД (таблица `atributy`). fetchAttributesForCategory
+  // возвращает полный `Atribut[]` с label/type/options — без вторичного
+  // маппинга через `ALL_ATTRIBUTES`.
   const attrKeysQ = useQuery({
     queryKey: ["catalog", "kategoriya-atributy", m.kategoriya_id],
     queryFn: () => fetchAttributesForCategory(m.kategoriya_id as number),
     enabled: m.kategoriya_id != null,
     staleTime: 5 * 60 * 1000,
   })
-  const attrs: AttributeFieldDef[] = (attrKeysQ.data ?? [])
-    .map((key) => ALL_ATTRIBUTES[key])
-    .filter((def): def is AttributeFieldDef => def != null)
+  const attrs: Atribut[] = attrKeysQ.data ?? []
 
   const set = (k: string, v: unknown) => {
     if (!draft) return
@@ -918,24 +915,11 @@ function TabAttributes({ m, draft, setDraft, editing }: TabContentProps) {
       <div className="grid grid-cols-2 gap-x-4 gap-y-4">
         {attrs.map((a) => {
           const lvl = FIELD_LEVEL[a.key] ?? "model"
-          if (a.type === "select" && a.options) {
-            return (
-              <StringSelectField
-                key={a.key}
-                label={a.label}
-                value={(view[a.key] as string | null) ?? ""}
-                options={a.options}
-                onChange={(v) => set(a.key, v)}
-                readonly={!editing}
-                level={lvl}
-              />
-            )
-          }
           return (
-            <TextField
+            <AttributeControl
               key={a.key}
-              label={a.label}
-              value={(view[a.key] as string | null) ?? ""}
+              atribut={a}
+              value={view[a.key]}
               onChange={(v) => set(a.key, v)}
               readonly={!editing}
               level={lvl}
@@ -2164,7 +2148,7 @@ function CardSidebar({
   m, attrs, hexByCvet, openColor, kod,
 }: {
   m: ModelDetail
-  attrs: AttributeFieldDef[]
+  attrs: Atribut[]
   hexByCvet: Map<number, string | null>
   openColor: (colorCode: string) => void
   kod: string
@@ -2682,7 +2666,7 @@ export function ModelCard({ kod, onClose }: ModelCardProps) {
   })
   const hexByCvet = hexQ.data ?? new Map<number, string | null>()
 
-  // W2.2: ключи атрибутов категории — из БД (`kategoriya_atributy`).
+  // W6.1: атрибуты категории — из БД (`atributy` + `kategoriya_atributy`).
   // Используется для CardSidebar (Заполненность %, "X/Y атрибутов").
   const sidebarAttrKeysQ = useQuery({
     queryKey: ["catalog", "kategoriya-atributy", model?.kategoriya_id],
@@ -2690,9 +2674,7 @@ export function ModelCard({ kod, onClose }: ModelCardProps) {
     enabled: model?.kategoriya_id != null,
     staleTime: 5 * 60 * 1000,
   })
-  const sidebarAttrs: AttributeFieldDef[] = (sidebarAttrKeysQ.data ?? [])
-    .map((key) => ALL_ATTRIBUTES[key])
-    .filter((def): def is AttributeFieldDef => def != null)
+  const sidebarAttrs: Atribut[] = sidebarAttrKeysQ.data ?? []
 
   // Save mutation
   const saveMut = useMutation({
