@@ -180,6 +180,273 @@ function InlineArtikulStatusCell({
   )
 }
 
+// ─── Drill-down overlay (W8.4) ─────────────────────────────────────────────
+//
+// Overlay-карточка артикула: header (артикул + цвет + вариация + статус),
+// read-only список SKU (баркод, размер, статусы по 4 каналам) и кнопка «+ SKU».
+//
+// SKU грузятся отдельным запросом `fetchTovaryByArtikul` (cached на `artikulId`)
+// — registry-данные (`tovary_cnt`) дают только число.  Кнопка «+ SKU» открывает
+// RefModal (см. TabSKU в model-card.tsx за образцом), на submit вызывает
+// `insertTovar(artikulId, razmerId)` и инвалидирует обе query-keys.
+//
+// Inline-edit статусов в этом overlay НЕ делается — read-only.  Inline-edit
+// статусов SKU — territory W8.5 (tovary-реестр).
+
+interface ArtikulDrillDownProps {
+  row: ArtikulRow
+  /** Все статусы (из родительского fetchStatusy) — для бейджей и id→label fallback. */
+  statusyData?: { id: number; nazvanie: string; tip: string; color: string | null }[]
+  onClose: () => void
+}
+
+function ArtikulDrillDown({ row, statusyData, onClose }: ArtikulDrillDownProps) {
+  const queryClient = useQueryClient()
+  const [addSkuOpen, setAddSkuOpen] = useState(false)
+
+  // SKU артикула — отдельный запрос (registry содержит только tovary_cnt).
+  const tovaryQ = useQuery({
+    queryKey: ["tovary-by-artikul", row.id],
+    queryFn: () => fetchTovaryByArtikul(row.id),
+    staleTime: 30 * 1000,
+  })
+  const tovary: ArtikulTovar[] = tovaryQ.data ?? []
+
+  // Размеры — для select-поля в RefModal «+ SKU».
+  const razmeryQ = useQuery({
+    queryKey: ["catalog", "razmery"],
+    queryFn: fetchRazmery,
+    staleTime: 5 * 60 * 1000,
+  })
+  const razmery: Razmer[] = razmeryQ.data ?? []
+
+  // Map status_id → {nazvanie, color} — единая lookup для SKU-таблицы.
+  const statusById = useMemo(() => {
+    const m = new Map<number, { nazvanie: string; color: string | null }>()
+    for (const s of statusyData ?? []) m.set(s.id, { nazvanie: s.nazvanie, color: s.color })
+    return m
+  }, [statusyData])
+
+  // razmer_id, которые уже заняты у этого артикула (скрываем в select-опциях).
+  const usedRazmerIds = useMemo(() => {
+    const s = new Set<number>()
+    for (const t of tovary) if (t.razmer_id != null) s.add(t.razmer_id)
+    return s
+  }, [tovary])
+
+  const razmerOptions = useMemo(
+    () =>
+      razmery
+        .filter((r) => !usedRazmerIds.has(r.id))
+        .map((r) => ({ value: r.id, label: r.nazvanie ?? `#${r.id}` })),
+    [razmery, usedRazmerIds],
+  )
+
+  const insertMut = useMutation({
+    mutationFn: ({ razmerId }: { razmerId: number }) => insertTovar(row.id, razmerId),
+    onSuccess: () => {
+      setAddSkuOpen(false)
+      void queryClient.invalidateQueries({ queryKey: ["tovary-by-artikul", row.id] })
+      void queryClient.invalidateQueries({ queryKey: ["artikuly-registry"] })
+    },
+  })
+
+  // Esc закрывает overlay (если не открыта вложенная RefModal — она сама Esc обрабатывает).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !addSkuOpen) onClose()
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [onClose, addSkuOpen])
+
+  // Helper — отрисовать статус SKU через справочник (поддерживает любой id).
+  function renderSkuStatus(statusId: number | null): React.ReactNode {
+    if (statusId == null) {
+      return <span className="text-[11px] text-stone-400 italic">—</span>
+    }
+    const s = statusById.get(statusId)
+    if (!s) return <span className="text-[11px] text-stone-500 font-mono">#{statusId}</span>
+    return (
+      <StatusBadge
+        status={{ nazvanie: s.nazvanie, color: s.color ?? "gray" }}
+        compact
+        size="sm"
+      />
+    )
+  }
+
+  const swatch = row.cvet_hex ?? swatchColor(row.cvet_color_code ?? "")
+  const artikulStatus = row.status_id != null ? statusById.get(row.status_id) : null
+
+  return (
+    <>
+      <div
+        className="fixed inset-0 z-40 bg-black/30 flex items-start justify-center px-4 py-10"
+        onMouseDown={(e) => {
+          if (e.target === e.currentTarget) onClose()
+        }}
+      >
+        <div
+          className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden"
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div className="px-5 pt-4 pb-3 border-b border-stone-200 flex items-start gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="text-[11px] uppercase tracking-wider text-stone-400 mb-1">
+                Артикул
+              </div>
+              <div className="flex items-center gap-3 flex-wrap">
+                <h2 className="text-2xl text-stone-900 cat-font-serif font-mono">
+                  {row.artikul}
+                </h2>
+                {artikulStatus && (
+                  <StatusBadge
+                    status={{ nazvanie: artikulStatus.nazvanie, color: artikulStatus.color ?? "gray" }}
+                  />
+                )}
+              </div>
+              <div className="mt-2 flex items-center gap-4 flex-wrap text-xs text-stone-600">
+                <div className="flex items-center gap-1.5">
+                  <ColorSwatch hex={swatch} size={14} />
+                  <span className="font-mono">{row.cvet_color_code ?? "—"}</span>
+                  {row.cvet_nazvanie && (
+                    <span className="text-stone-500">· {row.cvet_nazvanie}</span>
+                  )}
+                </div>
+                {row.model_kod && (
+                  <div>
+                    <span className="text-stone-400">Вариация: </span>
+                    <span className="font-mono text-stone-700">{row.model_kod}</span>
+                  </div>
+                )}
+                {row.model_osnova_kod && (
+                  <div>
+                    <span className="text-stone-400">Модель: </span>
+                    <span className="font-mono text-stone-700">{row.model_osnova_kod}</span>
+                  </div>
+                )}
+                {row.nazvanie_etiketka && (
+                  <div className="text-stone-500">{row.nazvanie_etiketka}</div>
+                )}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded-md"
+              aria-label="Закрыть"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* SKU section */}
+          <div className="flex-1 overflow-auto">
+            <div className="px-5 py-3 flex items-center justify-between gap-3">
+              <div>
+                <div className="font-medium text-stone-900 text-sm">SKU артикула</div>
+                <div className="text-xs text-stone-500">
+                  {tovaryQ.isLoading
+                    ? "Загрузка…"
+                    : `${tovary.length} SKU · read-only`}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="px-2.5 py-1 text-xs text-white bg-stone-900 rounded-md flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={razmerOptions.length === 0 || razmeryQ.isLoading}
+                onClick={() => setAddSkuOpen(true)}
+                title={
+                  razmerOptions.length === 0
+                    ? "Все размеры из справочника уже добавлены"
+                    : "Создать новый SKU"
+                }
+              >
+                <Plus className="w-3 h-3" /> SKU
+              </button>
+            </div>
+            <div className="px-5 pb-5">
+              <div className="border border-stone-200 rounded-md overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-stone-50/80 border-b border-stone-200">
+                    <tr className="text-left text-[11px] uppercase tracking-wider text-stone-500">
+                      <th className="px-3 py-2 font-medium">Баркод</th>
+                      <th className="px-3 py-2 font-medium">Размер</th>
+                      <th className="px-3 py-2 font-medium border-l border-stone-200">WB</th>
+                      <th className="px-3 py-2 font-medium">OZON</th>
+                      <th className="px-3 py-2 font-medium">Сайт</th>
+                      <th className="px-3 py-2 font-medium">Lamoda</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tovaryQ.isLoading && (
+                      <tr>
+                        <td colSpan={6} className="px-3 py-8 text-center text-stone-400">
+                          <Loader2 className="w-4 h-4 inline animate-spin mr-2" />
+                          Загрузка SKU…
+                        </td>
+                      </tr>
+                    )}
+                    {!tovaryQ.isLoading && tovary.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="px-3 py-8 text-center text-sm text-stone-400 italic">
+                          Нет SKU для этого артикула
+                        </td>
+                      </tr>
+                    )}
+                    {!tovaryQ.isLoading && tovary.map((t) => (
+                      <tr key={t.id} className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60">
+                        <td className="px-3 py-2 font-mono text-xs text-stone-700">{t.barkod}</td>
+                        <td className="px-3 py-2 font-mono text-xs">{t.razmer_nazvanie ?? "—"}</td>
+                        <td className="px-3 py-2 border-l border-stone-100">{renderSkuStatus(t.status_id)}</td>
+                        <td className="px-3 py-2">{renderSkuStatus(t.status_ozon_id)}</td>
+                        <td className="px-3 py-2">{renderSkuStatus(t.status_sayt_id)}</td>
+                        <td className="px-3 py-2">{renderSkuStatus(t.status_lamoda_id)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {tovaryQ.error && (
+                <div className="mt-2 text-xs text-red-500">
+                  Ошибка загрузки SKU: {(tovaryQ.error as Error).message}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Модалка «+ SKU» — один размер, артикул фиксирован контекстом. */}
+      {addSkuOpen && (
+        <RefModal
+          title={`Создать SKU для ${row.artikul}`}
+          fields={[
+            {
+              key: "razmer_id",
+              label: "Размер",
+              type: "select",
+              required: true,
+              options: razmerOptions,
+              full: true,
+              hint: "Свободный размер. Уже занятые скрыты.",
+            },
+          ]}
+          onSave={async (vals) => {
+            const razmerId = Number(vals.razmer_id)
+            if (!Number.isFinite(razmerId)) return
+            await insertMut.mutateAsync({ razmerId })
+          }}
+          onCancel={() => setAddSkuOpen(false)}
+          saveLabel="Создать"
+        />
+      )}
+    </>
+  )
+}
+
 function renderCell(key: string, a: ArtikulRow): React.ReactNode {
   switch (key) {
     case "artikul":
@@ -249,7 +516,8 @@ export function ArtikulyPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkStatusOpen, setBulkStatusOpen] = useState(false)
   const bulkStatusRef = useRef<HTMLDivElement | null>(null)
-  const [, setSearchParams] = useSearchParams()
+  // W8.4 — drill-down overlay (клик по ячейке `artikul`).
+  const [drillDown, setDrillDown] = useState<ArtikulRow | null>(null)
   // W1.5 — drag-resize колонок + persist через ui_preferences. Регистрируем все
   // возможные колонки (visibility управляется ColumnsManager-ом отдельно).
   const { widths: colWidths, bindResizer } = useResizableColumns(
@@ -572,10 +840,9 @@ export function ArtikulyPage() {
               {visible.map((a) => (
                 <tr
                   key={a.id}
-                  className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60 cursor-pointer"
-                  onClick={() => setSearchParams({ artikul: a.artikul })}
+                  className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60"
                 >
-                  <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
+                  <td className="px-3 py-2.5">
                     <input
                       type="checkbox"
                       className="rounded border-stone-300"
@@ -585,7 +852,16 @@ export function ArtikulyPage() {
                   </td>
                   {columns.map((key) => (
                     <td key={key} className="px-3 py-2.5 whitespace-nowrap">
-                      {key === "status" ? (
+                      {key === "artikul" ? (
+                        <button
+                          type="button"
+                          onClick={() => setDrillDown(a)}
+                          className="font-mono text-xs text-stone-900 hover:text-stone-600 hover:underline underline-offset-2 cursor-pointer"
+                          title="Открыть карточку артикула с SKU"
+                        >
+                          {a.artikul}
+                        </button>
+                      ) : key === "status" ? (
                         <InlineArtikulStatusCell
                           currentStatusId={a.status_id ?? null}
                           statusOptions={artikulStatuses}
@@ -670,6 +946,15 @@ export function ArtikulyPage() {
             <X className="w-3 h-3" /> Очистить
           </button>
         </div>
+      )}
+
+      {/* W8.4 — drill-down overlay по клику на ячейку артикула. */}
+      {drillDown && (
+        <ArtikulDrillDown
+          row={drillDown}
+          statusyData={statusyData}
+          onClose={() => setDrillDown(null)}
+        />
       )}
     </div>
   )
