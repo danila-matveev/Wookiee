@@ -9,21 +9,24 @@ import {
 } from "@/lib/catalog/service"
 import { StatusBadge } from "@/components/catalog/ui/status-badge"
 import { ColorSwatch } from "@/components/catalog/ui/color-swatch"
-import { ColumnsManager, type ColumnDef } from "@/components/catalog/ui/columns-manager"
+import { ColumnsManager } from "@/components/catalog/ui/columns-manager"
 import { SortableHeader } from "@/components/catalog/ui/sortable-header"
 import { Pagination } from "@/components/catalog/ui/pagination"
 import { RefModal } from "@/components/catalog/ui/ref-modal"
 import { CellText } from "@/components/catalog/ui/cell-text"
+import { FilterBar } from "@/components/catalog/ui/filter-bar"
 import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
 import { useResizableColumns } from "@/hooks/use-resizable-columns"
 import { useTableSort, type SortState } from "@/hooks/use-table-sort"
 import { usePagination } from "@/hooks/use-pagination"
 import { useDebouncedValue } from "@/hooks/use-debounced-value"
+import { useColumnConfig } from "@/hooks/use-column-config"
+import { ARTIKULY_COLUMNS_FULL } from "@/lib/catalog/column-catalogs"
 import { downloadCsv } from "@/lib/catalog/csv-export"
 import { translateError } from "@/lib/catalog/error-translator"
 
 // Default per-column widths (px) for the standalone Артикулы page (W1.5).
-// Keys must match ARTIKULY_COLUMNS[i].key.
+// W9.5 — расширено новыми ключами из ARTIKULY_COLUMNS_FULL (column-catalogs).
 const ARTIKULY_DEFAULT_WIDTHS: Record<string, number> = {
   artikul: 160,
   model: 140,
@@ -36,24 +39,17 @@ const ARTIKULY_DEFAULT_WIDTHS: Record<string, number> = {
   kategoriya: 130,
   kollekciya: 140,
   fabrika: 140,
+  model_kod: 130,
+  nazvanie_etiketka: 180,
+  cvet_ru: 130,
+  cvet_en: 130,
+  cvet_color_code: 110,
+  tovary_cnt: 80,
 }
 
-// 11 columns; all default-visible per Final Report MINOR fix.
-const ARTIKULY_COLUMNS: ColumnDef[] = [
-  { key: "artikul",         label: "Артикул",         default: true },
-  { key: "model",           label: "Модель",          default: true },
-  { key: "cvet",            label: "Цвет",            default: true },
-  { key: "status",          label: "Статус артикула", default: true },
-  { key: "wb_nom",          label: "WB-номенклатура", default: true },
-  { key: "ozon_art",        label: "OZON-артикул",    default: true },
-  { key: "created",         label: "Создан",          default: true },
-  { key: "updated",         label: "Обновлён",        default: true },
-  { key: "kategoriya",      label: "Категория",       default: true },
-  { key: "kollekciya",      label: "Коллекция",       default: true },
-  { key: "fabrika",         label: "Производитель",   default: true },
-]
-
-const DEFAULT_COLUMNS = ARTIKULY_COLUMNS.filter((c) => c.default).map((c) => c.key)
+// W9.5 — каталог колонок переехал в shared `lib/catalog/column-catalogs.ts`.
+// Здесь оставляем алиас для backward compat с локальным кодом ниже.
+const ARTIKULY_COLUMNS = ARTIKULY_COLUMNS_FULL
 
 // W8.1 — sort keys must match column keys above.
 type ArtikulSortKey =
@@ -495,6 +491,19 @@ function renderCell(key: string, a: ArtikulRow): React.ReactNode {
       return <CellText className="text-xs text-stone-600" title={a.kollekciya ?? ""}>{a.kollekciya ?? "—"}</CellText>
     case "fabrika":
       return <CellText className="text-xs text-stone-600" title={a.fabrika ?? ""}>{a.fabrika ?? "—"}</CellText>
+    // W9.5 — расширения для нового конфигуратора (скрыты по умолчанию).
+    case "model_kod":
+      return <CellText className="font-mono text-[11px] text-stone-600" title={a.model_kod ?? ""}>{a.model_kod ?? "—"}</CellText>
+    case "nazvanie_etiketka":
+      return <CellText className="text-xs text-stone-600" title={a.nazvanie_etiketka ?? ""}>{a.nazvanie_etiketka ?? "—"}</CellText>
+    case "cvet_ru":
+      return <CellText className="text-xs text-stone-600" title={a.cvet_nazvanie ?? ""}>{a.cvet_nazvanie ?? "—"}</CellText>
+    case "cvet_en":
+      return <CellText className="text-xs text-stone-600" title={a.color_en ?? ""}>{a.color_en ?? "—"}</CellText>
+    case "cvet_color_code":
+      return <CellText className="font-mono text-xs text-stone-700" title={a.cvet_color_code ?? ""}>{a.cvet_color_code ?? "—"}</CellText>
+    case "tovary_cnt":
+      return <span className="text-xs text-stone-700 tabular-nums">{a.tovary_cnt}</span>
     default:
       return null
   }
@@ -516,8 +525,13 @@ export function ArtikulyPage() {
   const [search, setSearch] = useState("")
   // W9.3 — дебаунс ввода поиска.
   const debouncedSearch = useDebouncedValue(search, 300)
-  const [statusFilter, setStatusFilter] = useState<"all" | number>("all")
-  const [columns, setColumns] = useState<string[]>(DEFAULT_COLUMNS)
+  // W9.4 — multi-select фильтры (раньше был single `"all" | number`).
+  const [selectedStatusIds, setSelectedStatusIds] = useState<Set<number>>(new Set())
+  const [selectedModelKods, setSelectedModelKods] = useState<Set<string>>(new Set())
+  const [selectedColorCodes, setSelectedColorCodes] = useState<Set<string>>(new Set())
+  // W9.5 — конфигуратор колонок (видимость + порядок + сброс) через единый хук.
+  const columnConfig = useColumnConfig("artikuly", ARTIKULY_COLUMNS)
+  const columns = columnConfig.visibleColumns
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkStatusOpen, setBulkStatusOpen] = useState(false)
   const bulkStatusRef = useRef<HTMLDivElement | null>(null)
@@ -563,11 +577,45 @@ export function ArtikulyPage() {
     return acc
   }, [data])
 
+  // W9.4 — список моделей и цветов для FilterBar.
+  const modelOptions = useMemo(() => {
+    const acc = new Map<string, { label: string; count: number }>()
+    for (const a of data ?? []) {
+      const kod = a.model_osnova_kod
+      if (!kod) continue
+      const label = a.nazvanie_etiketka ? `${kod} · ${a.nazvanie_etiketka}` : kod
+      const prev = acc.get(kod)
+      acc.set(kod, { label, count: (prev?.count ?? 0) + 1 })
+    }
+    return Array.from(acc.entries())
+      .sort(([a], [b]) => a.localeCompare(b, "ru"))
+      .map(([value, info]) => ({ value, label: info.label, count: info.count }))
+  }, [data])
+  const colorOptions = useMemo(() => {
+    const acc = new Map<string, { label: string; count: number }>()
+    for (const a of data ?? []) {
+      const code = a.cvet_color_code
+      if (!code) continue
+      const label = a.cvet_nazvanie ? `${code} · ${a.cvet_nazvanie}` : code
+      const prev = acc.get(code)
+      acc.set(code, { label, count: (prev?.count ?? 0) + 1 })
+    }
+    return Array.from(acc.entries())
+      .sort(([a], [b]) => a.localeCompare(b, "ru"))
+      .map(([value, info]) => ({ value, label: info.label, count: info.count }))
+  }, [data])
+
   const filtered = useMemo<ArtikulRow[]>(() => {
     if (!data) return []
     let res = data
-    if (statusFilter !== "all") {
-      res = res.filter((a) => a.status_id === statusFilter)
+    if (selectedStatusIds.size > 0) {
+      res = res.filter((a) => a.status_id != null && selectedStatusIds.has(a.status_id))
+    }
+    if (selectedModelKods.size > 0) {
+      res = res.filter((a) => a.model_osnova_kod != null && selectedModelKods.has(a.model_osnova_kod))
+    }
+    if (selectedColorCodes.size > 0) {
+      res = res.filter((a) => a.cvet_color_code != null && selectedColorCodes.has(a.cvet_color_code))
     }
     if (debouncedSearch.trim()) {
       // W9.3 — расширенный набор полей + регистр-инвариантно.
@@ -595,7 +643,7 @@ export function ArtikulyPage() {
       })
     }
     return res
-  }, [data, statusFilter, debouncedSearch])
+  }, [data, selectedStatusIds, selectedModelKods, selectedColorCodes, debouncedSearch])
 
   // W8.1 — sort sits between filter and pagination.
   const sortedFiltered = useMemo<ArtikulRow[]>(
@@ -606,7 +654,7 @@ export function ArtikulyPage() {
     [filtered, sortRows],
   )
   // Reset to page 1 when filters/sort change.
-  useEffect(() => { resetPage() }, [debouncedSearch, statusFilter, sort.column, sort.direction, resetPage])
+  useEffect(() => { resetPage() }, [debouncedSearch, selectedStatusIds, selectedModelKods, selectedColorCodes, sort.column, sort.direction, resetPage])
   const paginated = useMemo(() => paginate(sortedFiltered), [paginate, sortedFiltered])
   const visible = paginated.slice
 
@@ -764,40 +812,45 @@ export function ArtikulyPage() {
           )}
         </div>
         <div className="h-5 w-px bg-stone-200 mx-1" />
-        <span className="text-[10px] uppercase tracking-wider text-stone-400">Статус:</span>
-        <button
-          onClick={() => setStatusFilter("all")}
-          className={`px-2 py-1 text-xs rounded-md transition-colors ${
-            statusFilter === "all" ? "bg-stone-900 text-white" : "text-stone-600 hover:bg-stone-100"
-          }`}
-        >
-          Все <span className="text-[10px] opacity-70 ml-1 tabular-nums">{data?.length ?? 0}</span>
-        </button>
-        {artikulStatuses.map((s) => (
-          <button
-            key={s.id}
-            onClick={() => setStatusFilter(s.id)}
-            className={`px-2 py-1 text-xs rounded-md transition-colors ${
-              statusFilter === s.id ? "bg-stone-900 text-white" : "text-stone-600 hover:bg-stone-100"
-            }`}
-          >
-            {s.nazvanie}
-            <span className="text-[10px] opacity-70 ml-1 tabular-nums">
-              {statusCounts[s.id] ?? 0}
-            </span>
-          </button>
-        ))}
+        {/* W9.4 — компактный FilterBar (модель, цвет, статус, бренд).
+            TODO(W9.4): добавить chip «Бренд» — для этого нужно протащить
+            brand_id/brand в `fetchArtikulyRegistry` (сейчас оно не
+            выбирается из modeli_osnova). */}
+        <FilterBar
+          filters={[
+            { key: "model", label: "Модель", options: modelOptions },
+            { key: "cvet", label: "Цвет", options: colorOptions },
+            {
+              key: "status",
+              label: "Статус",
+              options: artikulStatuses.map((s) => ({
+                value: String(s.id),
+                label: s.nazvanie,
+                count: statusCounts[s.id] ?? 0,
+              })),
+            },
+          ]}
+          values={{
+            model: Array.from(selectedModelKods),
+            cvet: Array.from(selectedColorCodes),
+            status: Array.from(selectedStatusIds).map(String),
+          }}
+          onChange={(key, next) => {
+            if (key === "model") setSelectedModelKods(new Set(next))
+            else if (key === "cvet") setSelectedColorCodes(new Set(next))
+            else if (key === "status") setSelectedStatusIds(new Set(next.map((v) => Number(v))))
+          }}
+          onResetAll={() => {
+            setSelectedModelKods(new Set())
+            setSelectedColorCodes(new Set())
+            setSelectedStatusIds(new Set())
+          }}
+        />
         <div className="ml-auto flex items-center gap-2">
           <div className="text-xs text-stone-500 tabular-nums">
             {filtered.length} из {data?.length ?? 0}
           </div>
-          <ColumnsManager
-            columns={ARTIKULY_COLUMNS}
-            value={columns}
-            onChange={setColumns}
-            scope="artikuly"
-            storageKey="columns"
-          />
+          <ColumnsManager state={columnConfig} />
         </div>
       </div>
 

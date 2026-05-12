@@ -10,10 +10,13 @@ import {
 import { supabase } from "@/lib/supabase"
 import { StatusBadge } from "@/components/catalog/ui/status-badge"
 import { ColorSwatch } from "@/components/catalog/ui/color-swatch"
-import { ColumnsManager, type ColumnDef } from "@/components/catalog/ui/columns-manager"
+import { ColumnsManager } from "@/components/catalog/ui/columns-manager"
+import { useColumnConfig } from "@/hooks/use-column-config"
+import { TOVARY_COLUMNS_FULL } from "@/lib/catalog/column-catalogs"
 import { BulkActionsBar } from "@/components/catalog/ui/bulk-actions-bar"
 import { SortableHeader } from "@/components/catalog/ui/sortable-header"
 import { Pagination } from "@/components/catalog/ui/pagination"
+import { FilterBar } from "@/components/catalog/ui/filter-bar"
 import { CellText } from "@/components/catalog/ui/cell-text"
 import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
 import { useResizableColumns } from "@/hooks/use-resizable-columns"
@@ -25,7 +28,7 @@ import { downloadCsv } from "@/lib/catalog/csv-export"
 import { translateError } from "@/lib/catalog/error-translator"
 
 // W1.5 — Default per-column widths (px) for the SKU registry (Товары) page.
-// Keys must match TOVARY_COLUMNS[i].key.
+// W9.5 — расширено новыми ключами из TOVARY_COLUMNS_FULL (column-catalogs).
 const TOVARY_DEFAULT_WIDTHS: Record<string, number> = {
   barkod: 150,
   artikul: 150,
@@ -44,6 +47,13 @@ const TOVARY_DEFAULT_WIDTHS: Record<string, number> = {
   cena_wb: 110,
   cena_ozon: 110,
   created: 110,
+  // W9.5
+  sku_china_size: 130,
+  ozon_product_id: 150,
+  ozon_fbo_sku_id: 150,
+  lamoda_seller_sku: 160,
+  kollekciya: 140,
+  kategoriya: 130,
 }
 
 // W9.9 — синтетический ключ колонки «Статус» (для одного выбранного канала).
@@ -52,28 +62,9 @@ const TOVARY_DEFAULT_WIDTHS: Record<string, number> = {
 const STATUS_CHANNEL_KEY = "status_channel"
 const CHANNEL_STATUS_KEYS = ["status_wb", "status_ozon", "status_sayt", "status_lamoda"] as const
 
-// 17 columns; all default-visible per Final Report MINOR fix.
-const TOVARY_COLUMNS: ColumnDef[] = [
-  { key: "barkod",          label: "Баркод",          default: true },
-  { key: "artikul",         label: "Артикул",         default: true },
-  { key: "model",           label: "Модель",          default: true },
-  { key: "cvet",            label: "Цвет",            default: true },
-  { key: "razmer",          label: "Размер",          default: true },
-  { key: "wb_nom",          label: "WB-номенклатура", default: true },
-  { key: "ozon_art",        label: "OZON-артикул",    default: true },
-  { key: "status_wb",       label: "Статус WB",       default: true,  badge: "канал" },
-  { key: "status_ozon",     label: "Статус OZON",     default: true,  badge: "канал" },
-  { key: "status_sayt",     label: "Статус Сайт",     default: true,  badge: "канал" },
-  { key: "status_lamoda",   label: "Статус Lamoda",   default: true,  badge: "канал" },
-  { key: "barkod_gs1",      label: "Баркод GS1",      default: true },
-  { key: "barkod_gs2",      label: "Баркод GS2",      default: true },
-  { key: "barkod_perehod",  label: "Баркод перехода", default: true },
-  { key: "cena_wb",         label: "Цена WB",         default: true },
-  { key: "cena_ozon",       label: "Цена OZON",       default: true },
-  { key: "created",         label: "Дата создания",   default: true },
-]
-
-const DEFAULT_COLUMNS = TOVARY_COLUMNS.filter((c) => c.default).map((c) => c.key)
+// W9.5 — каталог колонок переехал в shared `lib/catalog/column-catalogs.ts`.
+// Алиас оставлен для backward-compat локального кода (`labelForColumn` ниже).
+const TOVARY_COLUMNS = TOVARY_COLUMNS_FULL
 
 type StatusGroupFilter = "all" | "active" | "archive" | "no-status"
 type ChannelFilter = "all" | "wb" | "ozon" | "sayt" | "lamoda"
@@ -365,6 +356,19 @@ function renderCell(
       return <span className="text-xs text-stone-400 italic">—</span>
     case "created":
       return <CellText className="text-xs text-stone-500" title={t.created_at ?? ""}>{relativeDate(t.created_at)}</CellText>
+    // W9.5 — расширения для нового конфигуратора (скрыты по умолчанию).
+    case "sku_china_size":
+      return <CellText className="font-mono text-[11px] text-stone-500" title={t.sku_china_size ?? ""}>{t.sku_china_size ?? "—"}</CellText>
+    case "ozon_product_id":
+      return <CellText className="font-mono text-[11px] text-stone-500 tabular-nums" title={t.ozon_product_id != null ? String(t.ozon_product_id) : ""}>{t.ozon_product_id ?? "—"}</CellText>
+    case "ozon_fbo_sku_id":
+      return <CellText className="font-mono text-[11px] text-stone-500 tabular-nums" title={t.ozon_fbo_sku_id != null ? String(t.ozon_fbo_sku_id) : ""}>{t.ozon_fbo_sku_id ?? "—"}</CellText>
+    case "lamoda_seller_sku":
+      return <CellText className="font-mono text-[11px] text-stone-500" title={t.lamoda_seller_sku ?? ""}>{t.lamoda_seller_sku ?? "—"}</CellText>
+    case "kollekciya":
+      return <CellText className="text-xs text-stone-600" title={t.kollekciya ?? ""}>{t.kollekciya ?? "—"}</CellText>
+    case "kategoriya":
+      return <CellText className="text-xs text-stone-600" title={t.kategoriya ?? ""}>{t.kategoriya ?? "—"}</CellText>
     default:
       return null
   }
@@ -698,10 +702,17 @@ export function TovaryPage() {
   const debouncedSearch = useDebouncedValue(search, 300)
   const [statusGroup, setStatusGroup] = useState<StatusGroupFilter>("all")
   const [channelFilter, setChannelFilter] = useState<ChannelFilter>("all")
+  // W9.4 — multi-select chip-фильтры (модель, цвет, размер, статус по каналам).
+  const [selectedModelKods, setSelectedModelKods] = useState<Set<string>>(new Set())
+  const [selectedColorCodes, setSelectedColorCodes] = useState<Set<string>>(new Set())
+  const [selectedRazmery, setSelectedRazmery] = useState<Set<string>>(new Set())
+  const [selectedChannelStatusIds, setSelectedChannelStatusIds] = useState<Set<number>>(new Set())
   const [groupBy, setGroupBy] = useState<GroupBy>("none")
   // W9.6 — Notion-style collapsible group headers.
   const { isCollapsed: isGroupCollapsed, toggle: toggleGroupCollapsed } = useCollapsibleGroups("tovary")
-  const [columns, setColumns] = useState<string[]>(DEFAULT_COLUMNS)
+  // W9.5 — конфигуратор колонок (видимость + порядок + сброс) через единый хук.
+  const columnConfig = useColumnConfig("tovary", TOVARY_COLUMNS)
+  const columns = columnConfig.visibleColumns
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [linkSkleykaChannel, setLinkSkleykaChannel] = useState<"wb" | "ozon" | null>(null)
   // W1.5 — drag-resize колонок + persist. Регистрируем все возможные колонки.
@@ -740,6 +751,65 @@ export function TovaryPage() {
       lamoda: map("lamoda"),
     }
   }, [statusyData])
+
+  // W9.4 — опции для компактного FilterBar (модель, цвет, размер, статус).
+  const modelOptions = useMemo(() => {
+    const acc = new Map<string, { label: string; count: number }>()
+    for (const t of data ?? []) {
+      const kod = t.model_osnova_kod
+      if (!kod) continue
+      const label = t.nazvanie_etiketka ? `${kod} · ${t.nazvanie_etiketka}` : kod
+      const prev = acc.get(kod)
+      acc.set(kod, { label, count: (prev?.count ?? 0) + 1 })
+    }
+    return Array.from(acc.entries())
+      .sort(([a], [b]) => a.localeCompare(b, "ru"))
+      .map(([value, info]) => ({ value, label: info.label, count: info.count }))
+  }, [data])
+  const colorOptions = useMemo(() => {
+    const acc = new Map<string, { label: string; count: number }>()
+    for (const t of data ?? []) {
+      const code = t.cvet_color_code
+      if (!code) continue
+      const label = t.cvet_ru ? `${code} · ${t.cvet_ru}` : code
+      const prev = acc.get(code)
+      acc.set(code, { label, count: (prev?.count ?? 0) + 1 })
+    }
+    return Array.from(acc.entries())
+      .sort(([a], [b]) => a.localeCompare(b, "ru"))
+      .map(([value, info]) => ({ value, label: info.label, count: info.count }))
+  }, [data])
+  const razmerOptions = useMemo(() => {
+    const acc = new Map<string, number>()
+    for (const t of data ?? []) {
+      const r = t.razmer_kod
+      if (!r) continue
+      acc.set(r, (acc.get(r) ?? 0) + 1)
+    }
+    return Array.from(acc.entries())
+      .sort(([a], [b]) => a.localeCompare(b, "ru", { numeric: true }))
+      .map(([value, count]) => ({ value, label: value, count }))
+  }, [data])
+  // Статусы для multi-select — берём «product» (основной канал WB) +
+  // дополняем sayt/lamoda, чтобы chip покрывал все каналы. Дедупликация по id.
+  const channelStatusOptions = useMemo(() => {
+    const seen = new Map<number, { nazvanie: string; count: number }>()
+    for (const s of statusyData ?? []) {
+      if (s.tip === "product" || s.tip === "sayt" || s.tip === "lamoda") {
+        if (!seen.has(s.id)) seen.set(s.id, { nazvanie: s.nazvanie, count: 0 })
+      }
+    }
+    for (const t of data ?? []) {
+      for (const id of [t.status_id, t.status_ozon_id, t.status_sayt_id, t.status_lamoda_id]) {
+        if (id != null && seen.has(id)) {
+          seen.get(id)!.count += 1
+        }
+      }
+    }
+    return Array.from(seen.entries())
+      .sort(([, a], [, b]) => a.nazvanie.localeCompare(b.nazvanie, "ru"))
+      .map(([id, info]) => ({ value: String(id), label: info.nazvanie, count: info.count }))
+  }, [statusyData, data])
 
   const archiveStatusIds = useMemo(() => {
     const ids = new Set<number>()
@@ -801,11 +871,32 @@ export function TovaryPage() {
     let res: TovarRow[] = data
     res = applyChannelFilter(res, channelFilter, statusLookup)
     res = applyStatusGroupFilter(res, statusGroup, archiveStatusIds)
+    if (selectedModelKods.size > 0) {
+      res = res.filter((t) => t.model_osnova_kod != null && selectedModelKods.has(t.model_osnova_kod))
+    }
+    if (selectedColorCodes.size > 0) {
+      res = res.filter((t) => t.cvet_color_code != null && selectedColorCodes.has(t.cvet_color_code))
+    }
+    if (selectedRazmery.size > 0) {
+      res = res.filter((t) => t.razmer_kod != null && selectedRazmery.has(t.razmer_kod))
+    }
+    if (selectedChannelStatusIds.size > 0) {
+      // W9.4 — статус по каналам: матчим, если хотя бы один из 4 каналов содержит
+      // выбранный статус. Так чип «Статус» работает как multi-OR через все каналы.
+      res = res.filter((t) => {
+        const ids = [t.status_id, t.status_ozon_id, t.status_sayt_id, t.status_lamoda_id]
+        return ids.some((id) => id != null && selectedChannelStatusIds.has(id))
+      })
+    }
     if (debouncedSearch.trim()) {
       res = res.filter((t) => matchesCompositeSearch(t, debouncedSearch))
     }
     return res
-  }, [data, channelFilter, statusLookup, statusGroup, archiveStatusIds, debouncedSearch])
+  }, [
+    data, channelFilter, statusLookup, statusGroup, archiveStatusIds,
+    selectedModelKods, selectedColorCodes, selectedRazmery, selectedChannelStatusIds,
+    debouncedSearch,
+  ])
 
   // W8.1 — sort after filter, before group.
   const sortedFiltered = useMemo<TovarRow[]>(
@@ -819,7 +910,13 @@ export function TovaryPage() {
 
   // W8.2 — pagination kicks in only when groupBy === "none"; when grouped, show
   // every item per group (cap removed — pagination across groups is non-obvious).
-  useEffect(() => { resetPage() }, [debouncedSearch, statusGroup, channelFilter, groupBy, sort.column, sort.direction, resetPage])
+  useEffect(() => {
+    resetPage()
+  }, [
+    debouncedSearch, statusGroup, channelFilter, groupBy, sort.column, sort.direction,
+    selectedModelKods, selectedColorCodes, selectedRazmery, selectedChannelStatusIds,
+    resetPage,
+  ])
   const paginated = useMemo(() => paginate(sortedFiltered), [paginate, sortedFiltered])
   const visibleByGroup = useMemo(() => {
     if (groupBy === "none") {
@@ -1065,6 +1162,40 @@ export function TovaryPage() {
             storageKey="columns"
           />
         </div>
+      </div>
+
+      {/* W9.4 — Filter bar — row 1.5: компактные dropdown-фильтры
+          (модель, цвет, размер, статус по каналам).
+          TODO(W9.4): добавить chip «Бренд» — нужно протащить brand_id/brand
+          через `fetchTovaryRegistry` (modeli_osnova.brand_id), сейчас оно не
+          выбирается. */}
+      <div className="px-6 pb-2 shrink-0">
+        <FilterBar
+          filters={[
+            { key: "model", label: "Модель", options: modelOptions },
+            { key: "cvet", label: "Цвет", options: colorOptions },
+            { key: "razmer", label: "Размер", options: razmerOptions },
+            { key: "status", label: "Статус по каналам", options: channelStatusOptions },
+          ]}
+          values={{
+            model: Array.from(selectedModelKods),
+            cvet: Array.from(selectedColorCodes),
+            razmer: Array.from(selectedRazmery),
+            status: Array.from(selectedChannelStatusIds).map(String),
+          }}
+          onChange={(key, next) => {
+            if (key === "model") setSelectedModelKods(new Set(next))
+            else if (key === "cvet") setSelectedColorCodes(new Set(next))
+            else if (key === "razmer") setSelectedRazmery(new Set(next))
+            else if (key === "status") setSelectedChannelStatusIds(new Set(next.map((v) => Number(v))))
+          }}
+          onResetAll={() => {
+            setSelectedModelKods(new Set())
+            setSelectedColorCodes(new Set())
+            setSelectedRazmery(new Set())
+            setSelectedChannelStatusIds(new Set())
+          }}
+        />
       </div>
 
       {/* Filter bar — row 2: status group */}

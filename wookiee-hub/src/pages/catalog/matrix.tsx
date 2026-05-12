@@ -11,7 +11,7 @@ import { CellText } from "@/components/catalog/ui/cell-text"
 import { NewModelModal } from "@/components/catalog/ui/new-model-modal"
 import { SortableHeader } from "@/components/catalog/ui/sortable-header"
 import { Pagination } from "@/components/catalog/ui/pagination"
-import { FilterBar, type FilterBarFilter } from "@/components/catalog/ui/filter-bar"
+import { FilterBar } from "@/components/catalog/ui/filter-bar"
 import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
 import { useResizableColumns, type ResizerBindings } from "@/hooks/use-resizable-columns"
 import { useTableSort, type SortState } from "@/hooks/use-table-sort"
@@ -41,26 +41,9 @@ function toggleSet<T>(set: Set<T>, value: T): Set<T> {
   else next.add(value)
   return next
 }
-type ChipValue = string | number
-type ChipItem<T extends ChipValue> = { key: string; value: T; label: string; count?: number }
-function FilterChips<T extends ChipValue>({ title, items, selected, onChange, className = "mb-2" }: { title: string; items: ChipItem<T>[]; selected: Set<T>; onChange: (next: Set<T>) => void; className?: string }) {
-  if (items.length === 0) return null
-  return (
-    <div className={`flex items-center gap-1.5 ${className} flex-wrap`}>
-      <span className="text-[10px] uppercase tracking-wider text-stone-400 mr-1">{title}</span>
-      {items.map((item) => {
-        const active = selected.has(item.value)
-        return (
-          <button key={item.key} onClick={() => onChange(toggleSet(selected, item.value))} className={`px-2.5 py-1 text-xs rounded-md transition-colors ${item.count == null ? "" : "flex items-center gap-1.5"} ${active ? "bg-stone-900 text-white" : "text-stone-600 hover:bg-stone-100 border border-stone-200"}`}>
-            <span>{item.label}</span>
-            {item.count != null && <span className={`text-[10px] tabular-nums ${active ? "text-stone-300" : "text-stone-400"}`}>{item.count}</span>}
-          </button>
-        )
-      })}
-      {selected.size > 0 && <button onClick={() => onChange(new Set())} className="text-[11px] text-stone-500 hover:text-stone-800 underline ml-1">сбросить</button>}
-    </div>
-  )
-}
+// W9.4 — старый компонент `FilterChips` (всегда открытые ряды чипов по одному
+// измерению) заменён компактным `FilterBar` (см. import выше). Сохраняем только
+// `toggleSet` и тривиальные типы, которые могут пригодиться в других местах.
 // ─── Matrix list view (Базовые модели) — Wave 2 B1 ─────────────────────────
 type GroupBy = "none" | "brand" | "kategoriya" | "kollekciya" | "fabrika" | "status"
 type ListTab = "modeli_osnova" | "artikuly" | "tovary"
@@ -433,14 +416,60 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
             <span className="text-xs text-stone-500 tabular-nums">{filtered.length} из {rows.length}</span>
           </div>
         </div>
-        {/* W3.2 — Brand chips (placed first — бренд = главная ось каталога) */}
-        <FilterChips title="Бренды:" items={brendy.map((b) => ({ key: String(b.id), value: b.id, label: b.nazvanie, count: brandCounts.get(b.id) ?? 0 }))} selected={selectedBrandIds} onChange={setSelectedBrandIds} />
-        {/* Category chips */}
-        <FilterChips title="Категории:" items={kategorii.map((k) => ({ key: String(k.id), value: k.id, label: k.nazvanie }))} selected={selectedCategoryIds} onChange={setSelectedCategoryIds} />
-        {/* Collection chips */}
-        <FilterChips title="Коллекции:" items={kollekcii.map((k) => ({ key: String(k.id), value: k.nazvanie, label: k.nazvanie }))} selected={selectedCollectionNames} onChange={setSelectedCollectionNames} />
-        {/* Status chips with counts */}
-        <FilterChips title="Статусы:" items={modelStatuses.map((s) => ({ key: String(s.id), value: s.id, label: s.nazvanie, count: statusCounts.get(s.id) ?? 0 }))} selected={selectedStatusIds} onChange={setSelectedStatusIds} className="mb-3" />
+        {/* W9.4 + W9.16 — compact Notion-style dropdown FilterBar.
+            Объединяет бренд, категорию, коллекцию, сезон и статус в одну строку chip-ов. */}
+        <div className="mb-3">
+          <FilterBar
+            filters={[
+              {
+                key: "brand",
+                label: "Бренд",
+                options: brendy.map((b) => ({ value: String(b.id), label: b.nazvanie, count: brandCounts.get(b.id) ?? 0 })),
+              },
+              {
+                key: "kategoriya",
+                label: "Категория",
+                options: kategorii.map((k) => ({ value: String(k.id), label: k.nazvanie, count: categoryCounts.get(k.id) ?? 0 })),
+              },
+              {
+                key: "status",
+                label: "Статус",
+                options: modelStatuses.map((s) => ({ value: String(s.id), label: s.nazvanie, count: statusCounts.get(s.id) ?? 0 })),
+              },
+              {
+                key: "kollekciya",
+                label: "Коллекция",
+                options: kollekcii.map((k) => ({ value: k.nazvanie, label: k.nazvanie, count: collectionCounts.get(k.nazvanie) ?? 0 })),
+              },
+              {
+                key: "season",
+                label: "Сезон / тип коллекции",
+                options: seasonOptions,
+              },
+            ]}
+            values={{
+              brand: Array.from(selectedBrandIds).map(String),
+              kategoriya: Array.from(selectedCategoryIds).map(String),
+              status: Array.from(selectedStatusIds).map(String),
+              kollekciya: Array.from(selectedCollectionNames),
+              season: Array.from(selectedSeasons),
+            }}
+            onChange={(key, next) => {
+              if (key === "brand") setSelectedBrandIds(new Set(next.map((v) => Number(v))))
+              else if (key === "kategoriya") setSelectedCategoryIds(new Set(next.map((v) => Number(v))))
+              else if (key === "status") setSelectedStatusIds(new Set(next.map((v) => Number(v))))
+              else if (key === "kollekciya") setSelectedCollectionNames(new Set(next))
+              else if (key === "season") setSelectedSeasons(new Set(next))
+            }}
+            onResetAll={() => {
+              setSelectedBrandIds(new Set())
+              setSelectedCategoryIds(new Set())
+              setSelectedStatusIds(new Set())
+              setSelectedCollectionNames(new Set())
+              setSelectedSeasons(new Set())
+            }}
+          />
+        </div>
         {/* Table */}
         <div className="bg-white rounded-lg border border-stone-200 overflow-x-auto">
           <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
