@@ -156,3 +156,83 @@ async def test_postprocess_meeting_chunked_for_large_segments():
     assert result["speakers_map"] == {"Speaker 0": "Данила"}
     assert result["tags"] == ["продажи", "маркетинг"]
     assert result["summary"]["topics"][0]["title"] == "Итоги недели"
+
+
+@pytest.mark.asyncio
+async def test_postprocess_meeting_chunked_paragraphs_failure_returns_summary_only():
+    """If paragraphs chunk fails (e.g. truncated JSON), return summary+tags with empty paragraphs."""
+    summary_response = {
+        "tags": ["продажи"],
+        "summary": {
+            "participants": ["Данила"],
+            "topics": [{"title": "Итоги", "anchor": "[00:00]"}],
+            "decisions": [],
+            "tasks": [],
+        },
+    }
+
+    call_count = {"n": 0}
+
+    async def fake_call(prompt, model, timeout_seconds):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            return json.dumps(summary_response, ensure_ascii=False)
+        # Mimic truncated paragraphs output (unterminated string)
+        return '{"paragraphs": [{"speaker": "Speaker 0", "start_ms": 0, "text": "Hello world... <truncated mid-string'
+
+    segments = [
+        {"speaker": "Speaker 0", "start_ms": i * 1000, "end_ms": (i + 1) * 1000, "text": "test"}
+        for i in range(160)
+    ]
+    participants = [{"name": "Данила"}]
+
+    with patch(
+        "services.telemost_recorder_api.llm_postprocess._call_openrouter",
+        AsyncMock(side_effect=fake_call),
+    ):
+        result = await postprocess_meeting(segments, participants)
+
+    assert call_count["n"] == 2
+    assert result["tags"] == ["продажи"]
+    assert result["summary"]["topics"][0]["title"] == "Итоги"
+    assert result["paragraphs"] == []  # fallback
+    assert result["speakers_map"] == {}  # fallback
+
+
+@pytest.mark.asyncio
+async def test_postprocess_meeting_chunked_paragraphs_http_error_returns_summary_only():
+    """If paragraphs chunk raises httpx.HTTPError, fall back to empty paragraphs + keep summary."""
+    summary_response = {
+        "tags": ["финансы"],
+        "summary": {
+            "participants": ["Данила"],
+            "topics": [{"title": "Бюджет", "anchor": "[00:00]"}],
+            "decisions": [],
+            "tasks": [],
+        },
+    }
+
+    call_count = {"n": 0}
+
+    async def fake_call(prompt, model, timeout_seconds):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            return json.dumps(summary_response, ensure_ascii=False)
+        raise httpx.ReadTimeout("paragraphs call timed out")
+
+    segments = [
+        {"speaker": "Speaker 0", "start_ms": i * 1000, "end_ms": (i + 1) * 1000, "text": "test"}
+        for i in range(160)
+    ]
+
+    with patch(
+        "services.telemost_recorder_api.llm_postprocess._call_openrouter",
+        AsyncMock(side_effect=fake_call),
+    ):
+        result = await postprocess_meeting(segments, [{"name": "Данила"}])
+
+    assert call_count["n"] == 2
+    assert result["tags"] == ["финансы"]
+    assert result["summary"]["topics"][0]["title"] == "Бюджет"
+    assert result["paragraphs"] == []
+    assert result["speakers_map"] == {}

@@ -182,9 +182,13 @@ async def postprocess_meeting(
     """Run LLM postprocessing.
 
     For >_CHUNK_THRESHOLD segments, split into two calls (summary+tags first,
-    paragraphs+speakers_map second). If the second call fails, the first call's
-    tokens are not recovered — caller should retry the whole postprocess_meeting
-    rather than assume idempotent retry of the failed chunk.
+    paragraphs+speakers_map second). The summary chunk is the most valuable
+    artifact (topics, decisions, tasks); if the paragraphs chunk fails
+    (truncation, JSON error, HTTP error), fall back to empty paragraphs
+    rather than losing the summary the user already paid for.
+
+    Single-call path keeps strict behaviour: any JSON error raises
+    LLMPostprocessError.
     """
     use_model = model or LLM_POSTPROCESS_MODEL
 
@@ -209,13 +213,18 @@ async def postprocess_meeting(
         logger.error("LLM (summary chunk) returned non-JSON: %r", summary_raw[:500])
         raise LLMPostprocessError(f"invalid JSON (summary chunk): {e}") from e
 
-    paragraphs_prompt = _build_paragraphs_prompt(segments, participants)
-    paragraphs_raw = await _call_openrouter(paragraphs_prompt, use_model, LLM_POSTPROCESS_TIMEOUT_SECONDS)
+    paragraphs_data: dict
     try:
+        paragraphs_prompt = _build_paragraphs_prompt(segments, participants)
+        paragraphs_raw = await _call_openrouter(
+            paragraphs_prompt, use_model, LLM_POSTPROCESS_TIMEOUT_SECONDS
+        )
         paragraphs_data = json.loads(_strip_markdown_codefence(paragraphs_raw))
-    except json.JSONDecodeError as e:
-        logger.error("LLM (paragraphs chunk) returned non-JSON: %r", paragraphs_raw[:500])
-        raise LLMPostprocessError(f"invalid JSON (paragraphs chunk): {e}") from e
+    except (json.JSONDecodeError, httpx.HTTPError) as e:
+        logger.warning(
+            "LLM (paragraphs chunk) failed, falling back to empty paragraphs: %s", e
+        )
+        paragraphs_data = {"paragraphs": [], "speakers_map": {}}
 
     merged = {
         "paragraphs": paragraphs_data.get("paragraphs", []),
