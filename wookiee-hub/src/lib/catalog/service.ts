@@ -13,6 +13,25 @@ export async function fetchKategorii() {
   return data as { id: number; nazvanie: string; opisanie: string | null }[]
 }
 
+/**
+ * Список ключей атрибутов, привязанных к категории.
+ *
+ * Источник истины — таблица `kategoriya_atributy` (migration 016, W2.2).
+ * До W2.2 маппинг хранился в коде (`ATTRIBUTES_BY_CATEGORY` в `types/catalog.ts`).
+ *
+ * AttributeFieldDef (label/type/options) — пока в коде в `ALL_ATTRIBUTES`,
+ * полноценный registry атрибутов в БД — задача W6.1.
+ */
+export async function fetchAttributesForCategory(kategoriyaId: number): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("kategoriya_atributy")
+    .select("atribut_key, poryadok")
+    .eq("kategoriya_id", kategoriyaId)
+    .order("poryadok")
+  if (error) throw error
+  return (data ?? []).map((r) => r.atribut_key as string)
+}
+
 export async function fetchKollekcii() {
   const { data, error } = await supabase
     .from("kollekcii")
@@ -20,6 +39,25 @@ export async function fetchKollekcii() {
     .order("nazvanie")
   if (error) throw error
   return data as { id: number; nazvanie: string; opisanie: string | null; god_zapuska: number | null }[]
+}
+
+// W2.3: типы коллекций — справочник, был хардкод `commercial/creative/collab`
+// в model-card. Теперь — таблица `tipy_kollekciy` + FK
+// `modeli_osnova.tip_kollekcii_id`. Текстовая колонка
+// `modeli_osnova.tip_kollekcii` пока остаётся для обратной совместимости и
+// пишется параллельно.
+export interface TipKollekcii {
+  id: number
+  nazvanie: string
+}
+
+export async function fetchTipyKollekciy(): Promise<TipKollekcii[]> {
+  const { data, error } = await supabase
+    .from("tipy_kollekciy")
+    .select("id, nazvanie")
+    .order("nazvanie")
+  if (error) throw new Error(error.message)
+  return (data ?? []) as TipKollekcii[]
 }
 
 export async function fetchFabriki() {
@@ -68,20 +106,44 @@ export async function fetchImportery() {
   }[]
 }
 
-export async function fetchRazmery() {
+export interface Razmer {
+  id: number
+  nazvanie: string
+  poryadok: number
+  ru: string | null
+  eu: string | null
+  china: string | null
+}
+
+export async function fetchRazmery(): Promise<Razmer[]> {
   const { data, error } = await supabase
     .from("razmery")
     .select("id, nazvanie, poryadok, ru, eu, china")
     .order("poryadok")
   if (error) throw error
-  return data as {
-    id: number
-    nazvanie: string
-    poryadok: number
-    ru: string | null
-    eu: string | null
-    china: string | null
-  }[]
+  return (data ?? []) as Razmer[]
+}
+
+// ─── W2.1: размерная линейка модели через junction `modeli_osnova_razmery` ──
+// Заменяет хардкод `SIZES_LINEUP = [XS,S,M,L,XL,XXL]` в model-card.tsx.
+// Возвращает razmery, привязанные к данной модели, в порядке `poryadok`.
+
+interface ModelSizeRow {
+  poryadok: number
+  razmery: Razmer | Razmer[] | null
+}
+
+export async function fetchSizesForModel(modelOsnovaId: number): Promise<Razmer[]> {
+  const { data, error } = await supabase
+    .from("modeli_osnova_razmery")
+    .select("poryadok, razmery(id, nazvanie, poryadok, ru, eu, china)")
+    .eq("model_osnova_id", modelOsnovaId)
+    .order("poryadok")
+  if (error) throw error
+  const rows = (data ?? []) as ModelSizeRow[]
+  return rows
+    .map((r) => (Array.isArray(r.razmery) ? r.razmery[0] : r.razmery))
+    .filter((r): r is Razmer => r !== null && r !== undefined)
 }
 
 export async function fetchStatusy() {
@@ -227,6 +289,29 @@ export async function updateKollekciya(id: number, patch: Partial<KollekciyaPayl
 
 export async function deleteKollekciya(id: number): Promise<void> {
   const { error } = await supabase.from("kollekcii").delete().eq("id", id)
+  if (error) throw new Error(error.message)
+}
+
+// W2.3 tipy_kollekciy CRUD
+export interface TipKollekciiPayload {
+  nazvanie: string
+}
+
+export async function insertTipKollekcii(data: TipKollekciiPayload): Promise<void> {
+  const { error } = await supabase.from("tipy_kollekciy").insert(data)
+  if (error) throw new Error(error.message)
+}
+
+export async function updateTipKollekcii(
+  id: number,
+  patch: Partial<TipKollekciiPayload>,
+): Promise<void> {
+  const { error } = await supabase.from("tipy_kollekciy").update(patch).eq("id", id)
+  if (error) throw new Error(error.message)
+}
+
+export async function deleteTipKollekcii(id: number): Promise<void> {
+  const { error } = await supabase.from("tipy_kollekciy").delete().eq("id", id)
   if (error) throw new Error(error.message)
 }
 
@@ -1308,6 +1393,7 @@ export interface ModelOsnovaPayload {
   fabrika_id?: number | null
   status_id?: number | null
   tip_kollekcii?: string | null
+  tip_kollekcii_id?: number | null
   material?: string | null
   sostav_syrya?: string | null
   composition?: string | null
@@ -1634,6 +1720,7 @@ export interface CatalogCounts {
   skleyki: number
   kategorii: number
   kollekcii: number
+  tipy_kollekciy: number
   fabriki: number
   importery: number
   razmery: number
@@ -1667,6 +1754,7 @@ export async function fetchCatalogCounts(): Promise<CatalogCounts> {
     "skleyki_ozon",
     "kategorii",
     "kollekcii",
+    "tipy_kollekciy",
     "fabriki",
     "importery",
     "razmery",
@@ -1686,6 +1774,7 @@ export async function fetchCatalogCounts(): Promise<CatalogCounts> {
     skleyki_ozon: "skleyki_ozon",
     kategorii: "kategorii",
     kollekcii: "kollekcii",
+    tipy_kollekciy: "tipy_kollekciy",
     fabriki: "fabriki",
     importery: "importery",
     razmery: "razmery",

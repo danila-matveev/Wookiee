@@ -37,7 +37,7 @@ import {
 
 import { supabase } from "@/lib/supabase"
 import {
-  ATTRIBUTES_BY_CATEGORY,
+  ALL_ATTRIBUTES,
   FIELD_LEVEL,
   type AttributeFieldDef,
   type FieldLevel as FieldLevelKind,
@@ -46,6 +46,7 @@ import {
   archiveModel,
   duplicateModel,
   fetchAllTags,
+  fetchAttributesForCategory,
   fetchFabriki,
   fetchKategorii,
   fetchKollekcii,
@@ -53,11 +54,14 @@ import {
   fetchRazmery,
   fetchSemeystvaCvetov,
   fetchSertifikaty,
+  fetchSizesForModel,
   fetchStatusy,
+  fetchTipyKollekciy,
   fetchUpakovki,
   updateModel,
   type ModelDetail,
   type ModelOsnovaPayload,
+  type Razmer,
   type Sertifikat,
   type Upakovka,
 } from "@/lib/catalog/service"
@@ -79,13 +83,13 @@ import { computeCompleteness, relativeDate, swatchColor } from "@/lib/catalog/co
 
 // ─── Local helpers ─────────────────────────────────────────────────────────
 
-const TIPY_KOLLEKCII = [
-  "commercial",
-  "creative",
-  "collab",
-] as const
+// W2.3: `TIPY_KOLLEKCII` хардкод убран — теперь справочник `tipy_kollekciy`
+// + FK `modeli_osnova.tip_kollekcii_id`. См. fetchTipyKollekciy().
 
-const SIZES_LINEUP = ["XS", "S", "M", "L", "XL", "XXL"] as const
+// Default lineup (XS..XXL) — fallback на случай, если БД-запрос ещё грузится
+// или модель не имеет ни одной записи в junction `modeli_osnova_razmery`.
+// Источник истины — БД через `fetchSizesForModel` (W2.1).
+const DEFAULT_SIZES_LINEUP = ["XS", "S", "M", "L", "XL", "XXL"] as const
 
 // ─── Hint helpers (W1.6) ───────────────────────────────────────────────────
 // (?) icon next to a field label. На hover показывает подсказку, что
@@ -275,6 +279,7 @@ function modelToDraft(m: ModelDetail): ModelDraft {
     fabrika_id: m.fabrika_id ?? null,
     status_id: m.status_id ?? null,
     tip_kollekcii: m.tip_kollekcii ?? null,
+    tip_kollekcii_id: m.tip_kollekcii_id ?? null,
     material: m.material ?? null,
     sostav_syrya: m.sostav_syrya ?? null,
     composition: m.composition ?? null,
@@ -421,12 +426,15 @@ function SidebarBlock({ title, subtitle, badge, action, children }: {
 // ─── Size-lineup chip-pills (XS..XXL) ──────────────────────────────────────
 
 function SizeLineupField({
-  value, onChange, readonly, level,
+  value, onChange, readonly, level, lineup, loading,
 }: {
   value: string[]
   onChange: (v: string[]) => void
   readonly: boolean
   level?: FieldLevelKind
+  /** Available sizes for this model (driven by `modeli_osnova_razmery` junction). */
+  lineup: readonly string[]
+  loading?: boolean
 }) {
   const toggle = (s: string) => {
     if (readonly) return
@@ -436,27 +444,31 @@ function SizeLineupField({
   return (
     <FieldWrap label="Размерная линейка" level={level} full>
       <div className="flex flex-wrap gap-1.5">
-        {SIZES_LINEUP.map((s) => {
-          const active = value.includes(s)
-          return (
-            <button
-              key={s}
-              type="button"
-              disabled={readonly}
-              onClick={() => toggle(s)}
-              className={
-                active
-                  ? "px-3 py-1.5 text-sm rounded-full border-2 transition-colors bg-stone-900 text-white border-stone-900 font-medium tabular-nums"
-                  : "px-3 py-1.5 text-sm rounded-full border-2 transition-colors bg-white text-stone-500 border-stone-200 hover:border-stone-400 tabular-nums " +
-                    (readonly ? "opacity-60 cursor-default" : "")
-              }
-            >
-              {s}
-            </button>
-          )
-        })}
+        {loading && lineup.length === 0 ? (
+          <span className="text-[11px] text-stone-400 italic">загрузка…</span>
+        ) : (
+          lineup.map((s) => {
+            const active = value.includes(s)
+            return (
+              <button
+                key={s}
+                type="button"
+                disabled={readonly}
+                onClick={() => toggle(s)}
+                className={
+                  active
+                    ? "px-3 py-1.5 text-sm rounded-full border-2 transition-colors bg-stone-900 text-white border-stone-900 font-medium tabular-nums"
+                    : "px-3 py-1.5 text-sm rounded-full border-2 transition-colors bg-white text-stone-500 border-stone-200 hover:border-stone-400 tabular-nums " +
+                      (readonly ? "opacity-60 cursor-default" : "")
+                }
+              >
+                {s}
+              </button>
+            )
+          })
+        )}
       </div>
-      {!readonly && (
+      {!readonly && lineup.length > 0 && (
         <div className="text-[10px] text-stone-400 mt-2">
           Клик по чипу — включить/выключить размер.
         </div>
@@ -483,7 +495,7 @@ interface TabContentProps {
 // ─── Tab 1: Description ────────────────────────────────────────────────────
 
 function TabDescription({
-  m, draft, setDraft, editing,
+  m, draft, setDraft, editing, modelOsnovaId,
 }: TabContentProps) {
   const kategoriiQ = useQuery({
     queryKey: ["catalog", "kategorii"],
@@ -493,6 +505,11 @@ function TabDescription({
   const kollekciiQ = useQuery({
     queryKey: ["catalog", "kollekcii"],
     queryFn: fetchKollekcii,
+    staleTime: 5 * 60 * 1000,
+  })
+  const tipyKollekciyQ = useQuery({
+    queryKey: ["catalog", "tipy-kollekciy"],
+    queryFn: fetchTipyKollekciy,
     staleTime: 5 * 60 * 1000,
   })
   const fabrikiQ = useQuery({
@@ -510,6 +527,13 @@ function TabDescription({
     queryFn: fetchAllTags,
     staleTime: 5 * 60 * 1000,
   })
+  // W2.1 — размерная линейка модели из БД (junction `modeli_osnova_razmery`),
+  // вместо хардкода `SIZES_LINEUP`.
+  const modelSizesQ = useQuery<Razmer[]>({
+    queryKey: ["catalog", "model-sizes", modelOsnovaId],
+    queryFn: () => fetchSizesForModel(modelOsnovaId),
+    staleTime: 5 * 60 * 1000,
+  })
 
   const set = (k: keyof ModelDraft, v: unknown) => {
     if (!draft) return
@@ -518,8 +542,14 @@ function TabDescription({
 
   const kategorii = kategoriiQ.data ?? []
   const kollekcii = kollekciiQ.data ?? []
+  const tipyKollekciy = tipyKollekciyQ.data ?? []
   const fabriki = fabrikiQ.data ?? []
   const statusy = (statusyQ.data ?? []).filter((s) => s.tip === "model")
+  // Размерная линейка из БД. Если junction-таблица ещё не заполнена для модели,
+  // показываем дефолтный XS..XXL, чтобы UI не «исчезал» во время бэкфилла.
+  const modelSizeLineup: readonly string[] = (modelSizesQ.data ?? []).length > 0
+    ? (modelSizesQ.data ?? []).map((r) => r.nazvanie)
+    : DEFAULT_SIZES_LINEUP
 
   // Snapshot used for read-only mode (`m` is server truth, draft mirrors it).
   const view = editing && draft ? draft : m
@@ -564,13 +594,24 @@ function TabDescription({
             readonly={!editing}
             level={lvl("kollekciya_id")}
           />
-          <StringSelectField
+          <SelectField
             label="Тип коллекции"
-            value={view.tip_kollekcii ?? ""}
-            options={[...TIPY_KOLLEKCII]}
-            onChange={(v) => set("tip_kollekcii", v)}
+            value={view.tip_kollekcii_id ?? ""}
+            options={tipyKollekciy.map((t) => ({ id: t.id, nazvanie: t.nazvanie }))}
+            onChange={(v) => {
+              // W2.3 dual-write: FK + текстовая колонка (для back-compat).
+              const id = typeof v === "number" ? v : v === "" || v == null ? null : Number(v)
+              const next: ModelDraft = {
+                ...(draft as ModelDraft),
+                tip_kollekcii_id: id,
+                tip_kollekcii: id == null
+                  ? null
+                  : tipyKollekciy.find((t) => t.id === id)?.nazvanie ?? null,
+              }
+              setDraft(next)
+            }}
             readonly={!editing}
-            level={lvl("tip_kollekcii")}
+            level={lvl("tip_kollekcii_id")}
           />
           <SelectField
             label="Фабрика"
@@ -590,6 +631,8 @@ function TabDescription({
             onChange={(v) => set("razmery_modeli_arr", v)}
             readonly={!editing}
             level={lvl("razmery_modeli")}
+            lineup={modelSizeLineup}
+            loading={modelSizesQ.isLoading}
           />
           <TextField
             label="Материал"
@@ -776,9 +819,18 @@ function TabDescription({
 // ─── Tab 2: Attributes (dynamic per category) ──────────────────────────────
 
 function TabAttributes({ m, draft, setDraft, editing }: TabContentProps) {
-  const attrs: AttributeFieldDef[] = m.kategoriya_id
-    ? ATTRIBUTES_BY_CATEGORY[m.kategoriya_id] ?? []
-    : []
+  // W2.2: связь kategoriya ↔ atribut_key уезжает в БД (`kategoriya_atributy`).
+  // ALL_ATTRIBUTES остаётся в коде как registry метаданных (label/type/options)
+  // до W6.1.
+  const attrKeysQ = useQuery({
+    queryKey: ["catalog", "kategoriya-atributy", m.kategoriya_id],
+    queryFn: () => fetchAttributesForCategory(m.kategoriya_id as number),
+    enabled: m.kategoriya_id != null,
+    staleTime: 5 * 60 * 1000,
+  })
+  const attrs: AttributeFieldDef[] = (attrKeysQ.data ?? [])
+    .map((key) => ALL_ATTRIBUTES[key])
+    .filter((def): def is AttributeFieldDef => def != null)
 
   const set = (k: string, v: unknown) => {
     if (!draft) return
@@ -1746,9 +1798,9 @@ export function ModelCard({ kod, onClose }: ModelCardProps) {
     staleTime: 60 * 1000,
   })
 
-  // Razmery select reference (we only need it to inform the chip lineup).
-  // Currently chip-pills use the constant SIZES_LINEUP — no DB read needed.
-  // razmery query is kept here for future use (TODO Wave 3+).
+  // Razmery — общий справочник, нужен для будущих фичей (CRUD размеров, и т.д.).
+  // Per-model lineup теперь приходит из junction `modeli_osnova_razmery`
+  // через `fetchSizesForModel` в TabDescription (W2.1).
   useQuery({
     queryKey: ["catalog", "razmery"],
     queryFn: fetchRazmery,
@@ -1794,6 +1846,18 @@ export function ModelCard({ kod, onClose }: ModelCardProps) {
     staleTime: 5 * 60 * 1000,
   })
   const hexByCvet = hexQ.data ?? new Map<number, string | null>()
+
+  // W2.2: ключи атрибутов категории — из БД (`kategoriya_atributy`).
+  // Используется для CardSidebar (Заполненность %, "X/Y атрибутов").
+  const sidebarAttrKeysQ = useQuery({
+    queryKey: ["catalog", "kategoriya-atributy", model?.kategoriya_id],
+    queryFn: () => fetchAttributesForCategory(model!.kategoriya_id as number),
+    enabled: model?.kategoriya_id != null,
+    staleTime: 5 * 60 * 1000,
+  })
+  const sidebarAttrs: AttributeFieldDef[] = (sidebarAttrKeysQ.data ?? [])
+    .map((key) => ALL_ATTRIBUTES[key])
+    .filter((def): def is AttributeFieldDef => def != null)
 
   // Save mutation
   const saveMut = useMutation({
@@ -1963,11 +2027,7 @@ export function ModelCard({ kod, onClose }: ModelCardProps) {
                 <div className="space-y-4 min-w-0">
                   <CardSidebar
                     m={model}
-                    attrs={
-                      model.kategoriya_id
-                        ? ATTRIBUTES_BY_CATEGORY[model.kategoriya_id] ?? []
-                        : []
-                    }
+                    attrs={sidebarAttrs}
                     hexByCvet={hexByCvet}
                     openColor={openColor}
                   />

@@ -40,6 +40,9 @@ const KategoriiPage = lazy(() =>
 const KollekciiPage = lazy(() =>
   import("@/pages/catalog/references/kollekcii").then((m) => ({ default: m.KollekciiPage })),
 )
+const TipyKollekciyPage = lazy(() =>
+  import("@/pages/catalog/references/tipy-kollekciy").then((m) => ({ default: m.TipyKollekciyPage })),
+)
 const FabrikiPage = lazy(() =>
   import("@/pages/catalog/references/fabriki").then((m) => ({ default: m.FabrikiPage })),
 )
@@ -111,6 +114,7 @@ export const router = createBrowserRouter([
       { path: "/catalog/references",                   element: <Navigate to="/catalog/references/kategorii" replace /> },
       { path: "/catalog/references/kategorii",         element: withFallback(<KategoriiPage />) },
       { path: "/catalog/references/kollekcii",         element: withFallback(<KollekciiPage />) },
+      { path: "/catalog/references/tipy-kollekciy",    element: withFallback(<TipyKollekciyPage />) },
       { path: "/catalog/references/fabriki",           element: withFallback(<FabrikiPage />) },
       { path: "/catalog/references/importery",         element: withFallback(<ImporteryPage />) },
       { path: "/catalog/references/razmery",           element: withFallback(<RazmeryPage />) },

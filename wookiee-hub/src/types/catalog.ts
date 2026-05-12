@@ -167,6 +167,8 @@ export interface ModelOsnova {
 
   // Состав / производство
   tip_kollekcii?: string | null
+  /** W2.3: FK to `tipy_kollekciy.id`. Authoritative source going forward; `tip_kollekcii` (text) kept temporarily for back-compat. */
+  tip_kollekcii_id?: number | null
   material?: string | null
   sostav_syrya?: string | null
   composition?: string | null
@@ -410,6 +412,12 @@ export const ALL_ATTRIBUTES: Record<string, AttributeFieldDef> = {
 /**
  * `kategoriya_id` → массив атрибутов, отображаемых в карточке модели.
  *
+ * @deprecated W2.2: маппинг перенесён в таблицу `kategoriya_atributy`
+ *   (migration 016). UI читает связи через `fetchAttributesForCategory(id)`,
+ *   а описания полей (label / type / options) — через `ALL_ATTRIBUTES`.
+ *   Эта константа сохранена как fallback / документация до W6.1, в котором
+ *   AttributeFieldDef registry тоже уедет в БД (таблица `atributy`).
+ *
  * MVP покрывал 5 категорий (id 1–5 в моке). Здесь сопоставлено с
  * реальными id из БД (см. таблицу `kategorii`):
  *   1  Комплект белья  →  все базовые атрибуты
@@ -474,6 +482,7 @@ export const FIELD_LEVEL: Record<string, FieldLevel> = {
   kollekciya_id: "model",
   fabrika_id: "model",
   tip_kollekcii: "model",
+  tip_kollekcii_id: "model",
   material: "model",
   sostav_syrya: "model",
   composition: "model",
