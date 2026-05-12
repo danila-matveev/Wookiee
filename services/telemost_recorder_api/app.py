@@ -17,6 +17,7 @@ from fastapi import FastAPI
 from services.telemost_recorder_api import internal_routes
 from services.telemost_recorder_api.config import LOG_LEVEL
 from services.telemost_recorder_api.db import close_pool, get_pool
+from services.telemost_recorder_api.error_alerts import install_telegram_alerts
 from services.telemost_recorder_api.routes import health, telegram
 from services.telemost_recorder_api.workers.postprocess_worker import (
     run_forever as postprocess_loop,
@@ -30,6 +31,7 @@ logging.basicConfig(
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
+install_telegram_alerts(service="telemost-api")
 
 
 @asynccontextmanager
