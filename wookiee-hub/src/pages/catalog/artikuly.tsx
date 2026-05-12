@@ -11,6 +11,7 @@ import { ColumnsManager, type ColumnDef } from "@/components/catalog/ui/columns-
 import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
 import { useResizableColumns } from "@/hooks/use-resizable-columns"
 import { useSearchParams } from "react-router-dom"
+import { downloadCsv } from "@/lib/catalog/csv-export"
 
 // Default per-column widths (px) for the standalone Артикулы page (W1.5).
 // Keys must match ARTIKULY_COLUMNS[i].key.
@@ -207,6 +208,59 @@ export function ArtikulyPage() {
       window.alert(`Не удалось обновить статус: ${(err as Error).message}`)
     }
   }, [selectedIds, queryClient])
+
+  // W7.3 — CSV-экспорт выбранных артикулов.  Используем `selected` (Set<artikul>)
+  // → filter из data → renderable rows (только колонки, помеченные как видимые).
+  const statusNameById = useMemo(() => {
+    const m = new Map<number, string>()
+    for (const s of statusyData ?? []) m.set(s.id, s.nazvanie)
+    return m
+  }, [statusyData])
+  const handleBulkExport = useCallback(() => {
+    if (!data || selected.size === 0) return
+    const selectedRows = data
+      .filter((a) => selected.has(a.artikul))
+      .map((a) => ({
+        artikul: a.artikul,
+        model_osnova_kod: a.model_osnova_kod ?? "",
+        model_kod: a.model_kod ?? "",
+        nazvanie_etiketka: a.nazvanie_etiketka ?? "",
+        cvet_color_code: a.cvet_color_code ?? "",
+        cvet_nazvanie: a.cvet_nazvanie ?? "",
+        color_en: a.color_en ?? "",
+        status: a.status_id != null ? (statusNameById.get(a.status_id) ?? `#${a.status_id}`) : "",
+        nomenklatura_wb: a.nomenklatura_wb ?? "",
+        artikul_ozon: a.artikul_ozon ?? "",
+        kategoriya: a.kategoriya ?? "",
+        kollekciya: a.kollekciya ?? "",
+        fabrika: a.fabrika ?? "",
+        tovary_cnt: a.tovary_cnt,
+        created_at: a.created_at ?? "",
+        updated_at: a.updated_at ?? "",
+      }))
+    downloadCsv({
+      filename: `artikuly-selected-${Date.now()}.csv`,
+      rows: selectedRows,
+      columns: [
+        { key: "artikul", label: "Артикул" },
+        { key: "model_osnova_kod", label: "Модель" },
+        { key: "model_kod", label: "Вариация" },
+        { key: "nazvanie_etiketka", label: "Название" },
+        { key: "cvet_color_code", label: "Цвет (код)" },
+        { key: "cvet_nazvanie", label: "Цвет (RU)" },
+        { key: "color_en", label: "Цвет (EN)" },
+        { key: "status", label: "Статус" },
+        { key: "nomenklatura_wb", label: "WB номенкл." },
+        { key: "artikul_ozon", label: "OZON артикул" },
+        { key: "kategoriya", label: "Категория" },
+        { key: "kollekciya", label: "Коллекция" },
+        { key: "fabrika", label: "Производитель" },
+        { key: "tovary_cnt", label: "SKU" },
+        { key: "created_at", label: "Создан" },
+        { key: "updated_at", label: "Обновлён" },
+      ],
+    })
+  }, [data, selected, statusNameById])
 
   // Close popover on outside click / Escape.
   useEffect(() => {
@@ -412,7 +466,7 @@ export function ArtikulyPage() {
           </div>
           <button
             type="button"
-            onClick={() => alert("TODO: экспорт CSV/XLSX выбранных артикулов")}
+            onClick={handleBulkExport}
             className="px-3 py-1 text-xs text-stone-700 hover:bg-stone-100 rounded-md"
           >
             Экспорт выбранных

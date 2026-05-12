@@ -76,6 +76,9 @@ const SertifikatyPage = lazy(() =>
 const DemoPage = lazy(() =>
   import("@/pages/catalog/__demo__").then((m) => ({ default: m.DemoPage })),
 )
+const CatalogImportPage = lazy(() =>
+  import("@/pages/catalog/import").then((m) => ({ default: m.CatalogImportPage })),
+)
 
 const PromoCodesPage = lazy(() =>
   import("@/pages/marketing/promo-codes").then((m) => ({ default: m.PromoCodesPage })),
@@ -116,6 +119,7 @@ export const router = createBrowserRouter([
       { path: "/catalog/upakovki",                     element: withFallback(<UpakovkiPage />) },
       { path: "/catalog/kanaly-prodazh",               element: withFallback(<KanalyProdazhPage />) },
       { path: "/catalog/sertifikaty",                  element: withFallback(<SertifikatyPage />) },
+      { path: "/catalog/import",                       element: withFallback(<CatalogImportPage />) },
       { path: "/catalog/__demo__",                     element: withFallback(<DemoPage />) },
       { path: "/catalog/references",                   element: <Navigate to="/catalog/references/kategorii" replace /> },
       { path: "/catalog/references/kategorii",         element: withFallback(<KategoriiPage />) },

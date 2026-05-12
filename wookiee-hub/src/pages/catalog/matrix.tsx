@@ -10,6 +10,7 @@ import { Tooltip } from "@/components/catalog/ui/tooltip"
 import { NewModelModal } from "@/components/catalog/ui/new-model-modal"
 import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
 import { useResizableColumns, type ResizerBindings } from "@/hooks/use-resizable-columns"
+import { downloadCsv } from "@/lib/catalog/csv-export"
 // Standard razmer chip-pill ladder used in the table.
 const RAZMER_LADDER = ["XS", "S", "M", "L", "XL", "XXL"] as const
 // ─── Shared helpers ────────────────────────────────────────────────────────
@@ -68,6 +69,38 @@ const MODEL_COLUMNS = [
   ["Название"], ["Бренд"], ["Категория"], ["Коллекция"], ["Фабрика"], ["Статус"], ["Размеры"], ["Цвета"], ["Заполн."],
   ["Цв / Арт / SKU", "text-right"], ["Обновлено"],
 ] as const
+// W7.3 — Колонки для CSV-экспорта матрицы.  Метки берём из MODEL_COLUMNS,
+// плюс две вспомогательные (kod / artikul_modeli) для машинной идентификации.
+const MATRIX_EXPORT_COLUMNS: { key: string; label: string }[] = [
+  { key: "kod", label: "Код" },
+  { key: "nazvanie_sayt", label: "Название" },
+  { key: "brand", label: "Бренд" },
+  { key: "kategoriya", label: "Категория" },
+  { key: "kollekciya", label: "Коллекция" },
+  { key: "fabrika", label: "Фабрика" },
+  { key: "status", label: "Статус" },
+  { key: "cveta_cnt", label: "Цветов" },
+  { key: "artikuly_cnt", label: "Артикулов" },
+  { key: "tovary_cnt", label: "SKU" },
+  { key: "completeness", label: "Заполненность" },
+  { key: "updated_at", label: "Обновлено" },
+]
+function matrixRowToExport(r: MatrixRow, statusNameById: Map<number, string>): Record<string, unknown> {
+  return {
+    kod: r.kod,
+    nazvanie_sayt: r.nazvanie_sayt ?? "",
+    brand: r.brand ?? "",
+    kategoriya: r.kategoriya ?? "",
+    kollekciya: r.kollekciya ?? "",
+    fabrika: r.fabrika ?? "",
+    status: r.status_id != null ? (statusNameById.get(r.status_id) ?? `#${r.status_id}`) : "",
+    cveta_cnt: r.cveta_cnt,
+    artikuly_cnt: r.artikuly_cnt,
+    tovary_cnt: r.tovary_cnt,
+    completeness: r.completeness,
+    updated_at: r.updated_at ?? "",
+  }
+}
 // Column IDs + default widths for useResizableColumns (W1.5). Order must match MODEL_COLUMNS.
 const MODEL_COLUMN_IDS = [
   { id: "nazvanie", defaultWidth: 240 },
@@ -100,7 +133,7 @@ function modelMatches(row: MatrixRow, query: string) {
     (v.artikul_modeli ?? "").toLowerCase().includes(query)
   )
 }
-function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, onOpen }: { rows: MatrixRow[]; brendy: Brend[]; kategorii: { id: number; nazvanie: string }[]; kollekcii: { id: number; nazvanie: string }[]; modelStatuses: StatusOption[]; onOpen: (kod: string) => void }) {
+function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, onOpen, onRegisterExport }: { rows: MatrixRow[]; brendy: Brend[]; kategorii: { id: number; nazvanie: string }[]; kollekcii: { id: number; nazvanie: string }[]; modelStatuses: StatusOption[]; onOpen: (kod: string) => void; onRegisterExport?: (fn: (() => void) | null) => void }) {
   const queryClient = useQueryClient()
   const { widths: colWidths, bindResizer } = useResizableColumns("matrix.modeli", [...MODEL_COLUMN_IDS])
   const [search, setSearch] = useState("")
@@ -229,6 +262,32 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
     } catch (err) { window.alert(`Не удалось архивировать: ${(err as Error).message}`) }
   }, [queryClient])
   const allVisibleSelected = filtered.length > 0 && filtered.every((r) => selectedKods.has(r.kod))
+  // W7.3 — CSV-экспорт выбранных моделей через bulk-bar.
+  const handleBulkExport = useCallback(() => {
+    if (selectedKods.size === 0) return
+    const selectedRows = filtered
+      .filter((r) => selectedKods.has(r.kod))
+      .map((r) => matrixRowToExport(r, statusNameById))
+    downloadCsv({
+      filename: `matrix-selected-${Date.now()}.csv`,
+      rows: selectedRows,
+      columns: MATRIX_EXPORT_COLUMNS,
+    })
+  }, [selectedKods, filtered, statusNameById])
+  // W7.3 — регистрируем header-export текущей вкладки modeli_osnova
+  // (filtered учитывает все applied chips/search/incompleteOnly).
+  useEffect(() => {
+    if (!onRegisterExport) return
+    onRegisterExport(() => {
+      const rowsForCsv = filtered.map((r) => matrixRowToExport(r, statusNameById))
+      downloadCsv({
+        filename: `matrix-${Date.now()}.csv`,
+        rows: rowsForCsv,
+        columns: MATRIX_EXPORT_COLUMNS,
+      })
+    })
+    return () => onRegisterExport(null)
+  }, [onRegisterExport, filtered, statusNameById])
   return (
     <>
       <div className="px-6 py-4 max-w-[1600px] mx-auto">
@@ -376,7 +435,7 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
           onToggleBulkStatus={() => setBulkStatusOpen((v) => !v)}
           onPickStatus={handleBulkSetStatus}
           onDuplicate={handleBulkDuplicate}
-          onExport={() => window.alert(`Экспорт CSV для ${selectedKods.size} моделей — TODO Wave 3+`)}
+          onExport={handleBulkExport}
           onArchive={handleBulkArchive}
           onClear={() => { setSelectedKods(new Set()); setBulkStatusOpen(false) }}
         />
@@ -430,7 +489,7 @@ function ColorChips({ modelKod, count }: { modelKod: string; count: number }) {
   )
 }
 // ─── Artikuly registry tab ─────────────────────────────────────────────────
-function ArtikulyTable() {
+function ArtikulyTable({ onRegisterExport }: { onRegisterExport?: (fn: (() => void) | null) => void }) {
   const { data, isLoading } = useQuery({ queryKey: ["artikuly-registry"], queryFn: fetchArtikulyRegistry, staleTime: 5 * 60 * 1000 })
   const { widths: artWidths, bindResizer: bindArt } = useResizableColumns("matrix.artikuly", [...MATRIX_ARTIKULY_COLS])
   const [search, setSearch] = useState("")
@@ -439,6 +498,39 @@ function ArtikulyTable() {
     const q = search.trim().toLowerCase()
     return q ? data.filter((a) => a.artikul.toLowerCase().includes(q) || (a.model_osnova_kod ?? "").toLowerCase().includes(q) || (a.cvet_color_code ?? "").toLowerCase().includes(q)) : data
   }, [data, search])
+  // W7.3 — header-export: текущий filtered (search учитывается).
+  useEffect(() => {
+    if (!onRegisterExport) return
+    onRegisterExport(() => {
+      const rowsForCsv = filtered.map((a) => ({
+        artikul: a.artikul,
+        model_osnova_kod: a.model_osnova_kod ?? "",
+        model_kod: a.model_kod ?? "",
+        cvet_color_code: a.cvet_color_code ?? "",
+        cvet_nazvanie: a.cvet_nazvanie ?? "",
+        status_id: a.status_id ?? "",
+        nomenklatura_wb: a.nomenklatura_wb ?? "",
+        artikul_ozon: a.artikul_ozon ?? "",
+        tovary_cnt: a.tovary_cnt,
+      }))
+      downloadCsv({
+        filename: `artikuly-${Date.now()}.csv`,
+        rows: rowsForCsv,
+        columns: [
+          { key: "artikul", label: "Артикул" },
+          { key: "model_osnova_kod", label: "Модель" },
+          { key: "model_kod", label: "Вариация" },
+          { key: "cvet_color_code", label: "Цвет (код)" },
+          { key: "cvet_nazvanie", label: "Цвет" },
+          { key: "status_id", label: "Статус" },
+          { key: "nomenklatura_wb", label: "WB номенкл." },
+          { key: "artikul_ozon", label: "OZON артикул" },
+          { key: "tovary_cnt", label: "SKU" },
+        ],
+      })
+    })
+    return () => onRegisterExport(null)
+  }, [onRegisterExport, filtered])
   if (isLoading) return <div className="px-6 py-8 text-sm text-stone-400">Загрузка…</div>
   return (
     <div className="px-6 py-4 max-w-[1600px] mx-auto">
@@ -475,7 +567,7 @@ function ArtikulyTable() {
 const CHANNELS = [
   { id: "all", label: "Все" }, { id: "wb", label: "WB" }, { id: "ozon", label: "Ozon" }, { id: "sayt", label: "Сайт" }, { id: "lamoda", label: "Lamoda" },
 ] as const
-function TovaryTable() {
+function TovaryTable({ onRegisterExport }: { onRegisterExport?: (fn: (() => void) | null) => void }) {
   const { data, isLoading } = useQuery({ queryKey: ["tovary-registry"], queryFn: fetchTovaryRegistry, staleTime: 5 * 60 * 1000 })
   const { widths: tovWidths, bindResizer: bindTov } = useResizableColumns("matrix.tovary", [...MATRIX_TOVARY_COLS])
   const [search, setSearch] = useState("")
@@ -495,6 +587,39 @@ function TovaryTable() {
     const q = search.trim().toLowerCase()
     return q ? res.filter((t) => t.barkod.includes(q) || (t.model_osnova_kod ?? "").toLowerCase().includes(q) || (t.artikul ?? "").toLowerCase().includes(q)) : res
   }, [data, channelFilter, statusFilter, search])
+  // W7.3 — header-export: текущий filtered (channel + status + search учтены).
+  useEffect(() => {
+    if (!onRegisterExport) return
+    onRegisterExport(() => {
+      const rowsForCsv = filtered.map((t) => ({
+        barkod: t.barkod,
+        model_osnova_kod: t.model_osnova_kod ?? "",
+        model_kod: t.model_kod ?? "",
+        cvet_color_code: t.cvet_color_code ?? "",
+        razmer: t.razmer ?? "",
+        status_wb: t.status_id ?? "",
+        status_ozon: t.status_ozon_id ?? "",
+        status_sayt: t.status_sayt_id ?? "",
+        status_lamoda: t.status_lamoda_id ?? "",
+      }))
+      downloadCsv({
+        filename: `tovary-${Date.now()}.csv`,
+        rows: rowsForCsv,
+        columns: [
+          { key: "barkod", label: "Баркод" },
+          { key: "model_osnova_kod", label: "Модель" },
+          { key: "model_kod", label: "Вариация" },
+          { key: "cvet_color_code", label: "Цвет" },
+          { key: "razmer", label: "Размер" },
+          { key: "status_wb", label: "Статус WB" },
+          { key: "status_ozon", label: "Статус OZON" },
+          { key: "status_sayt", label: "Статус Сайт" },
+          { key: "status_lamoda", label: "Статус Lamoda" },
+        ],
+      })
+    })
+    return () => onRegisterExport(null)
+  }, [onRegisterExport, filtered])
   if (isLoading) return <div className="px-6 py-8 text-sm text-stone-400">Загрузка…</div>
   return (
     <div className="px-6 py-4 max-w-[1600px] mx-auto">
@@ -621,6 +746,19 @@ export function MatrixPage() {
     next.delete("id")
     setSearchParams(next)
   }, [queryClient, searchParams, setSearchParams])
+  // W7.3 — header «Экспорт» делегируется активной вкладке.  Inner-таблица
+  // регистрирует свою callback через onRegisterExport, header кликает по ref.
+  const exportRef = useRef<(() => void) | null>(null)
+  const registerExport = useCallback((fn: (() => void) | null) => {
+    exportRef.current = fn
+  }, [])
+  const handleHeaderExport = useCallback(() => {
+    if (exportRef.current) {
+      exportRef.current()
+    } else {
+      window.alert("Экспорт недоступен для текущей вкладки")
+    }
+  }, [])
   // ?model=KOD opens B3's <ModelCardModal /> as overlay from CatalogLayout.
   const rows = matrixQ.data ?? []
   const brendy = brendyQ.data ?? []
@@ -646,7 +784,7 @@ export function MatrixPage() {
             <div className="text-sm text-stone-500 mt-1">{rows.length} моделей · {totalVariations} вариаций · {totalArts} артикулов · {totalSku} SKU</div>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => window.alert("Экспорт CSV — TODO Wave 3+")} className="px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-100 rounded-md flex items-center gap-1.5 border border-stone-200"><Download className="w-3.5 h-3.5" /> Экспорт</button>
+            <button onClick={handleHeaderExport} className="px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-100 rounded-md flex items-center gap-1.5 border border-stone-200"><Download className="w-3.5 h-3.5" /> Экспорт</button>
             <button onClick={handleNewModel} className="px-3 py-1.5 text-xs text-white bg-stone-900 hover:bg-stone-800 rounded-md flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Новая модель</button>
           </div>
         </div>
@@ -667,10 +805,10 @@ export function MatrixPage() {
         {matrixQ.isLoading && listTab === "modeli_osnova" && <div className="px-6 py-8 text-sm text-stone-400">Загрузка…</div>}
         {matrixQ.error && <div className="px-6 py-8 text-sm text-red-500">Ошибка загрузки: {String(matrixQ.error)}</div>}
         {listTab === "modeli_osnova" && !matrixQ.isLoading && !matrixQ.error && (
-          <ModeliOsnovaTable rows={rows} brendy={brendy} kategorii={kategorii} kollekcii={kollekcii} modelStatuses={modelStatuses} onOpen={openModel} />
+          <ModeliOsnovaTable rows={rows} brendy={brendy} kategorii={kategorii} kollekcii={kollekcii} modelStatuses={modelStatuses} onOpen={openModel} onRegisterExport={registerExport} />
         )}
-        {listTab === "artikuly" && <ArtikulyTable />}
-        {listTab === "tovary" && <TovaryTable />}
+        {listTab === "artikuly" && <ArtikulyTable onRegisterExport={registerExport} />}
+        {listTab === "tovary" && <TovaryTable onRegisterExport={registerExport} />}
       </div>
       {/* W4.1: модалка «+ Новая модель» вместо window.prompt. */}
       <NewModelModal

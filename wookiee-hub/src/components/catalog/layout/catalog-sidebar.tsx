@@ -18,6 +18,7 @@ import {
   Tv,
   ShieldCheck,
   SlidersHorizontal,
+  Upload,
   ChevronsLeft,
   Settings,
 } from "lucide-react"
@@ -62,6 +63,12 @@ const GROUPS: SidebarGroup[] = [
       { key: "kanaly-prodazh",   icon: Tv,          label: "Каналы продаж",    path: "/catalog/kanaly-prodazh",               countKey: "kanaly_prodazh" },
       { key: "sertifikaty",      icon: ShieldCheck, label: "Сертификаты",      path: "/catalog/sertifikaty",                  countKey: "sertifikaty" },
       { key: "atributy",         icon: SlidersHorizontal, label: "Атрибуты",   path: "/catalog/references/atributy",          countKey: "atributy" },
+    ],
+  },
+  {
+    title: "Операции",
+    items: [
+      { key: "import", icon: Upload, label: "Импорт CSV", path: "/catalog/import" },
     ],
   },
 ]
