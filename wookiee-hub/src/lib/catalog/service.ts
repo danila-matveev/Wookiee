@@ -1769,6 +1769,16 @@ export async function bulkUpdateModelStatus(kods: string[], statusId: number): P
   if (error) throw new Error(error.message)
 }
 
+/** Bulk-update status_id of artikuly rows (addressed by id). */
+export async function bulkUpdateArtikulStatus(artikulIds: number[], statusId: number): Promise<void> {
+  if (artikulIds.length === 0) return
+  const { error } = await supabase
+    .from("artikuly")
+    .update({ status_id: statusId })
+    .in("id", artikulIds)
+  if (error) throw new Error(error.message)
+}
+
 /**
  * Bulk-update status of tovary rows (addressed by barkod) on a specific channel.
  * Channel determines which status field is updated:
