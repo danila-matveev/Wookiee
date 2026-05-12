@@ -1,4 +1,4 @@
-"""Single-call Gemini Flash postprocessing through OpenRouter."""
+"""Gemini Flash postprocessing through OpenRouter (single-call or chunked for long meetings)."""
 from __future__ import annotations
 
 import json
@@ -53,12 +53,18 @@ Segments:
 """
 
 
-def build_prompt(segments: list[dict], participants: list[dict]) -> str:
-    """Render the LLM prompt for given ASR segments and meeting participants."""
+def _render_inputs(segments: list[dict], participants: list[dict]) -> tuple[str, str]:
+    """Render segments and participants into the prompt-ready text blocks."""
     seg_text = "\n".join(
         f"[{s['start_ms'] // 1000:>4}s {s['speaker']}] {s['text']}" for s in segments
     )
     p_text = "\n".join(f"- {p['name']}" for p in participants) or "(нет данных)"
+    return seg_text, p_text
+
+
+def build_prompt(segments: list[dict], participants: list[dict]) -> str:
+    """Render the LLM prompt for given ASR segments and meeting participants."""
+    seg_text, p_text = _render_inputs(segments, participants)
     return _PROMPT_TEMPLATE.format(participants=p_text, segments=seg_text)
 
 
@@ -113,6 +119,9 @@ def _validate_shape(data: dict) -> None:
         raise LLMPostprocessError(f"missing summary keys: {sorted(missing_summary)}")
 
 
+# Empirical: OpenRouter output truncated at ~230 segments / 30K chars on meeting af19b95f.
+# Halved with safety margin so a typical 1h meeting at ~150 segments stays on the
+# single-call fast path while longer meetings auto-split.
 _CHUNK_THRESHOLD = 150
 
 
@@ -155,18 +164,12 @@ Segments:
 
 
 def _build_summary_prompt(segments: list[dict], participants: list[dict]) -> str:
-    seg_text = "\n".join(
-        f"[{s['start_ms'] // 1000:>4}s {s['speaker']}] {s['text']}" for s in segments
-    )
-    p_text = "\n".join(f"- {p['name']}" for p in participants) or "(нет данных)"
+    seg_text, p_text = _render_inputs(segments, participants)
     return _PROMPT_SUMMARY_ONLY.format(participants=p_text, segments=seg_text)
 
 
 def _build_paragraphs_prompt(segments: list[dict], participants: list[dict]) -> str:
-    seg_text = "\n".join(
-        f"[{s['start_ms'] // 1000:>4}s {s['speaker']}] {s['text']}" for s in segments
-    )
-    p_text = "\n".join(f"- {p['name']}" for p in participants) or "(нет данных)"
+    seg_text, p_text = _render_inputs(segments, participants)
     return _PROMPT_PARAGRAPHS_ONLY.format(participants=p_text, segments=seg_text)
 
 
@@ -176,7 +179,13 @@ async def postprocess_meeting(
     *,
     model: Optional[str] = None,
 ) -> dict:
-    """Run LLM postprocessing. For >150 segments, split into two calls to avoid token-limit truncation."""
+    """Run LLM postprocessing.
+
+    For >_CHUNK_THRESHOLD segments, split into two calls (summary+tags first,
+    paragraphs+speakers_map second). If the second call fails, the first call's
+    tokens are not recovered — caller should retry the whole postprocess_meeting
+    rather than assume idempotent retry of the failed chunk.
+    """
     use_model = model or LLM_POSTPROCESS_MODEL
 
     if len(segments) <= _CHUNK_THRESHOLD:
