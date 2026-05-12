@@ -531,14 +531,17 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
                           </td>
                           <td className="px-3 py-3"><input type="checkbox" checked={checked} onChange={() => toggleSelect(m.kod)} onClick={(e) => e.stopPropagation()} style={{ accentColor: "#1C1917" }} className="rounded border-stone-300" aria-label={`Выбрать ${m.kod}`} /></td>
                           <td className="px-3 py-3 cursor-pointer cat-sticky-col" onClick={() => onOpen(m.kod)}>
-                            <div className="font-medium text-stone-900 hover:underline font-mono">{m.kod}</div>
-                            <div className="text-xs text-stone-500 truncate max-w-[220px]">{m.nazvanie_sayt || <span className="italic text-stone-400">без названия</span>}</div>
+                            <CellText className="font-medium text-stone-900 hover:underline font-mono" title={m.kod}>{m.kod}</CellText>
+                            <CellText className="text-xs text-stone-500" title={m.nazvanie_sayt ?? ""}>{m.nazvanie_sayt || <span className="italic text-stone-400">без названия</span>}</CellText>
                           </td>
                           {/* W3.2 — Бренд */}
-                          <td className="px-3 py-3 text-stone-700">{m.brand ?? <span className="text-stone-300">—</span>}</td>
-                          <td className="px-3 py-3 text-stone-700">{m.kategoriya ?? "—"}</td>
-                          <td className="px-3 py-3"><div className="text-stone-700">{m.kollekciya ?? "—"}</div><div className="text-[11px] text-stone-400">{m.tip_kollekcii ?? ""}</div></td>
-                          <td className="px-3 py-3 text-stone-700">{m.fabrika ?? "—"}</td>
+                          <td className="px-3 py-3 text-stone-700"><CellText title={m.brand ?? ""}>{m.brand ?? <span className="text-stone-300">—</span>}</CellText></td>
+                          <td className="px-3 py-3 text-stone-700"><CellText title={m.kategoriya ?? ""}>{m.kategoriya ?? "—"}</CellText></td>
+                          <td className="px-3 py-3">
+                            <CellText className="text-stone-700" title={m.kollekciya ?? ""}>{m.kollekciya ?? "—"}</CellText>
+                            <CellText className="text-[11px] text-stone-400" title={m.tip_kollekcii ?? ""}>{m.tip_kollekcii ?? ""}</CellText>
+                          </td>
+                          <td className="px-3 py-3 text-stone-700"><CellText title={m.fabrika ?? ""}>{m.fabrika ?? "—"}</CellText></td>
                           <td className="px-3 py-3"><StatusBadge status={m.status_id != null ? statusById.get(m.status_id) ?? null : null} /></td>
                           <td className="px-3 py-3"><div className="flex items-center gap-0.5">{RAZMER_LADDER.map((sz) => <span key={sz} className={`text-[10px] px-1 py-0.5 rounded ${variantSizes.has(sz) ? "bg-stone-900 text-white" : "bg-stone-50 text-stone-300 ring-1 ring-inset ring-stone-200"}`}>{sz}</span>)}</div></td>
                           <td className="px-3 py-3"><ColorChips modelKod={m.kod} count={m.cveta_cnt} /></td>
@@ -567,12 +570,17 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
                         {isExpanded && m.modeli.map((v) => (
                           <tr key={`v-${v.id}`} className="cat-sticky-row-alt bg-stone-50/40 border-b border-stone-100 text-xs">
                             <td colSpan={2} />
-                            <td className="pl-3 py-2 pr-3 cat-sticky-col"><div className="flex items-center gap-2"><div className="w-4 h-px bg-stone-300" /><span className="font-medium text-stone-800 font-mono">{v.kod}</span></div><div className="text-[11px] text-stone-500 ml-6 mt-0.5 truncate max-w-[200px]">{v.nazvanie}</div></td>
+                            <td className="pl-3 py-2 pr-3 cat-sticky-col">
+                              <div className="flex items-center gap-2 min-w-0"><div className="w-4 h-px bg-stone-300 shrink-0" /><CellText className="font-medium text-stone-800 font-mono" title={v.kod}>{v.kod}</CellText></div>
+                              <CellText className="text-[11px] text-stone-500 ml-6 mt-0.5" title={v.nazvanie ?? ""}>{v.nazvanie}</CellText>
+                            </td>
                             {/* W3.2 — Бренд (наследуется от модели — здесь пусто) */}
                             <td className="px-3 py-2 text-stone-300">—</td>
                             <td className="px-3 py-2 text-stone-400">—</td>
-                            <td className="px-3 py-2"><div className="flex items-center gap-1 text-stone-500"><Building2 className="w-3 h-3 text-stone-400" />{v.importer_short ?? "—"}</div></td>
-                            <td className="px-3 py-2 font-mono text-[11px] text-stone-500">{v.artikul_modeli ?? "—"}</td>
+                            <td className="px-3 py-2">
+                              <div className="flex items-center gap-1 text-stone-500 min-w-0"><Building2 className="w-3 h-3 text-stone-400 shrink-0" /><CellText title={v.importer_short ?? ""}>{v.importer_short ?? "—"}</CellText></div>
+                            </td>
+                            <td className="px-3 py-2 font-mono text-[11px] text-stone-500"><CellText title={v.artikul_modeli ?? ""}>{v.artikul_modeli ?? "—"}</CellText></td>
                             <td className="px-3 py-2"><StatusBadge status={v.status_id != null ? statusById.get(v.status_id) ?? null : null} compact /></td>
                             <td className="px-3 py-2 text-stone-400 text-[10px]">RU: {v.rossiyskiy_razmer ?? "—"}</td>
                             <td />
@@ -786,17 +794,24 @@ function ArtikulyTable({ onRegisterExport }: { onRegisterExport?: (fn: (() => vo
             sortColumn={sort.column}
             sortDirection={sort.direction}
             onSort={(k) => toggleSort(k as MatrixArtikulSortKey)}
+            stickyFirst
           />
           <tbody>
             {paginated.slice.map((a) => (
               <tr key={a.id} className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60">
-                <td className="px-3 py-2.5 font-mono text-xs text-stone-900">{a.artikul}</td>
-                <td className="px-3 py-2.5 font-medium text-stone-900 font-mono text-xs">{a.model_osnova_kod ?? "—"}</td>
-                <td className="px-3 py-2.5 font-mono text-xs text-stone-600">{a.model_kod ?? "—"}</td>
-                <td className="px-3 py-2.5"><div className="flex items-center gap-1.5"><ColorSwatch colorCode={a.cvet_color_code} size={14} /><span className="font-mono text-xs text-stone-700">{a.cvet_color_code ?? "—"}</span><span className="text-stone-500 text-xs">{a.cvet_nazvanie}</span></div></td>
+                <td className="px-3 py-2.5 font-mono text-xs text-stone-900 cat-sticky-col"><CellText title={a.artikul}>{a.artikul}</CellText></td>
+                <td className="px-3 py-2.5 font-medium text-stone-900 font-mono text-xs"><CellText title={a.model_osnova_kod ?? ""}>{a.model_osnova_kod ?? "—"}</CellText></td>
+                <td className="px-3 py-2.5 font-mono text-xs text-stone-600"><CellText title={a.model_kod ?? ""}>{a.model_kod ?? "—"}</CellText></td>
+                <td className="px-3 py-2.5">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <ColorSwatch colorCode={a.cvet_color_code} size={14} />
+                    <CellText className="font-mono text-xs text-stone-700" title={a.cvet_color_code ?? ""}>{a.cvet_color_code ?? "—"}</CellText>
+                    <CellText className="text-stone-500 text-xs" title={a.cvet_nazvanie ?? ""}>{a.cvet_nazvanie}</CellText>
+                  </div>
+                </td>
                 <td className="px-3 py-2.5"><StatusBadge statusId={a.status_id ?? 0} compact /></td>
-                <td className="px-3 py-2.5 font-mono text-[11px] text-stone-500 tabular-nums">{a.nomenklatura_wb ?? "—"}</td>
-                <td className="px-3 py-2.5 font-mono text-[11px] text-stone-500">{a.artikul_ozon ?? "—"}</td>
+                <td className="px-3 py-2.5 font-mono text-[11px] text-stone-500 tabular-nums"><CellText title={a.nomenklatura_wb != null ? String(a.nomenklatura_wb) : ""}>{a.nomenklatura_wb ?? "—"}</CellText></td>
+                <td className="px-3 py-2.5 font-mono text-[11px] text-stone-500"><CellText title={a.artikul_ozon ?? ""}>{a.artikul_ozon ?? "—"}</CellText></td>
                 <td className="px-3 py-2.5 text-right tabular-nums text-stone-700">{a.tovary_cnt}</td>
               </tr>
             ))}
@@ -966,15 +981,18 @@ function TovaryTable({ onRegisterExport }: { onRegisterExport?: (fn: (() => void
             sortColumn={sort.column}
             sortDirection={sort.direction}
             onSort={(k) => toggleSort(k as MatrixTovarSortKey)}
+            stickyFirst
           />
           <tbody>
             {paginated.slice.map((t) => (
               <tr key={t.id} className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60">
-                <td className="px-3 py-2.5 font-mono text-xs text-stone-700">{t.barkod}</td>
-                <td className="px-3 py-2.5 font-medium text-stone-900 font-mono text-xs">{t.model_osnova_kod ?? "—"}</td>
-                <td className="px-3 py-2.5 font-mono text-xs text-stone-600">{t.model_kod ?? "—"}</td>
-                <td className="px-3 py-2.5"><div className="flex items-center gap-1.5"><ColorSwatch colorCode={t.cvet_color_code} size={14} /><span className="font-mono text-xs">{t.cvet_color_code ?? "—"}</span></div></td>
-                <td className="px-3 py-2.5 font-mono text-xs">{t.razmer ?? "—"}</td>
+                <td className="px-3 py-2.5 font-mono text-xs text-stone-700 cat-sticky-col"><CellText title={t.barkod}>{t.barkod}</CellText></td>
+                <td className="px-3 py-2.5 font-medium text-stone-900 font-mono text-xs"><CellText title={t.model_osnova_kod ?? ""}>{t.model_osnova_kod ?? "—"}</CellText></td>
+                <td className="px-3 py-2.5 font-mono text-xs text-stone-600"><CellText title={t.model_kod ?? ""}>{t.model_kod ?? "—"}</CellText></td>
+                <td className="px-3 py-2.5">
+                  <div className="flex items-center gap-1.5 min-w-0"><ColorSwatch colorCode={t.cvet_color_code} size={14} /><CellText className="font-mono text-xs" title={t.cvet_color_code ?? ""}>{t.cvet_color_code ?? "—"}</CellText></div>
+                </td>
+                <td className="px-3 py-2.5 font-mono text-xs"><CellText title={t.razmer ?? ""}>{t.razmer ?? "—"}</CellText></td>
                 <td className="px-3 py-2.5 border-l border-stone-100"><StatusBadge statusId={t.status_id ?? 0} compact /></td>
                 <td className="px-3 py-2.5"><StatusBadge statusId={t.status_ozon_id ?? 0} compact /></td>
                 <td className="px-3 py-2.5"><StatusBadge statusId={t.status_sayt_id ?? 0} compact /></td>

@@ -811,7 +811,7 @@ export function ArtikulyPage() {
             </colgroup>
             <thead className="bg-stone-50/80 border-b border-stone-200 sticky top-0 z-10">
               <tr className="text-left text-[11px] uppercase tracking-wider text-stone-500">
-                <th className="px-3 py-2.5">
+                <th className="px-3 py-2.5 cat-sticky-col-checkbox cat-sticky-col-head">
                   <input
                     type="checkbox"
                     className="rounded border-stone-300"
@@ -821,9 +821,11 @@ export function ArtikulyPage() {
                     onChange={toggleAll}
                   />
                 </th>
-                {columns.map((key) => {
+                {columns.map((key, idx) => {
                   const col = ARTIKULY_COLUMNS.find((c) => c.key === key)
-                  const baseCls = "relative px-3 py-2.5 font-medium whitespace-nowrap"
+                  // W9.7 — первая (якорная) data-колонка sticky на left:40 (после checkbox).
+                  const stickyCls = idx === 0 ? " cat-sticky-col cat-sticky-col-offset cat-sticky-col-head" : ""
+                  const baseCls = `relative px-3 py-2.5 font-medium whitespace-nowrap${stickyCls}`
                   if (ARTIKULY_SORTABLE.has(key)) {
                     const sortKey = key as ArtikulSortKey
                     return (
@@ -854,7 +856,7 @@ export function ArtikulyPage() {
                   key={a.id}
                   className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60"
                 >
-                  <td className="px-3 py-2.5">
+                  <td className="px-3 py-2.5 cat-sticky-col-checkbox">
                     <input
                       type="checkbox"
                       className="rounded border-stone-300"
@@ -862,8 +864,11 @@ export function ArtikulyPage() {
                       onChange={() => toggleRow(a.artikul)}
                     />
                   </td>
-                  {columns.map((key) => (
-                    <td key={key} className="px-3 py-2.5 whitespace-nowrap">
+                  {columns.map((key, idx) => (
+                    <td
+                      key={key}
+                      className={`px-3 py-2.5 whitespace-nowrap${idx === 0 ? " cat-sticky-col cat-sticky-col-offset" : ""}`}
+                    >
                       {key === "artikul" ? (
                         <button
                           type="button"
