@@ -1,655 +1,262 @@
 import { useState } from "react"
 import {
-  Search,
-  Plus,
-  Trash2,
-  Star,
-  Settings,
+  BarChart3,
+  Bell,
+  Box,
   ChevronRight,
+  Copy,
+  Download,
+  Edit3,
+  Layers,
+  Moon,
+  Palette,
+  Sparkles,
+  Sun,
+  TrendingUp,
 } from "lucide-react"
 import { useThemeStore } from "@/stores/theme"
-import {
-  Avatar,
-  AvatarGroup,
-  Badge,
-  Button,
-  Checkbox,
-  Chip,
-  ColorSwatch,
-  FilterChip,
-  IconButton,
-  Kbd,
-  LevelBadge,
-  PermissionGate,
-  PriorityBadge,
-  ProgressBar,
-  Radio,
-  Ring,
-  Skeleton,
-  Slider,
-  StatusBadge,
-  Tag,
-  Toggle,
-  Tooltip,
-} from "@/components/ui-v2/primitives"
-import {
-  ColorPicker,
-  Combobox,
-  DatePicker,
-  FieldWrap,
-  FileUpload,
-  MultiSelectField,
-  NumberField,
-  SelectField,
-  TextField,
-  TextareaField,
-  TimePicker,
-} from "@/components/ui-v2/forms"
-import type { DateRange } from "@/components/ui-v2/forms"
-import {
-  Breadcrumbs,
-  PageHeader,
-  Stepper,
-  Tabs,
-} from "@/components/ui-v2/layout"
-import {
-  CommandPalette,
-  Drawer,
-  DropdownMenu,
-  Modal,
-  Popover,
-} from "@/components/ui-v2/overlays"
-import { Alert, EmptyState, useToast } from "@/components/ui-v2/feedback"
+import { Button, IconButton, Kbd } from "@/components/ui-v2/primitives"
+import { FoundationSection } from "./sections/foundation"
+import { AtomsSection } from "./sections/atoms"
+import { FormsSection } from "./sections/forms"
+import { DataSection } from "./sections/data"
+import { ChartsSection } from "./sections/charts"
+import { LayoutSection } from "./sections/layout"
+import { OverlaysSection } from "./sections/overlays"
+import { FeedbackSection } from "./sections/feedback"
 
-function ThemeToggle() {
-  const { theme, toggleTheme } = useThemeStore()
-  return (
-    <Button variant="secondary" size="sm" onClick={toggleTheme}>
-      {theme === "light" ? "→ Тёмная" : "→ Светлая"}
-    </Button>
-  )
+/**
+ * /design-system-preview — canonical-fidelity showcase shell.
+ *
+ * Canonical reference: `foundation.jsx:2598-2703` (`SECTIONS` registry +
+ * `App()` shell with sidebar nav + sticky topbar). We mirror that contract
+ * end-to-end: brand block at sidebar top, grouped navigation, theme block
+ * at sidebar footer, sticky header with kicker + active label + actions,
+ * main canvas with italic-serif page title and section lede.
+ */
+
+const GROUPS = ["Основа", "Данные", "Структура"] as const
+type Group = (typeof GROUPS)[number]
+
+interface SectionEntry {
+  id: string
+  label: string
+  lede: string
+  icon: React.ComponentType<{ className?: string }>
+  Component: React.ComponentType
+  group: Group
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="space-y-3">
-      <h2 className="text-xs uppercase tracking-wide font-semibold text-label">{title}</h2>
-      <div className="bg-elevated border border-default rounded-xl p-5 space-y-4">{children}</div>
-    </section>
-  )
-}
-
-function Row({ children }: { children: React.ReactNode }) {
-  return <div className="flex flex-wrap items-center gap-3">{children}</div>
-}
+const SECTIONS: readonly SectionEntry[] = [
+  {
+    id: "foundation",
+    label: "Foundation",
+    lede: "Базовая палитра, семантические токены, типографика, шкала отступов. Всё, на чём держится остальная DS.",
+    icon: Palette,
+    Component: FoundationSection,
+    group: "Основа",
+  },
+  {
+    id: "atoms",
+    label: "Atoms",
+    lede: "Кнопки, бейджи, поля ввода, аватары, прогрессы — пиксель-перфектные клоны canonical.",
+    icon: Box,
+    Component: AtomsSection,
+    group: "Основа",
+  },
+  {
+    id: "forms",
+    label: "Forms",
+    lede: "Базовые и расширенные поля формы с обёрткой FieldWrap и интеграцией LevelBadge.",
+    icon: Edit3,
+    Component: FormsSection,
+    group: "Основа",
+  },
+  {
+    id: "data",
+    label: "Data display",
+    lede: "Таблицы, KPI-карточки, пагинация, дерево. Появится после Wave 3a.",
+    icon: BarChart3,
+    Component: DataSection,
+    group: "Данные",
+  },
+  {
+    id: "charts",
+    label: "Charts",
+    lede: "Recharts-обёртки: линии, бары, donut, funnel, heatmap. Появится после Wave 3b.",
+    icon: TrendingUp,
+    Component: ChartsSection,
+    group: "Данные",
+  },
+  {
+    id: "layout",
+    label: "Layout",
+    lede: "Tabs, Breadcrumbs, Stepper, PageHeader, sidebar/topbar mini-shell.",
+    icon: Layers,
+    Component: LayoutSection,
+    group: "Структура",
+  },
+  {
+    id: "overlays",
+    label: "Overlays",
+    lede: "Modal, Drawer (filters / detail / bottom), Popover, DropdownMenu, ContextMenu, CommandPalette.",
+    icon: Copy,
+    Component: OverlaysSection,
+    group: "Структура",
+  },
+  {
+    id: "feedback",
+    label: "Feedback",
+    lede: "Toast (5 + loading), Alert (4 варианта), EmptyState, Skeleton.",
+    icon: Bell,
+    Component: FeedbackSection,
+    group: "Структура",
+  },
+] as const
 
 export default function DesignSystemPreview() {
-  // Form state demo
-  const [text, setText] = useState("")
-  const [num, setNum] = useState<number | null>(null)
-  const [sel, setSel] = useState("")
-  const [multi, setMulti] = useState<string[]>(["red", "blue"])
-  const [textarea, setTextarea] = useState("")
-  const [date, setDate] = useState<Date | null>(null)
-  const [combo, setCombo] = useState<string | null>(null)
-  const [files, setFiles] = useState<File[] | null>(null)
+  const [activeId, setActiveId] = useState<string>("foundation")
+  const { theme, toggleTheme } = useThemeStore()
 
-  // Overlay state demo
-  const [modalOpen, setModalOpen] = useState(false)
-  const [drawerOpen, setDrawerOpen] = useState(false)
-  // R4: Drawer size aliases — filters | detail
-  const [drawerFilters, setDrawerFilters] = useState(false)
-  const [drawerDetail, setDrawerDetail] = useState(false)
-  const [paletteOpen, setPaletteOpen] = useState(false)
+  const active = SECTIONS.find((s) => s.id === activeId) ?? SECTIONS[0]
+  const Active = active.Component
 
-  // Tab state demo
-  const [tabUnderline, setTabUnderline] = useState("overview")
-  const [tabPills, setTabPills] = useState("monthly")
-  // R4: Tabs `segmented` variant for list/grid/kanban switchers
-  const [tabSegmented, setTabSegmented] = useState("list")
-  const [tabVertical, setTabVertical] = useState("general")
-
-  // R4: Combobox `mode='button'`
-  const [comboBtn, setComboBtn] = useState<string | null>(null)
-
-  // Filter chip demo state
-  const [filterA, setFilterA] = useState(true)
-  const [filterB, setFilterB] = useState(false)
-
-  // Selector atoms (R3): Checkbox / Radio / Toggle / Slider
-  const [checkA, setCheckA] = useState(true)
-  const [checkB, setCheckB] = useState(false)
-  const [indeterminate, setIndeterminate] = useState(true)
-  const [radio, setRadio] = useState("model")
-  const [toggleA, setToggleA] = useState(false)
-  const [toggleB, setToggleB] = useState(true)
-  const [slider, setSlider] = useState(40)
-
-  // R3 forms — TimePicker / ColorPicker / DatePicker range
-  const [time, setTime] = useState<string | null>(null)
-  const [color, setColor] = useState("#7C3AED")
-  const [dateRange, setDateRange] = useState<DateRange | null>(null)
-
-  const toast = useToast()
-
-  const colorOptions = [
-    { value: "red", label: "Красный" },
-    { value: "blue", label: "Синий" },
-    { value: "green", label: "Зелёный" },
-    { value: "purple", label: "Фиолетовый" },
-    { value: "yellow", label: "Жёлтый" },
-  ]
+  const grouped: Record<Group, SectionEntry[]> = {
+    Основа: [],
+    Данные: [],
+    Структура: [],
+  }
+  for (const s of SECTIONS) {
+    grouped[s.group].push(s)
+  }
 
   return (
-    <div className="min-h-screen bg-page">
-      {/* Sticky toolbar */}
-      <header className="sticky top-0 z-20 bg-elevated/95 backdrop-blur border-b border-default">
-        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <h1 className="text-xl text-primary">
-              <span className="font-serif italic">Wookiee</span>
-              <span className="font-sans ml-2 text-muted">Design System v2</span>
-            </h1>
-          </div>
-          <div className="flex items-center gap-2">
-            <Kbd>⌘</Kbd>
-            <Kbd>K</Kbd>
-            <span className="text-xs text-muted">— палитра команд</span>
-            <ThemeToggle />
+    <div className="min-h-screen bg-page flex">
+      {/* ============================================================
+       * SIDEBAR — brand + grouped nav + theme block.
+       *  We render a custom sticky aside instead of mounting the
+       *  shared <Sidebar /> primitive: the production primitive is
+       *  `sticky top-0 h-screen` and assumes a global app shell. The
+       *  preview is mounted as its own page, so it composes the same
+       *  visual contract using the semantic tokens directly.
+       * ============================================================ */}
+      <aside className="w-60 shrink-0 h-screen sticky top-0 overflow-y-auto bg-surface-muted border-r border-default flex flex-col">
+        {/* Brand block */}
+        <div className="px-4 py-4 border-b border-default shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded bg-gradient-to-br from-purple-500 to-purple-700 flex items-center justify-center shrink-0">
+              <Sparkles className="w-4 h-4 text-white" aria-hidden />
+            </div>
+            <div className="min-w-0">
+              <div className="font-serif italic text-base text-primary leading-none">
+                Wookiee
+              </div>
+              <div className="text-[10px] uppercase tracking-wider text-label mt-1">
+                DS v2 · Foundation
+              </div>
+            </div>
           </div>
         </div>
-      </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-8 space-y-8">
-        {/* Page header — R4: kicker + breadcrumbs + status slots per canonical */}
-        <PageHeader
-          kicker="DS V2"
-          title="Design System v2"
-          breadcrumbs={["Hub", "Дизайн", "Preview"]}
-          status={<StatusBadge statusId={1} />}
-          description="Каркас компонентов Wookiee Hub. Light + dark через [data-theme] атрибут, семантические токены, никаких dark:bg-stone-900 в JSX."
-          icon={<Star className="w-7 h-7 text-accent" />}
-          actions={
-            <div className="flex gap-2">
-              <Button variant="secondary" icon={Settings}>
-                Настройки
-              </Button>
-              <Button variant="primary" icon={Plus}>
-                Создать
-              </Button>
-            </div>
-          }
-        />
-
-        {/* Breadcrumbs */}
-        <Breadcrumbs
-          items={[
-            { label: "Hub", href: "/" },
-            { label: "Дизайн", href: "/design-system-preview" },
-            { label: "Preview" },
-          ]}
-        />
-
-        {/* Primitives — Buttons */}
-        <Section title="Buttons">
-          <Row>
-            <Button variant="primary" size="xs">Primary xs</Button>
-            <Button variant="primary" size="sm">Primary sm</Button>
-            <Button variant="primary" size="md">Primary md</Button>
-            <Button variant="primary" size="lg">Primary lg</Button>
-            <Button variant="primary" loading>Loading…</Button>
-            <Button variant="primary" disabled>Disabled</Button>
-          </Row>
-          <Row>
-            <Button variant="secondary">Secondary</Button>
-            <Button variant="ghost">Ghost</Button>
-            <Button variant="danger" icon={Trash2}>Удалить</Button>
-            <Button variant="danger-ghost" icon={Trash2}>Danger ghost</Button>
-            <Button variant="success">Success</Button>
-          </Row>
-          <Row>
-            <IconButton aria-label="search" icon={Search} />
-            <IconButton aria-label="search secondary" icon={Search} variant="secondary" />
-            <IconButton aria-label="search primary" icon={Search} variant="primary" />
-            <IconButton aria-label="trash" icon={Trash2} variant="danger" />
-            <IconButton aria-label="settings active" icon={Settings} active />
-          </Row>
-          <Row>
-            <PermissionGate allowed={false}>
-              <Button variant="primary">Без прав</Button>
-            </PermissionGate>
-            <span className="text-xs text-muted">← hover для tooltip</span>
-          </Row>
-        </Section>
-
-        {/* Badges + Tags */}
-        <Section title="Badges, Tags, Chips, Avatars">
-          <Row>
-            <Badge>default</Badge>
-            <Badge variant="emerald">emerald</Badge>
-            <Badge variant="blue">blue</Badge>
-            <Badge variant="amber">amber</Badge>
-            <Badge variant="red">red</Badge>
-            <Badge variant="rose">rose</Badge>
-            <Badge variant="purple">purple</Badge>
-            <Badge variant="orange">orange</Badge>
-            <Badge variant="teal">teal</Badge>
-            <Badge variant="indigo">indigo</Badge>
-            <Badge variant="emerald" dot>+12.4%</Badge>
-            <Badge variant="rose" dot compact>−2.1%</Badge>
-          </Row>
-          <Row>
-            <span className="text-[10px] uppercase tracking-wider text-label mr-2">StatusBadge (statusId)</span>
-            <StatusBadge statusId={1} />
-            <StatusBadge statusId={2} />
-            <StatusBadge statusId={3} />
-            <StatusBadge statusId={4} />
-            <StatusBadge statusId={5} />
-          </Row>
-          <Row>
-            <span className="text-[10px] uppercase tracking-wider text-label mr-2">LevelBadge (M/V/A/S)</span>
-            <LevelBadge level="model" />
-            <LevelBadge level="variation" />
-            <LevelBadge level="artikul" />
-            <LevelBadge level="sku" />
-          </Row>
-          <Row>
-            <span className="text-[10px] uppercase tracking-wider text-label mr-2">PriorityBadge (P0..P3)</span>
-            <PriorityBadge level="P0" />
-            <PriorityBadge level="P1" />
-            <PriorityBadge level="P2" />
-            <PriorityBadge level="P3" />
-          </Row>
-          <Row>
-            <span className="text-[10px] uppercase tracking-wider text-label mr-2">Tag</span>
-            <Tag>gray</Tag>
-            <Tag color="blue">blue</Tag>
-            <Tag color="emerald">emerald</Tag>
-            <Tag color="purple">purple</Tag>
-            <Tag color="orange">orange</Tag>
-            <Tag onRemove={() => null}>removable</Tag>
-          </Row>
-          <Row>
-            <span className="text-[10px] uppercase tracking-wider text-label mr-2">Chip (removable)</span>
-            <Chip>Vuki</Chip>
-            <Chip onRemove={() => null}>Removable</Chip>
-            <span className="text-[10px] uppercase tracking-wider text-label mx-2">FilterChip (toggle)</span>
-            <FilterChip selected={filterA} onClick={() => setFilterA((v) => !v)}>Filter A</FilterChip>
-            <FilterChip selected={filterB} onClick={() => setFilterB((v) => !v)}>Filter B</FilterChip>
-          </Row>
-          <Row>
-            <Avatar name="Даня М" size="sm" color="stone" />
-            <Avatar name="Лиля П" size="md" status="online" color="emerald" />
-            <Avatar name="Алина К" size="lg" status="busy" color="blue" />
-            <Avatar name="Витя Б" size="xl" color="purple" />
-            <Avatar name="Маша С" size="md" color="rose" />
-            <Avatar name="Костя Т" size="md" color="amber" />
-            <AvatarGroup
-              size="md"
-              max={3}
-              users={[
-                { name: "Даня М", color: "stone" },
-                { name: "Лиля П", color: "emerald" },
-                { name: "Алина К", color: "blue" },
-                { name: "Витя Б", color: "purple" },
-                { name: "Маша С", color: "rose" },
-              ]}
-            />
-          </Row>
-          <Row>
-            <ColorSwatch hex="#1C1917" label />
-            <ColorSwatch hex="#7C3AED" label size={20} />
-            <ColorSwatch hex="#16a34a" />
-            <ColorSwatch hex="#d97706" size={24} />
-            <ColorSwatch hex="#E11D48" size={32} label />
-          </Row>
-        </Section>
-
-        {/* Selectors (R3): Checkbox / Radio / Toggle / Slider */}
-        <Section title="Checkbox / Radio / Toggle / Slider (R3)">
-          <Row>
-            <span className="text-[10px] uppercase tracking-wider text-label mr-2">Checkbox</span>
-            <Checkbox id="ds-check-a" checked={checkA} onChange={setCheckA} label="Активен" />
-            <Checkbox id="ds-check-b" checked={checkB} onChange={setCheckB} label="Скрыто" />
-            <Checkbox id="ds-check-i" checked={false} onChange={() => setIndeterminate((v) => !v)} indeterminate={indeterminate} label="Indeterminate (toggle)" />
-            <Checkbox id="ds-check-d" checked={false} onChange={() => null} label="Disabled" disabled />
-          </Row>
-          <Row>
-            <span className="text-[10px] uppercase tracking-wider text-label mr-2">Radio</span>
-            <Radio id="ds-r-m" name="ds-level" value="model" checked={radio === "model"} onChange={setRadio} label="Модель" />
-            <Radio id="ds-r-v" name="ds-level" value="variation" checked={radio === "variation"} onChange={setRadio} label="Вариация" />
-            <Radio id="ds-r-a" name="ds-level" value="artikul" checked={radio === "artikul"} onChange={setRadio} label="Артикул" />
-            <Radio id="ds-r-s" name="ds-level" value="sku" checked={radio === "sku"} onChange={setRadio} label="SKU" />
-          </Row>
-          <Row>
-            <span className="text-[10px] uppercase tracking-wider text-label mr-2">Toggle</span>
-            <Toggle id="ds-t-a" on={toggleA} onChange={setToggleA} label="Темная тема" />
-            <Toggle id="ds-t-b" on={toggleB} onChange={setToggleB} label="Уведомления" />
-            <Toggle id="ds-t-d" on={false} onChange={() => null} label="Disabled" disabled />
-          </Row>
-          <div className="max-w-md">
-            <Slider id="ds-slider" label="Объём (Slider)" value={slider} onChange={setSlider} suffix="%" />
-          </div>
-        </Section>
-
-        {/* Progress + Ring + Tooltip + Skeleton */}
-        <Section title="Progress, Ring, Tooltip, Skeleton">
-          <Row>
-            <div className="w-48 space-y-2">
-              <ProgressBar value={30} color="stone" />
-              <ProgressBar value={70} color="emerald" />
-              <ProgressBar value={55} color="blue" />
-              <ProgressBar value={92} color="amber" />
-              <ProgressBar value={20} color="red" />
-            </div>
-            <Ring value={0.3} />
-            <Ring value={0.7} />
-            <Ring value={0.92} />
-            <Ring value={70} inputScale="percent" size="md" label={<span>70%</span>} />
-            <Tooltip text="Tooltip via text prop">
-              <Badge variant="info">hover me</Badge>
-            </Tooltip>
-            <Tooltip content={<span>ReactNode <strong>content</strong></span>}>
-              <Badge variant="purple">hover (node)</Badge>
-            </Tooltip>
-          </Row>
-          <Row>
-            <Skeleton className="h-10 w-32" />
-            <Skeleton className="h-10 w-64" />
-            <Skeleton className="h-10 w-20 rounded-full" />
-          </Row>
-        </Section>
-
-        {/* Forms */}
-        <Section title="Forms">
-          <div className="grid md:grid-cols-2 gap-4">
-            <TextField
-              id="ds-text"
-              label="Текст"
-              value={text}
-              onChange={setText}
-              placeholder="Введите…"
-              hint="Подсказка под полем"
-              prefix={Search}
-            />
-            <NumberField
-              id="ds-num"
-              label="Число"
-              value={num}
-              onChange={setNum}
-              suffix={<span className="text-muted text-xs">₽</span>}
-            />
-            <SelectField
-              id="ds-sel"
-              label="Один из"
-              value={sel}
-              onChange={setSel}
-              options={colorOptions}
-              placeholder="Выбери цвет"
-            />
-            <MultiSelectField
-              id="ds-multi"
-              label="Несколько (chips-toggle, R4)"
-              value={multi}
-              onChange={setMulti}
-              options={colorOptions}
-              hint="DS §6 — chips-toggles inline, не dropdown."
-            />
-            <TextareaField
-              id="ds-area"
-              label="Текстовая область"
-              value={textarea}
-              onChange={setTextarea}
-              maxLength={200}
-              autoResize
-            />
-            <DatePicker
-              id="ds-date"
-              label="Дата"
-              value={date}
-              onChange={setDate}
-            />
-            <Combobox
-              id="ds-combo"
-              label="Комбобокс (input mode)"
-              value={combo}
-              onChange={setCombo}
-              options={colorOptions}
-            />
-            <Combobox
-              id="ds-combo-btn"
-              label="Комбобокс (button mode)"
-              mode="button"
-              value={comboBtn}
-              onChange={setComboBtn}
-              options={colorOptions}
-              hint="Закрытое состояние — кнопка; внутри popover поиск + listbox (canonical)."
-            />
-            <FieldWrap id="ds-error" label="С ошибкой" error="Поле обязательно">
-              <TextField id="ds-err-inner" value="" onChange={() => null} error="Поле обязательно" />
-            </FieldWrap>
-          </div>
-          <FileUpload id="ds-file" label="Файлы" value={files} onChange={setFiles} multiple maxSize={5 * 1024 * 1024} />
-        </Section>
-
-        {/* R3 forms: TimePicker / ColorPicker / DatePicker range */}
-        <Section title="TimePicker / ColorPicker / DatePicker range (R3)">
-          <div className="grid md:grid-cols-2 gap-4">
-            <TimePicker
-              id="ds-time"
-              label="Время"
-              value={time}
-              onChange={setTime}
-              hint="30-мин шаг, 08:00 — 21:00"
-            />
-            <ColorPicker
-              id="ds-color"
-              label="Цвет"
-              value={color}
-              onChange={setColor}
-              hint="9-цветная палитра + hex"
-            />
-            <DatePicker
-              id="ds-date-range"
-              label="Период"
-              range
-              value={dateRange}
-              onChange={setDateRange}
-              hint="Два клика: from → to (с автоматическим swap)"
-            />
-          </div>
-        </Section>
-
-        {/* Tabs */}
-        <Section title="Tabs (underline / pills / segmented / vertical)">
-          <Tabs
-            variant="underline"
-            value={tabUnderline}
-            onChange={setTabUnderline}
-            items={[
-              { value: "overview", label: "Обзор" },
-              { value: "details", label: "Детали", count: 5 },
-              { value: "settings", label: "Настройки" },
-            ]}
-          />
-          <Tabs
-            variant="pills"
-            value={tabPills}
-            onChange={setTabPills}
-            items={[
-              { value: "daily", label: "День" },
-              { value: "weekly", label: "Неделя" },
-              { value: "monthly", label: "Месяц" },
-            ]}
-          />
-          {/* R4: Segmented — list/grid/kanban switcher */}
-          <Tabs
-            variant="segmented"
-            value={tabSegmented}
-            onChange={setTabSegmented}
-            items={[
-              { value: "list", label: "Список" },
-              { value: "grid", label: "Сетка" },
-              { value: "kanban", label: "Канбан" },
-            ]}
-          />
-          <div className="flex gap-6">
-            <Tabs
-              variant="vertical"
-              value={tabVertical}
-              onChange={setTabVertical}
-              items={[
-                { value: "general", label: "Общее" },
-                { value: "profile", label: "Профиль" },
-                { value: "billing", label: "Биллинг" },
-              ]}
-            />
-            <div className="flex-1 bg-surface-muted rounded-lg p-4 text-sm text-secondary">
-              Активная вкладка: <span className="text-primary font-medium">{tabVertical}</span>
-            </div>
-          </div>
-        </Section>
-
-        {/* Stepper */}
-        <Section title="Stepper">
-          <Stepper
-            current={2}
-            steps={[
-              { label: "Создание" },
-              { label: "Заполнение" },
-              { label: "Проверка" },
-              { label: "Запуск" },
-            ]}
-          />
-        </Section>
-
-        {/* Feedback */}
-        <Section title="Alert / EmptyState / Toast">
-          <div className="space-y-2">
-            <Alert variant="default" title="Default" description="Информационное сообщение." />
-            <Alert variant="success" title="Сохранено" description="Изменения применены." />
-            <Alert variant="warning" title="Внимание" description="Проверь данные перед публикацией." />
-            <Alert variant="danger" title="Ошибка" description="Не удалось загрузить файл." />
-            <Alert variant="info" title="К сведению" description="Доступна новая версия." />
-          </div>
-
-          <div className="border border-default rounded-lg">
-            <EmptyState
-              icon={<Search className="w-10 h-10" />}
-              title="Ничего не найдено"
-              description="Попробуй изменить условия поиска."
-              action={<Button variant="primary">Сбросить фильтры</Button>}
-            />
-          </div>
-
-          <Row>
-            <Button variant="secondary" onClick={() => toast.toast("Сохранено", { variant: "success" })}>
-              Success toast
-            </Button>
-            <Button variant="secondary" onClick={() => toast.toast("Ошибка", { variant: "danger", description: "Подробности в консоли" })}>
-              Danger toast
-            </Button>
-            <Button variant="secondary" onClick={() => toast.toast("Внимание", { variant: "warning" })}>
-              Warning toast
-            </Button>
-            {/* R4: Loading variant — no auto-dismiss, caller controls lifetime */}
-            <Button
-              variant="secondary"
-              onClick={() => {
-                const id = toast.loading("Загружаем данные…", {
-                  description: "Закроется автоматически через 3 сек.",
-                })
-                window.setTimeout(() => toast.dismiss(id), 3000)
-              }}
-            >
-              Loading toast
-            </Button>
-          </Row>
-        </Section>
-
-        {/* Overlays */}
-        <Section title="Overlays">
-          <Row>
-            <Button variant="secondary" onClick={() => setModalOpen(true)}>Modal</Button>
-            <Button variant="secondary" onClick={() => setDrawerOpen(true)}>Drawer (md)</Button>
-            {/* R4: Drawer semantic size presets */}
-            <Button variant="secondary" onClick={() => setDrawerFilters(true)}>
-              Drawer filters (420)
-            </Button>
-            <Button variant="secondary" onClick={() => setDrawerDetail(true)}>
-              Drawer detail (560)
-            </Button>
-            <Button variant="secondary" onClick={() => setPaletteOpen(true)}>
-              Command palette <Kbd>⌘K</Kbd>
-            </Button>
-
-            <Popover
-              trigger={<Button variant="secondary" icon={ChevronRight}>Popover</Button>}
-              placement="bottom"
-            >
-              <div className="bg-elevated border border-default rounded-lg p-3 shadow-md w-56">
-                <p className="text-sm text-secondary">Popover-контент. Закрывается при клике снаружи.</p>
+        {/* Grouped nav */}
+        <nav className="flex-1 min-h-0 overflow-y-auto py-3 px-2 space-y-4">
+          {GROUPS.map((group) => (
+            <div key={group} className="space-y-0.5">
+              <div className="px-2 py-1 text-[10px] uppercase tracking-wider text-label">
+                {group}
               </div>
-            </Popover>
-
-            <DropdownMenu
-              trigger={<Button variant="secondary">Dropdown</Button>}
-              items={[
-                { label: "Открыть", onClick: () => toast.toast("Открыто") },
-                { label: "Поделиться", onClick: () => toast.toast("Поделено") },
-                { label: "Удалить", danger: true, onClick: () => toast.toast("Удалено", { variant: "danger" }) },
-              ]}
-            />
-          </Row>
-
-          <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Модальное окно" description="Esc или клик вне — закрывает." size="md">
-            <p className="text-sm text-secondary">Контент модала. Закрывается клавишей Escape.</p>
-            <div className="flex justify-end gap-2 mt-4">
-              <Button variant="ghost" onClick={() => setModalOpen(false)}>Отмена</Button>
-              <Button variant="primary" onClick={() => setModalOpen(false)}>Подтвердить</Button>
+              {grouped[group].map((section) => {
+                const Icon = section.icon
+                const isActive = section.id === activeId
+                return (
+                  <button
+                    key={section.id}
+                    type="button"
+                    aria-current={isActive ? "page" : undefined}
+                    onClick={() => setActiveId(section.id)}
+                    className={
+                      "group w-full flex items-center gap-2.5 px-2 h-8 rounded-md text-sm transition-colors outline-none " +
+                      "focus-visible:ring-2 focus-visible:ring-[var(--color-ring)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--color-surface)] " +
+                      (isActive
+                        ? "bg-[var(--color-text-primary)] text-[var(--color-surface)] font-medium"
+                        : "text-secondary hover:bg-surface hover:text-primary")
+                    }
+                  >
+                    <Icon className={"w-3.5 h-3.5 shrink-0 " + (isActive ? "" : "text-muted")} />
+                    <span className="flex-1 truncate text-left">{section.label}</span>
+                  </button>
+                )
+              })}
             </div>
-          </Modal>
+          ))}
+        </nav>
 
-          <Drawer open={drawerOpen} onClose={() => setDrawerOpen(false)} title="Боковая панель" description="Slide-out справа." side="right" size="md">
-            <p className="text-sm text-secondary">Drawer-контент. Можно положить форму, детали, что угодно.</p>
-          </Drawer>
-
-          {/* R4: Drawer size presets — filters (420px) vs detail (560px) */}
-          <Drawer
-            open={drawerFilters}
-            onClose={() => setDrawerFilters(false)}
-            title="Фильтры"
-            description="size='filters' → 420px (canonical foundation.jsx:2239)."
-            side="right"
-            size="filters"
+        {/* Theme block */}
+        <div className="shrink-0 px-3 py-3 border-t border-default">
+          <div className="text-[10px] uppercase tracking-wider text-label mb-2 px-1">
+            Тема
+          </div>
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="w-full flex items-center justify-between gap-2 rounded-md px-3 h-8 text-sm border border-default text-secondary hover:bg-surface hover:text-primary transition-colors"
           >
-            <p className="text-sm text-secondary">Использование: фильтрационная панель на списочных страницах.</p>
-          </Drawer>
-          <Drawer
-            open={drawerDetail}
-            onClose={() => setDrawerDetail(false)}
-            title="Детали карточки"
-            description="size='detail' → 560px (Kanban detail-drawer pattern)."
-            side="right"
-            size="detail"
-          >
-            <p className="text-sm text-secondary">Использование: правка карточки Канбана, интеграции.</p>
-          </Drawer>
+            <span className="flex items-center gap-2">
+              {theme === "light" ? (
+                <Sun className="w-3.5 h-3.5" />
+              ) : (
+                <Moon className="w-3.5 h-3.5" />
+              )}
+              {theme === "light" ? "Светлая" : "Тёмная"}
+            </span>
+            <Kbd>⌘⇧L</Kbd>
+          </button>
+        </div>
+      </aside>
 
-          <CommandPalette
-            open={paletteOpen}
-            onClose={() => setPaletteOpen(false)}
-            commands={[
-              { id: "home", label: "На главную", group: "Навигация", onSelect: () => toast.toast("→ /") },
-              { id: "search", label: "Найти модель", group: "Действия", shortcut: "⌘F", onSelect: () => toast.toast("Поиск") },
-              { id: "settings", label: "Настройки", group: "Действия", onSelect: () => toast.toast("Настройки") },
-              { id: "logout", label: "Выйти", group: "Аккаунт", onSelect: () => toast.toast("Выход", { variant: "warning" }) },
-            ]}
-          />
-        </Section>
+      {/* ============================================================
+       * MAIN — sticky top bar + page header + active section.
+       * ============================================================ */}
+      <main className="flex-1 min-w-0">
+        <header className="sticky top-0 z-20 h-14 px-6 bg-elevated border-b border-default flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-[11px] uppercase tracking-wider text-label shrink-0">
+              Wookiee Hub · Design System
+            </span>
+            <ChevronRight className="w-3 h-3 text-label shrink-0" />
+            <span className="text-sm font-medium text-primary truncate">
+              {active.label}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button variant="secondary" size="sm" icon={Download}>
+              Экспорт токенов
+            </Button>
+            <IconButton
+              aria-label="Toggle theme"
+              icon={theme === "light" ? Moon : Sun}
+              onClick={toggleTheme}
+              variant="secondary"
+            />
+          </div>
+        </header>
 
-        <div className="text-center text-xs text-muted py-8">
-          Design System v2 · Wookiee Hub · 2026
+        <div className="px-8 py-8 max-w-6xl">
+          <div className="mb-8">
+            <div className="text-[11px] uppercase tracking-wider text-label mb-1">
+              Дизайн-система v2
+            </div>
+            <h1 className="font-serif italic text-4xl text-primary mb-2 leading-tight">
+              {active.label}
+            </h1>
+            <p className="text-sm text-muted max-w-2xl">{active.lede}</p>
+          </div>
+
+          <Active />
+
+          <footer className="mt-16 pt-6 border-t border-default text-center text-xs text-muted">
+            Design System v2 · Wookiee Hub · 2026
+          </footer>
         </div>
       </main>
     </div>
