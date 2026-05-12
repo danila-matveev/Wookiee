@@ -51,7 +51,11 @@ import {
   duplicateModel,
   fetchAllTags,
   fetchAttributesForCategory,
+  fetchAtributy,
+  insertAtribut,
+  linkAtributToKategoriya,
   type Atribut,
+  type AtributPayload,
   fetchAuditFor,
   fetchBrendy,
   fetchFabriki,
@@ -892,6 +896,7 @@ function TabAttributes({ m, draft, setDraft, editing }: TabContentProps) {
     staleTime: 5 * 60 * 1000,
   })
   const attrs: Atribut[] = attrKeysQ.data ?? []
+  const [addOpen, setAddOpen] = useState(false)
 
   const set = (k: string, v: unknown) => {
     if (!draft) return
@@ -901,37 +906,278 @@ function TabAttributes({ m, draft, setDraft, editing }: TabContentProps) {
     ? (draft as unknown as Record<string, unknown>)
     : (m as unknown as Record<string, unknown>))
 
-  if (attrs.length === 0) {
-    return (
-      <Section label="Атрибуты">
-        <div className="text-sm text-stone-400 italic">
-          Нет специфичных атрибутов для этой категории
-        </div>
-      </Section>
-    )
-  }
+  // W9.20 — прогресс заполнения атрибутов: считаем сколько из `attrs` имеют
+  // непустое значение в текущем view (draft или сохранённой модели).
+  const filledCount = useMemo(() => {
+    return attrs.filter((a) => {
+      const v = view[a.key]
+      if (v == null) return false
+      if (typeof v === "string") return v.trim().length > 0
+      if (Array.isArray(v)) return v.length > 0
+      return true
+    }).length
+  }, [attrs, view])
+  const totalCount = attrs.length
+  const pct = totalCount > 0 ? Math.round((filledCount / totalCount) * 100) : 0
+
+  const sectionHeader = (
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center gap-3">
+        <span>{totalCount > 0 ? `${totalCount} атрибутов настроены для этой категории` : "Атрибуты не настроены"}</span>
+        {totalCount > 0 && (
+          <span className="inline-flex items-center gap-1.5 text-[11px] text-stone-500">
+            <span>Заполнено {filledCount} из {totalCount}</span>
+            <span className="w-24 h-1.5 rounded-full bg-stone-100 overflow-hidden">
+              <span
+                className="block h-full bg-stone-900 transition-all"
+                style={{ width: `${pct}%` }}
+              />
+            </span>
+            <span className="tabular-nums">{pct}%</span>
+          </span>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={() => setAddOpen(true)}
+        disabled={m.kategoriya_id == null}
+        title={m.kategoriya_id != null ? "Создать новый атрибут и привязать к этой категории" : "У модели не указана категория"}
+        className="px-2.5 py-1 text-xs text-white bg-stone-900 rounded-md flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-stone-800"
+      >
+        <Plus className="w-3 h-3" /> Новый атрибут
+      </button>
+    </div>
+  )
 
   return (
-    <Section
-      label={`Атрибуты категории «${m.kategoriya ?? "—"}»`}
-      hint={`${attrs.length} атрибутов настроены для этой категории`}
+    <>
+      <Section
+        label={`Атрибуты категории «${m.kategoriya ?? "—"}»`}
+        hint={sectionHeader as unknown as string}
+      >
+        {attrs.length === 0 ? (
+          <div className="text-sm text-stone-400 italic">
+            Нет специфичных атрибутов для этой категории. Нажмите «+ Новый атрибут» чтобы создать первый.
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-x-4 gap-y-4">
+            {attrs.map((a) => {
+              const lvl = FIELD_LEVEL[a.key] ?? "model"
+              return (
+                <AttributeControl
+                  key={a.key}
+                  atribut={a}
+                  value={view[a.key]}
+                  onChange={(v) => set(a.key, v)}
+                  readonly={!editing}
+                  level={lvl}
+                />
+              )
+            })}
+          </div>
+        )}
+      </Section>
+      {addOpen && m.kategoriya_id != null && (
+        <AddAtributModal
+          kategoriyaId={m.kategoriya_id}
+          existingAtributIds={new Set(attrs.map((a) => a.id))}
+          onClose={() => setAddOpen(false)}
+        />
+      )}
+    </>
+  )
+}
+
+// W9.14 — модалка для создания нового атрибута + привязки к текущей категории.
+// Также позволяет привязать существующий (не связанный с этой категорией) атрибут.
+function AddAtributModal({
+  kategoriyaId,
+  existingAtributIds,
+  onClose,
+}: {
+  kategoriyaId: number
+  existingAtributIds: Set<number>
+  onClose: () => void
+}) {
+  const queryClient = useQueryClient()
+  const [mode, setMode] = useState<"create" | "link">("create")
+  const [key, setKey] = useState("")
+  const [label, setLabel] = useState("")
+  const [type, setType] = useState<"text" | "number" | "select" | "multiselect" | "boolean">("text")
+  const [optionsText, setOptionsText] = useState("")
+  const [linkAtributId, setLinkAtributId] = useState<number | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const allAtributyQ = useQuery({
+    queryKey: ["catalog", "atributy", "all"],
+    queryFn: fetchAtributy,
+    staleTime: 5 * 60 * 1000,
+  })
+  const linkableAtributy = useMemo(
+    () => (allAtributyQ.data ?? []).filter((a) => !existingAtributIds.has(a.id)),
+    [allAtributyQ.data, existingAtributIds],
+  )
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["catalog", "kategoriya-atributy", kategoriyaId] })
+    queryClient.invalidateQueries({ queryKey: ["catalog", "atributy"] })
+  }
+
+  const createMut = useMutation({
+    mutationFn: async () => {
+      if (mode === "link") {
+        if (linkAtributId == null) throw new Error("Выберите атрибут из списка")
+        await linkAtributToKategoriya(linkAtributId, kategoriyaId)
+        return
+      }
+      const k = key.trim()
+      const l = label.trim()
+      if (!k) throw new Error("Укажите внутренний key атрибута (латиница, snake_case)")
+      if (!l) throw new Error("Укажите подпись атрибута для UI")
+      const options = (type === "select" || type === "multiselect")
+        ? optionsText.split(",").map((s) => s.trim()).filter(Boolean)
+        : []
+      const payload: AtributPayload = {
+        key: k,
+        label: l,
+        type: type as never,
+        options: options.length > 0 ? options : undefined,
+        default_value: null,
+        helper_text: null,
+      }
+      const created = await insertAtribut(payload)
+      await linkAtributToKategoriya(created.id, kategoriyaId)
+    },
+    onSuccess: () => {
+      invalidate()
+      onClose()
+    },
+    onError: (e: unknown) => setError(translateError(e)),
+  })
+
+  return (
+    <div
+      className="fixed inset-0 bg-stone-900/40 flex items-center justify-center z-50 p-4"
+      onClick={onClose}
     >
-      <div className="grid grid-cols-2 gap-x-4 gap-y-4">
-        {attrs.map((a) => {
-          const lvl = FIELD_LEVEL[a.key] ?? "model"
-          return (
-            <AttributeControl
-              key={a.key}
-              atribut={a}
-              value={view[a.key]}
-              onChange={(v) => set(a.key, v)}
-              readonly={!editing}
-              level={lvl}
-            />
-          )
-        })}
+      <div
+        className="bg-white rounded-lg shadow-xl border border-stone-200 w-full max-w-md p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-medium text-stone-900">Новый атрибут</h3>
+          <button onClick={onClose} className="text-stone-400 hover:text-stone-700">×</button>
+        </div>
+        <div className="flex gap-2 mb-4 text-xs">
+          <button
+            type="button"
+            onClick={() => setMode("create")}
+            className={`px-2.5 py-1 rounded-md border ${mode === "create" ? "bg-stone-900 text-white border-stone-900" : "bg-white text-stone-700 border-stone-200"}`}
+          >
+            Создать новый
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("link")}
+            className={`px-2.5 py-1 rounded-md border ${mode === "link" ? "bg-stone-900 text-white border-stone-900" : "bg-white text-stone-700 border-stone-200"}`}
+          >
+            Подключить существующий
+          </button>
+        </div>
+
+        {mode === "create" ? (
+          <div className="space-y-3">
+            <div>
+              <label className="block text-[11px] text-stone-500 mb-1">Внутренний key (snake_case)</label>
+              <input
+                type="text"
+                value={key}
+                onChange={(e) => setKey(e.target.value)}
+                placeholder="material_sostav"
+                className="w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md outline-none focus:border-stone-400"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] text-stone-500 mb-1">Подпись для UI</label>
+              <input
+                type="text"
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                placeholder="Состав материала"
+                className="w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md outline-none focus:border-stone-400"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] text-stone-500 mb-1">Тип значения</label>
+              <select
+                value={type}
+                onChange={(e) => setType(e.target.value as never)}
+                className="w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md outline-none focus:border-stone-400 bg-white"
+              >
+                <option value="text">Текст</option>
+                <option value="number">Число</option>
+                <option value="boolean">Да / Нет</option>
+                <option value="select">Один из списка</option>
+                <option value="multiselect">Несколько из списка</option>
+              </select>
+            </div>
+            {(type === "select" || type === "multiselect") && (
+              <div>
+                <label className="block text-[11px] text-stone-500 mb-1">Варианты значений (через запятую)</label>
+                <input
+                  type="text"
+                  value={optionsText}
+                  onChange={(e) => setOptionsText(e.target.value)}
+                  placeholder="хлопок, лён, шёлк"
+                  className="w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md outline-none focus:border-stone-400"
+                />
+              </div>
+            )}
+          </div>
+        ) : (
+          <div>
+            <label className="block text-[11px] text-stone-500 mb-1">Атрибут из общего справочника</label>
+            <select
+              value={linkAtributId ?? ""}
+              onChange={(e) => setLinkAtributId(e.target.value ? Number(e.target.value) : null)}
+              className="w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md outline-none focus:border-stone-400 bg-white"
+            >
+              <option value="">— выберите атрибут —</option>
+              {linkableAtributy.map((a) => (
+                <option key={a.id} value={a.id}>{a.label} ({a.type})</option>
+              ))}
+            </select>
+            <p className="text-[11px] text-stone-500 mt-2">
+              Показаны атрибуты, ещё не привязанные к этой категории.
+            </p>
+          </div>
+        )}
+
+        {error && (
+          <div className="mt-3 text-xs text-red-600 bg-red-50 border border-red-200 rounded-md px-2.5 py-1.5">
+            {error}
+          </div>
+        )}
+
+        <div className="flex items-center justify-end gap-2 mt-5">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-3 py-1.5 text-xs text-stone-700 bg-white border border-stone-200 hover:bg-stone-50 rounded-md"
+          >
+            Отмена
+          </button>
+          <button
+            type="button"
+            onClick={() => { setError(null); createMut.mutate() }}
+            disabled={createMut.isPending}
+            className="px-3 py-1.5 text-xs text-white bg-stone-900 hover:bg-stone-800 rounded-md disabled:opacity-50"
+          >
+            {createMut.isPending ? "Сохраняем…" : (mode === "create" ? "Создать и привязать" : "Подключить")}
+          </button>
+        </div>
       </div>
-    </Section>
+    </div>
   )
 }
 

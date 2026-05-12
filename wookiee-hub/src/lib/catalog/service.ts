@@ -159,6 +159,35 @@ export async function deleteAtribut(id: number): Promise<void> {
  * `Atribut` (id, key, label, type, options, …) — model-card.tsx использует
  * label/type/options напрямую, без вторичного маппинга через `ALL_ATTRIBUTES`.
  */
+/**
+ * W9.14 — Привязать существующий атрибут к категории.
+ *
+ * Вставляет ряд в `kategoriya_atributy`. `poryadok` берётся как `max+1` если
+ * не передан явно. Идемпотентен: при конфликте уникального ключа (если такой
+ * есть) бросает понятную ошибку — её ловит translateError в UI.
+ */
+export async function linkAtributToKategoriya(
+  atributId: number,
+  kategoriyaId: number,
+  poryadok?: number,
+): Promise<void> {
+  let order = poryadok
+  if (order == null) {
+    const { data: maxRow } = await supabase
+      .from("kategoriya_atributy")
+      .select("poryadok")
+      .eq("kategoriya_id", kategoriyaId)
+      .order("poryadok", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    order = ((maxRow as { poryadok: number } | null)?.poryadok ?? 0) + 1
+  }
+  const { error } = await supabase
+    .from("kategoriya_atributy")
+    .insert({ atribut_id: atributId, kategoriya_id: kategoriyaId, poryadok: order })
+  if (error) throw new Error(error.message)
+}
+
 export async function fetchAttributesForCategory(
   kategoriyaId: number,
 ): Promise<Atribut[]> {
