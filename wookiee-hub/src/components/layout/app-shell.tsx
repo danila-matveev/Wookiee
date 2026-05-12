@@ -18,9 +18,9 @@ function AppShell() {
   const { sidebarOpen, mobileMenuOpen, closeMobileMenu } = useNavigationStore()
   const location = useLocation()
 
-  // Sync dark class on documentElement
+  // Sync data-theme attribute on documentElement (DS v2)
   useEffect(() => {
-    document.documentElement.classList.toggle("dark", theme === "dark")
+    document.documentElement.setAttribute("data-theme", theme)
   }, [theme])
 
   // Sync active nav group from current URL (without toggling sidebar)
