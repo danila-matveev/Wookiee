@@ -36,24 +36,25 @@
   --color-border-strong: theme(colors.stone.300);
   --color-border-subtle: theme(colors.stone.100);
 
-  /* Brand accent — Wookiee purple */
+  /* Brand accent — Wookiee purple (#7C3AED = violet-600) */
   --color-accent: theme(colors.violet.600);
   --color-accent-hover: theme(colors.violet.700);
   --color-accent-soft: theme(colors.violet.100);
   --color-accent-text: theme(colors.white);
 
-  /* Status — light */
+  /* Status — light. Soft = -50 per DS §6 (Badge bg-emerald-50 etc.). */
   --color-success: theme(colors.emerald.600);
-  --color-success-soft: theme(colors.emerald.100);
+  --color-success-soft: theme(colors.emerald.50);
   --color-warning: theme(colors.amber.600);
-  --color-warning-soft: theme(colors.amber.100);
-  --color-danger: theme(colors.red.600);
-  --color-danger-soft: theme(colors.red.100);
+  --color-warning-soft: theme(colors.amber.50);
+  /* Danger = rose, not red. DS §2 «Red/Rose #E11D48» = Tailwind rose-600. */
+  --color-danger: theme(colors.rose.600);
+  --color-danger-soft: theme(colors.rose.50);
   --color-info: theme(colors.blue.600);
-  --color-info-soft: theme(colors.blue.100);
+  --color-info-soft: theme(colors.blue.50);
 
-  /* Focus ring */
-  --color-ring: theme(colors.violet.600);
+  /* Focus ring — DS §10 «обводка border-stone-900 focus:ring-1 ring-stone-900 (не синяя)». Neutral, not brand. */
+  --color-ring: theme(colors.stone.900);
 
   /* ─── Radius scale ─── */
   --radius-xs: 0.25rem; /* 4px */
@@ -101,10 +102,10 @@
 [data-theme="dark"] {
   color-scheme: dark;
 
-  /* Surfaces */
+  /* Surfaces. surface-muted = 40% per spec §12 (не 60%). */
   --color-page: theme(colors.stone.950);
   --color-surface: theme(colors.stone.900);
-  --color-surface-muted: theme(colors.stone.900 / 60%);
+  --color-surface-muted: theme(colors.stone.900 / 40%);
   --color-elevated: theme(colors.stone.800);
 
   /* Text */
@@ -118,24 +119,25 @@
   --color-border-strong: theme(colors.stone.700);
   --color-border-subtle: theme(colors.stone.900);
 
-  /* Brand accent — lighter for dark */
-  --color-accent: theme(colors.violet.400);
-  --color-accent-hover: theme(colors.violet.300);
-  --color-accent-soft: theme(colors.violet.900 / 40%);
+  /* Brand accent — DS §2: «-300 оттенок» в тёмной + полный фон «-950/40». */
+  --color-accent: theme(colors.violet.300);
+  --color-accent-hover: theme(colors.violet.200);
+  --color-accent-soft: theme(colors.violet.950 / 40%);
   --color-accent-text: theme(colors.stone.950);
 
-  /* Status — dark */
-  --color-success: theme(colors.emerald.400);
-  --color-success-soft: theme(colors.emerald.900 / 40%);
-  --color-warning: theme(colors.amber.400);
-  --color-warning-soft: theme(colors.amber.900 / 40%);
-  --color-danger: theme(colors.red.400);
-  --color-danger-soft: theme(colors.red.900 / 40%);
-  --color-info: theme(colors.blue.400);
-  --color-info-soft: theme(colors.blue.900 / 40%);
+  /* Status — dark. Hue shifts to -300, soft to -950/40 per DS §2. */
+  --color-success: theme(colors.emerald.300);
+  --color-success-soft: theme(colors.emerald.950 / 40%);
+  --color-warning: theme(colors.amber.300);
+  --color-warning-soft: theme(colors.amber.950 / 40%);
+  /* Danger = rose */
+  --color-danger: theme(colors.rose.300);
+  --color-danger-soft: theme(colors.rose.950 / 40%);
+  --color-info: theme(colors.blue.300);
+  --color-info-soft: theme(colors.blue.950 / 40%);
 
-  /* Focus ring */
-  --color-ring: theme(colors.violet.400);
+  /* Focus ring — neutral stone-50 in dark (inverse of light stone-900). */
+  --color-ring: theme(colors.stone.50);
 
   /* Shadows — denser on dark */
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
