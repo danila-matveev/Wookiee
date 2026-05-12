@@ -69,6 +69,10 @@ async def _pick_postprocessing() -> dict[str, Any] | None:
 async def _update_meeting(meeting_id: UUID, status: str, **fields: Any) -> None:
     """Update meeting row with dynamic SET clause.
 
+    Special case: status='postprocessing' resets notified_at so the notifier
+    can re-send after manual recovery / retry. notifier remains idempotent
+    per (meeting_id, notified_at IS NULL) — see notifier._claim_notification.
+
     `_JSONB_FIELDS` are encoded via `json.dumps(..., ensure_ascii=False)`
     and cast to ::jsonb. Other fields (e.g. `tags text[]`, `error text`)
     pass through directly — asyncpg adapts python list[str] to text[] natively.
@@ -85,6 +89,8 @@ async def _update_meeting(meeting_id: UUID, status: str, **fields: Any) -> None:
             args.append(v)
             set_clauses.append(f"{k} = ${idx}")
         idx += 1
+    if status == "postprocessing":
+        set_clauses.append("notified_at = NULL")
     query = f"UPDATE telemost.meetings SET {', '.join(set_clauses)} WHERE id = $1"
     async with pool.acquire() as conn:
         await conn.execute(query, *args)

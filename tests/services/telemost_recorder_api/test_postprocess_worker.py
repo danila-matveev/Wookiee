@@ -6,7 +6,10 @@ from uuid import UUID
 
 import pytest
 
-from services.telemost_recorder_api.workers.postprocess_worker import process_one
+from services.telemost_recorder_api.workers.postprocess_worker import (
+    _update_meeting,
+    process_one,
+)
 
 
 _MEETING_ID = UUID("11111111-1111-1111-1111-111111111111")
@@ -192,3 +195,81 @@ async def test_unexpected_exception_marks_failed_and_notifies():
     assert "unexpected" in update_calls[1]["fields"]["error"]
     assert "db went away" in update_calls[1]["fields"]["error"]
     assert notify_calls == [_MEETING_ID]
+
+
+@pytest.mark.asyncio
+async def test_status_back_to_postprocessing_resets_notified_at():
+    """When _update_meeting flips status to 'postprocessing' (manual recovery
+    / LLM retry), the SQL must clear notified_at so the notifier can re-send.
+
+    Without this, notifier._claim_notification (UPDATE ... WHERE notified_at
+    IS NULL RETURNING) returns None forever and the user is stuck with the
+    stale DM.
+    """
+    captured: dict = {}
+
+    class FakeConn:
+        async def execute(self, query, *args):
+            captured["query"] = query
+            captured["args"] = args
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+    class FakePool:
+        def acquire(self):
+            return FakeConn()
+
+    with patch(
+        "services.telemost_recorder_api.workers.postprocess_worker.get_pool",
+        AsyncMock(return_value=FakePool()),
+    ):
+        await _update_meeting(_MEETING_ID, "postprocessing", error=None)
+
+    query = captured["query"]
+    assert "notified_at = NULL" in query, (
+        f"expected 'notified_at = NULL' clause in query when flipping to "
+        f"postprocessing, got: {query!r}"
+    )
+    # Sanity: status placeholder still present.
+    assert "status = $2" in query
+    # Args: (meeting_id, 'postprocessing', None) — notified_at clause must NOT
+    # consume a placeholder (it's a literal NULL), so error remains $3.
+    assert captured["args"] == (_MEETING_ID, "postprocessing", None)
+
+
+@pytest.mark.asyncio
+async def test_update_to_done_does_not_touch_notified_at():
+    """Regression guard: the notified_at reset must be scoped to
+    status='postprocessing' only. Normal done/failed transitions must leave
+    notified_at alone so the idempotency-gate keeps working.
+    """
+    captured: dict = {}
+
+    class FakeConn:
+        async def execute(self, query, *args):
+            captured["query"] = query
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+    class FakePool:
+        def acquire(self):
+            return FakeConn()
+
+    with patch(
+        "services.telemost_recorder_api.workers.postprocess_worker.get_pool",
+        AsyncMock(return_value=FakePool()),
+    ):
+        await _update_meeting(_MEETING_ID, "done", tags=["прочее"])
+
+    assert "notified_at" not in captured["query"], (
+        f"notified_at must not appear in done-transition query, got: "
+        f"{captured['query']!r}"
+    )
