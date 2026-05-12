@@ -53,8 +53,23 @@ def test_build_prompt_requires_extended_tasks_schema():
     )
     assert "context" in prompt
     assert "conditions" in prompt
-    # Quality bar — explicit task count guidance for long meetings
-    assert "5-15" in prompt or "1-2 час" in prompt
+
+
+def test_build_prompt_focuses_on_obligations_not_quotas():
+    """Главная философия: ловить обещания/обязательства, а не выполнять квоты по темам."""
+    prompt = build_prompt(
+        [{"speaker": "Speaker 0", "start_ms": 0, "end_ms": 1000, "text": "x"}],
+        [{"name": "Данила"}],
+    )
+    # No hard quota on topic count
+    assert "5-15" not in prompt
+    # Must mention obligations/promises/forgotten items
+    obligation_signals = ("обещан", "обязательств", "забы", "не забы")
+    assert any(s in prompt.lower() for s in obligation_signals), (
+        "Prompt must instruct LLM to catch promises and prevent forgotten items"
+    )
+    # Must reference Bitrix downstream so the LLM frames tasks for ticket creation
+    assert "Bitrix" in prompt or "bitrix" in prompt.lower()
 
 
 @pytest.mark.asyncio

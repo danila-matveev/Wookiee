@@ -43,12 +43,71 @@ def _event_mentions_url(ev: dict, url: str) -> bool:
     return any(url in h for h in haystacks)
 
 
+def _parse_bitrix_date(s: str | None) -> datetime | None:
+    """Parse Bitrix DATE_FROM ('13.05.2026 08:30:00') to UTC datetime.
+
+    Bitrix returns dates in user TZ without explicit offset; we use UTC-naive
+    comparison anyway (we just need closeness in minutes, not absolute time).
+    """
+    if not s:
+        return None
+    for fmt in ("%d.%m.%Y %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            return datetime.strptime(s, fmt).replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+    return None
+
+
+def _is_real_meeting(ev: dict) -> bool:
+    """Heuristic: a 'real' meeting with people, not personal time-block.
+
+    - Has ≥2 attendees (otherwise it's a self-block like 'няня' / 'обед').
+    - IS_MEETING flag is true (covers Bitrix-видеосвязь where LOCATION is a code).
+    """
+    if ev.get("IS_MEETING") is True:
+        return True
+    return len(ev.get("ATTENDEES_CODES") or []) >= 2
+
+
+def _pick_closest_meeting(events: list[dict], now: datetime) -> Optional[dict]:
+    """From a list of events, return the one closest to `now` that looks like a real meeting."""
+    best: Optional[dict] = None
+    best_delta: float = float("inf")
+    for ev in events:
+        if not _is_real_meeting(ev):
+            continue
+        start = _parse_bitrix_date(ev.get("DATE_FROM"))
+        if start is None:
+            continue
+        delta = abs((start - now).total_seconds())
+        if delta < best_delta:
+            best_delta = delta
+            best = ev
+    return best
+
+
+def _normalize_event(ev: dict) -> dict[str, Any]:
+    return {
+        "title": (ev.get("NAME") or "").strip() or None,
+        "bitrix_attendee_ids": _extract_attendee_ids(ev.get("ATTENDEES_CODES")),
+        "scheduled_at": ev.get("DATE_FROM"),
+        "source_event_id": str(ev.get("ID")) if ev.get("ID") else None,
+    }
+
+
 async def find_event_by_url(
     bitrix_user_id: str,
     meeting_url: str,
     window_hours: int = _LOOKUP_WINDOW_HOURS,
 ) -> Optional[dict[str, Any]]:
-    """Return normalized event dict matching meeting_url, or None."""
+    """Return normalized event matching meeting_url, with time-proximity fallback.
+
+    First tries URL match in LOCATION/DESCRIPTION/NAME. If nothing matches —
+    falls back to the calendar event closest in time to now() that looks like a
+    real meeting (≥2 attendees or IS_MEETING flag). This covers events that use
+    Bitrix-видеосвязь codes (`calendar_357_22673`) instead of plain Telemost URLs.
+    """
     now = datetime.now(timezone.utc)
     frm = (now - timedelta(hours=window_hours / 2)).strftime("%Y-%m-%dT%H:%M:%S")
     to = (now + timedelta(hours=window_hours / 2)).strftime("%Y-%m-%dT%H:%M:%S")
@@ -79,14 +138,17 @@ async def find_event_by_url(
 
     for ev in items:
         if _event_mentions_url(ev, meeting_url):
-            return {
-                "title": (ev.get("NAME") or "").strip() or None,
-                "bitrix_attendee_ids": _extract_attendee_ids(
-                    ev.get("ATTENDEES_CODES")
-                ),
-                "scheduled_at": ev.get("DATE_FROM"),
-                "source_event_id": str(ev.get("ID")) if ev.get("ID") else None,
-            }
+            logger.info("Bitrix match by URL for event %s", ev.get("ID"))
+            return _normalize_event(ev)
+
+    fallback = _pick_closest_meeting(items, now)
+    if fallback is not None:
+        logger.info(
+            "Bitrix URL not found, falling back to closest-in-time event %s (%r)",
+            fallback.get("ID"), fallback.get("NAME"),
+        )
+        return _normalize_event(fallback)
+
     return None
 
 
