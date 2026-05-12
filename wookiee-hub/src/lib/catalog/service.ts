@@ -2059,6 +2059,188 @@ export async function bulkCreateArtikuly(
   return out
 }
 
+// ─── Tovar creation (W4.4) ─────────────────────────────────────────────────
+//
+// Создание новых SKU (`tovary` rows). Используется кнопками «+ SKU» и
+// «+ Размер ко всем артикулам» в TabSKU карточки модели.
+//
+// `barkod` — NOT NULL + UNIQUE. Реальные баркоды получают офлайн через GS1
+// (`barkod_gs1`/`barkod_gs2`), поэтому при создании генерируем валидный
+// EAN-13 в internal-диапазоне (prefix `200`) с правильным check-digit —
+// он гарантированно не пересечётся с GS1-номерами реальных производителей.
+// Поле останется placeholder-ом до тех пор, пока команда не запросит
+// настоящие баркоды через `barkod_gs1`/`barkod_gs2`.
+//
+// Defaults (выбор задокументирован в commit W4.4):
+//   status_id        = 12  (План)  — модель ещё не продаётся
+//   status_ozon_id   = 12  (План)
+//   status_sayt_id   = 12  (План)
+//   status_lamoda_id = null         — lamoda опциональна
+//   barkod_gs1/gs2/perehod, ozon_*, lamoda_seller_sku, sku_china_size = null
+
+export const TOVAR_DEFAULT_STATUS_ID = 12 // 'План' — статус для свежесозданных SKU
+export const TOVAR_DEFAULT_LAMODA_STATUS_ID: number | null = null
+
+export interface InsertedTovar {
+  id: number
+  barkod: string
+  artikul_id: number
+  razmer_id: number
+}
+
+/**
+ * Generate a valid EAN-13 barkod in the internal-use prefix `200`.
+ * Returns 13-digit string with correct check-digit; collisions are extremely
+ * unlikely (10^9 namespace), and DB UNIQUE-constraint will reject the rare hit
+ * — the caller can retry.
+ */
+function generateInternalBarkod(): string {
+  // 12-digit payload: '200' + 9 random digits
+  let body = "200"
+  for (let i = 0; i < 9; i++) body += Math.floor(Math.random() * 10).toString()
+  // EAN-13 check-digit: sum of digits — odd positions (1-based) ×1, even ×3,
+  // then check = (10 - sum % 10) % 10
+  let sum = 0
+  for (let i = 0; i < 12; i++) {
+    const d = body.charCodeAt(i) - 48
+    sum += i % 2 === 0 ? d : d * 3
+  }
+  const check = (10 - (sum % 10)) % 10
+  return body + check.toString()
+}
+
+/**
+ * Generate a fresh barkod that does not yet exist in `tovary`.
+ * Retries up to `maxAttempts` times — astronomically unlikely to need more
+ * than 1 attempt given the 10^9 namespace, but the loop guards against
+ * pathological luck.
+ */
+async function generateUniqueBarkod(maxAttempts = 5): Promise<string> {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const candidate = generateInternalBarkod()
+    const { data, error } = await supabase
+      .from("tovary")
+      .select("id")
+      .eq("barkod", candidate)
+      .maybeSingle()
+    if (error && error.code !== "PGRST116") throw new Error(error.message)
+    if (!data) return candidate
+  }
+  throw new Error("Не удалось сгенерировать уникальный barkod после нескольких попыток")
+}
+
+/**
+ * Insert a single tovar (SKU) for the given artikul + razmer combination.
+ * Generates a placeholder EAN-13 barkod automatically and applies default
+ * statuses (12 = 'План' for WB/OZON/sayt; null for lamoda).
+ *
+ * Throws if (artikul_id, razmer_id) combination already exists — caller
+ * should detect this before calling.
+ */
+export async function insertTovar(
+  artikulId: number,
+  razmerId: number,
+): Promise<InsertedTovar> {
+  // Pre-check: refuse if combination already exists.
+  const { data: existing, error: probeErr } = await supabase
+    .from("tovary")
+    .select("id")
+    .eq("artikul_id", artikulId)
+    .eq("razmer_id", razmerId)
+    .maybeSingle()
+  if (probeErr && probeErr.code !== "PGRST116") throw new Error(probeErr.message)
+  if (existing) {
+    throw new Error(`SKU для этого артикула + размера уже существует (id=${existing.id})`)
+  }
+
+  const barkod = await generateUniqueBarkod()
+  const { data, error } = await supabase
+    .from("tovary")
+    .insert({
+      barkod,
+      artikul_id: artikulId,
+      razmer_id: razmerId,
+      status_id: TOVAR_DEFAULT_STATUS_ID,
+      status_ozon_id: TOVAR_DEFAULT_STATUS_ID,
+      status_sayt_id: TOVAR_DEFAULT_STATUS_ID,
+      status_lamoda_id: TOVAR_DEFAULT_LAMODA_STATUS_ID,
+    })
+    .select("id, barkod, artikul_id, razmer_id")
+    .single()
+  if (error) throw new Error(error.message)
+  return data as InsertedTovar
+}
+
+/**
+ * Bulk-add the same `razmer_id` to a list of artikuly.
+ * Skips artikuly that already have this size — returns the rows actually
+ * inserted (may be shorter than the input list).
+ *
+ * Implementation: probes existing `tovary` for the (artikul_ids[], razmer_id)
+ * combos in one query, then issues a single multi-row INSERT for the rest.
+ */
+export async function bulkAddSizeToArtikuly(
+  artikulIds: number[],
+  razmerId: number,
+): Promise<InsertedTovar[]> {
+  if (artikulIds.length === 0) return []
+
+  // Detect existing combinations to skip.
+  const { data: existing, error: existingErr } = await supabase
+    .from("tovary")
+    .select("artikul_id")
+    .in("artikul_id", artikulIds)
+    .eq("razmer_id", razmerId)
+  if (existingErr) throw new Error(existingErr.message)
+  const existingSet = new Set(
+    ((existing ?? []) as { artikul_id: number }[]).map((r) => r.artikul_id),
+  )
+  const toCreate = artikulIds.filter((id) => !existingSet.has(id))
+  if (toCreate.length === 0) return []
+
+  // Pre-generate unique barkods (sequentially to use the same DB-uniqueness
+  // probe; cheap given typical N ≤ 20).
+  const rows: Array<{
+    barkod: string
+    artikul_id: number
+    razmer_id: number
+    status_id: number
+    status_ozon_id: number
+    status_sayt_id: number
+    status_lamoda_id: number | null
+  }> = []
+  const localBarkods = new Set<string>()
+  for (const artikulId of toCreate) {
+    let barkod: string
+    // ensure uniqueness both vs DB и vs already-prepared rows in this batch
+    // (probability ≈ 0 but cheap to guard)
+    while (true) {
+      const candidate = await generateUniqueBarkod()
+      if (!localBarkods.has(candidate)) {
+        barkod = candidate
+        localBarkods.add(candidate)
+        break
+      }
+    }
+    rows.push({
+      barkod,
+      artikul_id: artikulId,
+      razmer_id: razmerId,
+      status_id: TOVAR_DEFAULT_STATUS_ID,
+      status_ozon_id: TOVAR_DEFAULT_STATUS_ID,
+      status_sayt_id: TOVAR_DEFAULT_STATUS_ID,
+      status_lamoda_id: TOVAR_DEFAULT_LAMODA_STATUS_ID,
+    })
+  }
+
+  const { data, error } = await supabase
+    .from("tovary")
+    .insert(rows)
+    .select("id, barkod, artikul_id, razmer_id")
+  if (error) throw new Error(error.message)
+  return (data ?? []) as InsertedTovar[]
+}
+
 // ─── UI preferences (per-user-less, scope+key) ─────────────────────────────
 
 /**

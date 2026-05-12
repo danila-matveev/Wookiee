@@ -44,6 +44,7 @@ import {
 } from "@/types/catalog"
 import {
   archiveModel,
+  bulkAddSizeToArtikuly,
   bulkCreateArtikuly,
   duplicateModel,
   fetchAllTags,
@@ -62,6 +63,7 @@ import {
   fetchStatusy,
   fetchTipyKollekciy,
   fetchUpakovki,
+  insertTovar,
   insertVariation,
   updateModel,
   type CvetRow,
@@ -1280,6 +1282,32 @@ function AddArtikulModal({
 // ─── Tab 4: SKU ────────────────────────────────────────────────────────────
 
 function TabSKU({ m, hexByCvet }: TabContentProps) {
+  const queryClient = useQueryClient()
+  const [addSkuOpen, setAddSkuOpen] = useState(false)
+  const [bulkAddOpen, setBulkAddOpen] = useState(false)
+
+  // Список всех артикулов модели (для select-полей в модалках)
+  const allArtikuly = useMemo(
+    () =>
+      m.modeli.flatMap((v) =>
+        v.artikuly.map((a) => ({
+          id: a.id,
+          artikul: a.artikul,
+          cvet_color_code: a.cvet_color_code,
+          variantKod: v.kod,
+        })),
+      ),
+    [m],
+  )
+
+  // Все размеры (общий справочник)
+  const razmeryQ = useQuery({
+    queryKey: ["catalog", "razmery"],
+    queryFn: fetchRazmery,
+    staleTime: 5 * 60 * 1000,
+  })
+  const razmery: Razmer[] = razmeryQ.data ?? []
+
   const allSku = m.modeli.flatMap((v) =>
     v.artikuly.flatMap((a) =>
       a.tovary.map((t) => ({
@@ -1291,12 +1319,79 @@ function TabSKU({ m, hexByCvet }: TabContentProps) {
     ),
   )
 
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["catalog", "model", m.kod] })
+    queryClient.invalidateQueries({ queryKey: ["catalog", "matrix-list"] })
+    queryClient.invalidateQueries({ queryKey: ["matrix-list"] })
+  }
+
+  const insertMut = useMutation({
+    mutationFn: ({ artikulId, razmerId }: { artikulId: number; razmerId: number }) =>
+      insertTovar(artikulId, razmerId),
+    onSuccess: () => {
+      setAddSkuOpen(false)
+      invalidate()
+    },
+  })
+
+  const bulkAddMut = useMutation({
+    mutationFn: ({ artikulIds, razmerId }: { artikulIds: number[]; razmerId: number }) =>
+      bulkAddSizeToArtikuly(artikulIds, razmerId),
+    onSuccess: () => {
+      setBulkAddOpen(false)
+      invalidate()
+    },
+  })
+
+  const canAdd = allArtikuly.length > 0 && razmery.length > 0
+
+  // Опции артикулов/размеров для select-полей
+  const artikulOptions = allArtikuly.map((a) => ({
+    value: a.id,
+    label: `${a.artikul}${a.cvet_color_code ? " · " + a.cvet_color_code : ""}`,
+  }))
+  const razmerOptions = razmery.map((r) => ({
+    value: r.id,
+    label: r.nazvanie ?? `#${r.id}`,
+  }))
+
   return (
+    <>
     <div className="bg-white rounded-lg border border-stone-200 overflow-hidden">
-      <div className="px-5 py-3 border-b border-stone-200">
-        <div className="font-medium text-stone-900">SKU модели</div>
-        <div className="text-xs text-stone-500">
-          {allSku.length} SKU · inline-edit статусов — Wave 3+ (TODO)
+      <div className="px-5 py-3 border-b border-stone-200 flex items-center justify-between gap-3">
+        <div>
+          <div className="font-medium text-stone-900">SKU модели</div>
+          <div className="text-xs text-stone-500">
+            {allSku.length} SKU · inline-edit статусов — Wave 3+ (TODO)
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            className="px-2.5 py-1 text-xs text-stone-700 bg-white border border-stone-200 rounded-md flex items-center gap-1.5 hover:bg-stone-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={!canAdd}
+            onClick={() => setBulkAddOpen(true)}
+            title={
+              canAdd
+                ? "Добавить один размер сразу всем артикулам модели"
+                : "Сначала создайте артикулы и убедитесь, что справочник размеров загружен"
+            }
+          >
+            <Plus className="w-3 h-3" /> Размер ко всем артикулам
+          </button>
+          <button
+            type="button"
+            className="px-2.5 py-1 text-xs text-white bg-stone-900 rounded-md flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={!canAdd}
+            onClick={() => setAddSkuOpen(true)}
+            title={
+              canAdd
+                ? "Создать новый SKU (артикул + размер)"
+                : "Сначала создайте артикулы и убедитесь, что справочник размеров загружен"
+            }
+          >
+            <Plus className="w-3 h-3" /> SKU
+          </button>
         </div>
       </div>
       <div className="overflow-x-auto">
@@ -1356,6 +1451,79 @@ function TabSKU({ m, hexByCvet }: TabContentProps) {
         </div>
       )}
     </div>
+
+    {/* Модалка «+ SKU» — один артикул + один размер */}
+    {addSkuOpen && (
+      <RefModal
+        title="Создать SKU"
+        fields={[
+          {
+            key: "artikul_id",
+            label: "Артикул",
+            type: "select",
+            required: true,
+            options: artikulOptions,
+            full: true,
+            hint: "Артикул, к которому добавляем новый размер",
+          },
+          {
+            key: "razmer_id",
+            label: "Размер",
+            type: "select",
+            required: true,
+            options: razmerOptions,
+            full: true,
+          },
+        ]}
+        onSave={async (vals) => {
+          const artikulId = Number(vals.artikul_id)
+          const razmerId = Number(vals.razmer_id)
+          if (!Number.isFinite(artikulId) || !Number.isFinite(razmerId)) return
+          await insertMut.mutateAsync({ artikulId, razmerId })
+        }}
+        onCancel={() => setAddSkuOpen(false)}
+        saveLabel="Создать"
+      />
+    )}
+
+    {/* Модалка «+ Размер ко всем артикулам» — multiselect артикулов + один размер */}
+    {bulkAddOpen && (
+      <RefModal
+        title="Размер ко всем артикулам"
+        initial={{ artikul_ids: allArtikuly.map((a) => a.id) }}
+        fields={[
+          {
+            key: "artikul_ids",
+            label: "Артикулы",
+            type: "multiselect",
+            required: true,
+            options: artikulOptions,
+            full: true,
+            hint: "По умолчанию выбраны все артикулы модели — снимите ненужные. Артикулы, у которых выбранный размер уже есть, будут пропущены автоматически.",
+          },
+          {
+            key: "razmer_id",
+            label: "Размер",
+            type: "select",
+            required: true,
+            options: razmerOptions,
+            full: true,
+          },
+        ]}
+        onSave={async (vals) => {
+          const raw = vals.artikul_ids
+          const ids = Array.isArray(raw)
+            ? (raw as Array<string | number>).map((x) => Number(x)).filter((n) => Number.isFinite(n))
+            : []
+          const razmerId = Number(vals.razmer_id)
+          if (ids.length === 0 || !Number.isFinite(razmerId)) return
+          await bulkAddMut.mutateAsync({ artikulIds: ids, razmerId })
+        }}
+        onCancel={() => setBulkAddOpen(false)}
+        saveLabel="Создать"
+      />
+    )}
+    </>
   )
 }
 
