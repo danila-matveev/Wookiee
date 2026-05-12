@@ -1,21 +1,22 @@
 import { useMemo, useState, useCallback, useEffect, useRef } from "react"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Search, X, ChevronDown } from "lucide-react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { Plus, Search, X, ChevronDown, Loader2 } from "lucide-react"
 import {
   fetchArtikulyRegistry, fetchStatusy, bulkUpdateArtikulStatus,
+  fetchRazmery, fetchTovaryByArtikul, insertTovar,
   getUiPref, setUiPref,
-  type ArtikulRow,
+  type ArtikulRow, type ArtikulTovar, type Razmer,
 } from "@/lib/catalog/service"
 import { StatusBadge } from "@/components/catalog/ui/status-badge"
 import { ColorSwatch } from "@/components/catalog/ui/color-swatch"
 import { ColumnsManager, type ColumnDef } from "@/components/catalog/ui/columns-manager"
 import { SortableHeader } from "@/components/catalog/ui/sortable-header"
 import { Pagination } from "@/components/catalog/ui/pagination"
+import { RefModal } from "@/components/catalog/ui/ref-modal"
 import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
 import { useResizableColumns } from "@/hooks/use-resizable-columns"
 import { useTableSort, type SortState } from "@/hooks/use-table-sort"
 import { usePagination } from "@/hooks/use-pagination"
-import { useSearchParams } from "react-router-dom"
 import { downloadCsv } from "@/lib/catalog/csv-export"
 
 // Default per-column widths (px) for the standalone Артикулы page (W1.5).
@@ -73,6 +74,110 @@ function getArtikulSortValue(a: ArtikulRow, col: ArtikulSortKey): unknown {
     case "kollekciya": return a.kollekciya ?? ""
     case "fabrika": return a.fabrika ?? ""
   }
+}
+
+// ─── Inline status popover (W8.5) ─────────────────────────────────────────
+
+interface ArtikulStatusOption {
+  id: number
+  nazvanie: string
+  color: string | null
+}
+
+interface InlineArtikulStatusCellProps {
+  /** Текущий status_id (null если не выставлен). */
+  currentStatusId: number | null
+  /** Список опций tip='artikul'. */
+  statusOptions: ArtikulStatusOption[]
+  /** Применить статус. */
+  onChange: (statusId: number) => Promise<void>
+}
+
+/**
+ * InlineArtikulStatusCell — popover-редактор статуса артикула.
+ * Открывается кликом по бейджу, закрывается mousedown-outside / Escape.
+ * Артикул не имеет каналов → один список опций.
+ */
+function InlineArtikulStatusCell({
+  currentStatusId, statusOptions, onChange,
+}: InlineArtikulStatusCellProps) {
+  const [open, setOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false)
+    }
+    document.addEventListener("mousedown", onDoc)
+    document.addEventListener("keydown", onKey)
+    return () => {
+      document.removeEventListener("mousedown", onDoc)
+      document.removeEventListener("keydown", onKey)
+    }
+  }, [open])
+
+  const onSelect = useCallback(async (id: number) => {
+    if (saving) return
+    setSaving(true)
+    try {
+      await onChange(id)
+      setOpen(false)
+    } catch (err) {
+      // eslint-disable-next-line no-alert
+      alert(`Не удалось обновить статус: ${(err as Error).message}`)
+    } finally {
+      setSaving(false)
+    }
+  }, [onChange, saving])
+
+  return (
+    <div className="relative inline-block" ref={ref} onClick={(e) => e.stopPropagation()}>
+      <button
+        type="button"
+        onClick={() => setOpen((p) => !p)}
+        className="hover:ring-1 hover:ring-stone-400 rounded-md transition-all"
+        title="Кликните, чтобы изменить статус"
+      >
+        {currentStatusId != null
+          ? <StatusBadge statusId={currentStatusId} compact />
+          : <span className="text-[11px] text-stone-400 italic px-1.5 py-px">—</span>}
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 w-48 bg-white border border-stone-200 rounded-lg shadow-lg z-30">
+          <div className="p-2 border-b border-stone-100 flex items-center justify-between">
+            <div className="text-[10px] uppercase tracking-wider text-stone-400">
+              Статус артикула
+            </div>
+            {saving && <Loader2 className="w-3 h-3 text-stone-400 animate-spin" />}
+          </div>
+          <div className="p-1 max-h-72 overflow-y-auto">
+            {statusOptions.length === 0 && (
+              <div className="px-2 py-3 text-xs text-stone-400 italic">Нет статусов</div>
+            )}
+            {statusOptions.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                disabled={saving}
+                onClick={() => onSelect(s.id)}
+                className="w-full flex items-center gap-2 px-2 py-1.5 hover:bg-stone-50 rounded text-left disabled:opacity-50"
+              >
+                <StatusBadge status={{ nazvanie: s.nazvanie, color: s.color ?? "gray" }} compact />
+                {s.id === currentStatusId && (
+                  <span className="ml-auto text-[10px] text-emerald-600">текущий</span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 function renderCell(key: string, a: ArtikulRow): React.ReactNode {
@@ -480,7 +585,16 @@ export function ArtikulyPage() {
                   </td>
                   {columns.map((key) => (
                     <td key={key} className="px-3 py-2.5 whitespace-nowrap">
-                      {renderCell(key, a)}
+                      {key === "status" ? (
+                        <InlineArtikulStatusCell
+                          currentStatusId={a.status_id ?? null}
+                          statusOptions={artikulStatuses}
+                          onChange={async (newId) => {
+                            await bulkUpdateArtikulStatus([a.id], newId)
+                            await queryClient.invalidateQueries({ queryKey: ["artikuly-registry"] })
+                          }}
+                        />
+                      ) : renderCell(key, a)}
                     </td>
                   ))}
                 </tr>
