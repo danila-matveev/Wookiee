@@ -2,6 +2,7 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 import { FieldWrap, describedBy } from "./FieldWrap"
 import { inputBase, inputError, inputSizeMd } from "./_shared"
+import type { CatalogLevel } from "../primitives"
 
 export interface NumberFieldProps {
   id: string
@@ -9,6 +10,8 @@ export interface NumberFieldProps {
   hint?: React.ReactNode
   error?: React.ReactNode
   required?: boolean
+  /** Catalog-hierarchy marker rendered inline with the label (M/V/A/S). */
+  level?: CatalogLevel
   labelAddon?: React.ReactNode
 
   value: number | null
@@ -41,6 +44,7 @@ export const NumberField = React.forwardRef<HTMLInputElement, NumberFieldProps>(
       hint,
       error,
       required,
+      level,
       labelAddon,
       value,
       onChange,
@@ -78,6 +82,7 @@ export const NumberField = React.forwardRef<HTMLInputElement, NumberFieldProps>(
         hint={hint}
         error={error}
         required={required}
+        level={level}
         labelAddon={labelAddon}
         className={className}
       >
@@ -112,7 +117,7 @@ export const NumberField = React.forwardRef<HTMLInputElement, NumberFieldProps>(
             )}
           />
           {suffix ? (
-            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted pointer-events-none tabular-nums">
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted pointer-events-none tabular-nums">
               {suffix}
             </span>
           ) : null}

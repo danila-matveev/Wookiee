@@ -4,7 +4,15 @@ import { X } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export type DrawerSide = "right" | "left" | "top" | "bottom"
-export type DrawerSize = "sm" | "md" | "lg" | "xl"
+/**
+ * Drawer size:
+ * - `sm | md | lg | xl` — width/height presets (existing).
+ * - `filters` — right-side filter sidebar (420px). Canonical default per
+ *   foundation.jsx:2239.
+ * - `detail` — right-side detail panel (560px). Used for Kanban card
+ *   detail, integrations edit (see patterns.jsx).
+ */
+export type DrawerSize = "sm" | "md" | "lg" | "xl" | "filters" | "detail"
 
 export interface DrawerProps {
   open: boolean
@@ -26,6 +34,8 @@ const horizontalSizes: Record<DrawerSize, string> = {
   md: "w-[560px]",
   lg: "w-[720px]",
   xl: "w-[920px]",
+  filters: "w-[420px]",
+  detail: "w-[560px]",
 }
 
 const verticalSizes: Record<DrawerSize, string> = {
@@ -33,6 +43,9 @@ const verticalSizes: Record<DrawerSize, string> = {
   md: "h-[55vh]",
   lg: "h-[75vh]",
   xl: "h-[90vh]",
+  // Vertical drawers default to canonical 60vh for both preset aliases.
+  filters: "h-[60vh]",
+  detail: "h-[60vh]",
 }
 
 const sidePosition: Record<DrawerSide, string> = {
@@ -91,7 +104,8 @@ export function Drawer({
 
   const node = (
     <div
-      className="fixed inset-0 bg-black/40 backdrop-blur-sm"
+      // Canonical (foundation.jsx:2243) — warm stone-900 tint in light mode.
+      className="fixed inset-0 bg-stone-900/40 dark:bg-black/60 backdrop-blur-sm"
       style={{ zIndex: "var(--z-modal)" }}
       role="dialog"
       aria-modal="true"

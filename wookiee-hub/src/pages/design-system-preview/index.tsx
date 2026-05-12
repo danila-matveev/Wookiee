@@ -97,12 +97,20 @@ export default function DesignSystemPreview() {
   // Overlay state demo
   const [modalOpen, setModalOpen] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  // R4: Drawer size aliases — filters | detail
+  const [drawerFilters, setDrawerFilters] = useState(false)
+  const [drawerDetail, setDrawerDetail] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
 
   // Tab state demo
   const [tabUnderline, setTabUnderline] = useState("overview")
   const [tabPills, setTabPills] = useState("monthly")
+  // R4: Tabs `segmented` variant for list/grid/kanban switchers
+  const [tabSegmented, setTabSegmented] = useState("list")
   const [tabVertical, setTabVertical] = useState("general")
+
+  // R4: Combobox `mode='button'`
+  const [comboBtn, setComboBtn] = useState<string | null>(null)
 
   // Filter chip demo state
   const [filterA, setFilterA] = useState(true)
@@ -153,9 +161,12 @@ export default function DesignSystemPreview() {
       </header>
 
       <main className="max-w-7xl mx-auto px-6 py-8 space-y-8">
-        {/* Page header */}
+        {/* Page header — R4: kicker + breadcrumbs + status slots per canonical */}
         <PageHeader
+          kicker="DS V2"
           title="Design System v2"
+          breadcrumbs={["Hub", "Дизайн", "Preview"]}
+          status={<StatusBadge statusId={1} />}
           description="Каркас компонентов Wookiee Hub. Light + dark через [data-theme] атрибут, семантические токены, никаких dark:bg-stone-900 в JSX."
           icon={<Star className="w-7 h-7 text-accent" />}
           actions={
@@ -378,10 +389,11 @@ export default function DesignSystemPreview() {
             />
             <MultiSelectField
               id="ds-multi"
-              label="Несколько"
+              label="Несколько (chips-toggle, R4)"
               value={multi}
               onChange={setMulti}
               options={colorOptions}
+              hint="DS §6 — chips-toggles inline, не dropdown."
             />
             <TextareaField
               id="ds-area"
@@ -399,10 +411,19 @@ export default function DesignSystemPreview() {
             />
             <Combobox
               id="ds-combo"
-              label="Комбобокс"
+              label="Комбобокс (input mode)"
               value={combo}
               onChange={setCombo}
               options={colorOptions}
+            />
+            <Combobox
+              id="ds-combo-btn"
+              label="Комбобокс (button mode)"
+              mode="button"
+              value={comboBtn}
+              onChange={setComboBtn}
+              options={colorOptions}
+              hint="Закрытое состояние — кнопка; внутри popover поиск + listbox (canonical)."
             />
             <FieldWrap id="ds-error" label="С ошибкой" error="Поле обязательно">
               <TextField id="ds-err-inner" value="" onChange={() => null} error="Поле обязательно" />
@@ -440,7 +461,7 @@ export default function DesignSystemPreview() {
         </Section>
 
         {/* Tabs */}
-        <Section title="Tabs (underline / pills / vertical)">
+        <Section title="Tabs (underline / pills / segmented / vertical)">
           <Tabs
             variant="underline"
             value={tabUnderline}
@@ -459,6 +480,17 @@ export default function DesignSystemPreview() {
               { value: "daily", label: "День" },
               { value: "weekly", label: "Неделя" },
               { value: "monthly", label: "Месяц" },
+            ]}
+          />
+          {/* R4: Segmented — list/grid/kanban switcher */}
+          <Tabs
+            variant="segmented"
+            value={tabSegmented}
+            onChange={setTabSegmented}
+            items={[
+              { value: "list", label: "Список" },
+              { value: "grid", label: "Сетка" },
+              { value: "kanban", label: "Канбан" },
             ]}
           />
           <div className="flex gap-6">
@@ -520,6 +552,18 @@ export default function DesignSystemPreview() {
             <Button variant="secondary" onClick={() => toast.toast("Внимание", { variant: "warning" })}>
               Warning toast
             </Button>
+            {/* R4: Loading variant — no auto-dismiss, caller controls lifetime */}
+            <Button
+              variant="secondary"
+              onClick={() => {
+                const id = toast.loading("Загружаем данные…", {
+                  description: "Закроется автоматически через 3 сек.",
+                })
+                window.setTimeout(() => toast.dismiss(id), 3000)
+              }}
+            >
+              Loading toast
+            </Button>
           </Row>
         </Section>
 
@@ -527,7 +571,14 @@ export default function DesignSystemPreview() {
         <Section title="Overlays">
           <Row>
             <Button variant="secondary" onClick={() => setModalOpen(true)}>Modal</Button>
-            <Button variant="secondary" onClick={() => setDrawerOpen(true)}>Drawer</Button>
+            <Button variant="secondary" onClick={() => setDrawerOpen(true)}>Drawer (md)</Button>
+            {/* R4: Drawer semantic size presets */}
+            <Button variant="secondary" onClick={() => setDrawerFilters(true)}>
+              Drawer filters (420)
+            </Button>
+            <Button variant="secondary" onClick={() => setDrawerDetail(true)}>
+              Drawer detail (560)
+            </Button>
             <Button variant="secondary" onClick={() => setPaletteOpen(true)}>
               Command palette <Kbd>⌘K</Kbd>
             </Button>
@@ -561,6 +612,28 @@ export default function DesignSystemPreview() {
 
           <Drawer open={drawerOpen} onClose={() => setDrawerOpen(false)} title="Боковая панель" description="Slide-out справа." side="right" size="md">
             <p className="text-sm text-secondary">Drawer-контент. Можно положить форму, детали, что угодно.</p>
+          </Drawer>
+
+          {/* R4: Drawer size presets — filters (420px) vs detail (560px) */}
+          <Drawer
+            open={drawerFilters}
+            onClose={() => setDrawerFilters(false)}
+            title="Фильтры"
+            description="size='filters' → 420px (canonical foundation.jsx:2239)."
+            side="right"
+            size="filters"
+          >
+            <p className="text-sm text-secondary">Использование: фильтрационная панель на списочных страницах.</p>
+          </Drawer>
+          <Drawer
+            open={drawerDetail}
+            onClose={() => setDrawerDetail(false)}
+            title="Детали карточки"
+            description="size='detail' → 560px (Kanban detail-drawer pattern)."
+            side="right"
+            size="detail"
+          >
+            <p className="text-sm text-secondary">Использование: правка карточки Канбана, интеграции.</p>
           </Drawer>
 
           <CommandPalette

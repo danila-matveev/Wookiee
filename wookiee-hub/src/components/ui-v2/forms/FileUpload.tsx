@@ -111,16 +111,18 @@ export function FileUpload({
         }}
         className={cn(
           "block rounded-lg border-2 border-dashed transition-colors p-5 text-center cursor-pointer",
+          // Canonical (foundation.jsx:695-725) — monochrome drag-active.
+          // Forms = «холодный спокойный визуал» per DS §4; brand violet reserved for nav/marketing.
           drag
-            ? "border-accent bg-accent-soft"
-            : "border-[var(--color-border-strong)] hover:border-accent hover:bg-surface-muted",
+            ? "border-[var(--color-text-primary)] bg-surface-muted"
+            : "border-[var(--color-border-strong)] hover:border-[var(--color-text-primary)] hover:bg-surface-muted",
           displayedError && "border-[var(--color-danger)]",
           disabled && "opacity-50 cursor-not-allowed pointer-events-none",
         )}
       >
         <Upload className="w-5 h-5 mx-auto mb-1.5 text-muted" aria-hidden />
         <div className="text-sm text-secondary">
-          Перетащите файлы или <span className="text-accent underline">выберите</span>
+          Перетащите файлы или <span className="text-primary underline">выберите</span>
         </div>
         <div className="text-[10px] mt-1 text-muted">
           {description ??

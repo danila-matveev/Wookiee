@@ -8,8 +8,19 @@ export interface BreadcrumbItem {
   href?: string
 }
 
+/**
+ * Items can be either plain strings (canonical foundation.jsx:2092-2105
+ * shape — `items: string[]`) or `{label, href?}` objects (our react-router
+ * upgrade). Detected by inspecting the first element.
+ */
+export type BreadcrumbsItems = string[] | BreadcrumbItem[]
+
 export interface BreadcrumbsProps extends React.HTMLAttributes<HTMLElement> {
-  items: BreadcrumbItem[]
+  items: BreadcrumbsItems
+}
+
+function isStringItem(v: string | BreadcrumbItem): v is string {
+  return typeof v === "string"
 }
 
 export const Breadcrumbs = React.forwardRef<HTMLElement, BreadcrumbsProps>(
@@ -23,8 +34,10 @@ export const Breadcrumbs = React.forwardRef<HTMLElement, BreadcrumbsProps>(
       >
         {items.map((item, idx) => {
           const isLast = idx === items.length - 1
+          const label = isStringItem(item) ? item : item.label
+          const href = isStringItem(item) ? undefined : item.href
           return (
-            <React.Fragment key={`${item.label}-${idx}`}>
+            <React.Fragment key={`${label}-${idx}`}>
               {idx > 0 && (
                 <ChevronRight
                   className="w-3 h-3 text-label shrink-0"
@@ -36,17 +49,17 @@ export const Breadcrumbs = React.forwardRef<HTMLElement, BreadcrumbsProps>(
                   className="text-primary font-medium truncate"
                   aria-current="page"
                 >
-                  {item.label}
+                  {label}
                 </span>
-              ) : item.href ? (
+              ) : href ? (
                 <Link
-                  to={item.href}
+                  to={href}
                   className="text-muted hover:text-primary transition-colors truncate"
                 >
-                  {item.label}
+                  {label}
                 </Link>
               ) : (
-                <span className="text-muted truncate">{item.label}</span>
+                <span className="text-muted truncate">{label}</span>
               )}
             </React.Fragment>
           )

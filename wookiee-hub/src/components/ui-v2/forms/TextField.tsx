@@ -2,6 +2,7 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 import { FieldWrap, describedBy } from "./FieldWrap"
 import { inputBase, inputError, inputSizeMd } from "./_shared"
+import type { CatalogLevel } from "../primitives"
 
 export interface TextFieldProps {
   id: string
@@ -9,6 +10,8 @@ export interface TextFieldProps {
   hint?: React.ReactNode
   error?: React.ReactNode
   required?: boolean
+  /** Catalog-hierarchy marker rendered inline with the label (M/V/A/S). */
+  level?: CatalogLevel
   labelAddon?: React.ReactNode
 
   value: string
@@ -23,6 +26,13 @@ export interface TextFieldProps {
   autoComplete?: string
   inputClassName?: string
   className?: string
+
+  /**
+   * Render input with monospace + xs size (DS §10:
+   * «Технические значения — font-mono text-xs»).
+   * Canonical foundation.jsx:479-486 — applies `font-mono text-xs`.
+   */
+  mono?: boolean
 
   /** Icon rendered inside the input, on the left */
   prefix?: React.ComponentType<{ className?: string }>
@@ -42,6 +52,7 @@ export const TextField = React.forwardRef<HTMLInputElement, TextFieldProps>(
       hint,
       error,
       required,
+      level,
       labelAddon,
       value,
       onChange,
@@ -55,6 +66,7 @@ export const TextField = React.forwardRef<HTMLInputElement, TextFieldProps>(
       autoComplete,
       inputClassName,
       className,
+      mono,
       prefix: Prefix,
       suffix: Suffix,
       onBlur,
@@ -71,6 +83,7 @@ export const TextField = React.forwardRef<HTMLInputElement, TextFieldProps>(
         hint={hint}
         error={error}
         required={required}
+        level={level}
         labelAddon={labelAddon}
         className={className}
       >
@@ -105,6 +118,7 @@ export const TextField = React.forwardRef<HTMLInputElement, TextFieldProps>(
               inputSizeMd,
               Prefix && "pl-8",
               Suffix && "pr-8",
+              mono && "font-mono text-xs",
               error && inputError,
               inputClassName,
             )}

@@ -29,6 +29,14 @@ function resolveStatuses(steps: Step[], current?: number): StepStatus[] {
   return steps.map((s) => s.status ?? "pending")
 }
 
+/**
+ * Stepper — connectors centered on the circle row (canonical
+ * foundation.jsx:2107-2130). Layout: each step renders a column
+ * (circle + label). Between columns a horizontal connector lives in
+ * its own flex row so its centre lines up with the circle centre
+ * (h-7 = 28px → connector at top of column, offset by 14px = circle
+ * radius using flex-baseline rather than negative margins).
+ */
 export const Stepper = React.forwardRef<HTMLDivElement, StepperProps>(
   function Stepper({ steps, current, className, ...rest }, ref) {
     const statuses = resolveStatuses(steps, current)
@@ -87,8 +95,10 @@ export const Stepper = React.forwardRef<HTMLDivElement, StepperProps>(
               {!isLast && (
                 <div
                   aria-hidden
+                  // Connector lifted into the circle row.
+                  // Circle is h-7 (28px); offset = 14px keeps the line centred.
                   className={cn(
-                    "flex-1 h-px mt-3.5 mx-2 transition-colors",
+                    "flex-1 h-px transition-colors mt-[14px]",
                     done || nextDone
                       ? "bg-[var(--color-text-primary)]"
                       : "bg-[var(--color-border-default)]",

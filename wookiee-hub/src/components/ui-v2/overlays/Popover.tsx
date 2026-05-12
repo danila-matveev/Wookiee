@@ -2,7 +2,22 @@ import * as React from "react"
 import { createPortal } from "react-dom"
 import { cn } from "@/lib/utils"
 
-export type PopoverPlacement = "top" | "bottom" | "left" | "right"
+/**
+ * Placement:
+ * - Cardinal (`top | bottom | left | right`) — centered alignment relative to trigger.
+ * - Edge aliases (`bottom-start | bottom-end | top-start | top-end`) — match the
+ *   canonical (foundation.jsx:2266-2270) where the panel left- or right-aligns to
+ *   the trigger instead of centring (DropdownMenu defaults to `bottom-end`).
+ */
+export type PopoverPlacement =
+  | "top"
+  | "bottom"
+  | "left"
+  | "right"
+  | "bottom-start"
+  | "bottom-end"
+  | "top-start"
+  | "top-end"
 
 export interface PopoverProps {
   trigger: React.ReactNode
@@ -37,6 +52,16 @@ function computePosition(
         top: triggerRect.top - panelRect.height - offset,
         left: triggerRect.left + triggerRect.width / 2 - panelRect.width / 2,
       }
+    case "top-start":
+      return {
+        top: triggerRect.top - panelRect.height - offset,
+        left: triggerRect.left,
+      }
+    case "top-end":
+      return {
+        top: triggerRect.top - panelRect.height - offset,
+        left: triggerRect.right - panelRect.width,
+      }
     case "left":
       return {
         top: triggerRect.top + triggerRect.height / 2 - panelRect.height / 2,
@@ -47,6 +72,12 @@ function computePosition(
         top: triggerRect.top + triggerRect.height / 2 - panelRect.height / 2,
         left: triggerRect.right + offset,
       }
+    case "bottom-end":
+      return {
+        top: triggerRect.bottom + offset,
+        left: triggerRect.right - panelRect.width,
+      }
+    case "bottom-start":
     case "bottom":
     default:
       return {

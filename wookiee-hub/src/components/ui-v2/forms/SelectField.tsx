@@ -3,11 +3,28 @@ import { Check, ChevronDown, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { FieldWrap, describedBy } from "./FieldWrap"
 import { inputBase, inputError, inputSizeMd } from "./_shared"
+import type { CatalogLevel } from "../primitives"
 
-export interface SelectOption {
+/**
+ * Option shape — accepts canonical WB-style `{id, nazvanie}` AND the
+ * preferred semantic `{value, label}` form (foundation.jsx:496-512 uses
+ * the former; this component normalises internally).
+ */
+export type SelectOption =
+  | { value: string; label: string; disabled?: boolean }
+  | { id: string | number; nazvanie: string; disabled?: boolean }
+
+interface NormalisedOption {
   value: string
   label: string
   disabled?: boolean
+}
+
+function normalise(opt: SelectOption): NormalisedOption {
+  if ("value" in opt) {
+    return { value: opt.value, label: opt.label, disabled: opt.disabled }
+  }
+  return { value: String(opt.id), label: opt.nazvanie, disabled: opt.disabled }
 }
 
 export interface SelectFieldProps {
@@ -16,6 +33,8 @@ export interface SelectFieldProps {
   hint?: React.ReactNode
   error?: React.ReactNode
   required?: boolean
+  /** Catalog-hierarchy marker rendered inline with the label (M/V/A/S). */
+  level?: CatalogLevel
   labelAddon?: React.ReactNode
 
   value: string | null
@@ -35,6 +54,7 @@ export function SelectField({
   hint,
   error,
   required,
+  level,
   labelAddon,
   value,
   onChange,
@@ -51,13 +71,14 @@ export function SelectField({
   const rootRef = React.useRef<HTMLDivElement | null>(null)
   const aria = describedBy(id, hint, error)
 
-  const selected = options.find((o) => o.value === value) ?? null
+  const normalised = React.useMemo(() => options.map(normalise), [options])
+  const selected = normalised.find((o) => o.value === value) ?? null
 
   const filtered = React.useMemo(() => {
-    if (!searchable || !query) return options
+    if (!searchable || !query) return normalised
     const q = query.toLowerCase()
-    return options.filter((o) => o.label.toLowerCase().includes(q))
-  }, [options, searchable, query])
+    return normalised.filter((o) => o.label.toLowerCase().includes(q))
+  }, [normalised, searchable, query])
 
   React.useEffect(() => {
     if (!open) return
@@ -78,7 +99,7 @@ export function SelectField({
     }
   }, [open, filtered, value])
 
-  const choose = (opt: SelectOption) => {
+  const choose = (opt: NormalisedOption) => {
     if (opt.disabled) return
     onChange(opt.value)
     setOpen(false)
@@ -118,6 +139,7 @@ export function SelectField({
       hint={hint}
       error={error}
       required={required}
+      level={level}
       labelAddon={labelAddon}
       className={className}
     >

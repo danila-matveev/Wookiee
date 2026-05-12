@@ -2,6 +2,7 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 import { FieldWrap, describedBy } from "./FieldWrap"
 import { inputBase, inputError } from "./_shared"
+import type { CatalogLevel } from "../primitives"
 
 export interface TextareaFieldProps {
   id: string
@@ -9,6 +10,8 @@ export interface TextareaFieldProps {
   hint?: React.ReactNode
   error?: React.ReactNode
   required?: boolean
+  /** Catalog-hierarchy marker rendered inline with the label (M/V/A/S). */
+  level?: CatalogLevel
   labelAddon?: React.ReactNode
 
   value: string
@@ -19,7 +22,8 @@ export interface TextareaFieldProps {
   autoFocus?: boolean
   rows?: number
   maxLength?: number
-  /** Auto-resize textarea height to fit content (caps roughly at 12rem). */
+  /** Auto-resize textarea height to fit content (caps roughly at 12rem).
+   * Opt-in — canonical default (foundation.jsx:535-544) is fixed rows + resize-none. */
   autoResize?: boolean
   name?: string
 
@@ -38,6 +42,7 @@ export const TextareaField = React.forwardRef<HTMLTextAreaElement, TextareaField
       hint,
       error,
       required,
+      level,
       labelAddon,
       value,
       onChange,
@@ -47,7 +52,7 @@ export const TextareaField = React.forwardRef<HTMLTextAreaElement, TextareaField
       autoFocus,
       rows = 3,
       maxLength,
-      autoResize,
+      autoResize = false,
       name,
       className,
       inputClassName,
@@ -75,6 +80,11 @@ export const TextareaField = React.forwardRef<HTMLTextAreaElement, TextareaField
       el.style.height = `${Math.min(el.scrollHeight, 192)}px`
     }, [value, autoResize])
 
+    // Render counter only when caller opts in via maxLength AND user is
+    // approaching the limit. Saves layout cost on every field.
+    const showCounter =
+      typeof maxLength === "number" && value.length > maxLength * 0.7
+
     return (
       <FieldWrap
         id={id}
@@ -82,6 +92,7 @@ export const TextareaField = React.forwardRef<HTMLTextAreaElement, TextareaField
         hint={hint}
         error={error}
         required={required}
+        level={level}
         labelAddon={labelAddon}
         className={className}
       >
@@ -105,13 +116,13 @@ export const TextareaField = React.forwardRef<HTMLTextAreaElement, TextareaField
           className={cn(
             inputBase,
             "px-2.5 py-1.5",
-            autoResize ? "resize-none overflow-hidden" : "resize-y",
+            autoResize ? "resize-none overflow-hidden" : "resize-none",
             error && inputError,
             inputClassName,
           )}
         />
-        {typeof maxLength === "number" ? (
-          <div className="text-[10px] text-muted text-right tabular-nums">
+        {showCounter ? (
+          <div className="text-[10px] text-muted text-right tabular-nums mt-1">
             {value.length}/{maxLength}
           </div>
         ) : null}

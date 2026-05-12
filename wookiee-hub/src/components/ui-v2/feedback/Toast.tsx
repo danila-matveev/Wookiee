@@ -6,18 +6,26 @@ import {
   XCircle,
   Info as InfoIcon,
   Bell,
+  Loader2,
   X,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-export type ToastVariant = "default" | "success" | "warning" | "danger" | "info"
+export type ToastVariant =
+  | "default"
+  | "success"
+  | "warning"
+  | "danger"
+  | "info"
+  | "loading"
 
 export interface ToastOptions {
   /** Variant — controls icon + accent color. */
   variant?: ToastVariant
   /** Optional second line (description). */
   description?: string
-  /** Auto-dismiss timeout in ms. Default 4000. Use 0 to keep until manual close. */
+  /** Auto-dismiss timeout in ms. Default 4000.
+   *  Use 0 to keep until manual close. `loading` variant defaults to 0. */
   duration?: number
   /** Stable id — if omitted, auto-generated. Useful to dedupe / update. */
   id?: string
@@ -77,12 +85,15 @@ function createToastStore(): ToastStore {
     push: (title, options) => {
       counter += 1
       const id = options?.id ?? `toast-${Date.now()}-${counter}`
+      const variant = options?.variant ?? "default"
+      // Loading toasts never auto-dismiss unless caller overrides.
+      const defaultDuration = variant === "loading" ? 0 : 4000
       const next: ToastInstance = {
         id,
         title,
         description: options?.description,
-        variant: options?.variant ?? "default",
-        duration: options?.duration ?? 4000,
+        variant,
+        duration: options?.duration ?? defaultDuration,
         action: options?.action,
         createdAt: Date.now(),
       }
@@ -110,6 +121,11 @@ const store = createToastStore()
 export interface UseToastReturn {
   /** Show toast. Returns id for later dismiss. */
   toast: (title: string, options?: ToastOptions) => string
+  /**
+   * Show a loading toast (Loader2 spinning, no auto-dismiss).
+   * Returns id — caller dismisses via {@link dismiss}.
+   */
+  loading: (title: string, options?: Omit<ToastOptions, "variant">) => string
   /** Dismiss specific toast by id. */
   dismiss: (id: string) => void
   /** Clear all toasts. */
@@ -120,6 +136,8 @@ export function useToast(): UseToastReturn {
   return React.useMemo(
     () => ({
       toast: (title, options) => store.push(title, options),
+      loading: (title, options) =>
+        store.push(title, { ...options, variant: "loading" }),
       dismiss: (id) => store.dismiss(id),
       clear: () => store.clear(),
     }),
@@ -137,6 +155,7 @@ const variantIcon: Record<ToastVariant, React.ComponentType<{ className?: string
   warning: AlertTriangle,
   danger: XCircle,
   info: InfoIcon,
+  loading: Loader2,
 }
 
 const variantAccent: Record<ToastVariant, string> = {
@@ -145,6 +164,7 @@ const variantAccent: Record<ToastVariant, string> = {
   warning: "text-warning",
   danger: "text-danger",
   info: "text-info",
+  loading: "text-muted animate-spin",
 }
 
 export interface ToastProps {

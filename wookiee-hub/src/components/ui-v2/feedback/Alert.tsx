@@ -29,6 +29,10 @@ const defaultIcons: Record<AlertVariant, React.ComponentType<{ className?: strin
   info: InfoIcon,
 }
 
+// Canonical (foundation.jsx:2492-2510) uses `border-X-200` — a thin clean
+// line one step darker than `bg-X-50`. With our semantic tokens that maps
+// to a 20% opacity of the variant accent (vs the previous 30%, which read
+// too soft per the audit).
 const variantStyles: Record<AlertVariant, { bg: string; accent: string; border: string }> = {
   default: {
     bg: "bg-surface-muted",
@@ -38,22 +42,22 @@ const variantStyles: Record<AlertVariant, { bg: string; accent: string; border: 
   success: {
     bg: "bg-success-soft",
     accent: "text-success",
-    border: "border-[color:var(--color-success)]/30",
+    border: "border-[color:var(--color-success)]/20",
   },
   warning: {
     bg: "bg-warning-soft",
     accent: "text-warning",
-    border: "border-[color:var(--color-warning)]/30",
+    border: "border-[color:var(--color-warning)]/20",
   },
   danger: {
     bg: "bg-danger-soft",
     accent: "text-danger",
-    border: "border-[color:var(--color-danger)]/30",
+    border: "border-[color:var(--color-danger)]/20",
   },
   info: {
     bg: "bg-info-soft",
     accent: "text-info",
-    border: "border-[color:var(--color-info)]/30",
+    border: "border-[color:var(--color-info)]/20",
   },
 }
 

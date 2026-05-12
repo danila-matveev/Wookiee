@@ -2,7 +2,7 @@ import * as React from "react"
 import type { LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-export type TabsVariant = "underline" | "pills" | "vertical"
+export type TabsVariant = "underline" | "pills" | "segmented" | "vertical"
 
 export interface TabItem<V extends string = string> {
   value: V
@@ -73,7 +73,8 @@ export function Tabs<V extends string = string>({
         aria-label={ariaLabel}
         aria-orientation="horizontal"
         className={cn(
-          "inline-flex items-center gap-1 p-0.5 rounded-md bg-surface-muted border border-default",
+          // Canonical (foundation.jsx:2061-2074) — no outer border on pills.
+          "inline-flex items-center gap-1 p-1 rounded-md bg-surface-muted",
           className,
         )}
       >
@@ -93,6 +94,55 @@ export function Tabs<V extends string = string>({
               onKeyDown={(e) => handleKey(e, idx)}
               className={cn(
                 "inline-flex items-center gap-1.5 px-3 h-7 rounded text-xs font-medium",
+                "transition-colors outline-none",
+                "focus-visible:ring-2 focus-visible:ring-[var(--color-ring)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--color-surface)]",
+                active
+                  ? "bg-surface text-primary shadow-[var(--shadow-xs)]"
+                  : "text-secondary hover:text-primary",
+                it.disabled && "opacity-50 cursor-not-allowed",
+              )}
+            >
+              {Icon && <Icon className="w-3.5 h-3.5" aria-hidden />}
+              <span>{it.label}</span>
+              {typeof it.count === "number" && (
+                <CountBadge active={active} value={it.count} />
+              )}
+            </button>
+          )
+        })}
+      </div>
+    )
+  }
+
+  if (variant === "segmented") {
+    // Canonical foundation.jsx:2076-2089 — equal-width buttons in single rounded
+    // container, used for list/grid/kanban view switchers.
+    return (
+      <div
+        role="tablist"
+        aria-label={ariaLabel}
+        aria-orientation="horizontal"
+        className={cn(
+          "inline-flex items-center gap-0.5 p-0.5 rounded-md bg-surface-muted",
+          className,
+        )}
+      >
+        {items.map((it, idx) => {
+          const active = it.value === value
+          const Icon = it.icon
+          return (
+            <button
+              key={it.value}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              aria-disabled={it.disabled || undefined}
+              disabled={it.disabled}
+              tabIndex={active ? 0 : -1}
+              onClick={() => !it.disabled && onChange(it.value)}
+              onKeyDown={(e) => handleKey(e, idx)}
+              className={cn(
+                "inline-flex items-center justify-center gap-1.5 px-3 h-7 rounded text-sm font-medium",
                 "transition-colors outline-none",
                 "focus-visible:ring-2 focus-visible:ring-[var(--color-ring)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--color-surface)]",
                 active

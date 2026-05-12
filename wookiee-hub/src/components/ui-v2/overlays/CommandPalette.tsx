@@ -9,7 +9,15 @@ export interface CommandPaletteCommand {
   description?: string
   icon?: React.ComponentType<{ className?: string }>
   shortcut?: string
+  /** Group section header — rendered as separator (our extension). */
   group?: string
+  /**
+   * UPPERCASE per-item tag rendered in a leading `w-16` column.
+   * Canonical (foundation.jsx:2358) — `<span className="text-[10px]
+   * uppercase tracking-wider w-16 text-label">{type}</span>`. Use for
+   * type markers like «МОДЕЛЬ», «ЦВЕТ», «СТРАНИЦА».
+   */
+  itemType?: string
   keywords?: string[]
   onSelect: () => void
 }
@@ -136,7 +144,8 @@ export function CommandPalette({
 
   const node = (
     <div
-      className="fixed inset-0 flex items-start justify-center pt-[12vh] px-4 bg-black/40 backdrop-blur-sm"
+      // Canonical (foundation.jsx:2345) — warm stone-900 tint in light mode, black in dark.
+      className="fixed inset-0 flex items-start justify-center pt-[12vh] px-4 bg-stone-900/40 dark:bg-black/60 backdrop-blur-sm"
       style={{ zIndex: "var(--z-modal)" }}
       role="dialog"
       aria-modal="true"
@@ -205,7 +214,11 @@ export function CommandPalette({
                           isActive ? "bg-surface-muted" : "hover:bg-surface-muted",
                         )}
                       >
-                        {Icon ? (
+                        {cmd.itemType ? (
+                          <span className="text-[10px] uppercase tracking-wider text-label w-16 shrink-0">
+                            {cmd.itemType}
+                          </span>
+                        ) : Icon ? (
                           <Icon className="w-3.5 h-3.5 text-muted shrink-0" />
                         ) : (
                           <span className="w-3.5 h-3.5 shrink-0" />

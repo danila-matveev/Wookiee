@@ -72,7 +72,8 @@ export function Modal({
 
   const node = (
     <div
-      className="fixed inset-0 flex items-start justify-center pt-[10vh] px-4 bg-black/40 backdrop-blur-sm"
+      // Canonical (foundation.jsx:2220) — warm stone-900 tint in light mode, black in dark.
+      className="fixed inset-0 flex items-start justify-center pt-[10vh] px-4 bg-stone-900/40 dark:bg-black/60 backdrop-blur-sm"
       style={{ zIndex: "var(--z-modal)" }}
       role="dialog"
       aria-modal="true"
