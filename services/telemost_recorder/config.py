@@ -37,11 +37,13 @@ BROWSER_FLAGS: list[str] = [
 # Display names of known meeting bots that should NOT count as humans for
 # meeting-ended detection. Substring match (case-insensitive) so trailing
 # emoji / suffixes don't break filtering.
+# All entries MUST be lowercase — match is case-insensitive via .lower()
+# on the participant side. Prefer distinctive tokens over short generic ones
+# to avoid false positives on human names (e.g. "sber salut", not "salut").
 KNOWN_BOT_NAMES: frozenset[str] = frozenset({
     "wookiee recorder",      # this bot itself
     "navstreche.com",        # navstreche AI assistant
-    "salut",                 # Sber Salut
+    "sber salut",            # Sber Salut (specific token, "salut" alone catches Salutamica etc.)
     "yandex go",             # Yandex assistant
-    "ai assistant",          # generic
-    "ии-ассистент",          # russian generic
+    "ии-ассистент",          # russian generic AI assistant suffix
 })

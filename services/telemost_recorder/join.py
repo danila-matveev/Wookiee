@@ -207,7 +207,7 @@ async def extract_participants(page: Page) -> list[str]:
             count = await items.count()
             for i in range(count):
                 name = (await items.nth(i).text_content() or "").strip()
-                if name and name != "Wookiee Recorder":
+                if name:
                     names.append(name)
             await btn.click()  # close panel
     except Exception:
@@ -220,7 +220,7 @@ async def extract_participants(page: Page) -> list[str]:
             count = await tiles.count()
             for i in range(count):
                 name = (await tiles.nth(i).text_content() or "").strip()
-                if name and name != "Wookiee Recorder":
+                if name:
                     names.append(name)
         except Exception:
             pass
