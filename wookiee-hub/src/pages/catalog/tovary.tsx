@@ -3,7 +3,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { Search, X, Plus, Loader2, ChevronDown, ChevronRight } from "lucide-react"
 import {
   fetchTovaryRegistry, fetchStatusy, fetchSkleykiWb, fetchSkleykiOzon,
+  fetchRazmery,
   bulkUpdateTovaryStatus, bulkLinkTovaryToSkleyka,
+  updateTovar, updateArtikul,
   getUiPref, setUiPref,
   type TovarRow, type TovarChannel, type SkleykaRow,
 } from "@/lib/catalog/service"
@@ -18,6 +20,8 @@ import { SortableHeader } from "@/components/catalog/ui/sortable-header"
 import { Pagination } from "@/components/catalog/ui/pagination"
 import { FilterBar } from "@/components/catalog/ui/filter-bar"
 import { CellText } from "@/components/catalog/ui/cell-text"
+import { InlineTextCell } from "@/components/catalog/ui/inline-text-cell"
+import { InlineSelectCell } from "@/components/catalog/ui/inline-select-cell"
 import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
 import { useResizableColumns } from "@/hooks/use-resizable-columns"
 import { useTableSort, type SortState } from "@/hooks/use-table-sort"
@@ -210,6 +214,34 @@ interface CellContext {
   ) => Promise<void>
   /** W9.9 — для синтетической колонки «Статус» (один выбранный канал). */
   selectedChannel?: TovarChannel
+  /**
+   * W9.10 — inline-edit поля SKU (`tovary`).  Без него ячейки рендерятся в
+   * read-only (CellText) — нужно для редкого `renderCell` без контекста.
+   */
+  onUpdateTovar?: (
+    tovarId: number,
+    patch: {
+      barkod?: string
+      barkod_gs1?: string | null
+      barkod_gs2?: string | null
+      barkod_perehod?: string | null
+      razmer_id?: number
+      sku_china_size?: string | null
+      lamoda_seller_sku?: string | null
+      ozon_product_id?: number | null
+      ozon_fbo_sku_id?: number | null
+    },
+  ) => Promise<void>
+  /**
+   * W9.10 — inline-edit полей родительского artikul-а (artikul_ozon /
+   * nomenklatura_wb).  Эти поля лежат в `artikuly`, но видны в реестре tovary.
+   */
+  onUpdateArtikulField?: (
+    artikulId: number,
+    patch: { nomenklatura_wb?: number | null; artikul_ozon?: string | null },
+  ) => Promise<void>
+  /** W9.10 — справочник размеров для InlineSelectCell. */
+  razmerOptions?: { value: number; label: string }[]
 }
 
 function renderChannelStatusCell(t: TovarRow, ctx: CellContext): React.ReactNode {
@@ -246,8 +278,26 @@ function renderCell(
   if (key === STATUS_CHANNEL_KEY) return renderChannelStatusCell(t, ctx)
   switch (key) {
     case "barkod":
+      // W9.10 — inline-edit баркода (UNIQUE constraint в БД ловит дубли).
+      if (ctx.onUpdateTovar) {
+        return (
+          <InlineTextCell
+            value={t.barkod}
+            onCommit={async (next) => {
+              if (next == null || next.trim() === "") {
+                throw new Error("Баркод не может быть пустым")
+              }
+              await ctx.onUpdateTovar!(t.id, { barkod: next })
+            }}
+            className="font-mono text-xs text-stone-700"
+            title={t.barkod}
+            hint="Редактировать баркод"
+          />
+        )
+      }
       return <CellText className="font-mono text-xs text-stone-700" title={t.barkod}>{t.barkod}</CellText>
     case "artikul":
+      // Артикул берётся через FK (artikul_id) → редактируется на /catalog/artikuly.
       return <CellText className="font-mono text-[11px] text-stone-600" title={t.artikul ?? ""}>{t.artikul ?? "—"}</CellText>
     case "model":
       return (
@@ -269,14 +319,63 @@ function renderCell(
         </div>
       )
     case "razmer":
+      // W9.10 — inline-edit размера через select-popover (razmer_id).
+      // Используем разные опции, но без фильтра «уже занятые» — здесь SKU уже
+      // существует, просто меняем размерный тег.
+      if (ctx.onUpdateTovar && ctx.razmerOptions) {
+        return (
+          <InlineSelectCell<number>
+            value={t.razmer_id}
+            options={ctx.razmerOptions}
+            popoverLabel="Размер"
+            hint="Редактировать размер"
+            onCommit={(next) => ctx.onUpdateTovar!(t.id, { razmer_id: next })}
+            className="font-mono text-xs"
+          />
+        )
+      }
       return <CellText className="font-mono text-xs" title={t.razmer ?? ""}>{t.razmer ?? "—"}</CellText>
     case "wb_nom":
+      // W9.10 — поле живёт в `artikuly`, обновляем через artikul_id.
+      if (ctx.onUpdateArtikulField && t.artikul_id != null) {
+        return (
+          <InlineTextCell
+            value={t.nomenklatura_wb}
+            type="number"
+            onCommit={async (next) => {
+              if (next == null) {
+                await ctx.onUpdateArtikulField!(t.artikul_id!, { nomenklatura_wb: null })
+                return
+              }
+              const num = Number(next)
+              if (!Number.isFinite(num) || !Number.isInteger(num) || num < 0) {
+                throw new Error("WB-номенклатура должна быть положительным целым числом")
+              }
+              await ctx.onUpdateArtikulField!(t.artikul_id!, { nomenklatura_wb: num })
+            }}
+            className="font-mono text-[11px] text-stone-500 tabular-nums"
+            hint="Редактировать WB-номенклатуру (в карточке артикула)"
+          />
+        )
+      }
       return (
         <CellText className="font-mono text-[11px] text-stone-500 tabular-nums" title={t.nomenklatura_wb != null ? String(t.nomenklatura_wb) : ""}>
           {t.nomenklatura_wb ?? "—"}
         </CellText>
       )
     case "ozon_art":
+      if (ctx.onUpdateArtikulField && t.artikul_id != null) {
+        return (
+          <InlineTextCell
+            value={t.artikul_ozon}
+            onCommit={async (next) => {
+              await ctx.onUpdateArtikulField!(t.artikul_id!, { artikul_ozon: next })
+            }}
+            className="font-mono text-[11px] text-stone-500"
+            hint="Редактировать OZON-артикул (в карточке артикула)"
+          />
+        )
+      }
       return (
         <CellText className="font-mono text-[11px] text-stone-500" title={t.artikul_ozon ?? ""}>{t.artikul_ozon ?? "—"}</CellText>
       )
@@ -317,10 +416,40 @@ function renderCell(
         />
       )
     case "barkod_gs1":
+      if (ctx.onUpdateTovar) {
+        return (
+          <InlineTextCell
+            value={t.barkod_gs1}
+            onCommit={(next) => ctx.onUpdateTovar!(t.id, { barkod_gs1: next })}
+            className="font-mono text-[11px] text-stone-500"
+            hint="Редактировать GS1-баркод"
+          />
+        )
+      }
       return <CellText className="font-mono text-[11px] text-stone-500" title={t.barkod_gs1 ?? ""}>{t.barkod_gs1 ?? "—"}</CellText>
     case "barkod_gs2":
+      if (ctx.onUpdateTovar) {
+        return (
+          <InlineTextCell
+            value={t.barkod_gs2}
+            onCommit={(next) => ctx.onUpdateTovar!(t.id, { barkod_gs2: next })}
+            className="font-mono text-[11px] text-stone-500"
+            hint="Редактировать GS2-баркод"
+          />
+        )
+      }
       return <CellText className="font-mono text-[11px] text-stone-500" title={t.barkod_gs2 ?? ""}>{t.barkod_gs2 ?? "—"}</CellText>
     case "barkod_perehod":
+      if (ctx.onUpdateTovar) {
+        return (
+          <InlineTextCell
+            value={t.barkod_perehod}
+            onCommit={(next) => ctx.onUpdateTovar!(t.id, { barkod_perehod: next })}
+            className="font-mono text-[11px] text-stone-500"
+            hint="Редактировать баркод перехода"
+          />
+        )
+      }
       return <CellText className="font-mono text-[11px] text-stone-500" title={t.barkod_perehod ?? ""}>{t.barkod_perehod ?? "—"}</CellText>
     case "cena_wb":
       return <span className="text-xs text-stone-400 italic">—</span>
@@ -330,12 +459,74 @@ function renderCell(
       return <CellText className="text-xs text-stone-500" title={t.created_at ?? ""}>{relativeDate(t.created_at)}</CellText>
     // W9.5 — расширения для нового конфигуратора (скрыты по умолчанию).
     case "sku_china_size":
+      if (ctx.onUpdateTovar) {
+        return (
+          <InlineTextCell
+            value={t.sku_china_size}
+            onCommit={(next) => ctx.onUpdateTovar!(t.id, { sku_china_size: next })}
+            className="font-mono text-[11px] text-stone-500"
+            hint="Редактировать размер SKU Китай"
+          />
+        )
+      }
       return <CellText className="font-mono text-[11px] text-stone-500" title={t.sku_china_size ?? ""}>{t.sku_china_size ?? "—"}</CellText>
     case "ozon_product_id":
+      if (ctx.onUpdateTovar) {
+        return (
+          <InlineTextCell
+            value={t.ozon_product_id}
+            type="number"
+            onCommit={async (next) => {
+              if (next == null) {
+                await ctx.onUpdateTovar!(t.id, { ozon_product_id: null })
+                return
+              }
+              const num = Number(next)
+              if (!Number.isFinite(num) || !Number.isInteger(num) || num < 0) {
+                throw new Error("OZON product_id должен быть положительным целым числом")
+              }
+              await ctx.onUpdateTovar!(t.id, { ozon_product_id: num })
+            }}
+            className="font-mono text-[11px] text-stone-500 tabular-nums"
+            hint="Редактировать OZON product_id"
+          />
+        )
+      }
       return <CellText className="font-mono text-[11px] text-stone-500 tabular-nums" title={t.ozon_product_id != null ? String(t.ozon_product_id) : ""}>{t.ozon_product_id ?? "—"}</CellText>
     case "ozon_fbo_sku_id":
+      if (ctx.onUpdateTovar) {
+        return (
+          <InlineTextCell
+            value={t.ozon_fbo_sku_id}
+            type="number"
+            onCommit={async (next) => {
+              if (next == null) {
+                await ctx.onUpdateTovar!(t.id, { ozon_fbo_sku_id: null })
+                return
+              }
+              const num = Number(next)
+              if (!Number.isFinite(num) || !Number.isInteger(num) || num < 0) {
+                throw new Error("OZON FBO SKU должен быть положительным целым числом")
+              }
+              await ctx.onUpdateTovar!(t.id, { ozon_fbo_sku_id: num })
+            }}
+            className="font-mono text-[11px] text-stone-500 tabular-nums"
+            hint="Редактировать OZON FBO SKU id"
+          />
+        )
+      }
       return <CellText className="font-mono text-[11px] text-stone-500 tabular-nums" title={t.ozon_fbo_sku_id != null ? String(t.ozon_fbo_sku_id) : ""}>{t.ozon_fbo_sku_id ?? "—"}</CellText>
     case "lamoda_seller_sku":
+      if (ctx.onUpdateTovar) {
+        return (
+          <InlineTextCell
+            value={t.lamoda_seller_sku}
+            onCommit={(next) => ctx.onUpdateTovar!(t.id, { lamoda_seller_sku: next })}
+            className="font-mono text-[11px] text-stone-500"
+            hint="Редактировать Lamoda seller SKU"
+          />
+        )
+      }
       return <CellText className="font-mono text-[11px] text-stone-500" title={t.lamoda_seller_sku ?? ""}>{t.lamoda_seller_sku ?? "—"}</CellText>
     case "kollekciya":
       return <CellText className="text-xs text-stone-600" title={t.kollekciya ?? ""}>{t.kollekciya ?? "—"}</CellText>
@@ -828,6 +1019,44 @@ export function TovaryPage() {
     [updateStatusMutation],
   )
 
+  // W9.10 — справочник размеров для InlineSelectCell.
+  const razmeryQ = useQuery({
+    queryKey: ["catalog", "razmery"],
+    queryFn: fetchRazmery,
+    staleTime: 5 * 60 * 1000,
+  })
+  const razmerEditOptions = useMemo(
+    () =>
+      (razmeryQ.data ?? []).map((r) => ({
+        value: r.id,
+        label: r.nazvanie ?? `#${r.id}`,
+      })),
+    [razmeryQ.data],
+  )
+
+  // W9.10 — inline-edit полей SKU.  Все патчи проходят через updateTovar
+  // (общий service-метод), результат — invalidate tovary-registry.  При
+  // редактировании поля artikul-а (artikul_ozon / nomenklatura_wb) патч
+  // идёт в `artikuly` и затрагивает все SKU этого артикула — invalidate
+  // обеих query-keys.
+  const onUpdateTovarField = useCallback(
+    async (tovarId: number, patch: Parameters<typeof updateTovar>[1]) => {
+      await updateTovar(tovarId, patch)
+      await queryClient.invalidateQueries({ queryKey: ["tovary-registry"] })
+    },
+    [queryClient],
+  )
+  const onUpdateArtikulField = useCallback(
+    async (artikulId: number, patch: { nomenklatura_wb?: number | null; artikul_ozon?: string | null }) => {
+      await updateArtikul(artikulId, patch)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["tovary-registry"] }),
+        queryClient.invalidateQueries({ queryKey: ["artikuly-registry"] }),
+      ])
+    },
+    [queryClient],
+  )
+
   const filtered = useMemo<TovarRow[]>(() => {
     if (!data) return []
     let res: TovarRow[] = data
@@ -921,8 +1150,13 @@ export function TovaryPage() {
   )
 
   const cellCtx: CellContext = useMemo(
-    () => ({ statusOptions, onUpdateStatus, selectedChannel }),
-    [statusOptions, onUpdateStatus, selectedChannel],
+    () => ({
+      statusOptions, onUpdateStatus, selectedChannel,
+      onUpdateTovar: onUpdateTovarField,
+      onUpdateArtikulField,
+      razmerOptions: razmerEditOptions,
+    }),
+    [statusOptions, onUpdateStatus, selectedChannel, onUpdateTovarField, onUpdateArtikulField, razmerEditOptions],
   )
 
   // Список ключей колонок, фактически отрисованных в таблице (учитывает фильтр канала).

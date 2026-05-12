@@ -57,3 +57,11 @@ export { AttributeControl } from "./attribute-control"
 // W8.1 + W8.2 — sortable header + paginator.
 export { SortableHeader } from "./sortable-header"
 export { Pagination } from "./pagination"
+
+// W9.10 — Inline-edit ячейки для /catalog/artikuly и /catalog/tovary.
+export { InlineTextCell } from "./inline-text-cell"
+export type { InlineTextCellProps } from "./inline-text-cell"
+export { InlineColorCell } from "./inline-color-cell"
+export type { InlineColorCellProps } from "./inline-color-cell"
+export { InlineSelectCell } from "./inline-select-cell"
+export type { InlineSelectCellProps, InlineSelectOption } from "./inline-select-cell"

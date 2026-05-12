@@ -1,9 +1,10 @@
 import { useMemo, useState, useCallback, useEffect, useRef } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Plus, Search, X, ChevronDown, Loader2 } from "lucide-react"
+import { Plus, Search, X, ChevronDown, Loader2, ExternalLink } from "lucide-react"
 import {
   fetchArtikulyRegistry, fetchStatusy, bulkUpdateArtikulStatus,
   fetchRazmery, fetchTovaryByArtikul, insertTovar,
+  updateArtikul,
   getUiPref, setUiPref,
   type ArtikulRow, type ArtikulTovar, type Razmer,
 } from "@/lib/catalog/service"
@@ -15,6 +16,8 @@ import { Pagination } from "@/components/catalog/ui/pagination"
 import { RefModal } from "@/components/catalog/ui/ref-modal"
 import { CellText } from "@/components/catalog/ui/cell-text"
 import { FilterBar } from "@/components/catalog/ui/filter-bar"
+import { InlineTextCell } from "@/components/catalog/ui/inline-text-cell"
+import { InlineColorCell } from "@/components/catalog/ui/inline-color-cell"
 import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
 import { useResizableColumns } from "@/hooks/use-resizable-columns"
 import { useTableSort, type SortState } from "@/hooks/use-table-sort"
@@ -446,9 +449,40 @@ function ArtikulDrillDown({ row, statusyData, onClose }: ArtikulDrillDownProps) 
   )
 }
 
-function renderCell(key: string, a: ArtikulRow): React.ReactNode {
+/**
+ * W9.10 — контекст inline-edit для renderCell.
+ *
+ * Сами хендлеры коммитят в БД через service.updateArtikul; родитель отвечает за
+ * invalidate query-key "artikuly-registry" — оба коммита идут через mutation.
+ */
+interface ArtikulCellCtx {
+  /** Изменить произвольное поле артикула (artikul/wb_nom/ozon_art). */
+  onUpdate: (id: number, patch: { artikul?: string; nomenklatura_wb?: number | null; artikul_ozon?: string | null }) => Promise<void>
+  /** Изменить цвет (cvet_id). */
+  onUpdateColor: (id: number, cvetId: number) => Promise<void>
+}
+
+function renderCell(key: string, a: ArtikulRow, ctx?: ArtikulCellCtx): React.ReactNode {
   switch (key) {
     case "artikul":
+      // W9.10 — inline-edit имени/кода артикула.  Уникальность на уровне БД
+      // (constraint), на UI просто бросаем translateError при 23505.
+      if (ctx) {
+        return (
+          <InlineTextCell
+            value={a.artikul}
+            onCommit={async (next) => {
+              if (next == null || next.trim() === "") {
+                throw new Error("Артикул не может быть пустым")
+              }
+              await ctx.onUpdate(a.id, { artikul: next })
+            }}
+            className="font-mono text-xs text-stone-900"
+            title={a.artikul}
+            hint="Редактировать код/имя артикула"
+          />
+        )
+      }
       return <CellText className="font-mono text-xs text-stone-900" title={a.artikul}>{a.artikul}</CellText>
     case "model":
       return (
@@ -462,6 +496,20 @@ function renderCell(key: string, a: ArtikulRow): React.ReactNode {
         </div>
       )
     case "cvet":
+      // W9.10 — inline-edit цвета: ColorPicker (single) с фильтром по
+      // kategoriya_id модели (W9.12).
+      if (ctx) {
+        return (
+          <InlineColorCell
+            currentCvetId={a.cvet_id}
+            currentColorCode={a.cvet_color_code}
+            currentColorName={a.cvet_nazvanie}
+            currentHex={a.cvet_hex}
+            categoryId={a.kategoriya_id}
+            onCommit={(cvetId) => ctx.onUpdateColor(a.id, cvetId)}
+          />
+        )
+      }
       return (
         <div className="flex items-center gap-1.5 min-w-0">
           <ColorSwatch hex={a.cvet_hex ?? swatchColor(a.cvet_color_code ?? "")} size={14} />
@@ -472,12 +520,47 @@ function renderCell(key: string, a: ArtikulRow): React.ReactNode {
     case "status":
       return <StatusBadge statusId={a.status_id ?? 0} compact />
     case "wb_nom":
+      if (ctx) {
+        return (
+          <InlineTextCell
+            value={a.nomenklatura_wb}
+            type="number"
+            onCommit={async (next) => {
+              if (next == null) {
+                await ctx.onUpdate(a.id, { nomenklatura_wb: null })
+                return
+              }
+              const num = Number(next)
+              if (!Number.isFinite(num) || !Number.isInteger(num) || num < 0) {
+                throw new Error("WB-номенклатура должна быть положительным целым числом")
+              }
+              await ctx.onUpdate(a.id, { nomenklatura_wb: num })
+            }}
+            className="font-mono text-[11px] text-stone-600 tabular-nums"
+            title={a.nomenklatura_wb != null ? String(a.nomenklatura_wb) : ""}
+            hint="Редактировать WB-номенклатуру"
+          />
+        )
+      }
       return (
         <CellText className="font-mono text-[11px] text-stone-600 tabular-nums" title={a.nomenklatura_wb != null ? String(a.nomenklatura_wb) : ""}>
           {a.nomenklatura_wb ?? "—"}
         </CellText>
       )
     case "ozon_art":
+      if (ctx) {
+        return (
+          <InlineTextCell
+            value={a.artikul_ozon}
+            onCommit={async (next) => {
+              await ctx.onUpdate(a.id, { artikul_ozon: next })
+            }}
+            className="font-mono text-[11px] text-stone-600"
+            title={a.artikul_ozon ?? ""}
+            hint="Редактировать OZON-артикул"
+          />
+        )
+      }
       return (
         <CellText className="font-mono text-[11px] text-stone-600" title={a.artikul_ozon ?? ""}>{a.artikul_ozon ?? "—"}</CellText>
       )
@@ -702,6 +785,28 @@ export function ArtikulyPage() {
     }
   }, [selectedIds, queryClient])
 
+  // W9.10 — inline-edit обработчики (artikul/wb_nom/ozon_art + cvet_id).
+  // Каждый коммит — single-row UPDATE; ошибка пробрасывается в Inline*Cell,
+  // который сам показывает alert через translateError и оставляет input открытым.
+  const onUpdateArtikul = useCallback(
+    async (id: number, patch: { artikul?: string; nomenklatura_wb?: number | null; artikul_ozon?: string | null }) => {
+      await updateArtikul(id, patch)
+      await queryClient.invalidateQueries({ queryKey: ["artikuly-registry"] })
+    },
+    [queryClient],
+  )
+  const onUpdateArtikulColor = useCallback(
+    async (id: number, cvetId: number) => {
+      await updateArtikul(id, { cvet_id: cvetId })
+      await queryClient.invalidateQueries({ queryKey: ["artikuly-registry"] })
+    },
+    [queryClient],
+  )
+  const cellCtx = useMemo<ArtikulCellCtx>(
+    () => ({ onUpdate: onUpdateArtikul, onUpdateColor: onUpdateArtikulColor }),
+    [onUpdateArtikul, onUpdateArtikulColor],
+  )
+
   // W7.3 — CSV-экспорт выбранных артикулов.  Используем `selected` (Set<artikul>)
   // → filter из data → renderable rows (только колонки, помеченные как видимые).
   const statusNameById = useMemo(() => {
@@ -925,14 +1030,22 @@ export function ArtikulyPage() {
                       className={`px-3 py-2.5 whitespace-nowrap${idx === 0 ? " cat-sticky-col cat-sticky-col-offset" : ""}`}
                     >
                       {key === "artikul" ? (
-                        <button
-                          type="button"
-                          onClick={() => setDrillDown(a)}
-                          className="font-mono text-xs text-stone-900 hover:text-stone-600 hover:underline underline-offset-2 cursor-pointer"
-                          title="Открыть карточку артикула с SKU"
-                        >
-                          {a.artikul}
-                        </button>
+                        // W9.10 — inline-edit имени артикула + side-button для drill-down.
+                        // Кликабельная зона разделена: текст = edit, иконка = открыть карточку.
+                        <div className="flex items-center gap-1 min-w-0">
+                          <div className="flex-1 min-w-0">
+                            {renderCell(key, a, cellCtx)}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setDrillDown(a)}
+                            className="p-0.5 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded shrink-0"
+                            title="Открыть карточку артикула с SKU"
+                            aria-label="Карточка артикула"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                          </button>
+                        </div>
                       ) : key === "status" ? (
                         <InlineArtikulStatusCell
                           currentStatusId={a.status_id ?? null}
@@ -942,7 +1055,7 @@ export function ArtikulyPage() {
                             await queryClient.invalidateQueries({ queryKey: ["artikuly-registry"] })
                           }}
                         />
-                      ) : renderCell(key, a)}
+                      ) : renderCell(key, a, cellCtx)}
                     </td>
                   ))}
                 </tr>

@@ -1318,7 +1318,7 @@ export interface ArtikulRow {
   artikul_ozon: string | null
   tovary_cnt: number
   kategoriya: string | null
-  /** W9.10 — kategoriya_id для фильтра ColorPicker по категории. */
+  /** W9.10 — категория модели (id) для фильтра ColorPicker по категории. */
   kategoriya_id: number | null
   kollekciya: string | null
   fabrika: string | null
@@ -1401,9 +1401,9 @@ export interface TovarRow {
   /** modeli_osnova.kollekciya / kategoriya — для group-by. */
   kollekciya: string | null
   kategoriya: string | null
-  /** W9.10 — kategoriya_id для редактирования цвета (если когда-то понадобится). */
+  /** W9.10 — kategoriya_id для ColorPicker (если когда-нибудь будем редактировать цвет SKU). */
   kategoriya_id: number | null
-  /** W9.10 — cvet_id (через artikuly.cvet_id). */
+  /** W9.10 — cvet_id, чтобы можно было редактировать цвет SKU (через artikul). */
   cvet_id: number | null
   cvet_color_code: string | null
   /** cveta.cvet (RU). */
@@ -2118,7 +2118,7 @@ export async function bulkUpdateArtikulStatus(artikulIds: number[], statusId: nu
  *   - cvet_id (FK на cveta)
  *   - nomenklatura_wb (bigint | null)
  *   - artikul_ozon (varchar | null)
- *   - status_id — обычно через bulkUpdateArtikulStatus (отдельный popover)
+ *   - status_id — лучше через bulkUpdateArtikulStatus (есть отдельный popover)
  *
  * Аудит-триггер (W7.1 / W9.1) пишет в `istoriya_izmeneniy`.
  */
@@ -2150,7 +2150,10 @@ export async function updateArtikul(id: number, patch: ArtikulPatch): Promise<vo
  *   - ozon_product_id, ozon_fbo_sku_id (bigint | null)
  *   - status_<channel>_id — лучше через bulkUpdateTovaryStatus.
  *
- * Цены WB/OZON в схеме `tovary` отсутствуют (см. column-catalogs W9.5).
+ * Цены WB/OZON в схеме `tovary` отсутствуют — поля cena_wb/cena_ozon
+ * в реестре пока стоят как plain «—» (см. column-catalogs W9.5). Здесь не
+ * редактируются. Если когда-нибудь появятся отдельные таблицы — добавить
+ * параллельный patch в them.
  */
 export interface TovarPatch {
   barkod?: string
