@@ -155,14 +155,17 @@ def write_product_breakdown(
 
     for cab in ("ООО", "ИП"):
         for row in rows_by_cabinet.get(cab, []):
+            uuid = str(row.get("uuid_promocode") or "").strip().lower()
+            if not uuid:
+                continue
+            # Dedup srid AFTER promo filter: a single srid can appear on both a
+            # 'Продажа' row and a 'Логистика'/'Хранение' row; we only want to
+            # dedup promo sales across cabinets.
             srid = str(row.get("srid") or "").strip()
             if srid:
                 if srid in seen_srid:
                     continue
                 seen_srid.add(srid)
-            uuid = str(row.get("uuid_promocode") or "").strip().lower()
-            if not uuid:
-                continue
             try:
                 nm_id = int(row.get("nm_id") or 0)
             except (TypeError, ValueError):
