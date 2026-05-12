@@ -98,6 +98,7 @@ import {
 } from "@/components/catalog/ui"
 import { computeCompleteness, relativeDate, swatchColor } from "@/lib/catalog/color-utils"
 import { useAvailableColors } from "@/hooks/use-available-colors"
+import { translateError } from "@/lib/catalog/error-translator"
 
 // ─── Local helpers ─────────────────────────────────────────────────────────
 
@@ -1103,7 +1104,7 @@ function AddArtikulModal({
       onClose()
     },
     onError: (e: unknown) => {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(translateError(e))
     },
   })
 
@@ -1356,7 +1357,7 @@ function InlineStatusCell({
       setOpen(false)
     } catch (err) {
       // eslint-disable-next-line no-alert
-      alert(`Не удалось обновить статус: ${(err as Error).message}`)
+      alert(translateError(err))
     } finally {
       setSaving(false)
     }

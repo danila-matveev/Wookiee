@@ -11,6 +11,7 @@ import { CompletenessRing } from "@/components/catalog/ui/completeness-ring"
 import { StatusBadge } from "@/components/catalog/ui/status-badge"
 import { BulkActionsBar } from "@/components/catalog/ui/bulk-actions-bar"
 import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
+import { translateError } from "@/lib/catalog/error-translator"
 
 const MAX_SKU = 30
 
@@ -112,7 +113,7 @@ export function SkleykaCard({ id, channel, onBack }: SkleykaCardProps) {
       })
       invalidate()
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Ошибка отвязки SKU")
+      alert(translateError(e))
     } finally {
       setBusy(false)
     }
@@ -127,7 +128,7 @@ export function SkleykaCard({ id, channel, onBack }: SkleykaCardProps) {
       setSelected(new Set())
       invalidate()
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Ошибка отвязки SKU")
+      alert(translateError(e))
     } finally {
       setBusy(false)
     }
@@ -148,7 +149,7 @@ export function SkleykaCard({ id, channel, onBack }: SkleykaCardProps) {
       qc.invalidateQueries({ queryKey: ["catalog-counts"] })
       onBack()
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Ошибка удаления склейки")
+      alert(translateError(e))
     } finally {
       setBusy(false)
     }
@@ -170,7 +171,7 @@ export function SkleykaCard({ id, channel, onBack }: SkleykaCardProps) {
       invalidate()
       setEditingName(false)
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Ошибка сохранения")
+      alert(translateError(e))
     } finally {
       setBusy(false)
     }

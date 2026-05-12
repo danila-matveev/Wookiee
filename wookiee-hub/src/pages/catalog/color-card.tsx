@@ -15,6 +15,7 @@ import {
   type ColorDetailArtikul,
   type CvetRow,
 } from "@/lib/catalog/service"
+import { translateError } from "@/lib/catalog/error-translator"
 import { ColorSwatch } from "@/components/catalog/ui/color-swatch"
 import { StatusBadge } from "@/components/catalog/ui/status-badge"
 import {
@@ -497,7 +498,7 @@ function ColorPhoto({ path, alt }: { path: string; alt: string }) {
         if (!cancelled) setUrl(u)
       })
       .catch((e: unknown) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e))
+        if (!cancelled) setError(translateError(e))
       })
     return () => { cancelled = true }
   }, [path])

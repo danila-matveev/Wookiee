@@ -30,6 +30,7 @@ import {
   type AtributPayload,
   type AtributType,
 } from "@/lib/catalog/service"
+import { translateError } from "@/lib/catalog/error-translator"
 import {
   AddButton,
   ConfirmDialog,
@@ -268,7 +269,7 @@ export function AtributyPage() {
             await ref.remove.mutateAsync(deleting.id)
             setDeleting(null)
           } catch (e) {
-            alert(e instanceof Error ? e.message : "Ошибка удаления")
+            alert(translateError(e))
           }
         }}
         onCancel={() => setDeleting(null)}
@@ -357,7 +358,7 @@ function AtributModal({ initial, onSave, onCancel }: AtributModalProps) {
     try {
       await onSave(payload)
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Ошибка сохранения")
+      setError(translateError(e))
     } finally {
       setSaving(false)
     }

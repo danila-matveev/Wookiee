@@ -6,6 +6,7 @@ import {
   uploadCatalogAsset,
   validateCatalogAsset,
 } from "@/lib/catalog/service"
+import { translateError } from "@/lib/catalog/error-translator"
 
 type AssetKind = "image" | "pdf" | "image-or-pdf"
 
@@ -59,7 +60,7 @@ export function AssetUploader({
         if (!cancelled) setSignedUrl(url)
       })
       .catch((e: unknown) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e))
+        if (!cancelled) setError(translateError(e))
       })
     return () => {
       cancelled = true
@@ -86,7 +87,7 @@ export function AssetUploader({
       await uploadCatalogAsset(newPath, file, { contentType: file.type })
       await onChange(newPath)
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(translateError(e))
     } finally {
       setBusy(false)
     }
@@ -100,7 +101,7 @@ export function AssetUploader({
       await deleteCatalogAsset(path)
       await onChange(null)
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(translateError(e))
     } finally {
       setBusy(false)
     }

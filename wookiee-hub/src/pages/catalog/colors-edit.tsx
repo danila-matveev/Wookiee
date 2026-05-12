@@ -14,6 +14,7 @@ import {
   type CvetRow,
 } from "@/lib/catalog/service"
 import { AssetUploader } from "@/components/catalog/ui"
+import { translateError } from "@/lib/catalog/error-translator"
 
 interface CvetEditModalProps {
   initial?: CvetRow | null
@@ -161,7 +162,7 @@ export function CvetEditModal({ initial, onClose }: CvetEditModalProps) {
         await insert.mutateAsync({ payload, kategoriyaIds })
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Ошибка сохранения")
+      setError(translateError(e))
       setSaving(false)
     }
   }

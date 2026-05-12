@@ -20,6 +20,7 @@ import { useTableSort, type SortState } from "@/hooks/use-table-sort"
 import { usePagination } from "@/hooks/use-pagination"
 import { useDebouncedValue } from "@/hooks/use-debounced-value"
 import { downloadCsv } from "@/lib/catalog/csv-export"
+import { translateError } from "@/lib/catalog/error-translator"
 
 // Default per-column widths (px) for the standalone Артикулы page (W1.5).
 // Keys must match ARTIKULY_COLUMNS[i].key.
@@ -131,7 +132,7 @@ function InlineArtikulStatusCell({
       setOpen(false)
     } catch (err) {
       // eslint-disable-next-line no-alert
-      alert(`Не удалось обновить статус: ${(err as Error).message}`)
+      alert(translateError(err))
     } finally {
       setSaving(false)
     }
@@ -649,7 +650,7 @@ export function ArtikulyPage() {
       setSelected(new Set())
       setBulkStatusOpen(false)
     } catch (err) {
-      window.alert(`Не удалось обновить статус: ${(err as Error).message}`)
+      window.alert(translateError(err))
     }
   }, [selectedIds, queryClient])
 

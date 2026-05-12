@@ -22,6 +22,7 @@ import { usePagination } from "@/hooks/use-pagination"
 import { useDebouncedValue } from "@/hooks/use-debounced-value"
 import { useCollapsibleGroups } from "@/hooks/use-collapsible-groups"
 import { downloadCsv } from "@/lib/catalog/csv-export"
+import { translateError } from "@/lib/catalog/error-translator"
 
 // W1.5 — Default per-column widths (px) for the SKU registry (Товары) page.
 // Keys must match TOVARY_COLUMNS[i].key.
@@ -161,7 +162,7 @@ function InlineStatusCell({
       setOpen(false)
     } catch (err) {
       // eslint-disable-next-line no-alert
-      alert(`Не удалось обновить статус: ${(err as Error).message}`)
+      alert(translateError(err))
     } finally {
       setSaving(false)
     }
@@ -422,7 +423,7 @@ function LinkSkleykaModal({ channel, onClose, onLink }: LinkSkleykaModalProps) {
       void queryClient.invalidateQueries({ queryKey: ["skleyki", channel] })
     } catch (err) {
       // eslint-disable-next-line no-alert
-      alert(`Не удалось создать склейку: ${(err as Error).message}`)
+      alert(translateError(err))
     } finally {
       setCreating(false)
     }
@@ -747,7 +748,6 @@ export function TovaryPage() {
     return ids
   }, [statusyData])
 
-<<<<<<< HEAD
   // W9.2 — резолвер id→{nazvanie,color} по всем статусам из БД,
   // вне зависимости от tip (product/sayt/lamoda/artikul/model/…).
   const statusById = useMemo(() => {
@@ -760,7 +760,8 @@ export function TovaryPage() {
   const resolveStatus = useCallback(
     (id: number) => statusById.get(id) ?? null,
     [statusById],
-=======
+  )
+
   // W9.9 — pre-launch статусы: SKU с таким статусом по каналу считаем «ещё не
   // в продаже» и отфильтровываем при выборе конкретного канала.
   const preLaunchStatusIds = useMemo(() => {
@@ -774,7 +775,6 @@ export function TovaryPage() {
   const statusLookup = useMemo<StatusLookup>(
     () => ({ isPreLaunch: (id) => id != null && preLaunchStatusIds.has(id) }),
     [preLaunchStatusIds],
->>>>>>> de2e5df (fix(w9.9): channel switcher filters /tovary list and adapts status columns)
   )
 
   const updateStatusMutation = useMutation({
@@ -804,11 +804,7 @@ export function TovaryPage() {
       res = res.filter((t) => matchesCompositeSearch(t, debouncedSearch))
     }
     return res
-<<<<<<< HEAD
-  }, [data, channelFilter, statusGroup, archiveStatusIds, debouncedSearch])
-=======
-  }, [data, channelFilter, statusLookup, statusGroup, archiveStatusIds, search])
->>>>>>> de2e5df (fix(w9.9): channel switcher filters /tovary list and adapts status columns)
+  }, [data, channelFilter, statusLookup, statusGroup, archiveStatusIds, debouncedSearch])
 
   // W8.1 — sort after filter, before group.
   const sortedFiltered = useMemo<TovarRow[]>(
@@ -857,22 +853,16 @@ export function TovaryPage() {
     })
   }, [flatVisibleBarkods])
 
-<<<<<<< HEAD
-  const cellCtx: CellContext = useMemo(
-    () => ({ statusOptions, resolveStatus, onUpdateStatus }),
-    [statusOptions, resolveStatus, onUpdateStatus],
-=======
   // W9.9 — когда выбран один канал, прячем 4 колонки status_<channel> и
   // показываем одну колонку «Статус» (status_channel) на месте первой из них.
   const selectedChannel: TovarChannel | undefined = useMemo(
     () => (channelFilter === "all" ? undefined : channelFilter),
     [channelFilter],
->>>>>>> de2e5df (fix(w9.9): channel switcher filters /tovary list and adapts status columns)
   )
 
   const cellCtx: CellContext = useMemo(
-    () => ({ statusOptions, onUpdateStatus, selectedChannel }),
-    [statusOptions, onUpdateStatus, selectedChannel],
+    () => ({ statusOptions, resolveStatus, onUpdateStatus, selectedChannel }),
+    [statusOptions, resolveStatus, onUpdateStatus, selectedChannel],
   )
 
   // Список ключей колонок, фактически отрисованных в таблице (учитывает фильтр канала).
@@ -992,7 +982,7 @@ export function TovaryPage() {
       alert(`Привязано ${barkods.length} SKU к склейке.`)
     } catch (err) {
       // eslint-disable-next-line no-alert
-      alert(`Ошибка: ${(err as Error).message}`)
+      alert(translateError(err))
     }
   }, [linkSkleykaChannel, queryClient, selected])
 
@@ -1123,23 +1113,17 @@ export function TovaryPage() {
                     onChange={toggleAll}
                   />
                 </th>
-<<<<<<< HEAD
-                {columns.map((key, idx) => {
-                  const col = TOVARY_COLUMNS.find((c) => c.key === key)
+                {effectiveColumns.map((key, idx) => {
+                  const label = labelForColumn(key)
                   // W9.7 — первая (якорная) data-колонка sticky на left:40 (после checkbox).
                   const stickyCls = idx === 0 ? " cat-sticky-col cat-sticky-col-offset cat-sticky-col-head" : ""
                   const baseCls = `relative px-3 py-2.5 font-medium whitespace-nowrap${stickyCls}`
-=======
-                {effectiveColumns.map((key) => {
-                  const label = labelForColumn(key)
-                  const baseCls = "relative px-3 py-2.5 font-medium whitespace-nowrap"
                   // status_channel — не сортируемая (синтетика). Resizer привязан
                   // к исходной канальной колонке status_<channel>.
                   const resizerKey =
                     key === STATUS_CHANNEL_KEY && selectedChannel
                       ? `status_${selectedChannel}`
                       : key
->>>>>>> de2e5df (fix(w9.9): channel switcher filters /tovary list and adapts status columns)
                   if (TOVARY_SORTABLE.has(key)) {
                     const sortKey = key as TovarSortKey
                     return (
@@ -1171,8 +1155,7 @@ export function TovaryPage() {
                 <React.Fragment key={group.key}>
                   {groupBy !== "none" && (
                     <tr className="bg-stone-50 border-b border-stone-200 sticky top-[36px] z-[1]">
-<<<<<<< HEAD
-                      <td colSpan={columns.length + 1} className="px-3 py-2">
+                      <td colSpan={effectiveColumns.length + 1} className="px-3 py-2">
                         <button
                           type="button"
                           onClick={() => toggleGroupCollapsed(group.key)}
@@ -1183,10 +1166,6 @@ export function TovaryPage() {
                           {collapsed
                             ? <ChevronRight className="w-3.5 h-3.5 text-stone-500 self-center shrink-0" />
                             : <ChevronDown className="w-3.5 h-3.5 text-stone-500 self-center shrink-0" />}
-=======
-                      <td colSpan={effectiveColumns.length + 1} className="px-3 py-2">
-                        <div className="flex items-baseline gap-2">
->>>>>>> de2e5df (fix(w9.9): channel switcher filters /tovary list and adapts status columns)
                           <h3 className="cat-font-serif italic text-base text-stone-800">
                             {group.label || "—"}
                           </h3>
@@ -1210,16 +1189,11 @@ export function TovaryPage() {
                           onChange={() => toggleRow(t.barkod)}
                         />
                       </td>
-<<<<<<< HEAD
-                      {columns.map((key, idx) => (
+                      {effectiveColumns.map((key, idx) => (
                         <td
                           key={key}
                           className={`px-3 py-2.5 whitespace-nowrap${idx === 0 ? " cat-sticky-col cat-sticky-col-offset" : ""}`}
                         >
-=======
-                      {effectiveColumns.map((key) => (
-                        <td key={key} className="px-3 py-2.5 whitespace-nowrap">
->>>>>>> de2e5df (fix(w9.9): channel switcher filters /tovary list and adapts status columns)
                           {renderCell(key, t, cellCtx)}
                         </td>
                       ))}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { X } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { translateError } from "@/lib/catalog/error-translator"
 
 export type RefFieldType =
   | "text"
@@ -79,7 +80,7 @@ export function RefModal({
     try {
       await onSave(values)
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Ошибка сохранения")
+      setError(translateError(e))
     } finally {
       setSaving(false)
     }
