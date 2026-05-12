@@ -2,6 +2,7 @@ import { useMemo, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { Search } from "lucide-react"
 import { useSearchQueries, useSearchQueryStats } from "@/hooks/marketing/use-search-queries"
+import { useChannelLabelLookup } from "@/hooks/marketing/use-channels"
 import { useLastSync } from "@/hooks/marketing/use-sync-log"
 import { QueryStatusBoundary } from "@/components/crm/ui/QueryStatusBoundary"
 import { Badge } from "@/components/crm/ui/Badge"
@@ -49,6 +50,7 @@ export function SearchQueriesTable() {
   const { data: items = [], isLoading: lq, error: eq } = useSearchQueries()
   const { data: statsRows = [], isLoading: ls, error: es } = useSearchQueryStats(dateFrom, dateTo)
   const { data: lastSync } = useLastSync('search_queries_sync')
+  const channelLabel = useChannelLabelLookup()
 
   const statsMap = useMemo(() => {
     const m = new Map<string, SearchQueryStatsAgg>()
@@ -63,8 +65,9 @@ export function SearchQueriesTable() {
     [items],
   )
   const uniqueChannels = useMemo(
-    () => Array.from(new Set(items.map((i) => i.purpose).filter((c): c is string => !!c))).sort(),
-    [items],
+    () => Array.from(new Set(items.map((i) => i.purpose).filter((c): c is string => !!c)))
+      .sort((a, b) => channelLabel(a).localeCompare(channelLabel(b), 'ru')),
+    [items, channelLabel],
   )
 
   const filtered = useMemo(() => {
@@ -135,7 +138,7 @@ export function SearchQueriesTable() {
                 onClick={() => setQ('channel', c === 'all' ? null : c)}
                 className={`px-2.5 py-1 rounded-full text-[12px] font-medium transition-colors ${channelF === c ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}
               >
-                {c === 'all' ? 'Все' : c}
+                {c === 'all' ? 'Все' : channelLabel(c)}
               </button>
             ))}
           </div>
@@ -201,6 +204,7 @@ export function SearchQueriesTable() {
                       collapsed={isCol}
                       onToggle={() => toggle(g.id)}
                       statsMap={statsMap}
+                      channelLabel={channelLabel}
                       onOpen={(unifiedId) => setQ('open', unifiedId)}
                     />
                   )
@@ -244,10 +248,11 @@ interface SectionGroupProps {
   collapsed: boolean
   onToggle: () => void
   statsMap: Map<string, SearchQueryStatsAgg>
+  channelLabel: (slug: string | null | undefined) => string
   onOpen: (unifiedId: string) => void
 }
 
-function SectionGroup({ icon, label, rows, collapsed, onToggle, statsMap, onOpen }: SectionGroupProps) {
+function SectionGroup({ icon, label, rows, collapsed, onToggle, statsMap, channelLabel, onOpen }: SectionGroupProps) {
   return (
     <>
       <SectionHeader icon={icon} label={label} count={rows.length} collapsed={collapsed} onToggle={onToggle} colSpan={11} />
@@ -268,7 +273,7 @@ function SectionGroup({ icon, label, rows, collapsed, onToggle, statsMap, onOpen
             <td className="px-2 py-2 text-xs text-muted-foreground truncate">{it.ww_code ?? it.nomenklatura_wb ?? ''}</td>
             <td className="px-2 py-2">
               {it.purpose
-                ? <Badge tone="secondary">{it.purpose}</Badge>
+                ? <Badge tone="secondary">{channelLabel(it.purpose)}</Badge>
                 : <span className="text-muted-foreground/60 text-xs">—</span>}
             </td>
             <td className="px-2 py-2 text-xs text-muted-foreground truncate">{it.campaign_name ?? ''}</td>

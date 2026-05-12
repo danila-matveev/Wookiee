@@ -2,6 +2,7 @@ import { useMemo } from "react"
 import { useSearchParams } from "react-router-dom"
 import { Search } from "lucide-react"
 import { usePromoCodes, usePromoStatsWeekly } from "@/hooks/marketing/use-promo-codes"
+import { useChannelLabelLookup } from "@/hooks/marketing/use-channels"
 import { useLastSync } from "@/hooks/marketing/use-sync-log"
 import { QueryStatusBoundary } from "@/components/crm/ui/QueryStatusBoundary"
 import { Badge } from "@/components/crm/ui/Badge"
@@ -23,6 +24,7 @@ export function PromoCodesTable() {
   const { data: promos = [], isLoading: lp, error: ep } = usePromoCodes()
   const { data: weekly = [], isLoading: lw, error: ew } = usePromoStatsWeekly()
   const { data: lastSync } = useLastSync('promo_codes_sync')
+  const channelLabel = useChannelLabelLookup()
 
   const enriched = useMemo(() => {
     const inRange = weekly.filter((w) => w.week_start >= dateFrom && w.week_start <= dateTo)
@@ -40,10 +42,14 @@ export function PromoCodesTable() {
     let l = enriched
     if (search) {
       const q = search.toLowerCase()
-      l = l.filter((p) => p.code.toLowerCase().includes(q) || p.channel?.toLowerCase().includes(q))
+      l = l.filter((p) =>
+        p.code.toLowerCase().includes(q)
+        || p.channel?.toLowerCase().includes(q)
+        || channelLabel(p.channel).toLowerCase().includes(q),
+      )
     }
     return l.sort((a, b) => b.sales - a.sales)
-  }, [enriched, search])
+  }, [enriched, search, channelLabel])
 
   const totals = useMemo(() => ({
     qty:   filtered.reduce((s, p) => s + p.qty, 0),
@@ -105,7 +111,7 @@ export function PromoCodesTable() {
                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setQ('open', String(p.id)) } }}
                     className="cursor-pointer transition-colors hover:bg-muted/50 focus:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset">
                   <td className="px-2 py-2.5"><span className="font-mono text-xs text-foreground">{p.code.length > 24 ? p.code.slice(0, 24) + '…' : p.code}</span></td>
-                  <td className="px-2 py-2.5"><Badge tone="secondary">{p.channel ?? '—'}</Badge></td>
+                  <td className="px-2 py-2.5"><Badge tone="secondary">{channelLabel(p.channel)}</Badge></td>
                   <td className="px-2 py-2.5 text-sm tabular-nums text-foreground/80">{p.discount_pct != null ? `${p.discount_pct}%` : '—'}</td>
                   <td className="px-2 py-2.5"><Badge tone={tone}>{lab}</Badge></td>
                   <td className="px-2 py-2.5 text-right tabular-nums text-sm font-medium text-foreground">{p.qty > 0 ? fmt(p.qty) : <span className="text-muted-foreground/50">—</span>}</td>
