@@ -1,6 +1,10 @@
 import { useState, type FormEvent } from "react"
 import { useNavigate } from "react-router-dom"
+import { Mail, Lock } from "lucide-react"
 import { supabase } from "@/lib/supabase"
+import { Button } from "@/components/ui-v2/primitives"
+import { TextField } from "@/components/ui-v2/forms"
+import { Alert } from "@/components/ui-v2/feedback"
 
 type Mode = "magic" | "password"
 
@@ -76,45 +80,46 @@ export function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
+    <div className="min-h-screen flex items-center justify-center bg-page px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-foreground">Wookiee Hub</h1>
-          <p className="text-sm text-muted-foreground mt-1">Войдите в рабочее пространство</p>
+          <h1 className="text-4xl text-primary">
+            <span className="font-serif italic">Wookiee</span>
+            <span className="font-sans ml-2 text-secondary">Hub</span>
+          </h1>
+          <p className="text-sm text-muted mt-2">Войдите в рабочее пространство</p>
         </div>
 
-        <div className="bg-card border border-border rounded-xl p-6 space-y-4">
+        <div className="bg-elevated border border-default rounded-xl p-6 space-y-4 shadow-sm">
           {mode === "magic" ? (
             <form onSubmit={handleMagicLink} className="space-y-4">
-              <div className="space-y-1.5">
-                <label htmlFor="email" className="text-sm font-medium text-foreground">
-                  Email
-                </label>
-                <input
-                  id="email"
-                  type="email"
-                  required
-                  autoComplete="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                  placeholder="you@wookiee.shop"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Доступ только для сотрудников из Bitrix24.
-                </p>
-              </div>
-
-              {error && <p className="text-sm text-destructive">{error}</p>}
-              {success && <p className="text-sm text-emerald-600">{success}</p>}
-
-              <button
-                type="submit"
+              <TextField
+                id="email"
+                label="Email"
+                type="email"
+                value={email}
+                onChange={setEmail}
+                required
+                autoComplete="email"
+                placeholder="you@wookiee.shop"
+                hint="Доступ только для сотрудников из Bitrix24."
+                prefix={Mail}
                 disabled={loading}
-                className="w-full py-2 px-4 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+              />
+
+              {error && <Alert variant="danger" description={error} />}
+              {success && <Alert variant="success" description={success} />}
+
+              <Button
+                type="submit"
+                variant="primary"
+                size="lg"
+                loading={loading}
+                disabled={!email}
+                className="w-full"
               >
-                {loading ? "Отправляю..." : "Получить ссылку для входа"}
-              </button>
+                {loading ? "Отправляю…" : "Получить ссылку для входа"}
+              </Button>
 
               <button
                 type="button"
@@ -123,53 +128,50 @@ export function LoginPage() {
                   setError(null)
                   setSuccess(null)
                 }}
-                className="w-full text-xs text-muted-foreground hover:text-foreground transition-colors"
+                className="w-full text-xs text-muted hover:text-secondary transition-colors"
               >
                 Войти с паролем
               </button>
             </form>
           ) : (
             <form onSubmit={handlePassword} className="space-y-4">
-              <div className="space-y-1.5">
-                <label htmlFor="email-pwd" className="text-sm font-medium text-foreground">
-                  Email
-                </label>
-                <input
-                  id="email-pwd"
-                  type="email"
-                  required
-                  autoComplete="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                  placeholder="you@wookiee.shop"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label htmlFor="password" className="text-sm font-medium text-foreground">
-                  Пароль
-                </label>
-                <input
-                  id="password"
-                  type="password"
-                  required
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                />
-              </div>
-
-              {error && <p className="text-sm text-destructive">{error}</p>}
-
-              <button
-                type="submit"
+              <TextField
+                id="email-pwd"
+                label="Email"
+                type="email"
+                value={email}
+                onChange={setEmail}
+                required
+                autoComplete="email"
+                placeholder="you@wookiee.shop"
+                prefix={Mail}
                 disabled={loading}
-                className="w-full py-2 px-4 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
+              />
+
+              <TextField
+                id="password"
+                label="Пароль"
+                type="password"
+                value={password}
+                onChange={setPassword}
+                required
+                autoComplete="current-password"
+                prefix={Lock}
+                disabled={loading}
+              />
+
+              {error && <Alert variant="danger" description={error} />}
+
+              <Button
+                type="submit"
+                variant="primary"
+                size="lg"
+                loading={loading}
+                disabled={!email || !password}
+                className="w-full"
               >
-                {loading ? "Вхожу..." : "Войти"}
-              </button>
+                {loading ? "Вхожу…" : "Войти"}
+              </Button>
 
               <button
                 type="button"
@@ -177,9 +179,9 @@ export function LoginPage() {
                   setMode("magic")
                   setError(null)
                 }}
-                className="w-full text-xs text-muted-foreground hover:text-foreground transition-colors"
+                className="w-full text-xs text-muted hover:text-secondary transition-colors"
               >
-                Назад к магическим ссылкам
+                Назад к ссылкам по email
               </button>
             </form>
           )}

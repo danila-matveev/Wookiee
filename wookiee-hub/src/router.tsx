@@ -85,10 +85,16 @@ function withFallback(node: React.ReactNode) {
   return <Suspense fallback={<CatalogFallback />}>{node}</Suspense>
 }
 
+const DesignSystemPreview = lazy(() => import("@/pages/design-system-preview"))
+
 export const router = createBrowserRouter([
   {
     path: "/login",
     element: <LoginPage />,
+  },
+  {
+    path: "/design-system-preview",
+    element: withFallback(<DesignSystemPreview />),
   },
   {
     element: (
