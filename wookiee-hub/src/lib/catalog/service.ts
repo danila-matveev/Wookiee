@@ -247,6 +247,27 @@ export async function fetchSertifikaty(): Promise<Sertifikat[]> {
   return (data ?? []) as Sertifikat[]
 }
 
+// W3.1: brendy — маркетинговые бренды (WOOKIEE / TELOWAY).
+// Не путать с fabriki (производитель). Каждая модель в modeli_osnova
+// обязана быть привязана к одному бренду через FK brand_id (NOT NULL).
+export interface Brend {
+  id: number
+  kod: string
+  nazvanie: string
+  opisanie: string | null
+  logo_url: string | null
+  status_id: number | null
+}
+
+export async function fetchBrendy(): Promise<Brend[]> {
+  const { data, error } = await supabase
+    .from("brendy")
+    .select("id, kod, nazvanie, opisanie, logo_url, status_id")
+    .order("nazvanie")
+  if (error) throw error
+  return (data ?? []) as Brend[]
+}
+
 // ─── Reference mutations ───────────────────────────────────────────────────
 
 // kategorii
@@ -523,6 +544,45 @@ export async function updateSertifikat(id: number, patch: Partial<SertifikatPayl
 
 export async function deleteSertifikat(id: number): Promise<void> {
   const { error } = await supabase.from("sertifikaty").delete().eq("id", id)
+  if (error) throw new Error(error.message)
+}
+
+// brendy (W3.1)
+// Нет 'brand' tip в statusy → status_id остаётся nullable, без soft-delete-паттерна.
+// archiveBrend = hard delete с защитой: нельзя удалить бренд, к которому привязаны модели.
+export interface BrendPayload {
+  kod: string
+  nazvanie: string
+  opisanie?: string | null
+  logo_url?: string | null
+  status_id?: number | null
+}
+
+export async function insertBrend(payload: BrendPayload): Promise<Brend> {
+  const { data, error } = await supabase
+    .from("brendy")
+    .insert(payload)
+    .select("id, kod, nazvanie, opisanie, logo_url, status_id")
+    .single()
+  if (error) throw new Error(error.message)
+  return data as Brend
+}
+
+export async function updateBrend(id: number, patch: Partial<BrendPayload>): Promise<void> {
+  const { error } = await supabase.from("brendy").update(patch).eq("id", id)
+  if (error) throw new Error(error.message)
+}
+
+export async function archiveBrend(id: number): Promise<void> {
+  const { count, error: countErr } = await supabase
+    .from("modeli_osnova")
+    .select("id", { count: "exact", head: true })
+    .eq("brand_id", id)
+  if (countErr) throw new Error(countErr.message)
+  if ((count ?? 0) > 0) {
+    throw new Error(`Нельзя удалить бренд: ${count} моделей привязано`)
+  }
+  const { error } = await supabase.from("brendy").delete().eq("id", id)
   if (error) throw new Error(error.message)
 }
 
@@ -1388,6 +1448,8 @@ export async function deleteCvet(id: number): Promise<void> {
 
 export interface ModelOsnovaPayload {
   kod: string
+  /** W3.1: бренд (WOOKIEE / TELOWAY). NOT NULL в БД — обязателен при создании модели. */
+  brand_id?: number
   kategoriya_id?: number | null
   kollekciya_id?: number | null
   fabrika_id?: number | null

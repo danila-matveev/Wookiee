@@ -160,6 +160,8 @@ export interface Cvet {
 export interface ModelOsnova {
   id: number
   kod: string
+  /** W3.1: FK to `brendy.id`. NOT NULL in DB — каждая модель обязательно принадлежит бренду (WOOKIEE / TELOWAY). */
+  brand_id: number
   kategoriya_id?: number | null
   kollekciya_id?: number | null
   fabrika_id?: number | null
