@@ -12,11 +12,16 @@ from typing import Any
 from uuid import UUID
 
 from services.telemost_recorder_api.db import get_pool
+from services.telemost_recorder_api.meetings_repo import (
+    build_transcript_text,  # re-export for back-compat
+)
 from services.telemost_recorder_api.telegram_client import (
     TelegramAPIError,
     tg_send_document,
     tg_send_message,
 )
+
+__all__ = ["build_transcript_text", "format_summary_message", "notify_meeting_result"]
 
 logger = logging.getLogger(__name__)
 
@@ -38,11 +43,6 @@ def _md_escape(s: str) -> str:
     for ch in _MD_SPECIAL:
         s = s.replace(ch, "\\" + ch)
     return s
-
-
-def _ms_to_mmss(ms: int) -> str:
-    s = ms // 1000
-    return f"{s // 60:02d}:{s % 60:02d}"
 
 
 def _fmt_duration(seconds: int | None) -> str:
@@ -107,18 +107,6 @@ def format_summary_message(meeting: dict[str, Any]) -> str:
 
     lines.append(f"\n_id_ `{str(meeting['id'])[:_ID_PREFIX_LEN]}`")
     return "\n".join(lines)
-
-
-def build_transcript_text(paragraphs: list[dict[str, Any]]) -> str:
-    if not paragraphs:
-        return "(пустой transcript)"
-    out = []
-    for p in paragraphs:
-        ts = _ms_to_mmss(p.get("start_ms", 0))
-        speaker = p.get("speaker", "?")
-        text = p.get("text", "")
-        out.append(f"[{ts}] {speaker}: {text}")
-    return "\n".join(out)
 
 
 async def _claim_notification(meeting_id: UUID) -> datetime | None:
