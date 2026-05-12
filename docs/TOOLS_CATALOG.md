@@ -1,6 +1,6 @@
 # Каталог инструментов Wookiee
 
-> Автогенерировано `scripts/generate_tools_catalog.py` из Supabase `tools` — 2026-05-12 13:27 МСК.
+> Автогенерировано `scripts/generate_tools_catalog.py` из Supabase `tools` — 2026-05-12 13:52 МСК.
 > **Не редактируй вручную.** Источник истины — Supabase. Обновляй через `/tool-register`, затем перегенерируй файл.
 
 Всего инструментов: **50**. Категории: Аналитика — 17, Контент — 3, Публикация — 3, Инфраструктура — 21, Планирование — 1, Команда — 5.
@@ -99,9 +99,15 @@ Single-source-of-truth справочника: Название/UUID/Канал/
 
 ---
 
-### ✅ `wb-search-queries-sync` — WB Search Queries Sync `1.0.0`
+### ✅ `wb-search-queries-sync` — WB Search Queries Sync `2.0.0`
 
-Еженедельный sync аналитики поисковых запросов WB. Cron: понедельник 10:00 МСК в контейнере wookiee_cron. Тянет search-report/product/search-texts из seller-analytics-api WB по двум кабинетам (ИП 30 слов/запрос, ООО 100 слов/запрос), батчами по 50 nmId с обязательной паузой 21s между запросами (rate-limit 3 req/min); на 429 — пауза 60s и abort. Список nmId берётся из таба nmIds того же spreadsheet. Пишет в Google Sheets (Wookiee — Аналитика поисковых запросов) сразу в два таба: «Аналитика по запросам» (агрегаты по словам, append новой недельной колонки 4-в-1: Частота/Переходы/Добавления/Заказы) и «Аналитика по запросам (поартикульно)» (полная перезапись каждый прогон, разрез по nmId). Backfill: позиционные аргументы DD.MM.YYYY DD.MM.YYYY. Без cron auto-mode подхватит последнюю закрытую неделю Mon-Sun.
+Еженедельный sync аналитики поисковых запросов WB. Cron: понедельник 10:00 МСК в контейнере wookiee_cron. Тянет WB seller-analytics-api /search-report/product/search-texts по двум кабинетам (ИП Медведева, ООО Вуки), агрегирует по словам и nmId, пишет одновременно в Google Sheets (агрегат) и Supabase (история).
+
+Источник истории — Supabase (две таблицы):
+(1) marketing.search_queries_weekly — недельный агрегат по слову (frequency, open_card, add_to_cart, orders), UPSERT по (week_start, search_word).
+(2) marketing.search_query_product_breakdown — поартикульная разбивка (week_start × search_word × nm_id), UPSERT с резолвом nm_id → public.artikuly.id; нерезолвленные строки сохраняются с NULL artikul_id для последующей доводки каталога.
+
+Google Sheets теперь хранит только недельный агрегат (таб Аналитика по запросам) — детализация (поартикульно) убрана в БД для накопления полной истории и подачи в UI drill-down. Spreadsheet: 1I4UFVYkUELm5phk8MDv518kF6z5sQJFmRdaLYg_-CPY. Список отслеживаемых слов — col A основного таба. Backfill: --mode bootstrap --weeks-back N, либо --mode specific --from YYYY-MM-DD --to YYYY-MM-DD. --skip-db пишет только в Sheets.
 
 | Поле | Значение |
 |---|---|
@@ -109,7 +115,7 @@ Single-source-of-truth справочника: Название/UUID/Канал/
 | Источники данных | — |
 | Зависимости | — |
 | Результат идёт в | — |
-| Команда запуска | `python scripts/run_search_queries_sync.py [DD.MM.YYYY DD.MM.YYYY]` |
+| Команда запуска | `python scripts/run_search_queries_sync.py [--mode last_week|specific|bootstrap] [--from YYYY-MM-DD --to YYYY-MM-DD] [--weeks-back N] [--skip-db]` |
 | Запусков (всего) | 0 |
 | Последний запуск | — |
 
@@ -994,7 +1000,7 @@ Interact with Slack workspaces using browser automation. Use when the user needs
 | 2 | `wb-logistics-optimizer` | Сервис | Аналитика | ✅ active | 2.0 | — |
 | 3 | `wb-promocodes-analytics` | Сервис | Аналитика | ✅ active | 1.0.0 | — |
 | 4 | `wb-promocodes-sync` | Сервис | Аналитика | ✅ active | 2.1.0 | 2026-05-12 16:26 |
-| 5 | `wb-search-queries-sync` | Сервис | Аналитика | ✅ active | 1.0.0 | — |
+| 5 | `wb-search-queries-sync` | Сервис | Аналитика | ✅ active | 2.0.0 | — |
 | 6 | `/abc-audit` | Скилл | Аналитика | ✅ active | v1 | 2026-05-06 20:13 |
 | 7 | `/analytics-report` | Скилл | Аналитика | ✅ active | — | — |
 | 8 | `/coo-report` | Скилл | Аналитика | ✅ active | 1.0 | — |
@@ -1042,4 +1048,4 @@ Interact with Slack workspaces using browser automation. Use when the user needs
 | 50 | `/slack` | Скилл | Команда | ✅ active | 1.0.0 | — |
 
 
-<sub>Сгенерировано автоматически 2026-05-12 13:27 МСК. Команда: `python scripts/generate_tools_catalog.py`.</sub>
+<sub>Сгенерировано автоматически 2026-05-12 13:52 МСК. Команда: `python scripts/generate_tools_catalog.py`.</sub>
