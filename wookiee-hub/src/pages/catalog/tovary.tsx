@@ -10,7 +10,7 @@ import {
 import { supabase } from "@/lib/supabase"
 import { StatusBadge } from "@/components/catalog/ui/status-badge"
 import { ColorSwatch } from "@/components/catalog/ui/color-swatch"
-import { ColumnsManager, type ColumnDef } from "@/components/catalog/ui/columns-manager"
+import { ColumnConfig, type CatalogColumnDef } from "@/components/catalog/ui/column-config"
 import { BulkActionsBar } from "@/components/catalog/ui/bulk-actions-bar"
 import { SortableHeader } from "@/components/catalog/ui/sortable-header"
 import { Pagination } from "@/components/catalog/ui/pagination"
@@ -19,15 +19,22 @@ import { useResizableColumns } from "@/hooks/use-resizable-columns"
 import { useTableSort, type SortState } from "@/hooks/use-table-sort"
 import { usePagination } from "@/hooks/use-pagination"
 import { useCollapsibleGroups } from "@/hooks/use-collapsible-groups"
+import { useColumnConfig } from "@/hooks/use-column-config"
 import { downloadCsv } from "@/lib/catalog/csv-export"
 
-// W1.5 — Default per-column widths (px) for the SKU registry (Товары) page.
-// Keys must match TOVARY_COLUMNS[i].key.
+// W1.5 + W9.5 — Default per-column widths (px) for the SKU registry (Товары) page.
 const TOVARY_DEFAULT_WIDTHS: Record<string, number> = {
   barkod: 150,
   artikul: 150,
   model: 140,
+  variation: 130,
+  nazvanie_etiketka: 180,
+  nazvanie_sayt: 180,
+  brand: 110,
   cvet: 160,
+  cvet_ru: 130,
+  cvet_en: 130,
+  cvet_semeystvo: 120,
   razmer: 80,
   wb_nom: 130,
   ozon_art: 140,
@@ -38,58 +45,113 @@ const TOVARY_DEFAULT_WIDTHS: Record<string, number> = {
   barkod_gs1: 140,
   barkod_gs2: 140,
   barkod_perehod: 150,
+  ozon_product_id: 150,
+  ozon_fbo_sku_id: 150,
+  lamoda_seller_sku: 150,
+  sku_china_size: 150,
+  kategoriya: 130,
+  kollekciya: 140,
+  fabrika: 140,
   cena_wb: 110,
   cena_ozon: 110,
   created: 110,
+  updated: 110,
 }
 
-// 17 columns; all default-visible per Final Report MINOR fix.
-const TOVARY_COLUMNS: ColumnDef[] = [
-  { key: "barkod",          label: "Баркод",          default: true },
-  { key: "artikul",         label: "Артикул",         default: true },
-  { key: "model",           label: "Модель",          default: true },
-  { key: "cvet",            label: "Цвет",            default: true },
-  { key: "razmer",          label: "Размер",          default: true },
-  { key: "wb_nom",          label: "WB-номенклатура", default: true },
-  { key: "ozon_art",        label: "OZON-артикул",    default: true },
-  { key: "status_wb",       label: "Статус WB",       default: true,  badge: "канал" },
-  { key: "status_ozon",     label: "Статус OZON",     default: true,  badge: "канал" },
-  { key: "status_sayt",     label: "Статус Сайт",     default: true,  badge: "канал" },
-  { key: "status_lamoda",   label: "Статус Lamoda",   default: true,  badge: "канал" },
-  { key: "barkod_gs1",      label: "Баркод GS1",      default: true },
-  { key: "barkod_gs2",      label: "Баркод GS2",      default: true },
-  { key: "barkod_perehod",  label: "Баркод перехода", default: true },
-  { key: "cena_wb",         label: "Цена WB",         default: true },
-  { key: "cena_ozon",       label: "Цена OZON",       default: true },
-  { key: "created",         label: "Дата создания",   default: true },
+// W9.5 — все доступные колонки реестра /catalog/tovary.
+// Дефолт-видимость остаётся как раньше (основные), новые поля доступны через конфигуратор.
+const TOVARY_COLUMNS: CatalogColumnDef[] = [
+  // Идентификация
+  { key: "barkod",            label: "Баркод",              default: true,  group: "Идентификация" },
+  { key: "artikul",           label: "Артикул",             default: true,  group: "Идентификация" },
+  // Модель
+  { key: "model",             label: "Модель",              default: true,  group: "Модель" },
+  { key: "variation",         label: "Вариация (код)",      default: false, group: "Модель" },
+  { key: "nazvanie_etiketka", label: "Название (этикетка)", default: false, group: "Модель" },
+  { key: "nazvanie_sayt",     label: "Название (сайт)",     default: false, group: "Модель" },
+  { key: "brand",             label: "Бренд",               default: false, group: "Модель" },
+  // Цвет
+  { key: "cvet",              label: "Цвет",                default: true,  group: "Цвет" },
+  { key: "cvet_ru",           label: "Цвет (RU)",           default: false, group: "Цвет" },
+  { key: "cvet_en",           label: "Цвет (EN)",           default: false, group: "Цвет" },
+  { key: "cvet_semeystvo",    label: "Семейство цвета",     default: false, group: "Цвет" },
+  // Размер
+  { key: "razmer",            label: "Размер",              default: true,  group: "Размер" },
+  // Каналы — идентификаторы
+  { key: "wb_nom",            label: "WB-номенклатура",     default: true,  group: "Каналы" },
+  { key: "ozon_art",          label: "OZON-артикул",        default: true,  group: "Каналы" },
+  { key: "ozon_product_id",   label: "OZON product_id",     default: false, group: "Каналы" },
+  { key: "ozon_fbo_sku_id",   label: "OZON FBO SKU id",     default: false, group: "Каналы" },
+  { key: "lamoda_seller_sku", label: "Lamoda seller SKU",   default: false, group: "Каналы" },
+  // Статусы по каналам
+  { key: "status_wb",         label: "Статус WB",           default: true,  badge: "канал", group: "Статусы" },
+  { key: "status_ozon",       label: "Статус OZON",         default: true,  badge: "канал", group: "Статусы" },
+  { key: "status_sayt",       label: "Статус Сайт",         default: true,  badge: "канал", group: "Статусы" },
+  { key: "status_lamoda",     label: "Статус Lamoda",       default: true,  badge: "канал", group: "Статусы" },
+  // Доп. баркоды
+  { key: "barkod_gs1",        label: "Баркод GS1",          default: true,  group: "Баркоды" },
+  { key: "barkod_gs2",        label: "Баркод GS2",          default: true,  group: "Баркоды" },
+  { key: "barkod_perehod",    label: "Баркод перехода",     default: true,  group: "Баркоды" },
+  { key: "sku_china_size",    label: "SKU Китай (размер)",  default: false, group: "Идентификация" },
+  // Классификация
+  { key: "kategoriya",        label: "Категория",           default: false, group: "Классификация" },
+  { key: "kollekciya",        label: "Коллекция",           default: false, group: "Классификация" },
+  { key: "fabrika",           label: "Производитель",       default: false, group: "Классификация" },
+  // Цены (заглушки до B / финансовой интеграции)
+  { key: "cena_wb",           label: "Цена WB",             default: true,  group: "Цены" },
+  { key: "cena_ozon",         label: "Цена OZON",           default: true,  group: "Цены" },
+  // Даты
+  { key: "created",           label: "Дата создания",       default: true,  group: "Даты" },
+  { key: "updated",           label: "Дата обновления",     default: false, group: "Даты" },
 ]
 
-const DEFAULT_COLUMNS = TOVARY_COLUMNS.filter((c) => c.default).map((c) => c.key)
+// DEFAULT_COLUMNS теперь живёт внутри useColumnConfig (W9.5).
 
 type StatusGroupFilter = "all" | "active" | "archive" | "no-status"
 type ChannelFilter = "all" | "wb" | "ozon" | "sayt" | "lamoda"
 type GroupBy = "none" | "model" | "color" | "size" | "collection" | "channel"
 
-// W8.1 — keys must match TOVARY_COLUMNS[i].key for sortable columns.
+// W8.1 + W9.5 — keys must match TOVARY_COLUMNS[i].key for sortable columns.
 type TovarSortKey =
-  | "barkod" | "artikul" | "model" | "cvet" | "razmer" | "wb_nom" | "ozon_art"
+  | "barkod" | "artikul" | "model" | "variation"
+  | "nazvanie_etiketka" | "nazvanie_sayt" | "brand"
+  | "cvet" | "cvet_ru" | "cvet_en" | "cvet_semeystvo"
+  | "razmer" | "wb_nom" | "ozon_art"
+  | "ozon_product_id" | "ozon_fbo_sku_id" | "lamoda_seller_sku"
   | "status_wb" | "status_ozon" | "status_sayt" | "status_lamoda"
   | "barkod_gs1" | "barkod_gs2" | "barkod_perehod"
-  | "cena_wb" | "cena_ozon" | "created"
+  | "sku_china_size" | "kategoriya" | "kollekciya" | "fabrika"
+  | "cena_wb" | "cena_ozon" | "created" | "updated"
 const TOVARY_SORTABLE: ReadonlySet<string> = new Set<TovarSortKey>([
-  "barkod", "artikul", "model", "cvet", "razmer", "wb_nom", "ozon_art",
+  "barkod", "artikul", "model", "variation",
+  "nazvanie_etiketka", "nazvanie_sayt", "brand",
+  "cvet", "cvet_ru", "cvet_en", "cvet_semeystvo",
+  "razmer", "wb_nom", "ozon_art",
+  "ozon_product_id", "ozon_fbo_sku_id", "lamoda_seller_sku",
   "status_wb", "status_ozon", "status_sayt", "status_lamoda",
-  "barkod_gs1", "barkod_gs2", "barkod_perehod", "created",
+  "barkod_gs1", "barkod_gs2", "barkod_perehod",
+  "sku_china_size", "kategoriya", "kollekciya", "fabrika",
+  "created", "updated",
 ])
 function getTovarSortValue(t: TovarRow, col: TovarSortKey): unknown {
   switch (col) {
     case "barkod": return t.barkod
     case "artikul": return t.artikul ?? ""
     case "model": return t.model_osnova_kod ?? ""
+    case "variation": return t.model_kod ?? ""
+    case "nazvanie_etiketka": return t.nazvanie_etiketka ?? ""
+    case "nazvanie_sayt": return t.nazvanie_sayt ?? ""
+    case "brand": return t.brand ?? ""
     case "cvet": return t.cvet_color_code ?? ""
+    case "cvet_ru": return t.cvet_ru ?? ""
+    case "cvet_en": return t.color_en ?? ""
+    case "cvet_semeystvo": return t.cvet_semeystvo ?? ""
     case "razmer": return t.razmer ?? ""
     case "wb_nom": return t.nomenklatura_wb ?? null
     case "ozon_art": return t.artikul_ozon ?? ""
+    case "ozon_product_id": return t.ozon_product_id ?? null
+    case "ozon_fbo_sku_id": return t.ozon_fbo_sku_id ?? null
+    case "lamoda_seller_sku": return t.lamoda_seller_sku ?? ""
     case "status_wb": return t.status_id ?? null
     case "status_ozon": return t.status_ozon_id ?? null
     case "status_sayt": return t.status_sayt_id ?? null
@@ -97,9 +159,14 @@ function getTovarSortValue(t: TovarRow, col: TovarSortKey): unknown {
     case "barkod_gs1": return t.barkod_gs1 ?? ""
     case "barkod_gs2": return t.barkod_gs2 ?? ""
     case "barkod_perehod": return t.barkod_perehod ?? ""
+    case "sku_china_size": return t.sku_china_size ?? ""
+    case "kategoriya": return t.kategoriya ?? ""
+    case "kollekciya": return t.kollekciya ?? ""
+    case "fabrika": return t.fabrika ?? ""
     case "cena_wb": return ""
     case "cena_ozon": return ""
     case "created": return t.created_at ?? ""
+    case "updated": return t.updated_at ?? ""
   }
 }
 
@@ -234,6 +301,14 @@ function renderCell(
           )}
         </div>
       )
+    case "variation":
+      return <span className="font-mono text-xs text-stone-600">{t.model_kod ?? "—"}</span>
+    case "nazvanie_etiketka":
+      return <span className="text-xs text-stone-700">{t.nazvanie_etiketka ?? "—"}</span>
+    case "nazvanie_sayt":
+      return <span className="text-xs text-stone-700">{t.nazvanie_sayt ?? "—"}</span>
+    case "brand":
+      return <span className="text-xs text-stone-700">{t.brand ?? "—"}</span>
     case "cvet":
       return (
         <div className="flex items-center gap-1.5">
@@ -242,6 +317,12 @@ function renderCell(
           {t.cvet_ru && <span className="text-stone-500 text-[11px]">{t.cvet_ru}</span>}
         </div>
       )
+    case "cvet_ru":
+      return <span className="text-xs text-stone-600">{t.cvet_ru ?? "—"}</span>
+    case "cvet_en":
+      return <span className="text-xs text-stone-600 italic">{t.color_en ?? "—"}</span>
+    case "cvet_semeystvo":
+      return <span className="text-xs text-stone-600">{t.cvet_semeystvo ?? "—"}</span>
     case "razmer":
       return <span className="font-mono text-xs">{t.razmer ?? "—"}</span>
     case "wb_nom":
@@ -296,12 +377,28 @@ function renderCell(
       return <span className="font-mono text-[11px] text-stone-500">{t.barkod_gs2 ?? "—"}</span>
     case "barkod_perehod":
       return <span className="font-mono text-[11px] text-stone-500">{t.barkod_perehod ?? "—"}</span>
+    case "ozon_product_id":
+      return <span className="font-mono text-[11px] text-stone-500 tabular-nums">{t.ozon_product_id ?? "—"}</span>
+    case "ozon_fbo_sku_id":
+      return <span className="font-mono text-[11px] text-stone-500 tabular-nums">{t.ozon_fbo_sku_id ?? "—"}</span>
+    case "lamoda_seller_sku":
+      return <span className="font-mono text-[11px] text-stone-500">{t.lamoda_seller_sku ?? "—"}</span>
+    case "sku_china_size":
+      return <span className="font-mono text-[11px] text-stone-500">{t.sku_china_size ?? "—"}</span>
+    case "kategoriya":
+      return <span className="text-xs text-stone-600">{t.kategoriya ?? "—"}</span>
+    case "kollekciya":
+      return <span className="text-xs text-stone-600">{t.kollekciya ?? "—"}</span>
+    case "fabrika":
+      return <span className="text-xs text-stone-600">{t.fabrika ?? "—"}</span>
     case "cena_wb":
       return <span className="text-xs text-stone-400 italic">—</span>
     case "cena_ozon":
       return <span className="text-xs text-stone-400 italic">—</span>
     case "created":
       return <span className="text-xs text-stone-500">{relativeDate(t.created_at)}</span>
+    case "updated":
+      return <span className="text-xs text-stone-500">{relativeDate(t.updated_at)}</span>
     default:
       return null
   }
@@ -608,7 +705,11 @@ export function TovaryPage() {
   const [groupBy, setGroupBy] = useState<GroupBy>("none")
   // W9.6 — Notion-style collapsible group headers.
   const { isCollapsed: isGroupCollapsed, toggle: toggleGroupCollapsed } = useCollapsibleGroups("tovary")
-  const [columns, setColumns] = useState<string[]>(DEFAULT_COLUMNS)
+  // W9.5 — единый конфигуратор колонок (показать/скрыть/drag, ВСЕ поля).
+  const {
+    visibleColumns, visibility, order, setConfig, reset: resetColumns,
+  } = useColumnConfig("tovary", TOVARY_COLUMNS)
+  const columns = useMemo(() => visibleColumns.map((c) => c.key), [visibleColumns])
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [linkSkleykaChannel, setLinkSkleykaChannel] = useState<"wb" | "ozon" | null>(null)
   // W1.5 — drag-resize колонок + persist. Регистрируем все возможные колонки.
@@ -884,12 +985,13 @@ export function TovaryPage() {
             <option value="collection">По коллекции</option>
             <option value="channel">По каналу</option>
           </select>
-          <ColumnsManager
+          <ColumnConfig
             columns={TOVARY_COLUMNS}
-            value={columns}
-            onChange={setColumns}
-            scope="tovary"
-            storageKey="columns"
+            visibility={visibility}
+            order={order}
+            onChange={setConfig}
+            onReset={resetColumns}
+            title="Колонки реестра «SKU / Товары»"
           />
         </div>
       </div>

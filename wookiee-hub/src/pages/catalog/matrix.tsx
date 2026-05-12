@@ -17,6 +17,8 @@ import { useResizableColumns, type ResizerBindings } from "@/hooks/use-resizable
 import { useTableSort, type SortState } from "@/hooks/use-table-sort"
 import { usePagination } from "@/hooks/use-pagination"
 import { useCollapsibleGroups } from "@/hooks/use-collapsible-groups"
+import { useColumnConfig } from "@/hooks/use-column-config"
+import { ColumnConfig, type CatalogColumnDef } from "@/components/catalog/ui/column-config"
 import { downloadCsv } from "@/lib/catalog/csv-export"
 // Standard razmer chip-pill ladder used in the table.
 const RAZMER_LADDER = ["XS", "S", "M", "L", "XL", "XXL"] as const
@@ -72,23 +74,11 @@ const GROUP_BY_OPTIONS: { value: GroupBy; label: string }[] = [
   { value: "status", label: "По статусу" },
 ]
 // W3.2 — добавлена колонка «Бренд» между «Название» и «Категория».
-// W8.1 — третий слот = sort key (или null, если колонку не сортируем).
+// W8.1 — sort keys.
+// W9.5 — MODEL_COLUMNS-таблица заменена на MATRIX_COLUMNS (см. ниже) + хук useColumnConfig.
 type ModeliOsnovaSortKey =
   | "nazvanie" | "brand" | "kategoriya" | "kollekciya" | "fabrika"
   | "status" | "completeness" | "cv_art_sku" | "obnovleno"
-const MODEL_COLUMNS: readonly (readonly [string, string?, ModeliOsnovaSortKey?])[] = [
-  ["Название", undefined, "nazvanie"],
-  ["Бренд", undefined, "brand"],
-  ["Категория", undefined, "kategoriya"],
-  ["Коллекция", undefined, "kollekciya"],
-  ["Фабрика", undefined, "fabrika"],
-  ["Статус", undefined, "status"],
-  ["Размеры"],
-  ["Цвета"],
-  ["Заполн.", undefined, "completeness"],
-  ["Цв / Арт / SKU", "text-right", "cv_art_sku"],
-  ["Обновлено", undefined, "obnovleno"],
-] as const
 // W7.3 — Колонки для CSV-экспорта матрицы.  Метки берём из MODEL_COLUMNS,
 // плюс две вспомогательные (kod / artikul_modeli) для машинной идентификации.
 const MATRIX_EXPORT_COLUMNS: { key: string; label: string }[] = [
@@ -135,6 +125,50 @@ const MODEL_COLUMN_IDS = [
   { id: "cv_art_sku", defaultWidth: 130 },
   { id: "obnovleno", defaultWidth: 110 },
 ] as const
+// W9.5 — единый реестр колонок для конфигуратора матрицы.
+// Дефолт-видимость соответствует MODEL_COLUMNS, новые поля схемы доступны через UI.
+const MATRIX_COLUMNS: CatalogColumnDef[] = [
+  // Идентификация
+  { key: "nazvanie",           label: "Название",             default: true,  group: "Идентификация" },
+  { key: "brand",              label: "Бренд",                default: true,  group: "Классификация" },
+  { key: "kategoriya",         label: "Категория",            default: true,  group: "Классификация" },
+  { key: "kollekciya",         label: "Коллекция",            default: true,  group: "Классификация" },
+  { key: "fabrika",            label: "Фабрика",              default: true,  group: "Классификация" },
+  { key: "status",             label: "Статус",               default: true,  group: "Статус" },
+  { key: "razmery",            label: "Размеры",              default: true,  group: "Размеры/Цвета" },
+  { key: "cveta",              label: "Цвета",                default: true,  group: "Размеры/Цвета" },
+  { key: "zapoln",             label: "Заполн.",              default: true,  group: "Метрики" },
+  { key: "cv_art_sku",         label: "Цв / Арт / SKU",       default: true,  group: "Метрики" },
+  { key: "obnovleno",          label: "Обновлено",            default: true,  group: "Даты" },
+  // Дополнительно (default-hidden)
+  { key: "nazvanie_etiketka",  label: "Название (этикетка)",  default: false, group: "Идентификация" },
+  { key: "razmery_modeli",     label: "Размерный ряд (raw)",  default: false, group: "Размеры/Цвета" },
+  { key: "sku_china",          label: "SKU Китай",            default: false, group: "Идентификация" },
+  { key: "upakovka",           label: "Упаковка",             default: false, group: "Габариты" },
+  { key: "ves_kg",             label: "Вес (кг)",             default: false, group: "Габариты" },
+  { key: "dlina_cm",           label: "Длина (см)",           default: false, group: "Габариты" },
+  { key: "shirina_cm",         label: "Ширина (см)",          default: false, group: "Габариты" },
+  { key: "vysota_cm",          label: "Высота (см)",          default: false, group: "Габариты" },
+  { key: "kratnost_koroba",    label: "Кратность короба",     default: false, group: "Габариты" },
+  { key: "material",           label: "Материал",             default: false, group: "Состав" },
+  { key: "composition",        label: "Состав (EN)",          default: false, group: "Состав" },
+  { key: "sostav_syrya",       label: "Состав сырья",         default: false, group: "Состав" },
+  { key: "tnved",              label: "ТН ВЭД",               default: false, group: "Сертификация" },
+  { key: "gruppa_sertifikata", label: "Группа сертификата",   default: false, group: "Сертификация" },
+  { key: "opisanie_sayt",      label: "Описание (сайт)",      default: false, group: "Тексты" },
+  { key: "notion_link",        label: "Ссылка Notion",        default: false, group: "Ссылки" },
+  { key: "yandex_disk_link",   label: "Ссылка YaDisk",        default: false, group: "Ссылки" },
+  { key: "sozdano",            label: "Создано",              default: false, group: "Даты" },
+]
+const MATRIX_DEFAULT_WIDTHS: Record<string, number> = {
+  nazvanie: 240, brand: 110, kategoriya: 140, kollekciya: 160, fabrika: 140,
+  status: 140, razmery: 170, cveta: 170, zapoln: 80, cv_art_sku: 130, obnovleno: 110,
+  nazvanie_etiketka: 200, razmery_modeli: 140, sku_china: 130, upakovka: 130,
+  ves_kg: 90, dlina_cm: 90, shirina_cm: 90, vysota_cm: 90, kratnost_koroba: 110,
+  material: 140, composition: 160, sostav_syrya: 200, tnved: 110,
+  gruppa_sertifikata: 160, opisanie_sayt: 240,
+  notion_link: 110, yandex_disk_link: 110, sozdano: 110,
+}
 function getGroupKey(row: MatrixRow, groupBy: GroupBy, statusNameById: Map<number, string>): string {
   switch (groupBy) {
     case "brand": return row.brand ?? "Без бренда"
@@ -168,6 +202,14 @@ function buildCompletenessTooltip(row: MatrixRow): string {
 function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, onOpen, onRegisterExport }: { rows: MatrixRow[]; brendy: Brend[]; kategorii: { id: number; nazvanie: string }[]; kollekcii: { id: number; nazvanie: string }[]; modelStatuses: StatusOption[]; onOpen: (kod: string) => void; onRegisterExport?: (fn: (() => void) | null) => void }) {
   const queryClient = useQueryClient()
   const { widths: colWidths, bindResizer } = useResizableColumns("matrix.modeli", [...MODEL_COLUMN_IDS])
+  // W9.5 — единый конфигуратор колонок (показать/скрыть/drag, ВСЕ поля).
+  const {
+    visibleColumns: matrixVisible,
+    visibility: matrixVisibility,
+    order: matrixOrder,
+    setConfig: setMatrixCols,
+    reset: resetMatrixCols,
+  } = useColumnConfig("matrix", MATRIX_COLUMNS)
   const [search, setSearch] = useState("")
   // W3.2 — brand chip filter.
   const [selectedBrandIds, setSelectedBrandIds] = useState<Set<number>>(new Set())
@@ -395,6 +437,103 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
     })
     return () => onRegisterExport(null)
   }, [onRegisterExport, filtered, statusNameById])
+  // W9.5 — рендер ячейки матрицы по ключу колонки (главная строка).
+  const renderMatrixCell = (key: string, m: MatrixRow): React.ReactNode => {
+    const variantSizes = new Set<string>()
+    for (const v of m.modeli) {
+      const ru = (v.rossiyskiy_razmer ?? "").toUpperCase().trim()
+      if ((RAZMER_LADDER as readonly string[]).includes(ru)) variantSizes.add(ru)
+    }
+    switch (key) {
+      case "nazvanie":
+        return (
+          <div className="cursor-pointer" onClick={() => onOpen(m.kod)}>
+            <div className="font-medium text-stone-900 hover:underline font-mono">{m.kod}</div>
+            <div className="text-xs text-stone-500 truncate max-w-[220px]">{m.nazvanie_sayt || <span className="italic text-stone-400">без названия</span>}</div>
+          </div>
+        )
+      case "nazvanie_etiketka": return <span className="text-xs text-stone-700">{m.nazvanie_etiketka ?? "—"}</span>
+      case "brand": return <span className="text-stone-700">{m.brand ?? <span className="text-stone-300">—</span>}</span>
+      case "kategoriya": return <span className="text-stone-700">{m.kategoriya ?? "—"}</span>
+      case "kollekciya":
+        return (<div><div className="text-stone-700">{m.kollekciya ?? "—"}</div><div className="text-[11px] text-stone-400">{m.tip_kollekcii ?? ""}</div></div>)
+      case "fabrika": return <span className="text-stone-700">{m.fabrika ?? "—"}</span>
+      case "status": return <StatusBadge status={m.status_id != null ? statusById.get(m.status_id) ?? null : null} />
+      case "razmery":
+        return (
+          <div className="flex items-center gap-0.5">
+            {RAZMER_LADDER.map((sz) => <span key={sz} className={`text-[10px] px-1 py-0.5 rounded ${variantSizes.has(sz) ? "bg-stone-900 text-white" : "bg-stone-50 text-stone-300 ring-1 ring-inset ring-stone-200"}`}>{sz}</span>)}
+          </div>
+        )
+      case "razmery_modeli": return <span className="text-xs text-stone-600 font-mono">{m.razmery_modeli ?? "—"}</span>
+      case "cveta": return <ColorChips modelKod={m.kod} count={m.cveta_cnt} />
+      case "zapoln": return <Tooltip text={buildCompletenessTooltip(m)}><CompletenessRing value={m.completeness} size={16} hideLabel /></Tooltip>
+      case "cv_art_sku":
+        return (
+          <Tooltip text={`Цвета (привязанные к артикулам): ${m.cveta_cnt} · Артикулы: ${m.artikuly_cnt} · SKU: ${m.tovary_cnt}`}>
+            <span className="text-right tabular-nums text-stone-600 block">
+              <span className="text-stone-900 font-medium">{m.cveta_cnt}</span><span className="text-stone-300 mx-1">/</span><span>{m.artikuly_cnt}</span><span className="text-stone-300 mx-1">/</span><span>{m.tovary_cnt}</span>
+            </span>
+          </Tooltip>
+        )
+      case "obnovleno": return <span className="text-stone-500 text-xs">{relativeDate(m.updated_at)}</span>
+      case "sozdano": return <span className="text-stone-500 text-xs">{relativeDate(m.created_at)}</span>
+      case "sku_china": return <span className="font-mono text-xs text-stone-600">{m.sku_china ?? "—"}</span>
+      case "upakovka": return <span className="text-xs text-stone-600">{m.upakovka ?? "—"}</span>
+      case "ves_kg": return <span className="tabular-nums text-xs text-stone-600">{m.ves_kg ?? "—"}</span>
+      case "dlina_cm": return <span className="tabular-nums text-xs text-stone-600">{m.dlina_cm ?? "—"}</span>
+      case "shirina_cm": return <span className="tabular-nums text-xs text-stone-600">{m.shirina_cm ?? "—"}</span>
+      case "vysota_cm": return <span className="tabular-nums text-xs text-stone-600">{m.vysota_cm ?? "—"}</span>
+      case "kratnost_koroba": return <span className="tabular-nums text-xs text-stone-600">{m.kratnost_koroba ?? "—"}</span>
+      case "material": return <span className="text-xs text-stone-600 truncate block max-w-[200px]" title={m.material ?? ""}>{m.material ?? "—"}</span>
+      case "composition": return <span className="text-xs text-stone-600 truncate block max-w-[200px]" title={m.composition ?? ""}>{m.composition ?? "—"}</span>
+      case "sostav_syrya": return <span className="text-xs text-stone-600 truncate block max-w-[260px]" title={m.sostav_syrya ?? ""}>{m.sostav_syrya ?? "—"}</span>
+      case "tnved": return <span className="font-mono text-xs text-stone-600">{m.tnved ?? "—"}</span>
+      case "gruppa_sertifikata": return <span className="text-xs text-stone-600">{m.gruppa_sertifikata ?? "—"}</span>
+      case "opisanie_sayt": return <span className="text-xs text-stone-600 truncate block max-w-[280px]" title={m.opisanie_sayt ?? ""}>{m.opisanie_sayt ?? "—"}</span>
+      case "notion_link":
+        return m.notion_link
+          ? <a href={m.notion_link} target="_blank" rel="noreferrer" className="text-xs text-stone-600 hover:underline">Notion</a>
+          : <span className="text-stone-300 text-xs">—</span>
+      case "yandex_disk_link":
+        return m.yandex_disk_link
+          ? <a href={m.yandex_disk_link} target="_blank" rel="noreferrer" className="text-xs text-stone-600 hover:underline">YaDisk</a>
+          : <span className="text-stone-300 text-xs">—</span>
+      default: return <span className="text-stone-300 text-xs">—</span>
+    }
+  }
+
+  // W9.5 — рендер ячейки матрицы для строки вариации (раскрытая модель).
+  // Большинство полей у вариации отсутствуют → показываем "—". Колонки,
+  // которые осмысленны для вариации (kod, статус, артикул, размер) — рендерим
+  // как раньше.
+  const renderMatrixVariationCell = (key: string, v: MatrixRow["modeli"][number]): React.ReactNode => {
+    switch (key) {
+      case "nazvanie":
+        return (
+          <div>
+            <div className="flex items-center gap-2"><div className="w-4 h-px bg-stone-300" /><span className="font-medium text-stone-800 font-mono">{v.kod}</span></div>
+            <div className="text-[11px] text-stone-500 ml-6 mt-0.5 truncate max-w-[200px]">{v.nazvanie}</div>
+          </div>
+        )
+      case "fabrika":
+        return <div className="flex items-center gap-1 text-stone-500"><Building2 className="w-3 h-3 text-stone-400" />{v.importer_short ?? "—"}</div>
+      case "kollekciya": return <span className="font-mono text-[11px] text-stone-500">{v.artikul_modeli ?? "—"}</span>
+      case "status": return <StatusBadge status={v.status_id != null ? statusById.get(v.status_id) ?? null : null} compact />
+      case "razmery": return <span className="text-stone-400 text-[10px]">RU: {v.rossiyskiy_razmer ?? "—"}</span>
+      case "cv_art_sku":
+        return (
+          <span className="text-right tabular-nums text-stone-600 block">
+            <span className="text-stone-300">—</span><span className="text-stone-300 mx-1">/</span><span className="text-stone-700 font-medium">{v.artikuly_cnt}</span><span className="text-stone-300 mx-1">/</span><span>{v.tovary_cnt}</span>
+          </span>
+        )
+      default: return <span className="text-stone-300 text-xs">—</span>
+    }
+  }
+
+  // Map column-key → resizer column-id (если совпадает — используем тот же id).
+  const colResizerId = (key: string): string => key
+
   return (
     <>
       <div className="px-6 py-4 max-w-[1600px] mx-auto">
@@ -409,6 +548,14 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
             <select value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)} className="px-2.5 py-1 text-xs border border-stone-200 rounded-md bg-white outline-none">
               {GROUP_BY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
+            <ColumnConfig
+              columns={MATRIX_COLUMNS}
+              visibility={matrixVisibility}
+              order={matrixOrder}
+              onChange={setMatrixCols}
+              onReset={resetMatrixCols}
+              title="Колонки матрицы моделей"
+            />
             <span className="text-xs text-stone-500 tabular-nums">{filtered.length} из {rows.length}</span>
           </div>
         </div>
@@ -420,44 +567,50 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
         <FilterChips title="Коллекции:" items={kollekcii.map((k) => ({ key: String(k.id), value: k.nazvanie, label: k.nazvanie }))} selected={selectedCollectionNames} onChange={setSelectedCollectionNames} />
         {/* Status chips with counts */}
         <FilterChips title="Статусы:" items={modelStatuses.map((s) => ({ key: String(s.id), value: s.id, label: s.nazvanie, count: statusCounts.get(s.id) ?? 0 }))} selected={selectedStatusIds} onChange={setSelectedStatusIds} className="mb-3" />
-        {/* Table */}
+        {/* Table — W9.5: колонки рендерятся из useColumnConfig (показать/скрыть/drag). */}
         <div className="bg-white rounded-lg border border-stone-200 overflow-x-auto">
           <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
             <colgroup>
               <col style={{ width: 32 }} />
               <col style={{ width: 40 }} />
-              {MODEL_COLUMN_IDS.map((c) => (
-                <col key={c.id} style={{ width: `${colWidths[c.id] ?? c.defaultWidth}px` }} />
-              ))}
+              {matrixVisible.map((c) => {
+                const w = colWidths[colResizerId(c.key)] ?? MATRIX_DEFAULT_WIDTHS[c.key] ?? 140
+                return <col key={c.key} style={{ width: `${w}px` }} />
+              })}
               <col style={{ width: 40 }} />
             </colgroup>
             <thead className="bg-stone-50/80 border-b border-stone-200">
               <tr className="text-left text-[11px] uppercase tracking-wider text-stone-500">
                 <th className="px-2 py-2.5" />
                 <th className="px-3 py-2.5"><input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAllVisible} style={{ accentColor: "#1C1917" }} className="rounded border-stone-300" aria-label="Выбрать все" /></th>
-                {MODEL_COLUMNS.map(([label, cls, sortKey], idx) => {
-                  const colId = MODEL_COLUMN_IDS[idx].id
-                  // W9.7 — первая (якорная) колонка «Название» — sticky.
+                {matrixVisible.map((c, idx) => {
+                  const sortKeyMap: Record<string, ModeliOsnovaSortKey | undefined> = {
+                    nazvanie: "nazvanie", brand: "brand", kategoriya: "kategoriya",
+                    kollekciya: "kollekciya", fabrika: "fabrika", status: "status",
+                    zapoln: "completeness", cv_art_sku: "cv_art_sku", obnovleno: "obnovleno",
+                  }
+                  const sortKey = sortKeyMap[c.key]
+                  // W9.7 — первая (якорная) колонка — sticky.
                   const stickyCls = idx === 0 ? " cat-sticky-col cat-sticky-col-head" : ""
-                  const baseCls = `relative px-3 py-2.5 font-medium ${cls ?? ""}${stickyCls}`
+                  const baseCls = `relative px-3 py-2.5 font-medium ${c.key === "cv_art_sku" ? "text-right" : ""}${stickyCls}`
                   if (sortKey) {
                     return (
                       <SortableHeader
-                        key={label}
+                        key={c.key}
                         active={sort.column === sortKey}
                         direction={sort.column === sortKey ? sort.direction : null}
                         onClick={() => toggleSort(sortKey)}
                         className={baseCls}
                       >
-                        {label}
-                        <span {...bindResizer(colId)} />
+                        {c.label}
+                        <span {...bindResizer(colResizerId(c.key))} />
                       </SortableHeader>
                     )
                   }
                   return (
-                    <th key={label} className={baseCls}>
-                      {label}
-                      <span {...bindResizer(colId)} />
+                    <th key={c.key} className={baseCls}>
+                      {c.label}
+                      <span {...bindResizer(colResizerId(c.key))} />
                     </th>
                   )
                 })}
@@ -471,7 +624,7 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
                 <Fragment key={`group-${group.key}`}>
                   {groupBy !== "none" && (
                     <tr className="bg-stone-100/60 border-b border-stone-200">
-                      <td colSpan={14} className="px-3 py-2">
+                      <td colSpan={matrixVisible.length + 3} className="px-3 py-2">
                         <button
                           type="button"
                           onClick={() => toggleGroupCollapsed(group.key)}
@@ -490,12 +643,6 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
                     const canExpand = m.modeli.length >= 2
                     const isExpanded = expandedRows.has(m.id)
                     const checked = selectedKods.has(m.kod)
-                    const variantSizes = new Set<string>()
-                    // Razmery: derive from variant rossiyskiy_razmer values that match the standard ladder.
-                    for (const v of m.modeli) {
-                      const ru = (v.rossiyskiy_razmer ?? "").toUpperCase().trim()
-                      if ((RAZMER_LADDER as readonly string[]).includes(ru)) variantSizes.add(ru)
-                    }
                     return (
                       <Fragment key={`${m.kod}-row`}>
                         <tr className="border-b border-stone-100 hover:bg-stone-50/60 group">
@@ -509,27 +656,16 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
                             )}
                           </td>
                           <td className="px-3 py-3"><input type="checkbox" checked={checked} onChange={() => toggleSelect(m.kod)} onClick={(e) => e.stopPropagation()} style={{ accentColor: "#1C1917" }} className="rounded border-stone-300" aria-label={`Выбрать ${m.kod}`} /></td>
-                          <td className="px-3 py-3 cursor-pointer cat-sticky-col" onClick={() => onOpen(m.kod)}>
-                            <div className="font-medium text-stone-900 hover:underline font-mono">{m.kod}</div>
-                            <div className="text-xs text-stone-500 truncate max-w-[220px]">{m.nazvanie_sayt || <span className="italic text-stone-400">без названия</span>}</div>
-                          </td>
-                          {/* W3.2 — Бренд */}
-                          <td className="px-3 py-3 text-stone-700">{m.brand ?? <span className="text-stone-300">—</span>}</td>
-                          <td className="px-3 py-3 text-stone-700">{m.kategoriya ?? "—"}</td>
-                          <td className="px-3 py-3"><div className="text-stone-700">{m.kollekciya ?? "—"}</div><div className="text-[11px] text-stone-400">{m.tip_kollekcii ?? ""}</div></td>
-                          <td className="px-3 py-3 text-stone-700">{m.fabrika ?? "—"}</td>
-                          <td className="px-3 py-3"><StatusBadge status={m.status_id != null ? statusById.get(m.status_id) ?? null : null} /></td>
-                          <td className="px-3 py-3"><div className="flex items-center gap-0.5">{RAZMER_LADDER.map((sz) => <span key={sz} className={`text-[10px] px-1 py-0.5 rounded ${variantSizes.has(sz) ? "bg-stone-900 text-white" : "bg-stone-50 text-stone-300 ring-1 ring-inset ring-stone-200"}`}>{sz}</span>)}</div></td>
-                          <td className="px-3 py-3"><ColorChips modelKod={m.kod} count={m.cveta_cnt} /></td>
-                          <td className="px-3 py-3"><Tooltip text={buildCompletenessTooltip(m)}><CompletenessRing value={m.completeness} size={16} hideLabel /></Tooltip></td>
-                          <td className="px-3 py-3 text-right tabular-nums text-stone-600">
-                            <Tooltip text={`Цвета (привязанные к артикулам): ${m.cveta_cnt} · Артикулы: ${m.artikuly_cnt} · SKU: ${m.tovary_cnt}`}>
-                              <span>
-                                <span className="text-stone-900 font-medium">{m.cveta_cnt}</span><span className="text-stone-300 mx-1">/</span><span>{m.artikuly_cnt}</span><span className="text-stone-300 mx-1">/</span><span>{m.tovary_cnt}</span>
-                              </span>
-                            </Tooltip>
-                          </td>
-                          <td className="px-3 py-3 text-stone-500 text-xs">{relativeDate(m.updated_at)}</td>
+                          {matrixVisible.map((c, idx) => {
+                            // W9.7 — первая (якорная) колонка — sticky.
+                            const stickyCls = idx === 0 ? " cat-sticky-col" : ""
+                            const alignCls = c.key === "cv_art_sku" ? "text-right tabular-nums text-stone-600" : ""
+                            return (
+                              <td key={c.key} className={`px-3 py-3 ${alignCls}${stickyCls}`}>
+                                {renderMatrixCell(c.key, m)}
+                              </td>
+                            )
+                          })}
                           <td className="px-2 py-3 relative">
                             <button className="p-1 hover:bg-stone-100 rounded opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => { e.stopPropagation(); setOpenMenuKod((cur) => (cur === m.kod ? null : m.kod)) }} aria-label="Действия">
                               <MoreHorizontal className="w-3.5 h-3.5 text-stone-500" />
@@ -546,18 +682,16 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
                         {isExpanded && m.modeli.map((v) => (
                           <tr key={`v-${v.id}`} className="cat-sticky-row-alt bg-stone-50/40 border-b border-stone-100 text-xs">
                             <td colSpan={2} />
-                            <td className="pl-3 py-2 pr-3 cat-sticky-col"><div className="flex items-center gap-2"><div className="w-4 h-px bg-stone-300" /><span className="font-medium text-stone-800 font-mono">{v.kod}</span></div><div className="text-[11px] text-stone-500 ml-6 mt-0.5 truncate max-w-[200px]">{v.nazvanie}</div></td>
-                            {/* W3.2 — Бренд (наследуется от модели — здесь пусто) */}
-                            <td className="px-3 py-2 text-stone-300">—</td>
-                            <td className="px-3 py-2 text-stone-400">—</td>
-                            <td className="px-3 py-2"><div className="flex items-center gap-1 text-stone-500"><Building2 className="w-3 h-3 text-stone-400" />{v.importer_short ?? "—"}</div></td>
-                            <td className="px-3 py-2 font-mono text-[11px] text-stone-500">{v.artikul_modeli ?? "—"}</td>
-                            <td className="px-3 py-2"><StatusBadge status={v.status_id != null ? statusById.get(v.status_id) ?? null : null} compact /></td>
-                            <td className="px-3 py-2 text-stone-400 text-[10px]">RU: {v.rossiyskiy_razmer ?? "—"}</td>
-                            <td />
-                            <td />
-                            <td className="px-3 py-2 text-right tabular-nums text-stone-600"><span className="text-stone-300">—</span><span className="text-stone-300 mx-1">/</span><span className="text-stone-700 font-medium">{v.artikuly_cnt}</span><span className="text-stone-300 mx-1">/</span><span>{v.tovary_cnt}</span></td>
-                            <td className="px-3 py-2 text-stone-400">—</td>
+                            {matrixVisible.map((c, idx) => {
+                              // W9.7 — первая (якорная) колонка — sticky (вариация).
+                              const stickyCls = idx === 0 ? " cat-sticky-col" : ""
+                              const alignCls = c.key === "cv_art_sku" ? "text-right tabular-nums text-stone-600" : ""
+                              return (
+                                <td key={c.key} className={`px-3 py-2 ${alignCls}${stickyCls}`}>
+                                  {renderMatrixVariationCell(c.key, v)}
+                                </td>
+                              )
+                            })}
                             <td />
                           </tr>
                         ))}

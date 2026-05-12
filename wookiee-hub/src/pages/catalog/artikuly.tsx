@@ -9,7 +9,7 @@ import {
 } from "@/lib/catalog/service"
 import { StatusBadge } from "@/components/catalog/ui/status-badge"
 import { ColorSwatch } from "@/components/catalog/ui/color-swatch"
-import { ColumnsManager, type ColumnDef } from "@/components/catalog/ui/columns-manager"
+import { ColumnConfig, type CatalogColumnDef } from "@/components/catalog/ui/column-config"
 import { SortableHeader } from "@/components/catalog/ui/sortable-header"
 import { Pagination } from "@/components/catalog/ui/pagination"
 import { RefModal } from "@/components/catalog/ui/ref-modal"
@@ -17,54 +17,96 @@ import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
 import { useResizableColumns } from "@/hooks/use-resizable-columns"
 import { useTableSort, type SortState } from "@/hooks/use-table-sort"
 import { usePagination } from "@/hooks/use-pagination"
+import { useColumnConfig } from "@/hooks/use-column-config"
 import { downloadCsv } from "@/lib/catalog/csv-export"
 
-// Default per-column widths (px) for the standalone Артикулы page (W1.5).
+// Default per-column widths (px) for the standalone Артикулы page (W1.5 + W9.5).
 // Keys must match ARTIKULY_COLUMNS[i].key.
 const ARTIKULY_DEFAULT_WIDTHS: Record<string, number> = {
   artikul: 160,
   model: 140,
+  variation: 130,
+  nazvanie_etiketka: 180,
+  nazvanie_sayt: 180,
+  brand: 110,
   cvet: 180,
+  cvet_ru: 130,
+  cvet_en: 130,
+  cvet_semeystvo: 120,
   status: 140,
   wb_nom: 130,
   ozon_art: 140,
+  sku_count: 70,
   created: 110,
   updated: 110,
   kategoriya: 130,
   kollekciya: 140,
   fabrika: 140,
+  artikul_id: 70,
 }
 
-// 11 columns; all default-visible per Final Report MINOR fix.
-const ARTIKULY_COLUMNS: ColumnDef[] = [
-  { key: "artikul",         label: "Артикул",         default: true },
-  { key: "model",           label: "Модель",          default: true },
-  { key: "cvet",            label: "Цвет",            default: true },
-  { key: "status",          label: "Статус артикула", default: true },
-  { key: "wb_nom",          label: "WB-номенклатура", default: true },
-  { key: "ozon_art",        label: "OZON-артикул",    default: true },
-  { key: "created",         label: "Создан",          default: true },
-  { key: "updated",         label: "Обновлён",        default: true },
-  { key: "kategoriya",      label: "Категория",       default: true },
-  { key: "kollekciya",      label: "Коллекция",       default: true },
-  { key: "fabrika",         label: "Производитель",   default: true },
+// W9.5 — все доступные колонки реестра /catalog/artikuly.
+// Дефолт-видимость остаётся как раньше (основные 11); остальные доступны через
+// конфигуратор колонок.
+const ARTIKULY_COLUMNS: CatalogColumnDef[] = [
+  // Идентификация
+  { key: "artikul",            label: "Артикул",            default: true,  group: "Идентификация" },
+  { key: "artikul_id",         label: "ID артикула",        default: false, group: "Идентификация" },
+  { key: "model",              label: "Модель (код)",       default: true,  group: "Модель" },
+  { key: "variation",          label: "Вариация (код)",     default: false, group: "Модель" },
+  { key: "nazvanie_etiketka",  label: "Название (этикетка)",default: false, group: "Модель" },
+  { key: "nazvanie_sayt",      label: "Название (сайт)",    default: false, group: "Модель" },
+  { key: "brand",              label: "Бренд",              default: false, group: "Модель" },
+  // Цвет
+  { key: "cvet",               label: "Цвет",               default: true,  group: "Цвет" },
+  { key: "cvet_ru",            label: "Цвет (RU)",          default: false, group: "Цвет" },
+  { key: "cvet_en",            label: "Цвет (EN)",          default: false, group: "Цвет" },
+  { key: "cvet_semeystvo",     label: "Семейство цвета",    default: false, group: "Цвет" },
+  // Статусы и каналы
+  { key: "status",             label: "Статус артикула",    default: true,  group: "Статусы" },
+  { key: "wb_nom",             label: "WB-номенклатура",    default: true,  group: "Каналы" },
+  { key: "ozon_art",           label: "OZON-артикул",       default: true,  group: "Каналы" },
+  // Классификация
+  { key: "kategoriya",         label: "Категория",          default: true,  group: "Классификация" },
+  { key: "kollekciya",         label: "Коллекция",          default: true,  group: "Классификация" },
+  { key: "fabrika",            label: "Производитель",      default: true,  group: "Классификация" },
+  // Метрики и даты
+  { key: "sku_count",          label: "SKU (шт)",           default: false, group: "Метрики" },
+  { key: "created",            label: "Создан",             default: true,  group: "Даты" },
+  { key: "updated",            label: "Обновлён",           default: true,  group: "Даты" },
 ]
 
-const DEFAULT_COLUMNS = ARTIKULY_COLUMNS.filter((c) => c.default).map((c) => c.key)
+// DEFAULT_COLUMNS теперь живёт внутри useColumnConfig (W9.5).
 
-// W8.1 — sort keys must match column keys above.
+// W8.1 + W9.5 — sort keys must match column keys above.
 type ArtikulSortKey =
-  | "artikul" | "model" | "cvet" | "status" | "wb_nom" | "ozon_art"
-  | "created" | "updated" | "kategoriya" | "kollekciya" | "fabrika"
+  | "artikul" | "artikul_id" | "model" | "variation"
+  | "nazvanie_etiketka" | "nazvanie_sayt" | "brand"
+  | "cvet" | "cvet_ru" | "cvet_en" | "cvet_semeystvo"
+  | "status" | "wb_nom" | "ozon_art"
+  | "kategoriya" | "kollekciya" | "fabrika"
+  | "sku_count" | "created" | "updated"
 const ARTIKULY_SORTABLE: ReadonlySet<string> = new Set<ArtikulSortKey>([
-  "artikul", "model", "cvet", "status", "wb_nom", "ozon_art",
-  "created", "updated", "kategoriya", "kollekciya", "fabrika",
+  "artikul", "artikul_id", "model", "variation",
+  "nazvanie_etiketka", "nazvanie_sayt", "brand",
+  "cvet", "cvet_ru", "cvet_en", "cvet_semeystvo",
+  "status", "wb_nom", "ozon_art",
+  "kategoriya", "kollekciya", "fabrika",
+  "sku_count", "created", "updated",
 ])
 function getArtikulSortValue(a: ArtikulRow, col: ArtikulSortKey): unknown {
   switch (col) {
     case "artikul": return a.artikul
+    case "artikul_id": return a.id
     case "model": return a.model_osnova_kod ?? ""
+    case "variation": return a.model_kod ?? ""
+    case "nazvanie_etiketka": return a.nazvanie_etiketka ?? ""
+    case "nazvanie_sayt": return a.nazvanie_sayt ?? ""
+    case "brand": return a.brand ?? ""
     case "cvet": return a.cvet_color_code ?? ""
+    case "cvet_ru": return a.cvet_nazvanie ?? ""
+    case "cvet_en": return a.color_en ?? ""
+    case "cvet_semeystvo": return a.cvet_semeystvo ?? ""
     case "status": return a.status_id ?? null
     case "wb_nom": return a.nomenklatura_wb ?? null
     case "ozon_art": return a.artikul_ozon ?? ""
@@ -73,6 +115,7 @@ function getArtikulSortValue(a: ArtikulRow, col: ArtikulSortKey): unknown {
     case "kategoriya": return a.kategoriya ?? ""
     case "kollekciya": return a.kollekciya ?? ""
     case "fabrika": return a.fabrika ?? ""
+    case "sku_count": return a.tovary_cnt
   }
 }
 
@@ -451,6 +494,8 @@ function renderCell(key: string, a: ArtikulRow): React.ReactNode {
   switch (key) {
     case "artikul":
       return <span className="font-mono text-xs text-stone-900">{a.artikul}</span>
+    case "artikul_id":
+      return <span className="font-mono text-[11px] text-stone-500 tabular-nums">{a.id}</span>
     case "model":
       return (
         <div className="flex flex-col">
@@ -462,6 +507,14 @@ function renderCell(key: string, a: ArtikulRow): React.ReactNode {
           )}
         </div>
       )
+    case "variation":
+      return <span className="font-mono text-xs text-stone-600">{a.model_kod ?? "—"}</span>
+    case "nazvanie_etiketka":
+      return <span className="text-xs text-stone-700">{a.nazvanie_etiketka ?? "—"}</span>
+    case "nazvanie_sayt":
+      return <span className="text-xs text-stone-700">{a.nazvanie_sayt ?? "—"}</span>
+    case "brand":
+      return <span className="text-xs text-stone-700">{a.brand ?? "—"}</span>
     case "cvet":
       return (
         <div className="flex items-center gap-1.5">
@@ -470,6 +523,12 @@ function renderCell(key: string, a: ArtikulRow): React.ReactNode {
           {a.cvet_nazvanie && <span className="text-stone-500 text-xs">{a.cvet_nazvanie}</span>}
         </div>
       )
+    case "cvet_ru":
+      return <span className="text-xs text-stone-600">{a.cvet_nazvanie ?? "—"}</span>
+    case "cvet_en":
+      return <span className="text-xs text-stone-600 italic">{a.color_en ?? "—"}</span>
+    case "cvet_semeystvo":
+      return <span className="text-xs text-stone-600">{a.cvet_semeystvo ?? "—"}</span>
     case "status":
       return <StatusBadge statusId={a.status_id ?? 0} compact />
     case "wb_nom":
@@ -482,6 +541,8 @@ function renderCell(key: string, a: ArtikulRow): React.ReactNode {
       return (
         <span className="font-mono text-[11px] text-stone-600">{a.artikul_ozon ?? "—"}</span>
       )
+    case "sku_count":
+      return <span className="text-xs tabular-nums text-stone-700">{a.tovary_cnt}</span>
     case "created":
       return <span className="text-xs text-stone-500">{relativeDate(a.created_at)}</span>
     case "updated":
@@ -512,7 +573,11 @@ export function ArtikulyPage() {
 
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<"all" | number>("all")
-  const [columns, setColumns] = useState<string[]>(DEFAULT_COLUMNS)
+  // W9.5 — единый конфигуратор колонок (показать/скрыть/drag, ВСЕ поля).
+  const {
+    visibleColumns, visibility, order, setConfig, reset: resetColumns,
+  } = useColumnConfig("artikuly", ARTIKULY_COLUMNS)
+  const columns = useMemo(() => visibleColumns.map((c) => c.key), [visibleColumns])
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkStatusOpen, setBulkStatusOpen] = useState(false)
   const bulkStatusRef = useRef<HTMLDivElement | null>(null)
@@ -777,12 +842,13 @@ export function ArtikulyPage() {
           <div className="text-xs text-stone-500 tabular-nums">
             {filtered.length} из {data?.length ?? 0}
           </div>
-          <ColumnsManager
+          <ColumnConfig
             columns={ARTIKULY_COLUMNS}
-            value={columns}
-            onChange={setColumns}
-            scope="artikuly"
-            storageKey="columns"
+            visibility={visibility}
+            order={order}
+            onChange={setConfig}
+            onReset={resetColumns}
+            title="Колонки реестра «Артикулы»"
           />
         </div>
       </div>

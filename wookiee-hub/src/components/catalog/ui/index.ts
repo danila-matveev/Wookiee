@@ -29,6 +29,11 @@ export { TagsCombobox } from "./tags-combobox"
 export { ColumnsManager } from "./columns-manager"
 export type { ColumnDef } from "./columns-manager"
 
+// W9.5 — единый конфигуратор колонок (показать/скрыть/drag + reset + search).
+// Применяется ко всем 3 реестрам каталога через `useColumnConfig(pageKey, defaults)`.
+export { ColumnConfig } from "./column-config"
+export type { CatalogColumnDef } from "./column-config"
+
 export { RefModal } from "./ref-modal"
 export type { RefFieldDef, RefFieldType, RefFieldOption } from "./ref-modal"
 

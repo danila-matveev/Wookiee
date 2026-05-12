@@ -777,6 +777,8 @@ export interface MatrixRow {
   id: number
   kod: string
   nazvanie_sayt: string | null
+  /** W9.5 — этикетка (для конфигуратора колонок). */
+  nazvanie_etiketka: string | null
   tip_kollekcii: string | null
   kategoriya_id: number | null
   kategoriya: string | null
@@ -787,6 +789,8 @@ export interface MatrixRow {
   brand: string | null
   status_id: number | null
   updated_at: string | null
+  /** W9.5 — created_at для отображения в конфигурируемой колонке. */
+  created_at: string | null
   modeli_cnt: number
   artikuly_cnt: number
   tovary_cnt: number
@@ -794,6 +798,24 @@ export interface MatrixRow {
   completeness: number
   /** Список незаполненных ключевых полей для tooltip над CompletenessRing. */
   missing_fields: CompletenessField[]
+  // ─── W9.5: дополнительные поля схемы modeli_osnova (для конфигуратора колонок).
+  // Все опциональны: если не выбраны в SELECT — будут undefined; renderCell это учитывает.
+  razmery_modeli?: string | null
+  sku_china?: string | null
+  upakovka?: string | null
+  ves_kg?: number | null
+  dlina_cm?: number | null
+  shirina_cm?: number | null
+  vysota_cm?: number | null
+  kratnost_koroba?: number | null
+  material?: string | null
+  composition?: string | null
+  sostav_syrya?: string | null
+  tnved?: string | null
+  gruppa_sertifikata?: string | null
+  opisanie_sayt?: string | null
+  notion_link?: string | null
+  yandex_disk_link?: string | null
   modeli: {
     id: number
     kod: string
@@ -812,9 +834,10 @@ export async function fetchMatrixList(): Promise<MatrixRow[]> {
   const { data, error } = await supabase
     .from("modeli_osnova")
     .select(`
-      id, kod, nazvanie_sayt, tip_kollekcii, kategoriya_id, updated_at,
+      id, kod, nazvanie_sayt, tip_kollekcii, kategoriya_id, updated_at, created_at,
       sostav_syrya, razmery_modeli, sku_china, ves_kg, dlina_cm, shirina_cm,
       vysota_cm, kratnost_koroba, nazvanie_etiketka, opisanie_sayt, tnved, gruppa_sertifikata,
+      material, composition, upakovka, notion_link, yandex_disk_link,
       kollekciya_id, fabrika_id, status_id, brand_id,
       kategorii(nazvanie),
       kollekcii(nazvanie),
@@ -839,6 +862,7 @@ export async function fetchMatrixList(): Promise<MatrixRow[]> {
       id: mo.id,
       kod: mo.kod,
       nazvanie_sayt: mo.nazvanie_sayt,
+      nazvanie_etiketka: mo.nazvanie_etiketka ?? null,
       tip_kollekcii: mo.tip_kollekcii,
       kategoriya_id: mo.kategoriya_id,
       kategoriya: mo.kategorii?.nazvanie ?? null,
@@ -848,12 +872,30 @@ export async function fetchMatrixList(): Promise<MatrixRow[]> {
       brand: mo.brendy?.nazvanie ?? null,
       status_id: mo.status_id,
       updated_at: mo.updated_at,
+      created_at: mo.created_at ?? null,
       modeli_cnt: modeli.length,
       artikuly_cnt: artikuly.length,
       tovary_cnt: tovary.length,
       cveta_cnt: cvetaIds.size,
       completeness: computeCompleteness(mo),
       missing_fields: getMissingFields(mo),
+      // W9.5 — расширенные поля для конфигурируемых колонок матрицы.
+      razmery_modeli: mo.razmery_modeli ?? null,
+      sku_china: mo.sku_china ?? null,
+      upakovka: mo.upakovka ?? null,
+      ves_kg: mo.ves_kg ?? null,
+      dlina_cm: mo.dlina_cm ?? null,
+      shirina_cm: mo.shirina_cm ?? null,
+      vysota_cm: mo.vysota_cm ?? null,
+      kratnost_koroba: mo.kratnost_koroba ?? null,
+      material: mo.material ?? null,
+      composition: mo.composition ?? null,
+      sostav_syrya: mo.sostav_syrya ?? null,
+      tnved: mo.tnved ?? null,
+      gruppa_sertifikata: mo.gruppa_sertifikata ?? null,
+      opisanie_sayt: mo.opisanie_sayt ?? null,
+      notion_link: mo.notion_link ?? null,
+      yandex_disk_link: mo.yandex_disk_link ?? null,
       modeli: modeli.map((m: any) => {
         const mArts = (m.artikuly ?? []) as any[]
         const mTovary = mArts.flatMap((a: any) => a.tovary ?? [])
@@ -1295,6 +1337,10 @@ export interface ArtikulRow {
   model_osnova_kod: string | null
   /** modeli_osnova.nazvanie_etiketka — нужно для search и колонки «Модель». */
   nazvanie_etiketka: string | null
+  /** W9.5 — modeli_osnova.nazvanie_sayt — для конфигурируемой колонки. */
+  nazvanie_sayt: string | null
+  /** W9.5 — modeli_osnova.brendy.nazvanie — бренд через JOIN. */
+  brand: string | null
   cvet_id: number | null
   cvet_color_code: string | null
   /** cveta.cvet (RU). */
@@ -1302,6 +1348,8 @@ export interface ArtikulRow {
   /** cveta.color (EN). */
   color_en: string | null
   cvet_hex: string | null
+  /** W9.5 — cveta.semeystvo — семейство цвета. */
+  cvet_semeystvo: string | null
   status_id: number | null
   nomenklatura_wb: number | null
   artikul_ozon: string | null
@@ -1323,14 +1371,15 @@ export async function fetchArtikulyRegistry(): Promise<ArtikulRow[]> {
       .select(`
         id, artikul, model_id, cvet_id, status_id, nomenklatura_wb, artikul_ozon,
         created_at, updated_at,
-        cveta(color_code, cvet, color, hex),
+        cveta(color_code, cvet, color, hex, semeystvo),
         modeli(
           id, kod, model_osnova_id,
           modeli_osnova(
-            id, kod, tip_kollekcii, nazvanie_etiketka,
+            id, kod, tip_kollekcii, nazvanie_etiketka, nazvanie_sayt,
             kategorii(nazvanie),
             kollekcii(nazvanie),
-            fabriki(nazvanie)
+            fabriki(nazvanie),
+            brendy(nazvanie)
           )
         ),
         tovary(id)
@@ -1351,11 +1400,14 @@ export async function fetchArtikulyRegistry(): Promise<ArtikulRow[]> {
     model_osnova_id: a.modeli?.model_osnova_id ?? null,
     model_osnova_kod: a.modeli?.modeli_osnova?.kod ?? null,
     nazvanie_etiketka: a.modeli?.modeli_osnova?.nazvanie_etiketka ?? null,
+    nazvanie_sayt: a.modeli?.modeli_osnova?.nazvanie_sayt ?? null,
+    brand: a.modeli?.modeli_osnova?.brendy?.nazvanie ?? null,
     cvet_id: a.cvet_id,
     cvet_color_code: a.cveta?.color_code ?? null,
     cvet_nazvanie: a.cveta?.cvet ?? null,
     color_en: a.cveta?.color ?? null,
     cvet_hex: a.cveta?.hex ?? null,
+    cvet_semeystvo: a.cveta?.semeystvo ?? null,
     status_id: a.status_id,
     nomenklatura_wb: a.nomenklatura_wb,
     artikul_ozon: a.artikul_ozon,
@@ -1384,15 +1436,22 @@ export interface TovarRow {
   model_osnova_kod: string | null
   /** modeli_osnova.nazvanie_etiketka — для composite search. */
   nazvanie_etiketka: string | null
+  /** W9.5 — modeli_osnova.nazvanie_sayt. */
+  nazvanie_sayt: string | null
   /** modeli_osnova.kollekciya / kategoriya — для group-by. */
   kollekciya: string | null
   kategoriya: string | null
+  /** W9.5 — JOIN-поля модели. */
+  brand: string | null
+  fabrika: string | null
   cvet_color_code: string | null
   /** cveta.cvet (RU). */
   cvet_ru: string | null
   /** cveta.color (EN). */
   color_en: string | null
   cvet_hex: string | null
+  /** W9.5 — семейство цвета. */
+  cvet_semeystvo: string | null
   razmer: string | null
   /** razmery.kod в БД часто совпадает с nazvanie (XS/S/M/...). */
   razmer_kod: string | null
@@ -1407,6 +1466,8 @@ export interface TovarRow {
   ozon_fbo_sku_id: number | null
   lamoda_seller_sku: string | null
   created_at: string | null
+  /** W9.5 — updated_at для конфигурируемой колонки. */
+  updated_at: string | null
 }
 
 export async function fetchTovaryRegistry(): Promise<TovarRow[]> {
@@ -1420,17 +1481,19 @@ export async function fetchTovaryRegistry(): Promise<TovarRow[]> {
         id, barkod, barkod_gs1, barkod_gs2, barkod_perehod, artikul_id, razmer_id,
         status_id, status_ozon_id, status_sayt_id, status_lamoda_id,
         sku_china_size, ozon_product_id, ozon_fbo_sku_id, lamoda_seller_sku,
-        created_at,
+        created_at, updated_at,
         razmery(nazvanie),
         artikuly(
           artikul, nomenklatura_wb, artikul_ozon, cvet_id,
-          cveta(color_code, cvet, color, hex),
+          cveta(color_code, cvet, color, hex, semeystvo),
           modeli(
             kod, model_osnova_id,
             modeli_osnova(
-              kod, nazvanie_etiketka,
+              kod, nazvanie_etiketka, nazvanie_sayt,
               kategorii(nazvanie),
-              kollekcii(nazvanie)
+              kollekcii(nazvanie),
+              fabriki(nazvanie),
+              brendy(nazvanie)
             )
           )
         )
@@ -1457,12 +1520,16 @@ export async function fetchTovaryRegistry(): Promise<TovarRow[]> {
       model_osnova_id: t.artikuly?.modeli?.model_osnova_id ?? null,
       model_osnova_kod: t.artikuly?.modeli?.modeli_osnova?.kod ?? null,
       nazvanie_etiketka: t.artikuly?.modeli?.modeli_osnova?.nazvanie_etiketka ?? null,
+      nazvanie_sayt: t.artikuly?.modeli?.modeli_osnova?.nazvanie_sayt ?? null,
       kollekciya: t.artikuly?.modeli?.modeli_osnova?.kollekcii?.nazvanie ?? null,
       kategoriya: t.artikuly?.modeli?.modeli_osnova?.kategorii?.nazvanie ?? null,
+      brand: t.artikuly?.modeli?.modeli_osnova?.brendy?.nazvanie ?? null,
+      fabrika: t.artikuly?.modeli?.modeli_osnova?.fabriki?.nazvanie ?? null,
       cvet_color_code: t.artikuly?.cveta?.color_code ?? null,
       cvet_ru: t.artikuly?.cveta?.cvet ?? null,
       color_en: t.artikuly?.cveta?.color ?? null,
       cvet_hex: t.artikuly?.cveta?.hex ?? null,
+      cvet_semeystvo: t.artikuly?.cveta?.semeystvo ?? null,
       razmer,
       razmer_kod: razmer,
       status_id: t.status_id,
@@ -1476,6 +1543,7 @@ export async function fetchTovaryRegistry(): Promise<TovarRow[]> {
       ozon_fbo_sku_id: t.ozon_fbo_sku_id,
       lamoda_seller_sku: t.lamoda_seller_sku,
       created_at: t.created_at,
+      updated_at: t.updated_at ?? null,
     }
   })
 }
