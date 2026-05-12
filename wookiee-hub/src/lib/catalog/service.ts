@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase"
 import type { ModelOsnova } from "@/types/catalog"
 import { computeCompleteness, getMissingFields, type CompletenessField } from "./color-utils"
+import { parseRazmeryModeli } from "./model-utils"
 
 // ─── Basic reference fetchers ──────────────────────────────────────────────
 
@@ -794,6 +795,12 @@ export interface MatrixRow {
   completeness: number
   /** Список незаполненных ключевых полей для tooltip над CompletenessRing. */
   missing_fields: CompletenessField[]
+  /**
+   * W9.8 — канонический размерный ряд модели (parsed CSV из
+   * `modeli_osnova.razmery_modeli`). Единственный источник истины для колонки
+   * «Размеры» в матрице. Пустой массив, если ряд не заполнен в карточке.
+   */
+  razmery: string[]
   modeli: {
     id: number
     kod: string
@@ -854,6 +861,7 @@ export async function fetchMatrixList(): Promise<MatrixRow[]> {
       cveta_cnt: cvetaIds.size,
       completeness: computeCompleteness(mo),
       missing_fields: getMissingFields(mo),
+      razmery: parseRazmeryModeli(mo.razmery_modeli),
       modeli: modeli.map((m: any) => {
         const mArts = (m.artikuly ?? []) as any[]
         const mTovary = mArts.flatMap((a: any) => a.tovary ?? [])

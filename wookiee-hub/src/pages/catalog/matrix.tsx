@@ -445,12 +445,13 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
                     const canExpand = m.modeli.length >= 2
                     const isExpanded = expandedRows.has(m.id)
                     const checked = selectedKods.has(m.kod)
-                    const variantSizes = new Set<string>()
-                    // Razmery: derive from variant rossiyskiy_razmer values that match the standard ladder.
-                    for (const v of m.modeli) {
-                      const ru = (v.rossiyskiy_razmer ?? "").toUpperCase().trim()
-                      if ((RAZMER_LADDER as readonly string[]).includes(ru)) variantSizes.add(ru)
-                    }
+                    // W9.8 — Размеры берём из канонического `modeli_osnova.razmery_modeli`
+                    // (то же поле, что редактируется в карточке модели). Раньше агрегатор
+                    // собирал union по `modeli.rossiyskiy_razmer`, что было неверно: это
+                    // российский numeric-код вариации, а не lettered ladder.
+                    const variantSizes = new Set<string>(
+                      m.razmery.map((s) => s.toUpperCase().trim()).filter(Boolean)
+                    )
                     return (
                       <Fragment key={`${m.kod}-row`}>
                         <tr className="border-b border-stone-100 hover:bg-stone-50/60 group">
