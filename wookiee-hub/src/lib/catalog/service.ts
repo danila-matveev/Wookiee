@@ -1961,6 +1961,104 @@ export async function bulkUnlinkTovaryFromSkleyka(
   if (error) throw new Error(error.message)
 }
 
+// ─── Artikul create (W4.3) ─────────────────────────────────────────────────
+
+/**
+ * Row returned after inserting an artikul (subset of full artikuly columns).
+ */
+export interface InsertedArtikul {
+  id: number
+  artikul: string
+  model_id: number
+  cvet_id: number
+  status_id: number | null
+}
+
+/**
+ * Resolve "Запуск" (tip='artikul') status id — default for newly created
+ * artikuly. Falls back to any row with tip='artikul' if exact name is missing,
+ * to avoid hard-blocking the UI in case of dictionary edits.
+ */
+async function getDefaultArtikulStatusId(): Promise<number | null> {
+  const byName = await getStatusIdByName("artikul", "Запуск")
+  if (byName != null) return byName
+  const { data, error } = await supabase
+    .from("statusy")
+    .select("id")
+    .eq("tip", "artikul")
+    .limit(1)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  return (data as { id: number } | null)?.id ?? null
+}
+
+/**
+ * Create a single `artikuly` row for a given variation (`modeli.id`) and
+ * a colour (`cveta.id`).
+ *
+ * `artikul` is auto-generated as `${modeli.kod}/${cveta.color_code}` to
+ * match historical naming convention (e.g. `Alice-1/black`, `Nora/brown`).
+ * Default `status_id` = `statusy(tip='artikul', nazvanie='Запуск')`.
+ *
+ * Caller is responsible for invalidating ["catalog", "model", kod].
+ */
+export async function insertArtikul(
+  modeliId: number,
+  cvetId: number,
+): Promise<InsertedArtikul> {
+  // 1. Look up the variation's kod + colour's color_code in parallel.
+  const [modeliRes, cvetRes, defaultStatusId] = await Promise.all([
+    supabase.from("modeli").select("kod").eq("id", modeliId).single(),
+    supabase.from("cveta").select("color_code").eq("id", cvetId).single(),
+    getDefaultArtikulStatusId(),
+  ])
+  if (modeliRes.error) throw new Error(modeliRes.error.message)
+  if (cvetRes.error) throw new Error(cvetRes.error.message)
+
+  const modeliKod = (modeliRes.data as { kod: string | null }).kod
+  const colorCode = (cvetRes.data as { color_code: string | null }).color_code
+  if (!modeliKod) throw new Error(`modeli.id=${modeliId} has empty kod`)
+  if (!colorCode) throw new Error(`cveta.id=${cvetId} has empty color_code`)
+
+  const artikul = `${modeliKod}/${colorCode}`
+
+  // 2. INSERT. status_id may legitimately be null if the dictionary has no
+  // tip='artikul' rows at all — schema allows it.
+  const { data, error } = await supabase
+    .from("artikuly")
+    .insert({
+      model_id: modeliId,
+      cvet_id: cvetId,
+      artikul,
+      status_id: defaultStatusId,
+    })
+    .select("id, artikul, model_id, cvet_id, status_id")
+    .single()
+  if (error) throw new Error(error.message)
+  return data as InsertedArtikul
+}
+
+/**
+ * Bulk-create artikuly for one variation across multiple colours.
+ *
+ * Skips colours that would produce a duplicate `artikul` string (the UI is
+ * expected to filter these out, but the guard is here so the call is
+ * idempotent). Runs the inserts sequentially via `insertArtikul` to keep
+ * error handling simple — N ≤ palette size, typically < 20.
+ */
+export async function bulkCreateArtikuly(
+  modeliId: number,
+  cvetIds: number[],
+): Promise<InsertedArtikul[]> {
+  if (cvetIds.length === 0) return []
+  const out: InsertedArtikul[] = []
+  for (const cvetId of cvetIds) {
+    const row = await insertArtikul(modeliId, cvetId)
+    out.push(row)
+  }
+  return out
+}
+
 // ─── UI preferences (per-user-less, scope+key) ─────────────────────────────
 
 /**

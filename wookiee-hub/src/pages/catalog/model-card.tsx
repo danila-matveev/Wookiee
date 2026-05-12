@@ -44,10 +44,12 @@ import {
 } from "@/types/catalog"
 import {
   archiveModel,
+  bulkCreateArtikuly,
   duplicateModel,
   fetchAllTags,
   fetchAttributesForCategory,
   fetchBrendy,
+  fetchCvetaWithUsage,
   fetchFabriki,
   fetchImportery,
   fetchKategorii,
@@ -62,8 +64,10 @@ import {
   fetchUpakovki,
   insertVariation,
   updateModel,
+  type CvetRow,
   type ModelDetail,
   type ModelOsnovaPayload,
+  type ModelVariation,
   type Razmer,
   type Sertifikat,
   type Upakovka,
@@ -919,6 +923,8 @@ function TabArticles({ m, hexByCvet, openColor }: TabContentProps) {
   const allArts = m.modeli.flatMap((v) =>
     v.artikuly.map((a) => ({ ...a, variantKod: v.kod, importerName: v.importer_nazvanie })),
   )
+  const [addOpen, setAddOpen] = useState(false)
+  const hasVariations = m.modeli.length > 0
   return (
     <div className="bg-white rounded-lg border border-stone-200 overflow-hidden">
       <div className="px-5 py-3 border-b border-stone-200 flex items-center justify-between">
@@ -930,13 +936,21 @@ function TabArticles({ m, hexByCvet, openColor }: TabContentProps) {
         </div>
         <button
           type="button"
-          className="px-2.5 py-1 text-xs text-white bg-stone-900 rounded-md flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-          disabled
-          title="Wave 3+ (Add артикула)"
+          onClick={() => setAddOpen(true)}
+          disabled={!hasVariations}
+          title={hasVariations ? "Создать артикулы" : "Сначала создайте вариацию модели"}
+          className="px-2.5 py-1 text-xs text-white bg-stone-900 rounded-md flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-stone-800"
         >
           <Plus className="w-3 h-3" /> Добавить
         </button>
       </div>
+      {addOpen && (
+        <AddArtikulModal
+          modelKod={m.kod}
+          variations={m.modeli}
+          onClose={() => setAddOpen(false)}
+        />
+      )}
       <table className="w-full text-sm">
         <thead className="bg-stone-50/80 border-b border-stone-200">
           <tr className="text-left text-[11px] uppercase tracking-wider text-stone-500">
@@ -998,6 +1012,267 @@ function TabArticles({ m, hexByCvet, openColor }: TabContentProps) {
           )}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+// ─── Add-artikul modal (W4.3) ──────────────────────────────────────────────
+//
+// Палитра цветов + чекбоксы. По умолчанию выбраны все цвета модели, которые
+// ещё НЕ привязаны к выбранной вариации (исключение дублей). Кнопка «Создать»
+// делает bulk-create через `bulkCreateArtikuly`.
+//
+// artikul генерируется автоматически как `${modeli.kod}/${cveta.color_code}`
+// — это поведение сервиса, не UI. См. `insertArtikul` в service.ts.
+function AddArtikulModal({
+  modelKod,
+  variations,
+  onClose,
+}: {
+  modelKod: string
+  variations: ModelVariation[]
+  onClose: () => void
+}) {
+  const queryClient = useQueryClient()
+
+  // Default — first variation. Если их больше одной, юзер может переключиться.
+  const [variationId, setVariationId] = useState<number>(variations[0]?.id ?? 0)
+  const [selectedCvety, setSelectedCvety] = useState<Set<number>>(new Set())
+  const [error, setError] = useState<string | null>(null)
+
+  const cvetaQ = useQuery({
+    queryKey: ["catalog", "cveta-with-usage"],
+    queryFn: fetchCvetaWithUsage,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  // Already-attached cveta ids — для исключения из выбора (нельзя создать
+  // дубликат `${kod}/${color_code}` — артикул должен быть уникальным).
+  const attachedCvetIds = useMemo(() => {
+    const v = variations.find((x) => x.id === variationId)
+    if (!v) return new Set<number>()
+    return new Set(v.artikuly.map((a) => a.cvet_id).filter((id): id is number => id != null))
+  }, [variationId, variations])
+
+  // Available colours — exclude already attached.
+  const availableCveta: CvetRow[] = useMemo(() => {
+    const rows = cvetaQ.data ?? []
+    return rows.filter((c) => !attachedCvetIds.has(c.id))
+  }, [cvetaQ.data, attachedCvetIds])
+
+  // Reset selection when variation changes (different attached set).
+  useEffect(() => {
+    setSelectedCvety(new Set())
+    setError(null)
+  }, [variationId])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose()
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [onClose])
+
+  const createMut = useMutation({
+    mutationFn: (cvetIds: number[]) => bulkCreateArtikuly(variationId, cvetIds),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["catalog", "model", modelKod] })
+      queryClient.invalidateQueries({ queryKey: ["catalog", "matrix-list"] })
+      queryClient.invalidateQueries({ queryKey: ["matrix-list"] })
+      queryClient.invalidateQueries({ queryKey: ["catalog", "cveta-with-usage"] })
+      onClose()
+    },
+    onError: (e: unknown) => {
+      setError(e instanceof Error ? e.message : String(e))
+    },
+  })
+
+  const toggle = (id: number) => {
+    setSelectedCvety((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const selectAll = () => setSelectedCvety(new Set(availableCveta.map((c) => c.id)))
+  const clearAll = () => setSelectedCvety(new Set())
+
+  const selectedVariation = variations.find((v) => v.id === variationId)
+  const selectedCount = selectedCvety.size
+  const canSubmit = selectedCount > 0 && variationId > 0 && !createMut.isPending
+
+  const handleSubmit = () => {
+    if (!canSubmit) return
+    createMut.mutate(Array.from(selectedCvety))
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-stone-900/40 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-2xl bg-white rounded-xl shadow-2xl overflow-hidden border border-stone-200 flex flex-col max-h-[85vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-3 border-b border-stone-200 shrink-0">
+          <h2
+            className="cat-font-serif text-xl text-stone-900 italic"
+            style={{ fontFamily: "'Instrument Serif', ui-serif, Georgia, serif" }}
+          >
+            Создать артикулы
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 hover:bg-stone-100 rounded"
+            aria-label="Close"
+          >
+            <X className="w-4 h-4 text-stone-500" />
+          </button>
+        </div>
+
+        <div className="px-5 py-4 space-y-4 overflow-y-auto">
+          {/* Variation picker (only if >1) */}
+          {variations.length > 1 && (
+            <div>
+              <label className="block text-[11px] uppercase tracking-wider text-stone-500 mb-1">
+                Вариация
+              </label>
+              <select
+                value={variationId}
+                onChange={(e) => setVariationId(Number(e.target.value))}
+                className="w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md bg-white outline-none focus:border-stone-900 focus:ring-1 focus:ring-stone-900"
+              >
+                {variations.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.kod}{v.importer_nazvanie ? ` · ${v.importer_nazvanie}` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {variations.length === 1 && selectedVariation && (
+            <div className="text-xs text-stone-500">
+              Вариация: <span className="font-mono text-stone-700">{selectedVariation.kod}</span>
+              {selectedVariation.importer_nazvanie ? ` · ${selectedVariation.importer_nazvanie}` : ""}
+            </div>
+          )}
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-[11px] uppercase tracking-wider text-stone-500">
+                Палитра цветов
+              </label>
+              <div className="flex items-center gap-2 text-xs">
+                <button
+                  type="button"
+                  onClick={selectAll}
+                  disabled={availableCveta.length === 0}
+                  className="text-stone-600 hover:text-stone-900 underline underline-offset-2 disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed"
+                >
+                  Выбрать все
+                </button>
+                <span className="text-stone-300">·</span>
+                <button
+                  type="button"
+                  onClick={clearAll}
+                  disabled={selectedCount === 0}
+                  className="text-stone-600 hover:text-stone-900 underline underline-offset-2 disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed"
+                >
+                  Очистить
+                </button>
+              </div>
+            </div>
+
+            {cvetaQ.isLoading ? (
+              <div className="text-sm text-stone-400 italic py-6 text-center">Загрузка цветов…</div>
+            ) : availableCveta.length === 0 ? (
+              <div className="text-sm text-stone-400 italic py-6 text-center">
+                Все доступные цвета уже привязаны к этой вариации
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-1.5 max-h-[40vh] overflow-y-auto pr-1">
+                {availableCveta.map((c) => {
+                  const checked = selectedCvety.has(c.id)
+                  const hex = c.hex ?? swatchColor(c.color_code)
+                  const previewArtikul = `${selectedVariation?.kod ?? modelKod}/${c.color_code}`
+                  return (
+                    <label
+                      key={c.id}
+                      className={`flex items-center gap-2 px-2 py-1.5 rounded-md border cursor-pointer text-sm transition-colors ${
+                        checked
+                          ? "border-stone-900 bg-stone-50"
+                          : "border-stone-200 hover:border-stone-400"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggle(c.id)}
+                        className="shrink-0 accent-stone-900"
+                      />
+                      <span
+                        className="inline-block w-4 h-4 rounded ring-1 ring-stone-200 shrink-0"
+                        style={{ background: hex }}
+                      />
+                      <span className="font-mono text-xs text-stone-700 shrink-0">{c.color_code}</span>
+                      {c.cvet && (
+                        <span className="text-stone-500 text-xs truncate">{c.cvet}</span>
+                      )}
+                      <span className="ml-auto font-mono text-[10px] text-stone-400 truncate shrink-0 pl-1">
+                        {previewArtikul}
+                      </span>
+                    </label>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {error && (
+            <div className="px-3 py-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded">
+              {error}
+            </div>
+          )}
+        </div>
+
+        <div className="px-5 py-3 border-t border-stone-200 flex items-center justify-between shrink-0 bg-stone-50/50">
+          <div className="text-xs text-stone-500">
+            Выбрано: <span className="font-medium text-stone-700">{selectedCount}</span>
+            {selectedCount > 0 && (
+              <span className="ml-2">
+                · Артикулы будут созданы со статусом «Запуск»
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3 py-1.5 text-sm text-stone-700 hover:bg-stone-100 rounded-md"
+            >
+              Отмена
+            </button>
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={!canSubmit}
+              className="px-3 py-1.5 text-sm text-white bg-stone-900 hover:bg-stone-800 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {createMut.isPending
+                ? "Создаём…"
+                : selectedCount > 1
+                  ? `Создать ${selectedCount}`
+                  : "Создать"}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
