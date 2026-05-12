@@ -39,10 +39,7 @@ export function CatalogLayout() {
   }, [paletteOpen, searchParams, setSearchParams])
 
   return (
-    <div
-      className="catalog-scope h-screen w-screen flex overflow-hidden"
-      style={{ background: "rgb(250 250 249)" }}
-    >
+    <div className="h-screen w-screen flex overflow-hidden bg-page">
       <CatalogSidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
         <CatalogTopBar onOpenSearch={openPalette} />

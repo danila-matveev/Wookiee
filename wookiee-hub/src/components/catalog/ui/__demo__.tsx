@@ -77,7 +77,7 @@ const MOCK_SEARCH = async (q: string): Promise<SearchGlobalResult> => {
 
 /**
  * Catalog UI demo — renders all atomic components for visual review.
- * Wrap with .catalog-scope to apply the stone-light theme.
+ * DS v2: scope wrapper retired; bg-page + tokens carry the theme.
  */
 export function CatalogUiDemo() {
   const [refOpen, setRefOpen] = useState(false)
@@ -94,18 +94,14 @@ export function CatalogUiDemo() {
   const [selected, setSelected] = useState<number[]>([])
 
   return (
-    <div className="catalog-scope min-h-screen bg-stone-50/40 text-stone-900 antialiased">
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap');`}</style>
+    <div className="min-h-screen bg-page text-primary antialiased">
       <div className="max-w-5xl mx-auto px-6 py-10 space-y-12">
         <header>
-          <div className="text-[11px] uppercase tracking-wider text-stone-400 mb-1">Demo</div>
-          <h1
-            className="cat-font-serif text-4xl text-stone-900 italic"
-            style={{ fontFamily: "'Instrument Serif', ui-serif, Georgia, serif" }}
-          >
+          <div className="text-[11px] uppercase tracking-wider text-label mb-1">Demo</div>
+          <h1 className="font-serif italic text-4xl text-primary">
             Catalog UI components
           </h1>
-          <p className="text-sm text-stone-500 mt-2">
+          <p className="text-sm text-muted mt-2">
             Wave 1 · A3 — atomic UI компоненты каталога Wookiee Hub.
           </p>
         </header>
@@ -137,7 +133,7 @@ export function CatalogUiDemo() {
             <StatusBadge status={{ nazvanie: "Выводим", color: "red" }} />
             <StatusBadge statusId={6} />
             <StatusBadge statusId={7} compact />
-            <span className="ml-4 inline-flex items-center gap-1 text-xs text-stone-500">
+            <span className="ml-4 inline-flex items-center gap-1 text-xs text-muted">
               dots: <StatusDot color="green" /><StatusDot color="blue" /><StatusDot color="amber" /><StatusDot color="red" /><StatusDot color="gray" />
             </span>
           </div>
@@ -233,7 +229,7 @@ export function CatalogUiDemo() {
         <Section title="FieldWrap — ручная композиция">
           <div className="grid grid-cols-2 gap-4 max-w-3xl">
             <FieldWrap label="Любое поле" level="artikul" hint="LevelBadge показывает уровень">
-              <div className="px-2.5 py-1.5 text-sm font-mono text-stone-900 border border-stone-200 rounded-md bg-white">
+              <div className="px-2.5 py-1.5 text-sm font-mono text-primary border border-default rounded-md bg-surface">
                 компбел-ж-бесшов/2
               </div>
             </FieldWrap>
@@ -249,13 +245,13 @@ export function CatalogUiDemo() {
               scope="demo-table"
               storageKey="visible-columns"
             />
-            <div className="text-xs text-stone-500">
-              <div className="mb-1 uppercase tracking-wider text-[10px] text-stone-400">
+            <div className="text-xs text-muted">
+              <div className="mb-1 uppercase tracking-wider text-[10px] text-label">
                 Активные ({columns.length})
               </div>
               <ol className="list-decimal list-inside space-y-0.5">
                 {columns.map((k) => (
-                  <li key={k} className="font-mono text-stone-700">{k}</li>
+                  <li key={k} className="font-mono text-secondary">{k}</li>
                 ))}
               </ol>
             </div>
@@ -311,10 +307,10 @@ interface SectionProps {
 function Section({ title, children }: SectionProps) {
   return (
     <section>
-      <div className="text-[11px] uppercase tracking-wider text-stone-400 mb-3 font-medium">
+      <div className="text-[11px] uppercase tracking-wider text-label mb-3 font-medium">
         {title}
       </div>
-      <div className="bg-white border border-stone-200 rounded-lg p-5">{children}</div>
+      <div className="bg-surface border border-default rounded-lg p-5">{children}</div>
     </section>
   )
 }
@@ -324,7 +320,7 @@ function Btn({ children, onClick }: { children: React.ReactNode; onClick?: () =>
     <button
       type="button"
       onClick={onClick}
-      className="px-3 py-1.5 text-sm text-stone-700 bg-white border border-stone-200 hover:bg-stone-100 rounded-md"
+      className="px-3 py-1.5 text-sm text-secondary bg-surface border border-default hover:bg-surface-muted rounded-md"
     >
       {children}
     </button>

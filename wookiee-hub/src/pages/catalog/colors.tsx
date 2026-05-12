@@ -50,18 +50,18 @@ interface FamilyTableProps {
 function FamilyTable({ title, description, items, statusById, onOpen, onEdit, onArchive }: FamilyTableProps) {
   return (
     <div>
-      <h3 className="text-xs uppercase tracking-wider text-stone-500 mb-2 flex items-center gap-2">
-        <span className="font-medium text-stone-700">{title}</span>
-        <span className="text-stone-300">·</span>
+      <h3 className="text-xs uppercase tracking-wider text-muted mb-2 flex items-center gap-2">
+        <span className="font-medium text-secondary">{title}</span>
+        <span className="text-label">·</span>
         <span className="tabular-nums">{items.length}</span>
         {description && (
-          <span className="text-stone-400 italic font-normal text-[11px]">{description}</span>
+          <span className="text-label italic font-normal text-[11px]">{description}</span>
         )}
       </h3>
-      <div className="bg-white rounded-lg border border-stone-200 overflow-hidden">
+      <div className="bg-surface rounded-lg border border-default overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-stone-50/80 border-b border-stone-200">
-            <tr className="text-left text-[11px] uppercase tracking-wider text-stone-500">
+          <thead className="bg-page/80 border-b border-default">
+            <tr className="text-left text-[11px] uppercase tracking-wider text-muted">
               <th className="px-3 py-2 font-medium w-10" />
               <th className="px-3 py-2 font-medium">Color Code</th>
               <th className="px-3 py-2 font-medium">Цвет (RU)</th>
@@ -79,21 +79,21 @@ function FamilyTable({ title, description, items, statusById, onOpen, onEdit, on
                 <tr
                   key={c.id}
                   onClick={() => onOpen(c.color_code)}
-                  className="group border-b border-stone-100 last:border-0 hover:bg-stone-50/60 cursor-pointer"
+                  className="group border-b border-subtle last:border-0 hover:bg-page/60 cursor-pointer"
                 >
                   <td className="px-3 py-2"><ColorSwatch hex={resolveSwatch(c.hex, c.color_code)} size={24} /></td>
-                  <td className="px-3 py-2"><span className="font-mono text-stone-900">{c.color_code}</span></td>
+                  <td className="px-3 py-2"><span className="font-mono text-primary">{c.color_code}</span></td>
                   <td className="px-3 py-2">{c.cvet ?? "—"}</td>
-                  <td className="px-3 py-2 text-stone-500">{c.color ?? "—"}</td>
-                  <td className="px-3 py-2 text-stone-500">{c.lastovica ?? "—"}</td>
-                  <td className="px-3 py-2 text-stone-600">
+                  <td className="px-3 py-2 text-muted">{c.color ?? "—"}</td>
+                  <td className="px-3 py-2 text-muted">{c.lastovica ?? "—"}</td>
+                  <td className="px-3 py-2 text-secondary">
                     {c.modeli_cnt > 0 || c.artikuly_cnt > 0 ? (
                       <span>
-                        <span className="font-medium text-stone-900">{c.modeli_cnt}</span> мод. ·{" "}
+                        <span className="font-medium text-primary">{c.modeli_cnt}</span> мод. ·{" "}
                         <span className="font-medium">{c.artikuly_cnt}</span> арт.
                       </span>
                     ) : (
-                      <span className="text-stone-400 italic text-xs">не используется</span>
+                      <span className="text-label italic text-xs">не используется</span>
                     )}
                   </td>
                   <td className="px-3 py-2">
@@ -121,22 +121,22 @@ function RowMenu({ onEdit, onArchive }: { onEdit: () => void; onArchive: () => v
     <div className="relative" onClick={(e) => e.stopPropagation()}>
       <button
         onClick={() => setOpen((v) => !v)}
-        className="p-1 rounded hover:bg-stone-100 opacity-0 group-hover:opacity-100 focus:opacity-100"
+        className="p-1 rounded hover:bg-surface-muted opacity-0 group-hover:opacity-100 focus:opacity-100"
       >
-        <MoreHorizontal className="w-4 h-4 text-stone-500" />
+        <MoreHorizontal className="w-4 h-4 text-muted" />
       </button>
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 mt-1 w-40 bg-white border border-stone-200 rounded-md shadow-lg z-20 py-1 text-sm">
+          <div className="absolute right-0 mt-1 w-40 bg-surface border border-default rounded-md shadow-lg z-20 py-1 text-sm">
             <button
-              className="w-full px-3 py-1.5 text-left hover:bg-stone-50 flex items-center gap-2 text-stone-700"
+              className="w-full px-3 py-1.5 text-left hover:bg-page flex items-center gap-2 text-secondary"
               onClick={() => { setOpen(false); onEdit() }}
             >
               <Edit3 className="w-3.5 h-3.5" /> Редактировать
             </button>
             <button
-              className="w-full px-3 py-1.5 text-left hover:bg-stone-50 flex items-center gap-2 text-red-600"
+              className="w-full px-3 py-1.5 text-left hover:bg-page flex items-center gap-2 text-red-600"
               onClick={() => { setOpen(false); onArchive() }}
             >
               <Archive className="w-3.5 h-3.5" /> В архив
@@ -223,7 +223,7 @@ function ColorsView({ onOpen }: { onOpen: (code: string) => void }) {
     return { groups, orphans }
   }, [filtered, semeystva, semeystvaById])
 
-  if (isLoading) return <div className="px-6 py-8 text-sm text-stone-400">Загрузка…</div>
+  if (isLoading) return <div className="px-6 py-8 text-sm text-label">Загрузка…</div>
   if (error) return <div className="px-6 py-8 text-sm text-red-500">Ошибка загрузки цветов</div>
 
   return (
@@ -231,15 +231,15 @@ function ColorsView({ onOpen }: { onOpen: (code: string) => void }) {
       <div className="px-6 pt-6 pb-3 shrink-0">
         <div className="flex items-end justify-between">
           <div>
-            <div className="text-[11px] uppercase tracking-wider text-stone-400 mb-1">Каталог</div>
-            <h1 className="text-3xl text-stone-900 cat-font-serif italic">Цвета</h1>
-            <div className="text-sm text-stone-500 mt-1">
+            <div className="text-[11px] uppercase tracking-wider text-label mb-1">Каталог</div>
+            <h1 className="text-3xl text-primary font-serif italic">Цвета</h1>
+            <div className="text-sm text-muted mt-1">
               {data?.length ?? 0} цветов · группировка по семейству
             </div>
           </div>
           <button
             onClick={() => setEditingRow("new")}
-            className="px-3 py-1.5 text-xs text-white bg-stone-900 hover:bg-stone-800 rounded-md flex items-center gap-1.5"
+            className="px-3 py-1.5 text-xs text-white bg-elevated hover:bg-surface rounded-md flex items-center gap-1.5"
           >
             <Plus className="w-3.5 h-3.5" /> Новый цвет
           </button>
@@ -248,42 +248,42 @@ function ColorsView({ onOpen }: { onOpen: (code: string) => void }) {
 
       <div className="px-6 pb-3 flex items-center gap-2 shrink-0 flex-wrap">
         <div className="relative">
-          <Search className="w-3.5 h-3.5 text-stone-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+          <Search className="w-3.5 h-3.5 text-label absolute left-2.5 top-1/2 -translate-y-1/2" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Поиск по коду, RU, EN…"
-            className="pl-8 pr-3 py-1.5 text-sm border border-stone-200 rounded-md bg-white outline-none focus:border-stone-400 w-72"
+            className="pl-8 pr-3 py-1.5 text-sm border border-default rounded-md bg-surface outline-none focus:border-[var(--color-border-strong)] w-72"
           />
         </div>
 
-        <span className="text-xs text-stone-500 mx-1">Семейство:</span>
+        <span className="text-xs text-muted mx-1">Семейство:</span>
         <button
           onClick={() => setFamilyFilter("all")}
-          className={`px-2.5 py-1 text-xs rounded-md transition-colors ${familyFilter === "all" ? "bg-stone-900 text-white" : "text-stone-600 hover:bg-stone-100"}`}
+          className={`px-2.5 py-1 text-xs rounded-md transition-colors ${familyFilter === "all" ? "bg-elevated text-white" : "text-secondary hover:bg-surface-muted"}`}
         >Все</button>
         {(semeystva ?? []).map((s) => (
           <button
             key={s.kod}
             onClick={() => setFamilyFilter(s.kod)}
-            className={`px-2.5 py-1 text-xs rounded-md transition-colors ${familyFilter === s.kod ? "bg-stone-900 text-white" : "text-stone-600 hover:bg-stone-100"}`}
+            className={`px-2.5 py-1 text-xs rounded-md transition-colors ${familyFilter === s.kod ? "bg-elevated text-white" : "text-secondary hover:bg-surface-muted"}`}
           >{s.nazvanie}</button>
         ))}
 
-        <span className="text-xs text-stone-500 mx-1 ml-3">Статус:</span>
+        <span className="text-xs text-muted mx-1 ml-3">Статус:</span>
         <button
           onClick={() => setStatusFilter("all")}
-          className={`px-2.5 py-1 text-xs rounded-md transition-colors ${statusFilter === "all" ? "bg-stone-900 text-white" : "text-stone-600 hover:bg-stone-100"}`}
+          className={`px-2.5 py-1 text-xs rounded-md transition-colors ${statusFilter === "all" ? "bg-elevated text-white" : "text-secondary hover:bg-surface-muted"}`}
         >Все</button>
         {(statuses ?? []).map((s) => (
           <button
             key={s.id}
             onClick={() => setStatusFilter(s.id)}
-            className={`px-2.5 py-1 text-xs rounded-md transition-colors ${statusFilter === s.id ? "bg-stone-900 text-white" : "text-stone-600 hover:bg-stone-100"}`}
+            className={`px-2.5 py-1 text-xs rounded-md transition-colors ${statusFilter === s.id ? "bg-elevated text-white" : "text-secondary hover:bg-surface-muted"}`}
           >{s.nazvanie}</button>
         ))}
 
-        <div className="ml-auto text-xs text-stone-500 tabular-nums">
+        <div className="ml-auto text-xs text-muted tabular-nums">
           {filtered.length} из {data?.length ?? 0}
         </div>
       </div>
@@ -321,7 +321,7 @@ function ColorsView({ onOpen }: { onOpen: (code: string) => void }) {
           />
         )}
         {filtered.length === 0 && (
-          <div className="py-8 text-center text-sm text-stone-400 italic">Ничего не найдено</div>
+          <div className="py-8 text-center text-sm text-label italic">Ничего не найдено</div>
         )}
       </div>
 

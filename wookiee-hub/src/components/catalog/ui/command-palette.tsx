@@ -134,39 +134,39 @@ export function CommandPalette({ open, onClose, onPick, searchFn }: CommandPalet
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-stone-900/40 flex items-start justify-center pt-[10vh]"
+      className="fixed inset-0 z-50 bg-[var(--color-text-primary)]/40 flex items-start justify-center pt-[10vh]"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-xl bg-white rounded-xl shadow-2xl overflow-hidden border border-stone-200"
+        className="w-full max-w-xl bg-elevated rounded-xl shadow-2xl overflow-hidden border border-default"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-stone-200">
-          <Search className="w-4 h-4 text-stone-400 shrink-0" />
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-default">
+          <Search className="w-4 h-4 text-label shrink-0" />
           <input
             autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Найти модель, цвет, баркод, артикул…"
-            className="flex-1 outline-none text-sm placeholder:text-stone-400 bg-transparent"
+            className="flex-1 outline-none text-sm placeholder:text-label bg-transparent text-primary"
           />
-          <kbd className="text-[10px] text-stone-400 border border-stone-300 rounded px-1 py-0.5">
+          <kbd className="text-[10px] text-label border border-strong rounded px-1 py-0.5">
             esc
           </kbd>
         </div>
         <div className="max-h-96 overflow-y-auto">
           {!query && (
-            <div className="p-6 text-center text-sm text-stone-400">Начните печатать</div>
+            <div className="p-6 text-center text-sm text-label">Начните печатать</div>
           )}
           {query && loading && (
-            <div className="p-6 text-center text-sm text-stone-400">Поиск…</div>
+            <div className="p-6 text-center text-sm text-label">Поиск…</div>
           )}
           {query && !loading && results.length === 0 && (
-            <div className="p-6 text-center text-sm text-stone-400">Ничего не найдено</div>
+            <div className="p-6 text-center text-sm text-label">Ничего не найдено</div>
           )}
           {grouped.map((group) => (
             <div key={group.category}>
-              <div className="px-4 pt-2 pb-1 text-[10px] uppercase tracking-wider text-stone-400 font-medium bg-stone-50/50">
+              <div className="px-4 pt-2 pb-1 text-[10px] uppercase tracking-wider text-label font-medium bg-surface-muted">
                 {group.category}
               </div>
               {group.items.map((r) => (
@@ -175,18 +175,18 @@ export function CommandPalette({ open, onClose, onPick, searchFn }: CommandPalet
                   key={`${group.category}-${r.id}`}
                   onClick={() => handlePick(r)}
                   className={cn(
-                    "w-full px-4 py-2.5 hover:bg-stone-50 flex items-center gap-3 text-left",
-                    "border-b border-stone-100 last:border-0",
+                    "w-full px-4 py-2.5 hover:bg-surface-muted flex items-center gap-3 text-left",
+                    "border-b border-subtle last:border-0",
                   )}
                 >
                   {r.hex && <ColorSwatch hex={r.hex} />}
-                  <span className="font-medium text-stone-900 text-sm font-mono shrink-0">
+                  <span className="font-medium text-primary text-sm font-mono shrink-0">
                     {r.label}
                   </span>
                   {r.sub && (
-                    <span className="text-xs text-stone-500 truncate">{r.sub}</span>
+                    <span className="text-xs text-muted truncate">{r.sub}</span>
                   )}
-                  <ChevronRight className="w-3.5 h-3.5 text-stone-300 ml-auto shrink-0" />
+                  <ChevronRight className="w-3.5 h-3.5 text-label ml-auto shrink-0" />
                 </button>
               ))}
             </div>

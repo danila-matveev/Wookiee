@@ -92,53 +92,53 @@ export function ImporteryPage() {
       label: "Short Name",
       render: (r) =>
         r.short_name ? (
-          <span className="text-stone-900 font-medium text-xs">{r.short_name}</span>
+          <span className="text-primary font-medium text-xs">{r.short_name}</span>
         ) : (
-          <span className="text-stone-400">—</span>
+          <span className="text-label">—</span>
         ),
     },
     { key: "nazvanie", label: "Полное название" },
     {
       key: "inn",
       label: "ИНН",
-      render: (r) => <span className="text-stone-700 font-mono text-xs">{formatNumeric(r.inn)}</span>,
+      render: (r) => <span className="text-secondary font-mono text-xs">{formatNumeric(r.inn)}</span>,
     },
     {
       key: "kpp",
       label: "КПП",
-      render: (r) => <span className="text-stone-700 font-mono text-xs">{formatNumeric(r.kpp)}</span>,
+      render: (r) => <span className="text-secondary font-mono text-xs">{formatNumeric(r.kpp)}</span>,
     },
     {
       key: "ogrn",
       label: "ОГРН",
-      render: (r) => <span className="text-stone-700 font-mono text-xs">{formatNumeric(r.ogrn)}</span>,
+      render: (r) => <span className="text-secondary font-mono text-xs">{formatNumeric(r.ogrn)}</span>,
     },
     {
       key: "bank",
       label: "Банк",
       render: (r) =>
         r.bank ? (
-          <span className="text-stone-600 text-xs" title={r.bank}>
+          <span className="text-secondary text-xs" title={r.bank}>
             {r.bank.length > 24 ? `${r.bank.slice(0, 24)}…` : r.bank}
           </span>
         ) : (
-          <span className="text-stone-400">—</span>
+          <span className="text-label">—</span>
         ),
     },
     {
       key: "rs",
       label: "Р/С",
-      render: (r) => <span className="text-stone-600 font-mono text-xs">{r.rs ?? "—"}</span>,
+      render: (r) => <span className="text-secondary font-mono text-xs">{r.rs ?? "—"}</span>,
     },
     {
       key: "kontakt",
       label: "Контакт",
-      render: (r) => <span className="text-stone-600 text-xs">{r.kontakt ?? "—"}</span>,
+      render: (r) => <span className="text-secondary text-xs">{r.kontakt ?? "—"}</span>,
     },
     {
       key: "telefon",
       label: "Телефон",
-      render: (r) => <span className="text-stone-600 font-mono text-xs">{r.telefon ?? "—"}</span>,
+      render: (r) => <span className="text-secondary font-mono text-xs">{r.telefon ?? "—"}</span>,
     },
     {
       key: "actions",

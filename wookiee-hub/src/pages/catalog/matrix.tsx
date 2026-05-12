@@ -12,14 +12,14 @@ import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
 const RAZMER_LADDER = ["XS", "S", "M", "L", "XL", "XXL"] as const
 // ─── Shared helpers ────────────────────────────────────────────────────────
 function ColorSwatch({ colorCode, size = 16 }: { colorCode: string | null; size?: number }) {
-  if (!colorCode) return <div className="rounded-full bg-stone-200" style={{ width: size, height: size }} />
-  return <div className="rounded-full ring-1 ring-stone-200 shrink-0" style={{ width: size, height: size, background: swatchColor(colorCode) }} />
+  if (!colorCode) return <div className="rounded-full bg-[var(--color-border-default)]" style={{ width: size, height: size }} />
+  return <div className="rounded-full ring-1 ring-[var(--color-border-default)] shrink-0" style={{ width: size, height: size, background: swatchColor(colorCode) }} />
 }
 function SearchBox({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
   return (
     <div className="relative">
-      <Search className="w-3.5 h-3.5 text-stone-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-      <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="pl-8 pr-3 py-1.5 text-sm border border-stone-200 rounded-md bg-white outline-none focus:border-stone-400 w-72" />
+      <Search className="w-3.5 h-3.5 text-label absolute left-2.5 top-1/2 -translate-y-1/2" />
+      <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="pl-8 pr-3 py-1.5 text-sm border border-default rounded-md bg-surface outline-none focus:border-[var(--color-border-strong)] w-72" />
     </div>
   )
 }
@@ -35,17 +35,17 @@ function FilterChips<T extends ChipValue>({ title, items, selected, onChange, cl
   if (items.length === 0) return null
   return (
     <div className={`flex items-center gap-1.5 ${className} flex-wrap`}>
-      <span className="text-[10px] uppercase tracking-wider text-stone-400 mr-1">{title}</span>
+      <span className="text-[10px] uppercase tracking-wider text-label mr-1">{title}</span>
       {items.map((item) => {
         const active = selected.has(item.value)
         return (
-          <button key={item.key} onClick={() => onChange(toggleSet(selected, item.value))} className={`px-2.5 py-1 text-xs rounded-md transition-colors ${item.count == null ? "" : "flex items-center gap-1.5"} ${active ? "bg-stone-900 text-white" : "text-stone-600 hover:bg-stone-100 border border-stone-200"}`}>
+          <button key={item.key} onClick={() => onChange(toggleSet(selected, item.value))} className={`px-2.5 py-1 text-xs rounded-md transition-colors ${item.count == null ? "" : "flex items-center gap-1.5"} ${active ? "bg-elevated text-white" : "text-secondary hover:bg-surface-muted border border-default"}`}>
             <span>{item.label}</span>
-            {item.count != null && <span className={`text-[10px] tabular-nums ${active ? "text-stone-300" : "text-stone-400"}`}>{item.count}</span>}
+            {item.count != null && <span className={`text-[10px] tabular-nums ${active ? "text-label" : "text-label"}`}>{item.count}</span>}
           </button>
         )
       })}
-      {selected.size > 0 && <button onClick={() => onChange(new Set())} className="text-[11px] text-stone-500 hover:text-stone-800 underline ml-1">сбросить</button>}
+      {selected.size > 0 && <button onClick={() => onChange(new Set())} className="text-[11px] text-muted hover:text-primary underline ml-1">сбросить</button>}
     </div>
   )
 }
@@ -201,15 +201,15 @@ function ModeliOsnovaTable({ rows, kategorii, kollekcii, modelStatuses, onOpen }
         {/* Filter bar */}
         <div className="flex items-center gap-2 mb-3 flex-wrap">
           <SearchBox value={search} onChange={setSearch} placeholder="Код, название, артикул вариации…" />
-          <button onClick={() => setIncompleteOnly(!incompleteOnly)} className={`px-2.5 py-1 text-xs rounded-md flex items-center gap-1.5 transition-colors ${incompleteOnly ? "bg-amber-100 text-amber-800" : "text-stone-600 hover:bg-stone-100"}`}>
+          <button onClick={() => setIncompleteOnly(!incompleteOnly)} className={`px-2.5 py-1 text-xs rounded-md flex items-center gap-1.5 transition-colors ${incompleteOnly ? "bg-amber-100 text-amber-800" : "text-secondary hover:bg-surface-muted"}`}>
             <AlertCircle className="w-3 h-3" /> Незаполненные
           </button>
           <div className="ml-auto flex items-center gap-2">
-            <label className="text-[11px] uppercase tracking-wider text-stone-500">Группировка:</label>
-            <select value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)} className="px-2.5 py-1 text-xs border border-stone-200 rounded-md bg-white outline-none">
+            <label className="text-[11px] uppercase tracking-wider text-muted">Группировка:</label>
+            <select value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)} className="px-2.5 py-1 text-xs border border-default rounded-md bg-surface outline-none">
               {GROUP_BY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
-            <span className="text-xs text-stone-500 tabular-nums">{filtered.length} из {rows.length}</span>
+            <span className="text-xs text-muted tabular-nums">{filtered.length} из {rows.length}</span>
           </div>
         </div>
         {/* Category chips */}
@@ -219,12 +219,12 @@ function ModeliOsnovaTable({ rows, kategorii, kollekcii, modelStatuses, onOpen }
         {/* Status chips with counts */}
         <FilterChips title="Статусы:" items={modelStatuses.map((s) => ({ key: String(s.id), value: s.id, label: s.nazvanie, count: statusCounts.get(s.id) ?? 0 }))} selected={selectedStatusIds} onChange={setSelectedStatusIds} className="mb-3" />
         {/* Table */}
-        <div className="bg-white rounded-lg border border-stone-200 overflow-x-auto">
+        <div className="bg-surface rounded-lg border border-default overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-stone-50/80 border-b border-stone-200">
-              <tr className="text-left text-[11px] uppercase tracking-wider text-stone-500">
+            <thead className="bg-page/80 border-b border-default">
+              <tr className="text-left text-[11px] uppercase tracking-wider text-muted">
                 <th className="w-8 px-2 py-2.5" />
-                <th className="w-10 px-3 py-2.5"><input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAllVisible} style={{ accentColor: "#1C1917" }} className="rounded border-stone-300" aria-label="Выбрать все" /></th>
+                <th className="w-10 px-3 py-2.5"><input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAllVisible} style={{ accentColor: "#1C1917" }} className="rounded border-strong" aria-label="Выбрать все" /></th>
                 {MODEL_COLUMNS.map(([label, cls]) => <th key={label} className={`px-3 py-2.5 font-medium ${cls ?? ""}`}>{label}</th>)}
                 <th className="w-10 px-2 py-2.5" />
               </tr>
@@ -233,8 +233,8 @@ function ModeliOsnovaTable({ rows, kategorii, kollekcii, modelStatuses, onOpen }
               {grouped.map((group) => (
                 <Fragment key={`group-${group.key}`}>
                   {groupBy !== "none" && (
-                    <tr className="bg-stone-100/60 border-b border-stone-200">
-                      <td colSpan={13} className="px-3 py-2"><div className="flex items-center gap-2"><span className="text-sm font-medium text-stone-800">{group.label}</span><span className="text-xs text-stone-500 tabular-nums">· {group.items.length}</span></div></td>
+                    <tr className="bg-surface-muted/60 border-b border-default">
+                      <td colSpan={13} className="px-3 py-2"><div className="flex items-center gap-2"><span className="text-sm font-medium text-primary">{group.label}</span><span className="text-xs text-muted tabular-nums">· {group.items.length}</span></div></td>
                     </tr>
                   )}
                   {group.items.map((m) => {
@@ -249,56 +249,56 @@ function ModeliOsnovaTable({ rows, kategorii, kollekcii, modelStatuses, onOpen }
                     }
                     return (
                       <Fragment key={`${m.kod}-row`}>
-                        <tr className="border-b border-stone-100 hover:bg-stone-50/60 group">
+                        <tr className="border-b border-subtle hover:bg-page/60 group">
                           <td className="px-2 py-3">
                             {canExpand ? (
-                              <button onClick={() => toggleExpand(m.id)} className="p-0.5 hover:bg-stone-200 rounded" aria-label={isExpanded ? "Свернуть вариации" : "Развернуть вариации"}>
-                                {isExpanded ? <ChevronDown className="w-3.5 h-3.5 text-stone-500" /> : <ChevronRight className="w-3.5 h-3.5 text-stone-500" />}
+                              <button onClick={() => toggleExpand(m.id)} className="p-0.5 hover:bg-surface-muted rounded" aria-label={isExpanded ? "Свернуть вариации" : "Развернуть вариации"}>
+                                {isExpanded ? <ChevronDown className="w-3.5 h-3.5 text-muted" /> : <ChevronRight className="w-3.5 h-3.5 text-muted" />}
                               </button>
                             ) : (
-                              <Tooltip text={m.modeli.length === 1 ? "У модели одна вариация — раскрытие не требуется" : "Нет вариаций"}><span className="text-stone-300 text-xs">·</span></Tooltip>
+                              <Tooltip text={m.modeli.length === 1 ? "У модели одна вариация — раскрытие не требуется" : "Нет вариаций"}><span className="text-label text-xs">·</span></Tooltip>
                             )}
                           </td>
-                          <td className="px-3 py-3"><input type="checkbox" checked={checked} onChange={() => toggleSelect(m.kod)} onClick={(e) => e.stopPropagation()} style={{ accentColor: "#1C1917" }} className="rounded border-stone-300" aria-label={`Выбрать ${m.kod}`} /></td>
+                          <td className="px-3 py-3"><input type="checkbox" checked={checked} onChange={() => toggleSelect(m.kod)} onClick={(e) => e.stopPropagation()} style={{ accentColor: "#1C1917" }} className="rounded border-strong" aria-label={`Выбрать ${m.kod}`} /></td>
                           <td className="px-3 py-3 cursor-pointer" onClick={() => onOpen(m.kod)}>
-                            <div className="font-medium text-stone-900 hover:underline font-mono">{m.kod}</div>
-                            <div className="text-xs text-stone-500 truncate max-w-[220px]">{m.nazvanie_sayt || <span className="italic text-stone-400">без названия</span>}</div>
+                            <div className="font-medium text-primary hover:underline font-mono">{m.kod}</div>
+                            <div className="text-xs text-muted truncate max-w-[220px]">{m.nazvanie_sayt || <span className="italic text-label">без названия</span>}</div>
                           </td>
-                          <td className="px-3 py-3 text-stone-700">{m.kategoriya ?? "—"}</td>
-                          <td className="px-3 py-3"><div className="text-stone-700">{m.kollekciya ?? "—"}</div><div className="text-[11px] text-stone-400">{m.tip_kollekcii ?? ""}</div></td>
-                          <td className="px-3 py-3 text-stone-700">{m.fabrika ?? "—"}</td>
+                          <td className="px-3 py-3 text-secondary">{m.kategoriya ?? "—"}</td>
+                          <td className="px-3 py-3"><div className="text-secondary">{m.kollekciya ?? "—"}</div><div className="text-[11px] text-label">{m.tip_kollekcii ?? ""}</div></td>
+                          <td className="px-3 py-3 text-secondary">{m.fabrika ?? "—"}</td>
                           <td className="px-3 py-3"><StatusBadge statusId={m.status_id ?? 0} /></td>
-                          <td className="px-3 py-3"><div className="flex items-center gap-0.5">{RAZMER_LADDER.map((sz) => <span key={sz} className={`text-[10px] px-1 py-0.5 rounded ${variantSizes.has(sz) ? "bg-stone-900 text-white" : "bg-stone-50 text-stone-300 ring-1 ring-inset ring-stone-200"}`}>{sz}</span>)}</div></td>
+                          <td className="px-3 py-3"><div className="flex items-center gap-0.5">{RAZMER_LADDER.map((sz) => <span key={sz} className={`text-[10px] px-1 py-0.5 rounded ${variantSizes.has(sz) ? "bg-elevated text-white" : "bg-page text-label ring-1 ring-inset ring-[var(--color-border-default)]"}`}>{sz}</span>)}</div></td>
                           <td className="px-3 py-3"><ColorChips modelKod={m.kod} count={m.cveta_cnt} /></td>
                           <td className="px-3 py-3"><CompletenessRing value={m.completeness} size={16} hideLabel /></td>
-                          <td className="px-3 py-3 text-right tabular-nums text-stone-600"><span className="text-stone-900 font-medium">{m.cveta_cnt}</span><span className="text-stone-300 mx-1">/</span><span>{m.artikuly_cnt}</span><span className="text-stone-300 mx-1">/</span><span>{m.tovary_cnt}</span></td>
-                          <td className="px-3 py-3 text-stone-500 text-xs">{relativeDate(m.updated_at)}</td>
+                          <td className="px-3 py-3 text-right tabular-nums text-secondary"><span className="text-primary font-medium">{m.cveta_cnt}</span><span className="text-label mx-1">/</span><span>{m.artikuly_cnt}</span><span className="text-label mx-1">/</span><span>{m.tovary_cnt}</span></td>
+                          <td className="px-3 py-3 text-muted text-xs">{relativeDate(m.updated_at)}</td>
                           <td className="px-2 py-3 relative">
-                            <button className="p-1 hover:bg-stone-100 rounded opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => { e.stopPropagation(); setOpenMenuKod((cur) => (cur === m.kod ? null : m.kod)) }} aria-label="Действия">
-                              <MoreHorizontal className="w-3.5 h-3.5 text-stone-500" />
+                            <button className="p-1 hover:bg-surface-muted rounded opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => { e.stopPropagation(); setOpenMenuKod((cur) => (cur === m.kod ? null : m.kod)) }} aria-label="Действия">
+                              <MoreHorizontal className="w-3.5 h-3.5 text-muted" />
                             </button>
                             {openMenuKod === m.kod && (
-                              <div className="absolute right-2 top-9 z-20 w-40 bg-white border border-stone-200 rounded-md shadow-lg py-1" onClick={(e) => e.stopPropagation()}>
-                                <button onClick={() => { setOpenMenuKod(null); onOpen(m.kod) }} className="w-full text-left px-3 py-1.5 text-xs hover:bg-stone-50 flex items-center gap-2"><Edit3 className="w-3 h-3" /> Редактировать</button>
-                                <button onClick={() => { setOpenMenuKod(null); handleRowDuplicate(m.kod) }} className="w-full text-left px-3 py-1.5 text-xs hover:bg-stone-50 flex items-center gap-2"><Copy className="w-3 h-3" /> Дублировать</button>
-                                <button onClick={() => { setOpenMenuKod(null); handleRowArchive(m.kod) }} className="w-full text-left px-3 py-1.5 text-xs hover:bg-stone-50 text-red-600 flex items-center gap-2"><Archive className="w-3 h-3" /> Архивировать</button>
+                              <div className="absolute right-2 top-9 z-20 w-40 bg-surface border border-default rounded-md shadow-lg py-1" onClick={(e) => e.stopPropagation()}>
+                                <button onClick={() => { setOpenMenuKod(null); onOpen(m.kod) }} className="w-full text-left px-3 py-1.5 text-xs hover:bg-page flex items-center gap-2"><Edit3 className="w-3 h-3" /> Редактировать</button>
+                                <button onClick={() => { setOpenMenuKod(null); handleRowDuplicate(m.kod) }} className="w-full text-left px-3 py-1.5 text-xs hover:bg-page flex items-center gap-2"><Copy className="w-3 h-3" /> Дублировать</button>
+                                <button onClick={() => { setOpenMenuKod(null); handleRowArchive(m.kod) }} className="w-full text-left px-3 py-1.5 text-xs hover:bg-page text-red-600 flex items-center gap-2"><Archive className="w-3 h-3" /> Архивировать</button>
                               </div>
                             )}
                           </td>
                         </tr>
                         {isExpanded && m.modeli.map((v) => (
-                          <tr key={`v-${v.id}`} className="bg-stone-50/40 border-b border-stone-100 text-xs">
+                          <tr key={`v-${v.id}`} className="bg-page/40 border-b border-subtle text-xs">
                             <td colSpan={2} />
-                            <td className="pl-3 py-2 pr-3"><div className="flex items-center gap-2"><div className="w-4 h-px bg-stone-300" /><span className="font-medium text-stone-800 font-mono">{v.kod}</span></div><div className="text-[11px] text-stone-500 ml-6 mt-0.5 truncate max-w-[200px]">{v.nazvanie}</div></td>
-                            <td className="px-3 py-2 text-stone-400">—</td>
-                            <td className="px-3 py-2"><div className="flex items-center gap-1 text-stone-500"><Building2 className="w-3 h-3 text-stone-400" />{v.importer_short ?? "—"}</div></td>
-                            <td className="px-3 py-2 font-mono text-[11px] text-stone-500">{v.artikul_modeli ?? "—"}</td>
+                            <td className="pl-3 py-2 pr-3"><div className="flex items-center gap-2"><div className="w-4 h-px bg-[var(--color-border-strong)]" /><span className="font-medium text-primary font-mono">{v.kod}</span></div><div className="text-[11px] text-muted ml-6 mt-0.5 truncate max-w-[200px]">{v.nazvanie}</div></td>
+                            <td className="px-3 py-2 text-label">—</td>
+                            <td className="px-3 py-2"><div className="flex items-center gap-1 text-muted"><Building2 className="w-3 h-3 text-label" />{v.importer_short ?? "—"}</div></td>
+                            <td className="px-3 py-2 font-mono text-[11px] text-muted">{v.artikul_modeli ?? "—"}</td>
                             <td className="px-3 py-2"><StatusBadge statusId={v.status_id ?? 0} compact /></td>
-                            <td className="px-3 py-2 text-stone-400 text-[10px]">RU: {v.rossiyskiy_razmer ?? "—"}</td>
+                            <td className="px-3 py-2 text-label text-[10px]">RU: {v.rossiyskiy_razmer ?? "—"}</td>
                             <td />
                             <td />
-                            <td className="px-3 py-2 text-right tabular-nums text-stone-600"><span className="text-stone-300">—</span><span className="text-stone-300 mx-1">/</span><span className="text-stone-700 font-medium">{v.artikuly_cnt}</span><span className="text-stone-300 mx-1">/</span><span>{v.tovary_cnt}</span></td>
-                            <td className="px-3 py-2 text-stone-400">—</td>
+                            <td className="px-3 py-2 text-right tabular-nums text-secondary"><span className="text-label">—</span><span className="text-label mx-1">/</span><span className="text-secondary font-medium">{v.artikuly_cnt}</span><span className="text-label mx-1">/</span><span>{v.tovary_cnt}</span></td>
+                            <td className="px-3 py-2 text-label">—</td>
                             <td />
                           </tr>
                         ))}
@@ -310,7 +310,7 @@ function ModeliOsnovaTable({ rows, kategorii, kollekcii, modelStatuses, onOpen }
             </tbody>
           </table>
         </div>
-        <div className="mt-3 text-xs text-stone-500 flex items-center gap-2"><Info className="w-3.5 h-3.5 shrink-0" /><span>Стрелка ▶ раскрывает вариации. Клик по коду — карточка модели.</span></div>
+        <div className="mt-3 text-xs text-muted flex items-center gap-2"><Info className="w-3.5 h-3.5 shrink-0" /><span>Стрелка ▶ раскрывает вариации. Клик по коду — карточка модели.</span></div>
       </div>
       {selectedKods.size > 0 && (
         <BulkBar
@@ -335,25 +335,25 @@ function ModeliOsnovaTable({ rows, kategorii, kollekcii, modelStatuses, onOpen }
  */
 function BulkBar({ selectedCount, modelStatuses, bulkStatusOpen, onToggleBulkStatus, onPickStatus, onDuplicate, onExport, onArchive, onClear }: { selectedCount: number; modelStatuses: StatusOption[]; bulkStatusOpen: boolean; onToggleBulkStatus: () => void; onPickStatus: (id: number) => void; onDuplicate: () => void; onExport: () => void; onArchive: () => void; onClear: () => void }) {
   return (
-    <div className="catalog-scope fixed bottom-0 left-0 right-0 z-40 border-t border-stone-200 bg-white px-6 py-3 flex items-center gap-3 shrink-0 shadow-[0_-4px_16px_-8px_rgba(0,0,0,0.08)]" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-default bg-surface px-6 py-3 flex items-center gap-3 shrink-0 shadow-[0_-4px_16px_-8px_rgba(0,0,0,0.08)]" onClick={(e) => e.stopPropagation()}>
       <span className="text-sm">Выбрано: <span className="font-medium tabular-nums">{selectedCount}</span></span>
-      <div className="h-5 w-px bg-stone-200" />
+      <div className="h-5 w-px bg-[var(--color-border-default)]" />
       <div className="relative">
-        <button type="button" onClick={onToggleBulkStatus} className="px-3 py-1 text-xs text-stone-700 hover:bg-stone-100 rounded-md flex items-center gap-1.5">Изменить статус<ChevronDown className="w-3 h-3" /></button>
+        <button type="button" onClick={onToggleBulkStatus} className="px-3 py-1 text-xs text-secondary hover:bg-surface-muted rounded-md flex items-center gap-1.5">Изменить статус<ChevronDown className="w-3 h-3" /></button>
         {bulkStatusOpen && (
-          <div className="absolute bottom-9 left-0 z-50 w-48 bg-white border border-stone-200 rounded-md shadow-lg py-1">
+          <div className="absolute bottom-9 left-0 z-50 w-48 bg-surface border border-default rounded-md shadow-lg py-1">
             {modelStatuses.map((s) => (
-              <button key={s.id} type="button" onClick={() => onPickStatus(s.id)} className="w-full text-left px-3 py-1.5 text-xs hover:bg-stone-50 flex items-center gap-2">
+              <button key={s.id} type="button" onClick={() => onPickStatus(s.id)} className="w-full text-left px-3 py-1.5 text-xs hover:bg-page flex items-center gap-2">
                 <StatusBadge status={{ nazvanie: s.nazvanie, color: s.color }} compact size="sm" />
               </button>
             ))}
           </div>
         )}
       </div>
-      <button type="button" onClick={onDuplicate} className="px-3 py-1 text-xs text-stone-700 hover:bg-stone-100 rounded-md flex items-center gap-1.5"><Copy className="w-3 h-3" /> Дублировать</button>
-      <button type="button" onClick={onExport} className="px-3 py-1 text-xs text-stone-700 hover:bg-stone-100 rounded-md flex items-center gap-1.5"><Download className="w-3 h-3" /> Экспорт выбранного</button>
+      <button type="button" onClick={onDuplicate} className="px-3 py-1 text-xs text-secondary hover:bg-surface-muted rounded-md flex items-center gap-1.5"><Copy className="w-3 h-3" /> Дублировать</button>
+      <button type="button" onClick={onExport} className="px-3 py-1 text-xs text-secondary hover:bg-surface-muted rounded-md flex items-center gap-1.5"><Download className="w-3 h-3" /> Экспорт выбранного</button>
       <button type="button" onClick={onArchive} className="px-3 py-1 text-xs text-red-600 hover:bg-red-50 rounded-md flex items-center gap-1.5"><Archive className="w-3 h-3" /> Архивировать</button>
-      <button type="button" onClick={onClear} className="ml-auto px-3 py-1 text-xs text-stone-500 hover:bg-stone-100 rounded-md">Очистить</button>
+      <button type="button" onClick={onClear} className="ml-auto px-3 py-1 text-xs text-muted hover:bg-surface-muted rounded-md">Очистить</button>
     </div>
   )
 }
@@ -364,12 +364,12 @@ function BulkBar({ selectedCount, modelStatuses, bulkStatusOpen, onToggleBulkSta
  * пользователь увидит реальные цвета.
  */
 function ColorChips({ modelKod, count }: { modelKod: string; count: number }) {
-  if (count === 0) return <span className="text-stone-300 text-xs">—</span>
+  if (count === 0) return <span className="text-label text-xs">—</span>
   const visible = Math.min(count, 6)
   return (
     <div className="flex items-center gap-0.5">
-      {Array.from({ length: visible }).map((_, i) => <span key={i} className="rounded-full ring-1 ring-stone-200" style={{ width: 12, height: 12, background: swatchColor(`${modelKod}#${i}`) }} />)}
-      {count > 6 && <span className="text-[10px] text-stone-400 ml-1 tabular-nums">+{count - 6}</span>}
+      {Array.from({ length: visible }).map((_, i) => <span key={i} className="rounded-full ring-1 ring-[var(--color-border-default)]" style={{ width: 12, height: 12, background: swatchColor(`${modelKod}#${i}`) }} />)}
+      {count > 6 && <span className="text-[10px] text-label ml-1 tabular-nums">+{count - 6}</span>}
     </div>
   )
 }
@@ -382,29 +382,29 @@ function ArtikulyTable() {
     const q = search.trim().toLowerCase()
     return q ? data.filter((a) => a.artikul.toLowerCase().includes(q) || (a.model_osnova_kod ?? "").toLowerCase().includes(q) || (a.cvet_color_code ?? "").toLowerCase().includes(q)) : data
   }, [data, search])
-  if (isLoading) return <div className="px-6 py-8 text-sm text-stone-400">Загрузка…</div>
+  if (isLoading) return <div className="px-6 py-8 text-sm text-label">Загрузка…</div>
   return (
     <div className="px-6 py-4 max-w-[1600px] mx-auto">
       <RegistryTop search={search} setSearch={setSearch} placeholder="Артикул, модель, цвет…" count={filtered.length} total={data?.length ?? 0} />
-      <div className="bg-white rounded-lg border border-stone-200 overflow-x-auto">
+      <div className="bg-surface rounded-lg border border-default overflow-x-auto">
         <table className="w-full text-sm">
           <RegistryHead labels={["Артикул", "Модель", "Вариация", "Цвет", "Статус", "WB номенкл.", "OZON", "SKU"]} rightLabel="SKU" />
           <tbody>
             {filtered.slice(0, 100).map((a) => (
-              <tr key={a.id} className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60">
-                <td className="px-3 py-2.5 font-mono text-xs text-stone-900">{a.artikul}</td>
-                <td className="px-3 py-2.5 font-medium text-stone-900 font-mono text-xs">{a.model_osnova_kod ?? "—"}</td>
-                <td className="px-3 py-2.5 font-mono text-xs text-stone-600">{a.model_kod ?? "—"}</td>
-                <td className="px-3 py-2.5"><div className="flex items-center gap-1.5"><ColorSwatch colorCode={a.cvet_color_code} size={14} /><span className="font-mono text-xs text-stone-700">{a.cvet_color_code ?? "—"}</span><span className="text-stone-500 text-xs">{a.cvet_nazvanie}</span></div></td>
+              <tr key={a.id} className="border-b border-subtle last:border-0 hover:bg-page/60">
+                <td className="px-3 py-2.5 font-mono text-xs text-primary">{a.artikul}</td>
+                <td className="px-3 py-2.5 font-medium text-primary font-mono text-xs">{a.model_osnova_kod ?? "—"}</td>
+                <td className="px-3 py-2.5 font-mono text-xs text-secondary">{a.model_kod ?? "—"}</td>
+                <td className="px-3 py-2.5"><div className="flex items-center gap-1.5"><ColorSwatch colorCode={a.cvet_color_code} size={14} /><span className="font-mono text-xs text-secondary">{a.cvet_color_code ?? "—"}</span><span className="text-muted text-xs">{a.cvet_nazvanie}</span></div></td>
                 <td className="px-3 py-2.5"><StatusBadge statusId={a.status_id ?? 0} compact /></td>
-                <td className="px-3 py-2.5 font-mono text-[11px] text-stone-500 tabular-nums">{a.nomenklatura_wb ?? "—"}</td>
-                <td className="px-3 py-2.5 font-mono text-[11px] text-stone-500">{a.artikul_ozon ?? "—"}</td>
-                <td className="px-3 py-2.5 text-right tabular-nums text-stone-700">{a.tovary_cnt}</td>
+                <td className="px-3 py-2.5 font-mono text-[11px] text-muted tabular-nums">{a.nomenklatura_wb ?? "—"}</td>
+                <td className="px-3 py-2.5 font-mono text-[11px] text-muted">{a.artikul_ozon ?? "—"}</td>
+                <td className="px-3 py-2.5 text-right tabular-nums text-secondary">{a.tovary_cnt}</td>
               </tr>
             ))}
           </tbody>
         </table>
-        {filtered.length > 100 && <div className="px-3 py-2 text-xs text-stone-400 border-t border-stone-100">Показаны первые 100 из {filtered.length}.</div>}
+        {filtered.length > 100 && <div className="px-3 py-2 text-xs text-label border-t border-subtle">Показаны первые 100 из {filtered.length}.</div>}
       </div>
     </div>
   )
@@ -432,32 +432,32 @@ function TovaryTable() {
     const q = search.trim().toLowerCase()
     return q ? res.filter((t) => t.barkod.includes(q) || (t.model_osnova_kod ?? "").toLowerCase().includes(q) || (t.artikul ?? "").toLowerCase().includes(q)) : res
   }, [data, channelFilter, statusFilter, search])
-  if (isLoading) return <div className="px-6 py-8 text-sm text-stone-400">Загрузка…</div>
+  if (isLoading) return <div className="px-6 py-8 text-sm text-label">Загрузка…</div>
   return (
     <div className="px-6 py-4 max-w-[1600px] mx-auto">
       {/* Channel tabs */}
       <div className="flex items-center gap-1 mb-3">
-        {CHANNELS.map((c) => <button key={c.id} onClick={() => { setChannelFilter(c.id); resetVisible() }} className={`px-3 py-1.5 text-xs rounded-md transition-colors ${channelFilter === c.id ? "bg-stone-900 text-white" : "text-stone-600 hover:bg-stone-100"}`}>{c.label}</button>)}
-        <div className="h-4 w-px bg-stone-200 mx-1" />
-        <select value={statusFilter === "all" ? "all" : String(statusFilter)} onChange={(e) => { setStatusFilter(e.target.value === "all" ? "all" : Number(e.target.value)); resetVisible() }} className="px-2.5 py-1 text-xs border border-stone-200 rounded-md bg-white outline-none">
+        {CHANNELS.map((c) => <button key={c.id} onClick={() => { setChannelFilter(c.id); resetVisible() }} className={`px-3 py-1.5 text-xs rounded-md transition-colors ${channelFilter === c.id ? "bg-elevated text-white" : "text-secondary hover:bg-surface-muted"}`}>{c.label}</button>)}
+        <div className="h-4 w-px bg-[var(--color-border-default)] mx-1" />
+        <select value={statusFilter === "all" ? "all" : String(statusFilter)} onChange={(e) => { setStatusFilter(e.target.value === "all" ? "all" : Number(e.target.value)); resetVisible() }} className="px-2.5 py-1 text-xs border border-default rounded-md bg-surface outline-none">
           <option value="all">Все статусы</option>
           {productStatuses.map((s) => <option key={s.id} value={s.id}>{s.nazvanie}</option>)}
         </select>
       </div>
       {/* Search + count */}
       <RegistryTop search={search} setSearch={(v) => { setSearch(v); resetVisible() }} placeholder="Баркод, модель, артикул…" count={filtered.length} total={data?.length ?? 0} />
-      <div className="bg-white rounded-lg border border-stone-200 overflow-x-auto">
+      <div className="bg-surface rounded-lg border border-default overflow-x-auto">
         <table className="w-full text-sm">
           <RegistryHead labels={["Баркод", "Модель", "Вариация", "Цвет", "Размер", "WB", "OZON", "Сайт", "Lamoda"]} borderedLabel="WB" />
           <tbody>
             {filtered.slice(0, visibleCount).map((t) => (
-              <tr key={t.id} className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60">
-                <td className="px-3 py-2.5 font-mono text-xs text-stone-700">{t.barkod}</td>
-                <td className="px-3 py-2.5 font-medium text-stone-900 font-mono text-xs">{t.model_osnova_kod ?? "—"}</td>
-                <td className="px-3 py-2.5 font-mono text-xs text-stone-600">{t.model_kod ?? "—"}</td>
+              <tr key={t.id} className="border-b border-subtle last:border-0 hover:bg-page/60">
+                <td className="px-3 py-2.5 font-mono text-xs text-secondary">{t.barkod}</td>
+                <td className="px-3 py-2.5 font-medium text-primary font-mono text-xs">{t.model_osnova_kod ?? "—"}</td>
+                <td className="px-3 py-2.5 font-mono text-xs text-secondary">{t.model_kod ?? "—"}</td>
                 <td className="px-3 py-2.5"><div className="flex items-center gap-1.5"><ColorSwatch colorCode={t.cvet_color_code} size={14} /><span className="font-mono text-xs">{t.cvet_color_code ?? "—"}</span></div></td>
                 <td className="px-3 py-2.5 font-mono text-xs">{t.razmer ?? "—"}</td>
-                <td className="px-3 py-2.5 border-l border-stone-100"><StatusBadge statusId={t.status_id ?? 0} compact /></td>
+                <td className="px-3 py-2.5 border-l border-subtle"><StatusBadge statusId={t.status_id ?? 0} compact /></td>
                 <td className="px-3 py-2.5"><StatusBadge statusId={t.status_ozon_id ?? 0} compact /></td>
                 <td className="px-3 py-2.5"><StatusBadge statusId={t.status_sayt_id ?? 0} compact /></td>
                 <td className="px-3 py-2.5"><StatusBadge statusId={t.status_lamoda_id ?? 0} compact /></td>
@@ -466,9 +466,9 @@ function TovaryTable() {
           </tbody>
         </table>
         {filtered.length > visibleCount && (
-          <div className="px-3 py-3 border-t border-stone-100 flex items-center justify-between">
-            <span className="text-xs text-stone-400">Показано {visibleCount} из {filtered.length}</span>
-            <button onClick={() => setVisibleCount((v) => v + 100)} className="text-xs text-stone-700 hover:text-stone-900 px-3 py-1 hover:bg-stone-100 rounded-md transition-colors">Показать ещё 100</button>
+          <div className="px-3 py-3 border-t border-subtle flex items-center justify-between">
+            <span className="text-xs text-label">Показано {visibleCount} из {filtered.length}</span>
+            <button onClick={() => setVisibleCount((v) => v + 100)} className="text-xs text-secondary hover:text-primary px-3 py-1 hover:bg-surface-muted rounded-md transition-colors">Показать ещё 100</button>
           </div>
         )}
       </div>
@@ -479,16 +479,16 @@ function RegistryTop({ search, setSearch, placeholder, count, total }: { search:
   return (
     <div className="flex items-center gap-2 mb-4">
       <SearchBox value={search} onChange={setSearch} placeholder={placeholder} />
-      <div className="ml-auto text-xs text-stone-500 tabular-nums">{count} из {total}</div>
+      <div className="ml-auto text-xs text-muted tabular-nums">{count} из {total}</div>
     </div>
   )
 }
 function RegistryHead({ labels, rightLabel, borderedLabel }: { labels: string[]; rightLabel?: string; borderedLabel?: string }) {
   return (
-    <thead className="bg-stone-50/80 border-b border-stone-200">
-      <tr className="text-left text-[11px] uppercase tracking-wider text-stone-500">
+    <thead className="bg-page/80 border-b border-default">
+      <tr className="text-left text-[11px] uppercase tracking-wider text-muted">
         {labels.map((label) => (
-          <th key={label} className={`px-3 py-2.5 font-medium ${label === rightLabel ? "text-right" : ""} ${label === borderedLabel ? "border-l border-stone-200" : ""}`}>{label}</th>
+          <th key={label} className={`px-3 py-2.5 font-medium ${label === rightLabel ? "text-right" : ""} ${label === borderedLabel ? "border-l border-default" : ""}`}>{label}</th>
         ))}
       </tr>
     </thead>
@@ -540,30 +540,30 @@ export function MatrixPage() {
       <div className="px-6 pt-6 pb-3 shrink-0">
         <div className="max-w-[1600px] mx-auto flex items-end justify-between gap-4">
           <div>
-            <div className="text-[11px] uppercase tracking-wider text-stone-400 mb-1">Каталог</div>
-            <h1 className="text-3xl text-stone-900 cat-font-serif">Матрица товаров</h1>
-            <div className="text-sm text-stone-500 mt-1">{rows.length} моделей · {totalVariations} вариаций · {totalArts} артикулов · {totalSku} SKU</div>
+            <div className="text-[11px] uppercase tracking-wider text-label mb-1">Каталог</div>
+            <h1 className="text-3xl text-primary font-serif italic">Матрица товаров</h1>
+            <div className="text-sm text-muted mt-1">{rows.length} моделей · {totalVariations} вариаций · {totalArts} артикулов · {totalSku} SKU</div>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => window.alert("Экспорт CSV — TODO Wave 3+")} className="px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-100 rounded-md flex items-center gap-1.5 border border-stone-200"><Download className="w-3.5 h-3.5" /> Экспорт</button>
-            <button onClick={handleNewModel} className="px-3 py-1.5 text-xs text-white bg-stone-900 hover:bg-stone-800 rounded-md flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Новая модель</button>
+            <button onClick={() => window.alert("Экспорт CSV — TODO Wave 3+")} className="px-3 py-1.5 text-xs text-secondary hover:bg-surface-muted rounded-md flex items-center gap-1.5 border border-default"><Download className="w-3.5 h-3.5" /> Экспорт</button>
+            <button onClick={handleNewModel} className="px-3 py-1.5 text-xs text-white bg-elevated hover:bg-surface rounded-md flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Новая модель</button>
           </div>
         </div>
       </div>
       {/* Tabs */}
-      <div className="border-b border-stone-200 px-6 shrink-0">
+      <div className="border-b border-default px-6 shrink-0">
         <div className="max-w-[1600px] mx-auto flex gap-1">
           {listTabs.map((t) => (
-            <button key={t.id} onClick={() => setListTab(t.id)} className={`relative px-3 py-2.5 text-sm transition-colors ${listTab === t.id ? "text-stone-900 font-medium" : "text-stone-500 hover:text-stone-800"}`}>
-              {t.label}<span className="ml-1.5 text-[10px] tabular-nums text-stone-400">{t.count}</span>
-              {listTab === t.id && <span className="absolute bottom-0 left-0 right-0 h-px bg-stone-900" />}
+            <button key={t.id} onClick={() => setListTab(t.id)} className={`relative px-3 py-2.5 text-sm transition-colors ${listTab === t.id ? "text-primary font-medium" : "text-muted hover:text-primary"}`}>
+              {t.label}<span className="ml-1.5 text-[10px] tabular-nums text-label">{t.count}</span>
+              {listTab === t.id && <span className="absolute bottom-0 left-0 right-0 h-px bg-elevated" />}
             </button>
           ))}
         </div>
       </div>
       {/* Content */}
       <div className="flex-1 overflow-auto pb-20">
-        {matrixQ.isLoading && listTab === "modeli_osnova" && <div className="px-6 py-8 text-sm text-stone-400">Загрузка…</div>}
+        {matrixQ.isLoading && listTab === "modeli_osnova" && <div className="px-6 py-8 text-sm text-label">Загрузка…</div>}
         {matrixQ.error && <div className="px-6 py-8 text-sm text-red-500">Ошибка загрузки: {String(matrixQ.error)}</div>}
         {listTab === "modeli_osnova" && !matrixQ.isLoading && !matrixQ.error && (
           <ModeliOsnovaTable rows={rows} kategorii={kategorii} kollekcii={kollekcii} modelStatuses={modelStatuses} onOpen={openModel} />

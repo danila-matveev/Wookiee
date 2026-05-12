@@ -90,28 +90,28 @@ export function RazmeryPage() {
       key: "kod",
       label: "Код",
       render: (r) => (
-        <span className="text-stone-900 font-mono text-xs font-medium">{r.nazvanie}</span>
+        <span className="text-primary font-mono text-xs font-medium">{r.nazvanie}</span>
       ),
     },
     {
       key: "nazvanie",
       label: "Название",
-      render: (r) => <span className="text-stone-700">{r.nazvanie}</span>,
+      render: (r) => <span className="text-secondary">{r.nazvanie}</span>,
     },
     {
       key: "ru",
       label: "RU",
-      render: (r) => <span className="text-stone-600 font-mono text-xs">{r.ru ?? "—"}</span>,
+      render: (r) => <span className="text-secondary font-mono text-xs">{r.ru ?? "—"}</span>,
     },
     {
       key: "eu",
       label: "EU",
-      render: (r) => <span className="text-stone-600 font-mono text-xs">{r.eu ?? "—"}</span>,
+      render: (r) => <span className="text-secondary font-mono text-xs">{r.eu ?? "—"}</span>,
     },
     {
       key: "china",
       label: "China",
-      render: (r) => <span className="text-stone-600 font-mono text-xs">{r.china ?? "—"}</span>,
+      render: (r) => <span className="text-secondary font-mono text-xs">{r.china ?? "—"}</span>,
     },
     {
       key: "poryadok",
@@ -123,7 +123,7 @@ export function RazmeryPage() {
       key: "sku_count",
       label: "SKU",
       render: (r) => (
-        <span className="text-stone-700 tabular-nums font-mono text-xs">
+        <span className="text-secondary tabular-nums font-mono text-xs">
           {counts.data?.[r.id] ?? 0}
         </span>
       ),

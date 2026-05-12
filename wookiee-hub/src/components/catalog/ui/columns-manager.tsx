@@ -122,16 +122,16 @@ export function ColumnsManager({
       <button
         type="button"
         onClick={() => setOpen((p) => !p)}
-        className="px-2.5 py-1 text-xs text-stone-700 hover:bg-stone-100 rounded-md flex items-center gap-1.5 border border-stone-200"
+        className="px-2.5 py-1 text-xs text-secondary hover:bg-surface-muted rounded-md flex items-center gap-1.5 border border-default"
       >
         <Sliders className="w-3 h-3" />
         Колонки
-        <span className="text-stone-400 tabular-nums">({value.length})</span>
+        <span className="text-label tabular-nums">({value.length})</span>
       </button>
       {open && (
-        <div className="absolute top-full right-0 mt-1 w-72 bg-white border border-stone-200 rounded-lg shadow-lg z-30 max-h-96 overflow-y-auto">
-          <div className="p-2 border-b border-stone-100">
-            <div className="text-[10px] uppercase tracking-wider text-stone-400 px-1.5 mb-1.5">
+        <div className="absolute top-full right-0 mt-1 w-72 bg-elevated border border-default rounded-lg shadow-lg z-30 max-h-96 overflow-y-auto">
+          <div className="p-2 border-b border-subtle">
+            <div className="text-[10px] uppercase tracking-wider text-label px-1.5 mb-1.5">
               Активные · перетаскивайте порядок
             </div>
             {orderedActive.map((key, i) => {
@@ -140,36 +140,36 @@ export function ColumnsManager({
               return (
                 <div
                   key={key}
-                  className="flex items-center gap-1.5 px-1.5 py-1 hover:bg-stone-50 rounded"
+                  className="flex items-center gap-1.5 px-1.5 py-1 hover:bg-surface-muted rounded"
                 >
-                  <GripVertical className="w-3 h-3 text-stone-300 shrink-0" />
-                  <Eye className="w-3 h-3 text-emerald-600 shrink-0" />
-                  <span className="text-sm text-stone-700 flex-1 truncate">{col.label}</span>
+                  <GripVertical className="w-3 h-3 text-label shrink-0" />
+                  <Eye className="w-3 h-3 text-success shrink-0" />
+                  <span className="text-sm text-secondary flex-1 truncate">{col.label}</span>
                   <button
                     type="button"
                     onClick={() => move(key, -1)}
                     disabled={i === 0}
-                    className="p-0.5 hover:bg-stone-200 rounded disabled:opacity-30 disabled:cursor-default"
+                    className="p-0.5 hover:bg-surface-muted rounded disabled:opacity-30 disabled:cursor-default"
                     aria-label="Move up"
                   >
-                    <ArrowUp className="w-3 h-3 text-stone-500" />
+                    <ArrowUp className="w-3 h-3 text-muted" />
                   </button>
                   <button
                     type="button"
                     onClick={() => move(key, 1)}
                     disabled={i === orderedActive.length - 1}
-                    className="p-0.5 hover:bg-stone-200 rounded disabled:opacity-30 disabled:cursor-default"
+                    className="p-0.5 hover:bg-surface-muted rounded disabled:opacity-30 disabled:cursor-default"
                     aria-label="Move down"
                   >
-                    <ArrowDown className="w-3 h-3 text-stone-500" />
+                    <ArrowDown className="w-3 h-3 text-muted" />
                   </button>
                   <button
                     type="button"
                     onClick={() => toggle(key)}
-                    className="p-0.5 hover:bg-red-50 rounded"
+                    className="p-0.5 hover:bg-danger-soft rounded"
                     aria-label="Hide column"
                   >
-                    <X className="w-3 h-3 text-stone-400 hover:text-red-600" />
+                    <X className="w-3 h-3 text-label hover:text-danger" />
                   </button>
                 </div>
               )
@@ -177,7 +177,7 @@ export function ColumnsManager({
           </div>
           {inactive.length > 0 && (
             <div className="p-2">
-              <div className="text-[10px] uppercase tracking-wider text-stone-400 px-1.5 mb-1.5">
+              <div className="text-[10px] uppercase tracking-wider text-label px-1.5 mb-1.5">
                 Скрытые
               </div>
               {inactive.map((col) => (
@@ -186,14 +186,14 @@ export function ColumnsManager({
                   key={col.key}
                   onClick={() => toggle(col.key)}
                   className={cn(
-                    "w-full flex items-center gap-1.5 px-1.5 py-1 hover:bg-stone-50 rounded text-left",
+                    "w-full flex items-center gap-1.5 px-1.5 py-1 hover:bg-surface-muted rounded text-left",
                   )}
                 >
                   <div className="w-3 h-3" />
-                  <EyeOff className="w-3 h-3 text-stone-400 shrink-0" />
-                  <span className="text-sm text-stone-500 flex-1 truncate">{col.label}</span>
+                  <EyeOff className="w-3 h-3 text-label shrink-0" />
+                  <span className="text-sm text-muted flex-1 truncate">{col.label}</span>
                   {col.badge && (
-                    <span className="text-[9px] uppercase tracking-wider text-stone-400">
+                    <span className="text-[9px] uppercase tracking-wider text-label">
                       {col.badge}
                     </span>
                   )}

@@ -1,5 +1,6 @@
-// Atomic UI компоненты каталога — соответствие MVP wookiee_matrix_mvp_v4.jsx.
-// Все стили предполагают .catalog-scope wrapper в parent layout.
+// Catalog-local atomic UI — adapters on top of ui-v2 primitives.
+// Public API is preserved; under the hood components route to ui-v2.
+// .catalog-scope wrapper is gone — stone-50 = DS v2 --color-page (light).
 
 export { Tooltip } from "./tooltip"
 export type { TooltipPosition } from "./tooltip"

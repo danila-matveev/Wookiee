@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils"
+import { Badge, type BadgeVariant } from "@/components/ui-v2/primitives"
 
 type StatusColor = "green" | "blue" | "gray" | "amber" | "red" | string
 
@@ -20,25 +21,27 @@ export const CATALOG_STATUSES: Status[] = [
   { id: 7, nazvanie: "Скрыт",      tip: "product", color: "gray"  },
 ]
 
-const COLOR_MAP: Record<string, string> = {
-  green: "bg-emerald-50 text-emerald-700 ring-emerald-600/20",
-  blue:  "bg-blue-50   text-blue-700   ring-blue-600/20",
-  gray:  "bg-stone-100 text-stone-600  ring-stone-500/20",
-  amber: "bg-amber-50  text-amber-700  ring-amber-600/20",
-  red:   "bg-red-50    text-red-700    ring-red-600/20",
+// Maps legacy color names → DS v2 Badge variants
+const COLOR_TO_VARIANT: Record<string, BadgeVariant> = {
+  green: "success",
+  blue:  "info",
+  gray:  "default",
+  amber: "warning",
+  red:   "danger",
 }
 
-const DOT_MAP: Record<string, string> = {
-  green: "bg-emerald-500",
-  blue:  "bg-blue-500",
-  gray:  "bg-stone-400",
-  amber: "bg-amber-500",
-  red:   "bg-red-500",
+// CSS-var refs for dot fill — keeps dots in sync with badge tone.
+const DOT_VAR: Record<string, string> = {
+  green: "bg-[var(--color-success)]",
+  blue:  "bg-[var(--color-info)]",
+  gray:  "bg-[var(--color-text-muted)]",
+  amber: "bg-[var(--color-warning)]",
+  red:   "bg-[var(--color-danger)]",
 }
 
 function resolveColor(color: StatusColor | null | undefined): string {
   if (!color) return "gray"
-  if (color in COLOR_MAP) return color
+  if (color in COLOR_TO_VARIANT) return color
   // unknown colors fall back to gray
   return "gray"
 }
@@ -50,7 +53,7 @@ interface StatusDotProps {
 export function StatusDot({ color }: StatusDotProps) {
   const c = resolveColor(color)
   return (
-    <span className={cn("inline-block w-1.5 h-1.5 rounded-full shrink-0", DOT_MAP[c])} />
+    <span className={cn("inline-block w-1.5 h-1.5 rounded-full shrink-0", DOT_VAR[c])} />
   )
 }
 
@@ -74,6 +77,9 @@ interface StatusBadgeProps {
 
 /**
  * StatusBadge — pill + ring + dot, как в MVP wookiee_matrix_mvp_v4.jsx.
+ *
+ * Под капотом — `<Badge>` из ui-v2 с маппингом цветов:
+ *   green→success, blue→info, gray→default, amber→warning, red→danger.
  * Может работать и через `status={...}` (новый API), и через `statusId={...}` (legacy lookup).
  */
 export function StatusBadge({
@@ -83,20 +89,14 @@ export function StatusBadge({
     ?? (statusId != null ? CATALOG_STATUSES.find((x) => x.id === statusId) ?? null : null)
   if (!resolved) return null
   const color = resolveColor(resolved.color)
-  const sizeCls = size === "sm"
-    ? "px-1.5 py-px text-[11px]"
-    : "px-2 py-0.5 text-xs"
   return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-md font-medium ring-1 ring-inset",
-        sizeCls,
-        COLOR_MAP[color],
-        className,
-      )}
+    <Badge
+      variant={COLOR_TO_VARIANT[color]}
+      size={size}
+      className={cn("rounded-md", className)}
     >
       {!compact && <StatusDot color={color} />}
       {resolved.nazvanie}
-    </span>
+    </Badge>
   )
 }

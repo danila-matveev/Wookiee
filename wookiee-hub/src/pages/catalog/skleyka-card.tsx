@@ -16,11 +16,11 @@ const MAX_SKU = 30
 
 function ColorSwatch({ colorCode, size = 14 }: { colorCode: string | null; size?: number }) {
   if (!colorCode) {
-    return <div className="rounded-full bg-stone-200" style={{ width: size, height: size }} />
+    return <div className="rounded-full bg-[var(--color-border-default)]" style={{ width: size, height: size }} />
   }
   return (
     <div
-      className="rounded-full ring-1 ring-stone-200 shrink-0"
+      className="rounded-full ring-1 ring-[var(--color-border-default)] shrink-0"
       style={{ width: size, height: size, background: swatchColor(colorCode) }}
     />
   )
@@ -45,8 +45,8 @@ function ChannelBadge({ channel }: { channel: "wb" | "ozon" }) {
 
 function SidebarBlock({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-white rounded-lg border border-stone-200 p-5">
-      <div className="text-xs uppercase tracking-wider text-stone-400 mb-3">{title}</div>
+    <div className="bg-surface rounded-lg border border-default p-5">
+      <div className="text-xs uppercase tracking-wider text-label mb-3">{title}</div>
       {children}
     </div>
   )
@@ -178,7 +178,7 @@ export function SkleykaCard({ id, channel, onBack }: SkleykaCardProps) {
 
   if (isLoading) {
     return (
-      <div className="flex-1 flex items-center justify-center text-sm text-stone-400">
+      <div className="flex-1 flex items-center justify-center text-sm text-label">
         Загрузка склейки…
       </div>
     )
@@ -194,22 +194,22 @@ export function SkleykaCard({ id, channel, onBack }: SkleykaCardProps) {
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="border-b border-stone-200 bg-white shrink-0 px-6 py-4">
+      <div className="border-b border-default bg-surface shrink-0 px-6 py-4">
         <div className="flex items-center gap-4">
           <button
             type="button"
             onClick={onBack}
-            className="p-1.5 hover:bg-stone-100 rounded-md"
+            className="p-1.5 hover:bg-surface-muted rounded-md"
             aria-label="Назад"
           >
-            <ArrowLeft className="w-4 h-4 text-stone-700" />
+            <ArrowLeft className="w-4 h-4 text-secondary" />
           </button>
           <div className="flex-1 min-w-0">
-            <div className="text-[11px] uppercase tracking-wider text-stone-400 mb-1 flex items-center gap-2">
+            <div className="text-[11px] uppercase tracking-wider text-label mb-1 flex items-center gap-2">
               Склейка
               <ChannelBadge channel={channel} />
               {data.importer_nazvanie && (
-                <span className="text-stone-500 normal-case tracking-normal">
+                <span className="text-muted normal-case tracking-normal">
                   · {data.importer_nazvanie}
                 </span>
               )}
@@ -224,26 +224,26 @@ export function SkleykaCard({ id, channel, onBack }: SkleykaCardProps) {
                     if (e.key === "Enter") saveEdit()
                     if (e.key === "Escape") setEditingName(false)
                   }}
-                  className="text-2xl px-2 py-1 border border-stone-300 rounded-md outline-none focus:border-stone-900 cat-font-serif italic"
+                  className="text-2xl px-2 py-1 border border-strong rounded-md outline-none focus:border-[var(--color-text-primary)] font-serif italic"
                 />
                 <button
                   type="button"
                   onClick={saveEdit}
                   disabled={busy}
-                  className="p-1.5 rounded-md bg-stone-900 text-white hover:bg-stone-800 disabled:opacity-50"
+                  className="p-1.5 rounded-md bg-elevated text-white hover:bg-surface disabled:opacity-50"
                 >
                   <Check className="w-4 h-4" />
                 </button>
                 <button
                   type="button"
                   onClick={() => setEditingName(false)}
-                  className="p-1.5 rounded-md hover:bg-stone-100"
+                  className="p-1.5 rounded-md hover:bg-surface-muted"
                 >
-                  <X className="w-4 h-4 text-stone-500" />
+                  <X className="w-4 h-4 text-muted" />
                 </button>
               </div>
             ) : (
-              <h1 className="text-2xl text-stone-900 cat-font-serif italic truncate">
+              <h1 className="text-2xl text-primary font-serif italic truncate">
                 {data.nazvanie}
               </h1>
             )}
@@ -253,11 +253,11 @@ export function SkleykaCard({ id, channel, onBack }: SkleykaCardProps) {
           <div className="flex items-center gap-2 shrink-0">
             <CompletenessRing value={fraction} size={80} hideLabel />
             <div className="text-right">
-              <div className="text-2xl font-medium tabular-nums leading-none text-stone-900">
+              <div className="text-2xl font-medium tabular-nums leading-none text-primary">
                 {skuCount}
-                <span className="text-stone-400 text-base">/{MAX_SKU}</span>
+                <span className="text-label text-base">/{MAX_SKU}</span>
               </div>
-              <div className="text-[11px] uppercase tracking-wider text-stone-400 mt-1">
+              <div className="text-[11px] uppercase tracking-wider text-label mt-1">
                 {isOverflow ? "Переполнена" : skuCount === 0 ? "Пуста" : "Заполненность"}
               </div>
             </div>
@@ -269,7 +269,7 @@ export function SkleykaCard({ id, channel, onBack }: SkleykaCardProps) {
               type="button"
               onClick={startEdit}
               disabled={editingName || busy}
-              className="px-2.5 py-1.5 text-xs text-stone-700 hover:bg-stone-100 rounded-md flex items-center gap-1.5 disabled:opacity-50"
+              className="px-2.5 py-1.5 text-xs text-secondary hover:bg-surface-muted rounded-md flex items-center gap-1.5 disabled:opacity-50"
             >
               <Edit3 className="w-3.5 h-3.5" /> Редактировать
             </button>
@@ -284,10 +284,10 @@ export function SkleykaCard({ id, channel, onBack }: SkleykaCardProps) {
             <button
               type="button"
               onClick={onBack}
-              className="p-1.5 hover:bg-stone-100 rounded-md"
+              className="p-1.5 hover:bg-surface-muted rounded-md"
               aria-label="Закрыть"
             >
-              <X className="w-4 h-4 text-stone-500" />
+              <X className="w-4 h-4 text-muted" />
             </button>
           </div>
         </div>
@@ -306,11 +306,11 @@ export function SkleykaCard({ id, channel, onBack }: SkleykaCardProps) {
               type="button"
               onClick={() => setTab(t.id as Tab)}
               className={`relative px-3 py-2.5 text-sm transition-colors ${
-                tab === t.id ? "text-stone-900 font-medium" : "text-stone-500 hover:text-stone-800"
+                tab === t.id ? "text-primary font-medium" : "text-muted hover:text-primary"
               }`}
             >
               {t.label}
-              {tab === t.id && <span className="absolute bottom-0 left-0 right-0 h-px bg-stone-900" />}
+              {tab === t.id && <span className="absolute bottom-0 left-0 right-0 h-px bg-elevated" />}
             </button>
           ))}
         </div>
@@ -322,22 +322,22 @@ export function SkleykaCard({ id, channel, onBack }: SkleykaCardProps) {
           {/* Main column (2/3) */}
           <div className="col-span-2 space-y-4">
             {tab === "sku" && (
-              <div className="bg-white rounded-lg border border-stone-200 overflow-hidden">
-                <div className="px-4 py-2.5 border-b border-stone-200 flex items-center justify-between">
-                  <div className="font-medium text-stone-900">SKU в склейке</div>
-                  <div className="text-xs text-stone-500 tabular-nums">
+              <div className="bg-surface rounded-lg border border-default overflow-hidden">
+                <div className="px-4 py-2.5 border-b border-default flex items-center justify-between">
+                  <div className="font-medium text-primary">SKU в склейке</div>
+                  <div className="text-xs text-muted tabular-nums">
                     {skuCount} {skuCount === 0 ? "(пусто)" : `из ${MAX_SKU}`}
                   </div>
                 </div>
                 <table className="w-full text-sm">
-                  <thead className="bg-stone-50/80 border-b border-stone-200">
-                    <tr className="text-left text-[11px] uppercase tracking-wider text-stone-500">
+                  <thead className="bg-page/80 border-b border-default">
+                    <tr className="text-left text-[11px] uppercase tracking-wider text-muted">
                       <th className="px-3 py-2 w-8">
                         <input
                           type="checkbox"
                           checked={allSelected}
                           onChange={toggleAll}
-                          className="rounded border-stone-300 align-middle"
+                          className="rounded border-strong align-middle"
                           style={{ accentColor: "#1C1917" }}
                         />
                       </th>
@@ -359,8 +359,8 @@ export function SkleykaCard({ id, channel, onBack }: SkleykaCardProps) {
                       return (
                         <tr
                           key={t.tovar_id}
-                          className={`border-b border-stone-100 last:border-0 group ${
-                            isSel ? "bg-stone-50" : "hover:bg-stone-50/60"
+                          className={`border-b border-subtle last:border-0 group ${
+                            isSel ? "bg-page" : "hover:bg-page/60"
                           }`}
                         >
                           <td className="px-3 py-2">
@@ -368,14 +368,14 @@ export function SkleykaCard({ id, channel, onBack }: SkleykaCardProps) {
                               type="checkbox"
                               checked={isSel}
                               onChange={() => toggleOne(t.barkod)}
-                              className="rounded border-stone-300"
+                              className="rounded border-strong"
                               style={{ accentColor: "#1C1917" }}
                             />
                           </td>
                           <td className="px-3 py-2">
-                            <span className="font-mono text-xs text-stone-700">{t.barkod}</span>
+                            <span className="font-mono text-xs text-secondary">{t.barkod}</span>
                           </td>
-                          <td className="px-3 py-2 font-mono text-xs text-stone-600">
+                          <td className="px-3 py-2 font-mono text-xs text-secondary">
                             {t.artikul ?? "—"}
                           </td>
                           <td className="px-3 py-2 font-mono text-xs font-medium">
@@ -407,7 +407,7 @@ export function SkleykaCard({ id, channel, onBack }: SkleykaCardProps) {
                     })}
                     {data.tovary.length === 0 && (
                       <tr>
-                        <td colSpan={8} className="px-3 py-8 text-center text-sm text-stone-400 italic">
+                        <td colSpan={8} className="px-3 py-8 text-center text-sm text-label italic">
                           В этой склейке нет SKU. Добавьте их из реестра /catalog/tovary.
                         </td>
                       </tr>
@@ -418,18 +418,18 @@ export function SkleykaCard({ id, channel, onBack }: SkleykaCardProps) {
             )}
 
             {tab === "analytics" && (
-              <div className="bg-white rounded-lg border border-stone-200 p-8 text-center">
-                <div className="text-sm text-stone-700 font-medium">Аналитика склейки</div>
-                <div className="text-xs text-stone-500 mt-1">
+              <div className="bg-surface rounded-lg border border-default p-8 text-center">
+                <div className="text-sm text-secondary font-medium">Аналитика склейки</div>
+                <div className="text-xs text-muted mt-1">
                   Будет в следующих фазах: продажи, остатки, маржинальность по склейке.
                 </div>
               </div>
             )}
 
             {tab === "history" && (
-              <div className="bg-white rounded-lg border border-stone-200 p-8 text-center">
-                <div className="text-sm text-stone-700 font-medium">История изменений</div>
-                <div className="text-xs text-stone-500 mt-1">
+              <div className="bg-surface rounded-lg border border-default p-8 text-center">
+                <div className="text-sm text-secondary font-medium">История изменений</div>
+                <div className="text-xs text-muted mt-1">
                   Будет в следующих фазах: лог добавления/удаления SKU, переименований, операций
                   публикации.
                 </div>
@@ -443,26 +443,26 @@ export function SkleykaCard({ id, channel, onBack }: SkleykaCardProps) {
               <div className="space-y-2 text-sm">
                 <div className="flex items-start gap-2">
                   <Check className="w-3.5 h-3.5 mt-0.5 text-emerald-600 shrink-0" />
-                  <span className="text-stone-700">Один цвет, разные размеры</span>
+                  <span className="text-secondary">Один цвет, разные размеры</span>
                 </div>
                 <div className="flex items-start gap-2">
                   <Check className="w-3.5 h-3.5 mt-0.5 text-emerald-600 shrink-0" />
-                  <span className="text-stone-700">ИЛИ один размер, разные цвета</span>
+                  <span className="text-secondary">ИЛИ один размер, разные цвета</span>
                 </div>
                 <div className="flex items-start gap-2">
                   <Check className="w-3.5 h-3.5 mt-0.5 text-emerald-600 shrink-0" />
-                  <span className="text-stone-700">До {MAX_SKU} SKU в одной склейке</span>
+                  <span className="text-secondary">До {MAX_SKU} SKU в одной склейке</span>
                 </div>
               </div>
             </SidebarBlock>
 
             <SidebarBlock title="Что это даёт?">
-              <div className="text-sm text-stone-600 leading-relaxed flex gap-2">
+              <div className="text-sm text-secondary leading-relaxed flex gap-2">
                 <Sparkles className="w-3.5 h-3.5 mt-0.5 text-amber-500 shrink-0" />
                 <span>
                   При публикации все SKU из склейки группируются в одну карточку товара —
                   покупатель видит варианты цвета/размера на одной странице. Это{" "}
-                  <span className="font-medium text-stone-800">бустит ранжирование</span>:
+                  <span className="font-medium text-primary">бустит ранжирование</span>:
                   ранжируются не отдельные SKU, а вся карточка целиком.
                 </span>
               </div>
@@ -471,18 +471,18 @@ export function SkleykaCard({ id, channel, onBack }: SkleykaCardProps) {
             <SidebarBlock title="Метрики">
               <dl className="space-y-2 text-sm">
                 <div className="flex items-baseline justify-between">
-                  <dt className="text-stone-500 text-xs uppercase tracking-wider">SKU</dt>
+                  <dt className="text-muted text-xs uppercase tracking-wider">SKU</dt>
                   <dd className="font-medium tabular-nums">
                     {skuCount} / {MAX_SKU}
                   </dd>
                 </div>
                 <div className="flex items-baseline justify-between">
-                  <dt className="text-stone-500 text-xs uppercase tracking-wider">Создана</dt>
-                  <dd className="text-stone-700 text-xs">{relativeDate(data.created_at)}</dd>
+                  <dt className="text-muted text-xs uppercase tracking-wider">Создана</dt>
+                  <dd className="text-secondary text-xs">{relativeDate(data.created_at)}</dd>
                 </div>
                 <div className="flex items-baseline justify-between">
-                  <dt className="text-stone-500 text-xs uppercase tracking-wider">Обновлена</dt>
-                  <dd className="text-stone-700 text-xs">{relativeDate(data.updated_at)}</dd>
+                  <dt className="text-muted text-xs uppercase tracking-wider">Обновлена</dt>
+                  <dd className="text-secondary text-xs">{relativeDate(data.updated_at)}</dd>
                 </div>
               </dl>
             </SidebarBlock>

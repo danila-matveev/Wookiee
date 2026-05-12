@@ -20,10 +20,10 @@ export function CatalogTable<T extends { id: number }>({
   emptyText = "Нет данных",
 }: CatalogTableProps<T>) {
   return (
-    <div className="bg-white rounded-lg border border-stone-200 overflow-hidden">
+    <div className="bg-surface rounded-lg border border-default overflow-hidden">
       <table className="w-full text-sm">
-        <thead className="bg-stone-50/80 border-b border-stone-200">
-          <tr className="text-left text-[11px] uppercase tracking-wider text-stone-500">
+        <thead className="bg-surface-muted/80 border-b border-default">
+          <tr className="text-left text-[11px] uppercase tracking-wider text-muted">
             {columns.map((col) => (
               <th key={col.key} className="px-3 py-2.5 font-medium">
                 {col.label}
@@ -36,7 +36,7 @@ export function CatalogTable<T extends { id: number }>({
             <tr>
               <td
                 colSpan={columns.length}
-                className="px-3 py-8 text-center text-sm text-stone-400 italic"
+                className="px-3 py-8 text-center text-sm text-label italic"
               >
                 {emptyText}
               </td>
@@ -45,13 +45,13 @@ export function CatalogTable<T extends { id: number }>({
           {data.map((row) => (
             <tr
               key={row.id}
-              className="group border-b border-stone-100 last:border-0 hover:bg-stone-50/60 transition-colors"
+              className="group border-b border-subtle last:border-0 hover:bg-surface-muted/60 transition-colors"
             >
               {columns.map((col) => (
                 <td
                   key={col.key}
                   className={`px-3 py-2.5 ${col.mono ? "font-mono text-xs" : ""} ${
-                    col.dim ? "text-stone-500" : "text-stone-900"
+                    col.dim ? "text-muted" : "text-primary"
                   }`}
                 >
                   {col.render

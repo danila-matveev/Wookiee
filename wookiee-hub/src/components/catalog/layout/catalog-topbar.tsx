@@ -56,17 +56,17 @@ export function CatalogTopBar({ onOpenSearch }: CatalogTopBarProps) {
   const crumbs = buildCrumbs(pathname, modelKod, colorCode)
 
   return (
-    <div className="h-14 border-b border-stone-200 bg-white flex items-center px-6 gap-4 shrink-0 sticky top-0 z-20">
-      <div className="flex items-center gap-2 text-sm text-stone-500 min-w-0 flex-1">
+    <div className="h-14 border-b border-default bg-surface flex items-center px-6 gap-4 shrink-0 sticky top-0 z-20">
+      <div className="flex items-center gap-2 text-sm text-muted min-w-0 flex-1">
         {crumbs.map((c, i) => (
           <span key={`${c}-${i}`} className="flex items-center gap-2 min-w-0">
             {i > 0 && (
-              <ChevronRight className="w-3.5 h-3.5 text-stone-300 shrink-0" />
+              <ChevronRight className="w-3.5 h-3.5 text-label shrink-0" />
             )}
             <span
               className={
                 i === crumbs.length - 1
-                  ? "text-stone-900 font-medium truncate"
+                  ? "text-primary font-medium truncate"
                   : "truncate"
               }
             >
@@ -78,12 +78,12 @@ export function CatalogTopBar({ onOpenSearch }: CatalogTopBarProps) {
       <button
         type="button"
         onClick={onOpenSearch}
-        className="flex items-center gap-2 px-3 py-1.5 text-sm text-stone-500 bg-stone-100 hover:bg-stone-200 rounded-md transition-colors min-w-[260px]"
+        className="flex items-center gap-2 px-3 py-1.5 text-sm text-muted bg-surface-muted hover:bg-[var(--color-border-default)] rounded-md transition-colors min-w-[260px]"
         aria-label="Открыть поиск по каталогу (⌘K)"
       >
         <Search className="w-3.5 h-3.5" />
         <span className="flex-1 text-left">Поиск по баркоду, артикулу…</span>
-        <kbd className="text-[10px] text-stone-400 border border-stone-300 rounded px-1 py-0.5 font-mono">
+        <kbd className="text-[10px] text-label border border-strong rounded px-1 py-0.5 font-mono">
           ⌘K
         </kbd>
       </button>

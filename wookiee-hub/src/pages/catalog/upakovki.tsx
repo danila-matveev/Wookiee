@@ -77,11 +77,11 @@ export function UpakovkiPage() {
       label: "Тип",
       render: (r) =>
         r.tip ? (
-          <span className="inline-flex items-center px-2 py-0.5 text-[10px] uppercase tracking-wider bg-stone-100 text-stone-700 rounded">
+          <span className="inline-flex items-center px-2 py-0.5 text-[10px] uppercase tracking-wider bg-surface-muted text-secondary rounded">
             {TIP_LABELS[r.tip] ?? r.tip}
           </span>
         ) : (
-          <span className="text-stone-400">—</span>
+          <span className="text-label">—</span>
         ),
     },
     {
@@ -89,11 +89,11 @@ export function UpakovkiPage() {
       label: "Цена ¥",
       render: (r) =>
         r.price_yuan != null ? (
-          <span className="text-stone-700 tabular-nums font-mono text-xs">
+          <span className="text-secondary tabular-nums font-mono text-xs">
             {r.price_yuan.toFixed(2)}
           </span>
         ) : (
-          <span className="text-stone-400">—</span>
+          <span className="text-label">—</span>
         ),
     },
     {
@@ -101,9 +101,9 @@ export function UpakovkiPage() {
       label: "ДxШxВ см",
       render: (r) => {
         const parts = [r.dlina_cm, r.shirina_cm, r.vysota_cm]
-        if (parts.every((p) => p == null)) return <span className="text-stone-400">—</span>
+        if (parts.every((p) => p == null)) return <span className="text-label">—</span>
         return (
-          <span className="text-stone-700 tabular-nums font-mono text-xs">
+          <span className="text-secondary tabular-nums font-mono text-xs">
             {parts.map((p) => p ?? "—").join(" × ")}
           </span>
         )
@@ -114,11 +114,11 @@ export function UpakovkiPage() {
       label: "Срок (дн.)",
       render: (r) =>
         r.srok_izgotovleniya_dni != null ? (
-          <span className="text-stone-700 tabular-nums font-mono text-xs">
+          <span className="text-secondary tabular-nums font-mono text-xs">
             {r.srok_izgotovleniya_dni}
           </span>
         ) : (
-          <span className="text-stone-400">—</span>
+          <span className="text-label">—</span>
         ),
     },
     {
@@ -130,14 +130,14 @@ export function UpakovkiPage() {
             href={r.file_link}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-stone-700 hover:text-stone-900 text-xs"
+            className="inline-flex items-center gap-1 text-secondary hover:text-primary text-xs"
             onClick={(e) => e.stopPropagation()}
           >
             <ExternalLink className="w-3.5 h-3.5" />
             <span>открыть</span>
           </a>
         ) : (
-          <span className="text-stone-400">—</span>
+          <span className="text-label">—</span>
         ),
     },
     {

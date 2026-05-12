@@ -80,7 +80,7 @@ export function SemeystvaCvetovPage() {
       key: "kod",
       label: "Код",
       render: (r) => (
-        <span className="text-stone-900 font-mono text-xs font-medium">{r.kod}</span>
+        <span className="text-primary font-mono text-xs font-medium">{r.kod}</span>
       ),
     },
     { key: "nazvanie", label: "Название" },
@@ -89,18 +89,18 @@ export function SemeystvaCvetovPage() {
       label: "Описание",
       render: (r) =>
         r.opisanie ? (
-          <span className="text-stone-600 text-xs" title={r.opisanie}>
+          <span className="text-secondary text-xs" title={r.opisanie}>
             {r.opisanie.length > 60 ? `${r.opisanie.slice(0, 60)}…` : r.opisanie}
           </span>
         ) : (
-          <span className="text-stone-400">—</span>
+          <span className="text-label">—</span>
         ),
     },
     {
       key: "color_count",
       label: "Цветов",
       render: (r) => (
-        <span className="text-stone-700 tabular-nums font-mono text-xs">
+        <span className="text-secondary tabular-nums font-mono text-xs">
           {counts.data?.[r.kod] ?? 0}
         </span>
       ),
@@ -111,7 +111,7 @@ export function SemeystvaCvetovPage() {
       mono: true,
       dim: true,
       render: (r) => (
-        <span className="text-stone-500 font-mono text-xs">{r.poryadok ?? "—"}</span>
+        <span className="text-muted font-mono text-xs">{r.poryadok ?? "—"}</span>
       ),
     },
     {

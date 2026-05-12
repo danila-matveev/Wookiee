@@ -31,13 +31,13 @@ function FillingBar({ count }: { count: number }) {
   const color = fillingColor(pct)
   return (
     <div className="flex items-center gap-2">
-      <div className="w-28 h-1.5 bg-stone-100 rounded-full overflow-hidden">
+      <div className="w-28 h-1.5 bg-surface-muted rounded-full overflow-hidden">
         <div
           className="h-full rounded-full transition-all"
           style={{ width: `${Math.min(100, pct * 100)}%`, background: color }}
         />
       </div>
-      <span className="text-xs tabular-nums text-stone-600 font-medium w-12 shrink-0">
+      <span className="text-xs tabular-nums text-secondary font-medium w-12 shrink-0">
         {count}/{MAX_SKU}
       </span>
     </div>
@@ -144,16 +144,16 @@ function SkleykiList({ onOpen, onCreateClick }: SkleykiListProps) {
       <div className="px-6 pt-6 pb-3 shrink-0">
         <div className="flex items-end justify-between gap-4">
           <div>
-            <div className="text-[11px] uppercase tracking-wider text-stone-400 mb-1">Каталог</div>
-            <h1 className="text-3xl text-stone-900 cat-font-serif italic">Склейки маркетплейсов</h1>
-            <div className="text-sm text-stone-500 mt-1 max-w-2xl">
+            <div className="text-[11px] uppercase tracking-wider text-label mb-1">Каталог</div>
+            <h1 className="text-3xl text-primary font-serif italic">Склейки маркетплейсов</h1>
+            <div className="text-sm text-muted mt-1 max-w-2xl">
               До {MAX_SKU} SKU в склейке. {counts.active} активных, {counts.empty} пустых.
             </div>
           </div>
           <button
             type="button"
             onClick={onCreateClick}
-            className="px-3 py-1.5 text-xs text-white bg-stone-900 hover:bg-stone-800 rounded-md flex items-center gap-1.5"
+            className="px-3 py-1.5 text-xs text-white bg-elevated hover:bg-surface rounded-md flex items-center gap-1.5"
           >
             <Plus className="w-3.5 h-3.5" /> Создать склейку
           </button>
@@ -163,16 +163,16 @@ function SkleykiList({ onOpen, onCreateClick }: SkleykiListProps) {
       {/* Filters */}
       <div className="px-6 pb-3 flex items-center gap-3 shrink-0 flex-wrap">
         <div className="relative">
-          <Search className="w-3.5 h-3.5 text-stone-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+          <Search className="w-3.5 h-3.5 text-label absolute left-2.5 top-1/2 -translate-y-1/2" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Поиск по названию или баркоду…"
-            className="pl-8 pr-3 py-1.5 text-sm border border-stone-200 rounded-md bg-white outline-none focus:border-stone-400 w-72"
+            className="pl-8 pr-3 py-1.5 text-sm border border-default rounded-md bg-surface outline-none focus:border-[var(--color-border-strong)] w-72"
           />
         </div>
 
-        <span className="text-xs text-stone-500 ml-1">Канал:</span>
+        <span className="text-xs text-muted ml-1">Канал:</span>
         {(
           [
             { id: "all", label: "Все" },
@@ -186,15 +186,15 @@ function SkleykiList({ onOpen, onCreateClick }: SkleykiListProps) {
             onClick={() => setChannelFilter(opt.id)}
             className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
               channelFilter === opt.id
-                ? "bg-stone-900 text-white"
-                : "text-stone-600 hover:bg-stone-100"
+                ? "bg-elevated text-white"
+                : "text-secondary hover:bg-surface-muted"
             }`}
           >
             {opt.label}
           </button>
         ))}
 
-        <span className="text-xs text-stone-500 ml-3">Статус:</span>
+        <span className="text-xs text-muted ml-3">Статус:</span>
         {(
           [
             { id: "all", label: "Все" },
@@ -209,28 +209,28 @@ function SkleykiList({ onOpen, onCreateClick }: SkleykiListProps) {
             onClick={() => setStatusFilter(opt.id)}
             className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
               statusFilter === opt.id
-                ? "bg-stone-900 text-white"
-                : "text-stone-600 hover:bg-stone-100"
+                ? "bg-elevated text-white"
+                : "text-secondary hover:bg-surface-muted"
             }`}
           >
             {opt.label}
           </button>
         ))}
 
-        <div className="ml-auto text-xs text-stone-500 tabular-nums">
+        <div className="ml-auto text-xs text-muted tabular-nums">
           {filtered.length} из {all.length}
         </div>
       </div>
 
       {/* Table */}
       <div className="flex-1 overflow-auto px-6 pb-6">
-        {isLoading && <div className="text-sm text-stone-400">Загрузка…</div>}
+        {isLoading && <div className="text-sm text-label">Загрузка…</div>}
         {error && <div className="text-sm text-red-500">Ошибка загрузки склеек</div>}
         {!isLoading && !error && (
-          <div className="bg-white rounded-lg border border-stone-200 overflow-hidden">
+          <div className="bg-surface rounded-lg border border-default overflow-hidden">
             <table className="w-full text-sm">
-              <thead className="bg-stone-50/80 border-b border-stone-200">
-                <tr className="text-left text-[11px] uppercase tracking-wider text-stone-500">
+              <thead className="bg-page/80 border-b border-default">
+                <tr className="text-left text-[11px] uppercase tracking-wider text-muted">
                   <th className="px-3 py-2.5 font-medium">Название</th>
                   <th className="px-3 py-2.5 font-medium">Канал</th>
                   <th className="px-3 py-2.5 font-medium">Заполненность</th>
@@ -253,12 +253,12 @@ function SkleykiList({ onOpen, onCreateClick }: SkleykiListProps) {
                     <tr
                       key={`${s.channel}-${s.id}`}
                       onClick={() => onOpen(s.channel!, s.id)}
-                      className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60 cursor-pointer"
+                      className="border-b border-subtle last:border-0 hover:bg-page/60 cursor-pointer"
                     >
                       <td className="px-3 py-3">
-                        <div className="font-medium text-stone-900">{s.nazvanie}</div>
+                        <div className="font-medium text-primary">{s.nazvanie}</div>
                         {s.importer_nazvanie && (
-                          <div className="text-[11px] text-stone-400">{s.importer_nazvanie}</div>
+                          <div className="text-[11px] text-label">{s.importer_nazvanie}</div>
                         )}
                       </td>
                       <td className="px-3 py-3">
@@ -267,8 +267,8 @@ function SkleykiList({ onOpen, onCreateClick }: SkleykiListProps) {
                       <td className="px-3 py-3">
                         <FillingBar count={cnt} />
                       </td>
-                      <td className="px-3 py-3 text-right tabular-nums text-stone-700">{cnt}</td>
-                      <td className="px-3 py-3 text-stone-500 text-xs">{relativeDate(s.created_at)}</td>
+                      <td className="px-3 py-3 text-right tabular-nums text-secondary">{cnt}</td>
+                      <td className="px-3 py-3 text-muted text-xs">{relativeDate(s.created_at)}</td>
                       <td className="px-3 py-3">
                         <StatusBadge status={status} compact />
                       </td>
@@ -277,7 +277,7 @@ function SkleykiList({ onOpen, onCreateClick }: SkleykiListProps) {
                 })}
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-3 py-8 text-center text-sm text-stone-400 italic">
+                    <td colSpan={6} className="px-3 py-8 text-center text-sm text-label italic">
                       Ничего не найдено
                     </td>
                   </tr>

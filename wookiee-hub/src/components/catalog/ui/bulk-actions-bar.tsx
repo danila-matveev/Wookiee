@@ -38,16 +38,16 @@ export function BulkActionsBar({
   return (
     <div
       className={cn(
-        "border-t border-stone-200 bg-white px-6 py-3 flex items-center gap-3 shrink-0",
+        "border-t border-default bg-surface px-6 py-3 flex items-center gap-3 shrink-0",
         "shadow-[0_-4px_16px_-8px_rgba(0,0,0,0.08)]",
         positionCls,
         className,
       )}
     >
-      <span className="text-sm">
+      <span className="text-sm text-primary">
         Выбрано: <span className="font-medium tabular-nums">{selectedCount}</span>
       </span>
-      <div className="h-5 w-px bg-stone-200" />
+      <div className="h-5 w-px bg-[var(--color-border-default)]" />
       {actions.map((a) => (
         <button
           key={a.id}
@@ -58,8 +58,8 @@ export function BulkActionsBar({
             "px-3 py-1 text-xs rounded-md flex items-center gap-1.5",
             "disabled:opacity-50 disabled:cursor-not-allowed",
             a.destructive
-              ? "text-red-600 hover:bg-red-50"
-              : "text-stone-700 hover:bg-stone-100",
+              ? "text-danger hover:bg-danger-soft"
+              : "text-secondary hover:bg-surface-muted",
           )}
         >
           {a.icon}
@@ -69,7 +69,7 @@ export function BulkActionsBar({
       <button
         type="button"
         onClick={onClear}
-        className="ml-auto px-3 py-1 text-xs text-stone-500 hover:bg-stone-100 rounded-md flex items-center gap-1.5"
+        className="ml-auto px-3 py-1 text-xs text-muted hover:bg-surface-muted rounded-md flex items-center gap-1.5"
       >
         <X className="w-3 h-3" /> Очистить
       </button>

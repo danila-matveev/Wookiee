@@ -62,7 +62,7 @@ export function KanalyProdazhPage() {
       key: "kod",
       label: "Код",
       render: (r) => (
-        <span className="text-stone-900 font-mono text-xs font-medium">{r.kod}</span>
+        <span className="text-primary font-mono text-xs font-medium">{r.kod}</span>
       ),
     },
     { key: "nazvanie", label: "Название" },
@@ -71,9 +71,9 @@ export function KanalyProdazhPage() {
       label: "Short",
       render: (r) =>
         r.short ? (
-          <span className="text-stone-700 font-mono text-xs">{r.short}</span>
+          <span className="text-secondary font-mono text-xs">{r.short}</span>
         ) : (
-          <span className="text-stone-400">—</span>
+          <span className="text-label">—</span>
         ),
     },
     {
@@ -83,14 +83,14 @@ export function KanalyProdazhPage() {
         r.color ? (
           <div className="flex items-center gap-2">
             <span
-              className="inline-block w-4 h-4 rounded border border-stone-200"
+              className="inline-block w-4 h-4 rounded border border-default"
               style={{ background: r.color }}
               aria-hidden
             />
-            <span className="text-stone-600 font-mono text-xs">{r.color}</span>
+            <span className="text-secondary font-mono text-xs">{r.color}</span>
           </div>
         ) : (
-          <span className="text-stone-400">—</span>
+          <span className="text-label">—</span>
         ),
     },
     {
@@ -98,11 +98,11 @@ export function KanalyProdazhPage() {
       label: "Активен",
       render: (r) =>
         r.active ? (
-          <span className="inline-flex items-center px-2 py-0.5 text-[10px] uppercase tracking-wider bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20 rounded">
+          <span className="inline-flex items-center px-2 py-0.5 text-[10px] uppercase tracking-wider bg-success-soft text-success ring-1 ring-[var(--color-success)]/20 rounded">
             активен
           </span>
         ) : (
-          <span className="inline-flex items-center px-2 py-0.5 text-[10px] uppercase tracking-wider bg-stone-100 text-stone-500 rounded">
+          <span className="inline-flex items-center px-2 py-0.5 text-[10px] uppercase tracking-wider bg-surface-muted text-muted rounded">
             выкл.
           </span>
         ),
@@ -113,7 +113,7 @@ export function KanalyProdazhPage() {
       mono: true,
       dim: true,
       render: (r) => (
-        <span className="text-stone-500 font-mono text-xs">{r.poryadok ?? "—"}</span>
+        <span className="text-muted font-mono text-xs">{r.poryadok ?? "—"}</span>
       ),
     },
     {

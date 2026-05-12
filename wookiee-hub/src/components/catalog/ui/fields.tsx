@@ -3,6 +3,13 @@ import { LevelBadge } from "./level-badge"
 
 export type FieldLevel = "model" | "variation" | "artikul" | "sku"
 
+// Shared input styling using DS v2 semantic tokens.
+// Keeps native <input>/<select>/<textarea> compatible with the existing
+// catalog page-level props (readonly, mono, options as {id, nazvanie}, etc).
+const INPUT_BASE =
+  "w-full px-2.5 py-1.5 text-sm border border-default rounded-md bg-surface text-primary outline-none transition-colors " +
+  "focus:border-strong focus:ring-1 focus:ring-[var(--color-ring)] placeholder:text-label"
+
 // ─── FieldWrap ───────────────────────────────────────────────
 interface FieldWrapProps {
   label: string
@@ -16,11 +23,11 @@ export function FieldWrap({ label, level, children, full, hint }: FieldWrapProps
   return (
     <div className={full ? "col-span-2" : ""}>
       <div className="flex items-center gap-1.5 mb-1">
-        <label className="block text-[11px] uppercase tracking-wider text-stone-500">{label}</label>
+        <label className="block text-[11px] uppercase tracking-wider text-label">{label}</label>
         {level && <LevelBadge level={level} />}
       </div>
       {children}
-      {hint && <div className="text-[10px] text-stone-400 mt-1">{hint}</div>}
+      {hint && <div className="text-[10px] text-label mt-1">{hint}</div>}
     </div>
   )
 }
@@ -46,8 +53,8 @@ export function TextField({
   return (
     <FieldWrap label={label} level={level} full={full} hint={hint}>
       {readonly ? (
-        <div className={`px-2.5 py-1.5 text-sm text-stone-900 ${mono ? "font-mono" : ""}`}>
-          {value || <span className="text-stone-400 italic">не задано</span>}
+        <div className={`px-2.5 py-1.5 text-sm text-primary ${mono ? "font-mono" : ""}`}>
+          {value || <span className="text-label italic">не задано</span>}
         </div>
       ) : (
         <input
@@ -55,7 +62,7 @@ export function TextField({
           value={value ?? ""}
           onChange={(e) => onChange?.(e.target.value)}
           placeholder={placeholder}
-          className={`w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md bg-white outline-none focus:border-stone-900 focus:ring-1 focus:ring-stone-900 ${mono ? "font-mono" : ""}`}
+          className={`${INPUT_BASE} ${mono ? "font-mono" : ""}`}
         />
       )}
     </FieldWrap>
@@ -77,11 +84,11 @@ export function NumberField({ label, value, onChange, suffix, readonly, full, le
   return (
     <FieldWrap label={label} level={level} full={full}>
       {readonly ? (
-        <div className="px-2.5 py-1.5 text-sm text-stone-900 tabular-nums">
+        <div className="px-2.5 py-1.5 text-sm text-primary tabular-nums">
           {value != null ? (
-            <>{value}{suffix && <span className="text-stone-400 ml-1">{suffix}</span>}</>
+            <>{value}{suffix && <span className="text-label ml-1">{suffix}</span>}</>
           ) : (
-            <span className="text-stone-400 italic">не задано</span>
+            <span className="text-label italic">не задано</span>
           )}
         </div>
       ) : (
@@ -90,10 +97,10 @@ export function NumberField({ label, value, onChange, suffix, readonly, full, le
             type="number"
             value={value ?? ""}
             onChange={(e) => onChange?.(parseFloat(e.target.value) || 0)}
-            className="w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md bg-white outline-none focus:border-stone-900 focus:ring-1 focus:ring-stone-900 tabular-nums pr-10"
+            className={`${INPUT_BASE} tabular-nums pr-10`}
           />
           {suffix && (
-            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-stone-400">{suffix}</span>
+            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-label">{suffix}</span>
           )}
         </div>
       )}
@@ -122,14 +129,14 @@ export function SelectField({
   return (
     <FieldWrap label={label} level={level} full={full}>
       {readonly ? (
-        <div className="px-2.5 py-1.5 text-sm text-stone-900">
-          {selected?.nazvanie ?? selected?.label ?? <span className="text-stone-400 italic">не задано</span>}
+        <div className="px-2.5 py-1.5 text-sm text-primary">
+          {selected?.nazvanie ?? selected?.label ?? <span className="text-label italic">не задано</span>}
         </div>
       ) : (
         <select
           value={value ?? ""}
           onChange={(e) => onChange?.(isNaN(Number(e.target.value)) ? e.target.value : Number(e.target.value))}
-          className="w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md bg-white outline-none focus:border-stone-900 focus:ring-1 focus:ring-stone-900"
+          className={INPUT_BASE}
         >
           <option value="">{placeholder}</option>
           {options.map((o) => (
@@ -156,14 +163,14 @@ export function StringSelectField({ label, value, onChange, options, readonly, f
   return (
     <FieldWrap label={label} level={level} full={full}>
       {readonly ? (
-        <div className="px-2.5 py-1.5 text-sm text-stone-900">
-          {value ?? <span className="text-stone-400 italic">не задано</span>}
+        <div className="px-2.5 py-1.5 text-sm text-primary">
+          {value ?? <span className="text-label italic">не задано</span>}
         </div>
       ) : (
         <select
           value={value ?? ""}
           onChange={(e) => onChange?.(e.target.value)}
-          className="w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md bg-white outline-none focus:border-stone-900 focus:ring-1 focus:ring-stone-900"
+          className={INPUT_BASE}
         >
           <option value="">Выберите…</option>
           {options.map((o) => (
@@ -202,8 +209,8 @@ export function MultiSelectField({ label, value = [], onChange, options, readonl
               onClick={() => toggle(o)}
               className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${
                 active
-                  ? "bg-stone-900 text-white border-stone-900"
-                  : "bg-white border-stone-200 text-stone-600 hover:border-stone-400"
+                  ? "bg-[var(--color-text-primary)] text-[var(--color-surface)] border-strong"
+                  : "bg-surface border-default text-secondary hover:border-strong"
               } ${readonly ? "cursor-default" : ""}`}
             >
               {o}
@@ -230,15 +237,15 @@ export function TextareaField({ label, value, onChange, rows = 3, readonly, full
   return (
     <FieldWrap label={label} level={level} full={full}>
       {readonly ? (
-        <div className="px-2.5 py-1.5 text-sm text-stone-900 whitespace-pre-wrap">
-          {value ?? <span className="text-stone-400 italic">не задано</span>}
+        <div className="px-2.5 py-1.5 text-sm text-primary whitespace-pre-wrap">
+          {value ?? <span className="text-label italic">не задано</span>}
         </div>
       ) : (
         <textarea
           value={value ?? ""}
           rows={rows}
           onChange={(e) => onChange?.(e.target.value)}
-          className="w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md bg-white outline-none focus:border-stone-900 focus:ring-1 focus:ring-stone-900 resize-none"
+          className={`${INPUT_BASE} resize-none`}
         />
       )}
     </FieldWrap>

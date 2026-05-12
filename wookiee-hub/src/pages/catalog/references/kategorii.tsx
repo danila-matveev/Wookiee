@@ -69,11 +69,11 @@ export function KategoriiPage() {
       label: "Описание",
       render: (r) =>
         r.opisanie ? (
-          <span className="text-stone-600 line-clamp-1" title={r.opisanie}>
+          <span className="text-secondary line-clamp-1" title={r.opisanie}>
             {r.opisanie.length > 60 ? `${r.opisanie.slice(0, 60)}…` : r.opisanie}
           </span>
         ) : (
-          <span className="text-stone-400">—</span>
+          <span className="text-label">—</span>
         ),
     },
     {
@@ -82,7 +82,7 @@ export function KategoriiPage() {
       render: (r) => {
         const c = counts.data?.[r.id] ?? 0
         return (
-          <span className="text-stone-700 tabular-nums font-mono text-xs">{c}</span>
+          <span className="text-secondary tabular-nums font-mono text-xs">{c}</span>
         )
       },
     },

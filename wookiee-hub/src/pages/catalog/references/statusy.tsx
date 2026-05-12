@@ -22,7 +22,7 @@ const COLUMNS: TableColumn<StatusRow>[] = [
     key: "tip",
     label: "Тип",
     render: (row) => (
-      <span className="text-xs text-stone-500">
+      <span className="text-xs text-muted">
         {STATUS_TIP_LABELS[row.tip] ?? row.tip}
       </span>
     ),

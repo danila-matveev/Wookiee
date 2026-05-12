@@ -103,40 +103,40 @@ export function FabrikiPage() {
     {
       key: "strana",
       label: "Страна",
-      render: (r) => <span className="text-stone-600 text-xs">{r.strana ?? "—"}</span>,
+      render: (r) => <span className="text-secondary text-xs">{r.strana ?? "—"}</span>,
     },
     {
       key: "gorod",
       label: "Город",
-      render: (r) => <span className="text-stone-600 text-xs">{r.gorod ?? "—"}</span>,
+      render: (r) => <span className="text-secondary text-xs">{r.gorod ?? "—"}</span>,
     },
     {
       key: "kontakt",
       label: "Контакт",
-      render: (r) => <span className="text-stone-600 text-xs">{r.kontakt ?? "—"}</span>,
+      render: (r) => <span className="text-secondary text-xs">{r.kontakt ?? "—"}</span>,
     },
     {
       key: "email",
       label: "Email",
-      render: (r) => <span className="text-stone-600 text-xs font-mono">{r.email ?? "—"}</span>,
+      render: (r) => <span className="text-secondary text-xs font-mono">{r.email ?? "—"}</span>,
     },
     {
       key: "wechat",
       label: "WeChat",
-      render: (r) => <span className="text-stone-600 text-xs font-mono">{r.wechat ?? "—"}</span>,
+      render: (r) => <span className="text-secondary text-xs font-mono">{r.wechat ?? "—"}</span>,
     },
     {
       key: "specializaciya",
       label: "Специализация",
       render: (r) =>
         r.specializaciya ? (
-          <span className="text-stone-600 text-xs" title={r.specializaciya}>
+          <span className="text-secondary text-xs" title={r.specializaciya}>
             {r.specializaciya.length > 40
               ? `${r.specializaciya.slice(0, 40)}…`
               : r.specializaciya}
           </span>
         ) : (
-          <span className="text-stone-400">—</span>
+          <span className="text-label">—</span>
         ),
     },
     {
@@ -144,16 +144,16 @@ export function FabrikiPage() {
       label: "Lead time",
       render: (r) =>
         r.leadtime_dni != null ? (
-          <span className="text-stone-700 tabular-nums font-mono text-xs">{r.leadtime_dni} дн.</span>
+          <span className="text-secondary tabular-nums font-mono text-xs">{r.leadtime_dni} дн.</span>
         ) : (
-          <span className="text-stone-400">—</span>
+          <span className="text-label">—</span>
         ),
     },
     {
       key: "models_count",
       label: "Моделей",
       render: (r) => (
-        <span className="text-stone-700 tabular-nums font-mono text-xs">
+        <span className="text-secondary tabular-nums font-mono text-xs">
           {counts.data?.[r.id] ?? 0}
         </span>
       ),

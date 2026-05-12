@@ -265,12 +265,12 @@ function Section({ label, hint, children, action }: {
   children: ReactNode
 }) {
   return (
-    <div className="bg-white rounded-lg border border-stone-200 p-5">
+    <div className="bg-surface rounded-lg border border-default p-5">
       <div className="flex items-center justify-between mb-1">
-        <div className="font-medium text-stone-900">{label}</div>
+        <div className="font-medium text-primary">{label}</div>
         {action}
       </div>
-      {hint && <div className="text-xs text-stone-500 mb-4">{hint}</div>}
+      {hint && <div className="text-xs text-muted mb-4">{hint}</div>}
       {!hint && <div className="mb-4" />}
       {children}
     </div>
@@ -285,15 +285,15 @@ function SidebarBlock({ title, subtitle, badge, action, children }: {
   children: ReactNode
 }) {
   return (
-    <div className="bg-white rounded-lg border border-stone-200 p-5">
+    <div className="bg-surface rounded-lg border border-default p-5">
       <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-1.5 text-xs uppercase tracking-wider text-stone-400">
+        <div className="flex items-center gap-1.5 text-xs uppercase tracking-wider text-label">
           {title} {badge}
         </div>
         {action}
       </div>
       {subtitle && (
-        <div className="text-[10px] text-stone-400 italic mb-2 -mt-2">
+        <div className="text-[10px] text-label italic mb-2 -mt-2">
           {subtitle}
         </div>
       )}
@@ -330,8 +330,8 @@ function SizeLineupField({
               onClick={() => toggle(s)}
               className={
                 active
-                  ? "px-3 py-1.5 text-sm rounded-full border-2 transition-colors bg-stone-900 text-white border-stone-900 font-medium tabular-nums"
-                  : "px-3 py-1.5 text-sm rounded-full border-2 transition-colors bg-white text-stone-500 border-stone-200 hover:border-stone-400 tabular-nums " +
+                  ? "px-3 py-1.5 text-sm rounded-full border-2 transition-colors bg-elevated text-white border-[var(--color-text-primary)] font-medium tabular-nums"
+                  : "px-3 py-1.5 text-sm rounded-full border-2 transition-colors bg-surface text-muted border-default hover:border-strong tabular-nums " +
                     (readonly ? "opacity-60 cursor-default" : "")
               }
             >
@@ -341,7 +341,7 @@ function SizeLineupField({
         })}
       </div>
       {!readonly && (
-        <div className="text-[10px] text-stone-400 mt-2">
+        <div className="text-[10px] text-label mt-2">
           Клик по чипу — включить/выключить размер.
         </div>
       )}
@@ -729,7 +729,7 @@ function TabAttributes({ m, draft, setDraft, editing }: TabContentProps) {
   if (attrs.length === 0) {
     return (
       <Section label="Атрибуты">
-        <div className="text-sm text-stone-400 italic">
+        <div className="text-sm text-label italic">
           Нет специфичных атрибутов для этой категории
         </div>
       </Section>
@@ -780,17 +780,17 @@ function TabArticles({ m, hexByCvet, openColor }: TabContentProps) {
     v.artikuly.map((a) => ({ ...a, variantKod: v.kod, importerName: v.importer_nazvanie })),
   )
   return (
-    <div className="bg-white rounded-lg border border-stone-200 overflow-hidden">
-      <div className="px-5 py-3 border-b border-stone-200 flex items-center justify-between">
+    <div className="bg-surface rounded-lg border border-default overflow-hidden">
+      <div className="px-5 py-3 border-b border-default flex items-center justify-between">
         <div>
-          <div className="font-medium text-stone-900">Артикулы модели</div>
-          <div className="text-xs text-stone-500">
+          <div className="font-medium text-primary">Артикулы модели</div>
+          <div className="text-xs text-muted">
             {allArts.length} артикулов · клик по цвету — карточка цвета
           </div>
         </div>
         <button
           type="button"
-          className="px-2.5 py-1 text-xs text-white bg-stone-900 rounded-md flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-2.5 py-1 text-xs text-white bg-elevated rounded-md flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
           disabled
           title="Wave 3+ (Add артикула)"
         >
@@ -798,8 +798,8 @@ function TabArticles({ m, hexByCvet, openColor }: TabContentProps) {
         </button>
       </div>
       <table className="w-full text-sm">
-        <thead className="bg-stone-50/80 border-b border-stone-200">
-          <tr className="text-left text-[11px] uppercase tracking-wider text-stone-500">
+        <thead className="bg-page/80 border-b border-default">
+          <tr className="text-left text-[11px] uppercase tracking-wider text-muted">
             <th className="px-3 py-2 font-medium">Артикул</th>
             <th className="px-3 py-2 font-medium">Вариация</th>
             <th className="px-3 py-2 font-medium">Цвет</th>
@@ -814,36 +814,36 @@ function TabArticles({ m, hexByCvet, openColor }: TabContentProps) {
             const hex = a.cvet_id != null ? hexByCvet.get(a.cvet_id) ?? null : null
             const swatch = hex ?? (a.cvet_color_code ? swatchColor(a.cvet_color_code) : "#E7E5E4")
             return (
-              <tr key={a.id} className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60">
-                <td className="px-3 py-2 font-mono text-xs text-stone-700">{a.artikul}</td>
-                <td className="px-3 py-2 font-mono text-xs text-stone-600">{a.variantKod}</td>
+              <tr key={a.id} className="border-b border-subtle last:border-0 hover:bg-page/60">
+                <td className="px-3 py-2 font-mono text-xs text-secondary">{a.artikul}</td>
+                <td className="px-3 py-2 font-mono text-xs text-secondary">{a.variantKod}</td>
                 <td className="px-3 py-2">
                   <button
                     type="button"
                     onClick={() => a.cvet_color_code && openColor(a.cvet_color_code)}
                     disabled={!a.cvet_color_code}
-                    className="flex items-center gap-1.5 hover:bg-stone-100 rounded px-1 py-0.5 -mx-1 disabled:cursor-default"
+                    className="flex items-center gap-1.5 hover:bg-surface-muted rounded px-1 py-0.5 -mx-1 disabled:cursor-default"
                   >
                     <span
-                      className="inline-block w-3.5 h-3.5 rounded ring-1 ring-stone-200 shrink-0"
+                      className="inline-block w-3.5 h-3.5 rounded ring-1 ring-[var(--color-border-default)] shrink-0"
                       style={{ background: swatch }}
                     />
-                    <span className="font-mono text-xs text-stone-700">
+                    <span className="font-mono text-xs text-secondary">
                       {a.cvet_color_code ?? "—"}
                     </span>
                     {a.cvet_nazvanie && (
-                      <span className="text-stone-500 text-xs">{a.cvet_nazvanie}</span>
+                      <span className="text-muted text-xs">{a.cvet_nazvanie}</span>
                     )}
                   </button>
                 </td>
                 <td className="px-3 py-2"><StatusBadge statusId={a.status_id ?? 0} compact /></td>
-                <td className="px-3 py-2 font-mono text-[11px] text-stone-500 tabular-nums">
+                <td className="px-3 py-2 font-mono text-[11px] text-muted tabular-nums">
                   {a.nomenklatura_wb ?? "—"}
                 </td>
-                <td className="px-3 py-2 font-mono text-[11px] text-stone-500">
+                <td className="px-3 py-2 font-mono text-[11px] text-muted">
                   {a.artikul_ozon ?? "—"}
                 </td>
-                <td className="px-3 py-2 text-right tabular-nums text-stone-700">
+                <td className="px-3 py-2 text-right tabular-nums text-secondary">
                   {a.tovary.length}
                 </td>
               </tr>
@@ -851,7 +851,7 @@ function TabArticles({ m, hexByCvet, openColor }: TabContentProps) {
           })}
           {allArts.length === 0 && (
             <tr>
-              <td colSpan={7} className="px-3 py-8 text-center text-sm text-stone-400 italic">
+              <td colSpan={7} className="px-3 py-8 text-center text-sm text-label italic">
                 У модели нет артикулов
               </td>
             </tr>
@@ -877,22 +877,22 @@ function TabSKU({ m, hexByCvet }: TabContentProps) {
   )
 
   return (
-    <div className="bg-white rounded-lg border border-stone-200 overflow-hidden">
-      <div className="px-5 py-3 border-b border-stone-200">
-        <div className="font-medium text-stone-900">SKU модели</div>
-        <div className="text-xs text-stone-500">
+    <div className="bg-surface rounded-lg border border-default overflow-hidden">
+      <div className="px-5 py-3 border-b border-default">
+        <div className="font-medium text-primary">SKU модели</div>
+        <div className="text-xs text-muted">
           {allSku.length} SKU · inline-edit статусов — Wave 3+ (TODO)
         </div>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="bg-stone-50/80 border-b border-stone-200">
-            <tr className="text-left text-[11px] uppercase tracking-wider text-stone-500">
+          <thead className="bg-page/80 border-b border-default">
+            <tr className="text-left text-[11px] uppercase tracking-wider text-muted">
               <th className="px-3 py-2 font-medium">Баркод</th>
               <th className="px-3 py-2 font-medium">Вариация</th>
               <th className="px-3 py-2 font-medium">Цвет</th>
               <th className="px-3 py-2 font-medium">Размер</th>
-              <th className="px-3 py-2 font-medium border-l border-stone-200">WB</th>
+              <th className="px-3 py-2 font-medium border-l border-default">WB</th>
               <th className="px-3 py-2 font-medium">OZON</th>
               <th className="px-3 py-2 font-medium">Сайт</th>
               <th className="px-3 py-2 font-medium">Lamoda</th>
@@ -903,20 +903,20 @@ function TabSKU({ m, hexByCvet }: TabContentProps) {
               const hex = t.cvet_id != null ? hexByCvet.get(t.cvet_id) ?? null : null
               const swatch = hex ?? (t.cvet_color_code ? swatchColor(t.cvet_color_code) : "#E7E5E4")
               return (
-                <tr key={t.id} className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60">
-                  <td className="px-3 py-2 font-mono text-xs text-stone-700">{t.barkod}</td>
-                  <td className="px-3 py-2 font-mono text-xs text-stone-600">{t.variantKod}</td>
+                <tr key={t.id} className="border-b border-subtle last:border-0 hover:bg-page/60">
+                  <td className="px-3 py-2 font-mono text-xs text-secondary">{t.barkod}</td>
+                  <td className="px-3 py-2 font-mono text-xs text-secondary">{t.variantKod}</td>
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-1.5">
                       <span
-                        className="inline-block w-3.5 h-3.5 rounded ring-1 ring-stone-200 shrink-0"
+                        className="inline-block w-3.5 h-3.5 rounded ring-1 ring-[var(--color-border-default)] shrink-0"
                         style={{ background: swatch }}
                       />
                       <span className="font-mono text-xs">{t.cvet_color_code ?? "—"}</span>
                     </div>
                   </td>
                   <td className="px-3 py-2 font-mono text-xs">{t.razmer_nazvanie ?? "—"}</td>
-                  <td className="px-3 py-2 border-l border-stone-100">
+                  <td className="px-3 py-2 border-l border-subtle">
                     <StatusBadge statusId={t.status_id ?? 0} compact />
                   </td>
                   <td className="px-3 py-2"><StatusBadge statusId={t.status_ozon_id ?? 0} compact /></td>
@@ -927,7 +927,7 @@ function TabSKU({ m, hexByCvet }: TabContentProps) {
             })}
             {allSku.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-3 py-8 text-center text-sm text-stone-400 italic">
+                <td colSpan={8} className="px-3 py-8 text-center text-sm text-label italic">
                   Нет SKU для этой модели
                 </td>
               </tr>
@@ -936,7 +936,7 @@ function TabSKU({ m, hexByCvet }: TabContentProps) {
         </table>
       </div>
       {allSku.length > 100 && (
-        <div className="px-3 py-2 text-xs text-stone-400 border-t border-stone-100">
+        <div className="px-3 py-2 text-xs text-label border-t border-subtle">
           Показаны первые 100 из {allSku.length}.
         </div>
       )}
@@ -1012,14 +1012,14 @@ function TabContent({ m, draft, setDraft, editing, modelOsnovaId }: TabContentPr
                   href={view.notion_link}
                   target="_blank"
                   rel="noreferrer"
-                  className="px-2.5 py-1.5 text-sm text-stone-700 hover:text-stone-900 inline-flex items-center gap-1.5 bg-stone-50 hover:bg-stone-100 rounded-md w-full"
+                  className="px-2.5 py-1.5 text-sm text-secondary hover:text-primary inline-flex items-center gap-1.5 bg-page hover:bg-surface-muted rounded-md w-full"
                 >
                   <Link2 className="w-3.5 h-3.5" />
                   <span className="truncate flex-1">{view.notion_link}</span>
                   <ExternalLink className="w-3 h-3 ml-auto shrink-0" />
                 </a>
               ) : (
-                <div className="text-sm text-stone-400 italic">не задано</div>
+                <div className="text-sm text-label italic">не задано</div>
               )
             ) : (
               <input
@@ -1027,7 +1027,7 @@ function TabContent({ m, draft, setDraft, editing, modelOsnovaId }: TabContentPr
                 value={view.notion_link ?? ""}
                 onChange={(e) => set("notion_link", e.target.value)}
                 placeholder="https://notion.so/..."
-                className="w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md bg-white outline-none focus:border-stone-900 focus:ring-1 focus:ring-stone-900"
+                className="w-full px-2.5 py-1.5 text-sm border border-default rounded-md bg-surface outline-none focus:border-[var(--color-text-primary)] focus:ring-1 focus:ring-[var(--color-ring)]"
               />
             )}
           </FieldWrap>
@@ -1045,14 +1045,14 @@ function TabContent({ m, draft, setDraft, editing, modelOsnovaId }: TabContentPr
                   href={view.notion_strategy_link}
                   target="_blank"
                   rel="noreferrer"
-                  className="px-2.5 py-1.5 text-sm text-stone-700 hover:text-stone-900 inline-flex items-center gap-1.5 bg-stone-50 hover:bg-stone-100 rounded-md w-full"
+                  className="px-2.5 py-1.5 text-sm text-secondary hover:text-primary inline-flex items-center gap-1.5 bg-page hover:bg-surface-muted rounded-md w-full"
                 >
                   <FileText className="w-3.5 h-3.5" />
                   <span className="truncate flex-1">{view.notion_strategy_link}</span>
                   <ExternalLink className="w-3 h-3 ml-auto shrink-0" />
                 </a>
               ) : (
-                <div className="text-sm text-stone-400 italic">не задано</div>
+                <div className="text-sm text-label italic">не задано</div>
               )
             ) : (
               <input
@@ -1060,7 +1060,7 @@ function TabContent({ m, draft, setDraft, editing, modelOsnovaId }: TabContentPr
                 value={view.notion_strategy_link ?? ""}
                 onChange={(e) => set("notion_strategy_link", e.target.value)}
                 placeholder="https://notion.so/..."
-                className="w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md bg-white outline-none focus:border-stone-900 focus:ring-1 focus:ring-stone-900"
+                className="w-full px-2.5 py-1.5 text-sm border border-default rounded-md bg-surface outline-none focus:border-[var(--color-text-primary)] focus:ring-1 focus:ring-[var(--color-ring)]"
               />
             )}
           </FieldWrap>
@@ -1078,14 +1078,14 @@ function TabContent({ m, draft, setDraft, editing, modelOsnovaId }: TabContentPr
                   href={view.yandex_disk_link}
                   target="_blank"
                   rel="noreferrer"
-                  className="px-2.5 py-1.5 text-sm text-stone-700 hover:text-stone-900 inline-flex items-center gap-1.5 bg-stone-50 hover:bg-stone-100 rounded-md w-full"
+                  className="px-2.5 py-1.5 text-sm text-secondary hover:text-primary inline-flex items-center gap-1.5 bg-page hover:bg-surface-muted rounded-md w-full"
                 >
                   <Box className="w-3.5 h-3.5" />
                   <span className="truncate flex-1">{view.yandex_disk_link}</span>
                   <ExternalLink className="w-3 h-3 ml-auto shrink-0" />
                 </a>
               ) : (
-                <div className="text-sm text-stone-400 italic">не задано</div>
+                <div className="text-sm text-label italic">не задано</div>
               )
             ) : (
               <input
@@ -1093,7 +1093,7 @@ function TabContent({ m, draft, setDraft, editing, modelOsnovaId }: TabContentPr
                 value={view.yandex_disk_link ?? ""}
                 onChange={(e) => set("yandex_disk_link", e.target.value)}
                 placeholder="https://disk.yandex.ru/d/..."
-                className="w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md bg-white outline-none focus:border-stone-900 focus:ring-1 focus:ring-stone-900"
+                className="w-full px-2.5 py-1.5 text-sm border border-default rounded-md bg-surface outline-none focus:border-[var(--color-text-primary)] focus:ring-1 focus:ring-[var(--color-ring)]"
               />
             )}
           </FieldWrap>
@@ -1110,7 +1110,7 @@ function TabContent({ m, draft, setDraft, editing, modelOsnovaId }: TabContentPr
             onChange={(e) =>
               set("upakovka_id", e.target.value === "" ? null : Number(e.target.value))
             }
-            className="w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md bg-white outline-none focus:border-stone-900 focus:ring-1 focus:ring-stone-900"
+            className="w-full px-2.5 py-1.5 text-sm border border-default rounded-md bg-surface outline-none focus:border-[var(--color-text-primary)] focus:ring-1 focus:ring-[var(--color-ring)]"
           >
             <option value="">— Не выбрано</option>
             {upakovki.map((u) => (
@@ -1123,12 +1123,12 @@ function TabContent({ m, draft, setDraft, editing, modelOsnovaId }: TabContentPr
             ))}
           </select>
         ) : upak ? (
-          <div className="flex items-start justify-between p-3 bg-stone-50 rounded-md">
+          <div className="flex items-start justify-between p-3 bg-page rounded-md">
             <div>
-              <div className="font-medium text-stone-900 flex items-center gap-2">
-                <Box className="w-3.5 h-3.5 text-stone-500" /> {upak.nazvanie}
+              <div className="font-medium text-primary flex items-center gap-2">
+                <Box className="w-3.5 h-3.5 text-muted" /> {upak.nazvanie}
               </div>
-              <div className="text-xs text-stone-500 mt-1 space-x-1">
+              <div className="text-xs text-muted mt-1 space-x-1">
                 {upak.dlina_cm != null && (
                   <span>
                     Габариты:{" "}
@@ -1151,7 +1151,7 @@ function TabContent({ m, draft, setDraft, editing, modelOsnovaId }: TabContentPr
                 <span>Срок: {upak.srok_izgotovleniya_dni ?? "—"}</span>
               </div>
               {upak.notes && (
-                <div className="text-xs text-stone-400 italic mt-1">{upak.notes}</div>
+                <div className="text-xs text-label italic mt-1">{upak.notes}</div>
               )}
             </div>
             {upak.file_link && (
@@ -1159,14 +1159,14 @@ function TabContent({ m, draft, setDraft, editing, modelOsnovaId }: TabContentPr
                 href={upak.file_link}
                 target="_blank"
                 rel="noreferrer"
-                className="text-xs text-stone-500 hover:text-stone-900 flex items-center gap-1 shrink-0"
+                className="text-xs text-muted hover:text-primary flex items-center gap-1 shrink-0"
               >
                 <ExternalLink className="w-3 h-3" /> Файл
               </a>
             )}
           </div>
         ) : (
-          <div className="text-sm text-stone-400 italic">Упаковка не выбрана</div>
+          <div className="text-sm text-label italic">Упаковка не выбрана</div>
         )}
       </Section>
 
@@ -1177,16 +1177,16 @@ function TabContent({ m, draft, setDraft, editing, modelOsnovaId }: TabContentPr
           <button
             type="button"
             onClick={() => setPickingSert(true)}
-            className="px-2.5 py-1 text-xs text-stone-700 hover:bg-stone-100 rounded-md flex items-center gap-1.5"
+            className="px-2.5 py-1 text-xs text-secondary hover:bg-surface-muted rounded-md flex items-center gap-1.5"
           >
             <Plus className="w-3 h-3" /> Сертификат
           </button>
         }
       >
         {modelSertsQ.isLoading ? (
-          <div className="text-sm text-stone-400 italic">Загрузка…</div>
+          <div className="text-sm text-label italic">Загрузка…</div>
         ) : modelSerts.length === 0 ? (
-          <div className="text-sm text-stone-400 italic">
+          <div className="text-sm text-label italic">
             К модели не привязано ни одного сертификата
           </div>
         ) : (
@@ -1194,11 +1194,11 @@ function TabContent({ m, draft, setDraft, editing, modelOsnovaId }: TabContentPr
             {modelSerts.map((s) => (
               <div
                 key={s.id}
-                className="flex items-start justify-between p-3 bg-stone-50 rounded-md"
+                className="flex items-start justify-between p-3 bg-page rounded-md"
               >
                 <div>
-                  <div className="font-medium text-stone-900">{s.nazvanie}</div>
-                  <div className="text-xs text-stone-500 mt-0.5 space-x-1">
+                  <div className="font-medium text-primary">{s.nazvanie}</div>
+                  <div className="text-xs text-muted mt-0.5 space-x-1">
                     {s.tip && <span>{s.tip} ·</span>}
                     {s.nomer && <span>№ {s.nomer} ·</span>}
                     {s.data_okonchaniya && <span>до {s.data_okonchaniya}</span>}
@@ -1210,7 +1210,7 @@ function TabContent({ m, draft, setDraft, editing, modelOsnovaId }: TabContentPr
                       href={s.file_url}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-xs text-stone-500 hover:text-stone-900 flex items-center gap-1"
+                      className="text-xs text-muted hover:text-primary flex items-center gap-1"
                     >
                       <ExternalLink className="w-3 h-3" /> Файл
                     </a>
@@ -1218,7 +1218,7 @@ function TabContent({ m, draft, setDraft, editing, modelOsnovaId }: TabContentPr
                   <button
                     type="button"
                     onClick={() => unlinkMut.mutate(s.id)}
-                    className="p-1 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded"
+                    className="p-1 text-label hover:text-red-600 hover:bg-red-50 rounded"
                     aria-label="Отвязать"
                     title="Отвязать"
                   >
@@ -1305,10 +1305,10 @@ function CardSidebar({
         <div className="flex items-center gap-3">
           <CompletenessRing value={completeness} size={56} hideLabel />
           <div className="flex-1">
-            <div className="text-2xl font-medium tabular-nums text-stone-900">
+            <div className="text-2xl font-medium tabular-nums text-primary">
               {Math.round(completeness * 100)}%
             </div>
-            <div className="text-xs text-stone-500">
+            <div className="text-xs text-muted">
               Атрибутов: {attrFilled}/{attrs.length}
             </div>
           </div>
@@ -1320,19 +1320,19 @@ function CardSidebar({
         subtitle="placeholder для остатков, оборачиваемости (Wave 3+)"
       >
         <div className="space-y-1.5 text-sm">
-          <div className="flex justify-between text-stone-400">
+          <div className="flex justify-between text-label">
             <span>Остаток на складе</span>
             <span className="tabular-nums">— шт</span>
           </div>
-          <div className="flex justify-between text-stone-400">
+          <div className="flex justify-between text-label">
             <span>Оборачиваемость</span>
             <span className="tabular-nums">— дн</span>
           </div>
-          <div className="flex justify-between text-stone-400">
+          <div className="flex justify-between text-label">
             <span>Продаж за 30 дн</span>
             <span className="tabular-nums">— шт</span>
           </div>
-          <div className="text-[10px] text-stone-400 italic mt-2 pt-2 border-t border-stone-100">
+          <div className="text-[10px] text-label italic mt-2 pt-2 border-t border-subtle">
             Обновлено: {relativeDate(m.updated_at)}
           </div>
         </div>
@@ -1342,14 +1342,14 @@ function CardSidebar({
         title="Вариации"
         badge={
           <Tooltip text="Вариация = базовая модель × юрлицо. Например, Vuki может выпускаться через ИП и через ООО — это две вариации.">
-            <Info className="w-3 h-3 text-stone-400" />
+            <Info className="w-3 h-3 text-label" />
           </Tooltip>
         }
         action={
           <button
             type="button"
             disabled
-            className="text-xs text-stone-700 hover:bg-stone-100 rounded px-2 py-0.5 flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="text-xs text-secondary hover:bg-surface-muted rounded px-2 py-0.5 flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
             title="Wave 3+ (создание вариации)"
           >
             <Plus className="w-3 h-3" /> Добавить
@@ -1363,16 +1363,16 @@ function CardSidebar({
                 key={v.id}
                 text={`${v.nazvanie}${v.importer_nazvanie ? " · " + v.importer_nazvanie : ""}`}
               >
-                <div className="flex items-center justify-between py-1.5 px-2 -mx-2 hover:bg-stone-50 rounded text-sm">
-                  <span className="font-mono text-stone-900">{v.kod}</span>
-                  <span className="text-[10px] text-stone-400 uppercase tracking-wider">
+                <div className="flex items-center justify-between py-1.5 px-2 -mx-2 hover:bg-page rounded text-sm">
+                  <span className="font-mono text-primary">{v.kod}</span>
+                  <span className="text-[10px] text-label uppercase tracking-wider">
                     {v.importer_nazvanie?.split(" ")[0] ?? "—"}
                   </span>
                 </div>
               </Tooltip>
             ))
           ) : (
-            <div className="text-sm text-stone-400 italic">Нет вариаций</div>
+            <div className="text-sm text-label italic">Нет вариаций</div>
           )}
         </div>
       </SidebarBlock>
@@ -1380,7 +1380,7 @@ function CardSidebar({
       <SidebarBlock
         title="Цвета модели"
         badge={
-          <span className="text-xs text-stone-500 tabular-nums">{cvetaList.length}</span>
+          <span className="text-xs text-muted tabular-nums">{cvetaList.length}</span>
         }
       >
         <div className="flex flex-wrap gap-1.5">
@@ -1392,24 +1392,24 @@ function CardSidebar({
                 <button
                   type="button"
                   onClick={() => openColor(c.code)}
-                  className="flex items-center gap-1.5 bg-stone-50 hover:bg-stone-100 rounded px-1.5 py-1 text-xs"
+                  className="flex items-center gap-1.5 bg-page hover:bg-surface-muted rounded px-1.5 py-1 text-xs"
                 >
                   <span
-                    className="inline-block w-4 h-4 rounded ring-1 ring-stone-200 shrink-0"
+                    className="inline-block w-4 h-4 rounded ring-1 ring-[var(--color-border-default)] shrink-0"
                     style={{ background: swatch }}
                   />
-                  <span className="font-mono text-[10px] text-stone-700">{c.code}</span>
+                  <span className="font-mono text-[10px] text-secondary">{c.code}</span>
                 </button>
               </Tooltip>
             )
           })}
           {cvetaList.length > 24 && (
-            <span className="text-xs text-stone-400 self-center">
+            <span className="text-xs text-label self-center">
               +{cvetaList.length - 24}
             </span>
           )}
           {cvetaList.length === 0 && (
-            <span className="text-xs text-stone-400 italic">Нет цветов</span>
+            <span className="text-xs text-label italic">Нет цветов</span>
           )}
         </div>
       </SidebarBlock>
@@ -1453,34 +1453,34 @@ function Header({
     : "#E7E5E4"
 
   return (
-    <div className="border-b border-stone-200 bg-white shrink-0 px-6 py-4 flex items-center gap-4">
+    <div className="border-b border-default bg-surface shrink-0 px-6 py-4 flex items-center gap-4">
       {/* Icon */}
       <div
-        className="w-14 h-14 rounded-lg ring-1 ring-stone-200 shrink-0 overflow-hidden flex items-center justify-center bg-stone-50"
+        className="w-14 h-14 rounded-lg ring-1 ring-[var(--color-border-default)] shrink-0 overflow-hidden flex items-center justify-center bg-page"
         style={!headerImageUrl ? { background: swatch } : undefined}
       >
         {headerImageUrl ? (
           <img src={headerImageUrl} alt="" className="w-full h-full object-cover" />
         ) : firstCvet ? null : (
-          <Box className="w-6 h-6 text-stone-400" />
+          <Box className="w-6 h-6 text-label" />
         )}
       </div>
 
       {/* Title */}
       <div className="flex-1 min-w-0">
-        <div className="text-xs text-stone-400 mb-0.5">
+        <div className="text-xs text-label mb-0.5">
           Базовая модель · {m.kategoriya ?? "—"}
         </div>
         <div className="flex items-center gap-3">
           <h1
-            className="cat-font-serif italic text-stone-900"
+            className="font-serif italic text-primary"
             style={{ fontFamily: "'Instrument Serif', ui-serif, Georgia, serif", fontSize: 32, lineHeight: 1.1 }}
           >
             {m.kod}
           </h1>
           <StatusBadge statusId={m.status_id ?? 0} />
-          <span className="text-sm text-stone-400">·</span>
-          <span className="text-sm text-stone-500 truncate">
+          <span className="text-sm text-label">·</span>
+          <span className="text-sm text-muted truncate">
             {m.nazvanie_etiketka || m.nazvanie_sayt || "без названия"}
           </span>
         </div>
@@ -1496,7 +1496,7 @@ function Header({
                 resetDraft()
                 setEditing(false)
               }}
-              className="px-3 py-1.5 text-xs text-stone-600 hover:bg-stone-100 rounded-md"
+              className="px-3 py-1.5 text-xs text-secondary hover:bg-surface-muted rounded-md"
             >
               Отмена
             </button>
@@ -1504,7 +1504,7 @@ function Header({
               type="button"
               onClick={onSave}
               disabled={saving}
-              className="px-3 py-1.5 text-xs text-white bg-stone-900 hover:bg-stone-800 rounded-md flex items-center gap-1.5 disabled:opacity-50"
+              className="px-3 py-1.5 text-xs text-white bg-elevated hover:bg-surface rounded-md flex items-center gap-1.5 disabled:opacity-50"
             >
               <Save className="w-3.5 h-3.5" />
               {saving ? "Сохраняем…" : "Сохранить"}
@@ -1515,32 +1515,32 @@ function Header({
             <button
               type="button"
               onClick={onDuplicate}
-              className="px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-100 rounded-md flex items-center gap-1.5"
+              className="px-3 py-1.5 text-xs text-secondary hover:bg-surface-muted rounded-md flex items-center gap-1.5"
             >
               <Copy className="w-3.5 h-3.5" /> Дублировать
             </button>
             <button
               type="button"
               onClick={onArchive}
-              className="px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-100 rounded-md flex items-center gap-1.5"
+              className="px-3 py-1.5 text-xs text-secondary hover:bg-surface-muted rounded-md flex items-center gap-1.5"
             >
               <Archive className="w-3.5 h-3.5" /> В архив
             </button>
             <button
               type="button"
               onClick={() => setEditing(true)}
-              className="px-3 py-1.5 text-xs text-white bg-stone-900 hover:bg-stone-800 rounded-md flex items-center gap-1.5"
+              className="px-3 py-1.5 text-xs text-white bg-elevated hover:bg-surface rounded-md flex items-center gap-1.5"
             >
               <Edit3 className="w-3.5 h-3.5" /> Редактировать
             </button>
-            <div className="h-6 w-px bg-stone-200 mx-1" />
+            <div className="h-6 w-px bg-[var(--color-border-default)] mx-1" />
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 hover:bg-stone-100 rounded-md"
+              className="p-1.5 hover:bg-surface-muted rounded-md"
               aria-label="Close"
             >
-              <X className="w-4 h-4 text-stone-700" />
+              <X className="w-4 h-4 text-secondary" />
             </button>
           </>
         )}
@@ -1690,15 +1690,15 @@ export function ModelCard({ kod, onClose }: ModelCardProps) {
 
   // Render container (modal-overlay).
   return (
-    <div className="fixed inset-0 z-50 bg-stone-900/30 flex">
+    <div className="fixed inset-0 z-50 bg-elevated/30 flex">
       <div
         className="absolute inset-0"
         onClick={onClose}
         aria-hidden="true"
       />
-      <div className="relative ml-auto w-full max-w-[min(1280px,98vw)] h-full bg-stone-50 border-l border-stone-200 shadow-2xl flex flex-col overflow-hidden">
+      <div className="relative ml-auto w-full max-w-[min(1280px,98vw)] h-full bg-page border-l border-default shadow-2xl flex flex-col overflow-hidden">
         {isLoading && (
-          <div className="flex-1 flex items-center justify-center text-stone-400 text-sm">
+          <div className="flex-1 flex items-center justify-center text-label text-sm">
             Загрузка модели…
           </div>
         )}
@@ -1708,7 +1708,7 @@ export function ModelCard({ kod, onClose }: ModelCardProps) {
           </div>
         )}
         {!isLoading && !error && !model && (
-          <div className="flex-1 flex items-center justify-center text-stone-500 text-sm">
+          <div className="flex-1 flex items-center justify-center text-muted text-sm">
             Модель «{kod}» не найдена.
           </div>
         )}
@@ -1728,7 +1728,7 @@ export function ModelCard({ kod, onClose }: ModelCardProps) {
             />
 
             {/* Tab bar */}
-            <div className="border-b border-stone-200 bg-white px-6 flex gap-1 shrink-0">
+            <div className="border-b border-default bg-surface px-6 flex gap-1 shrink-0">
               {([
                 { id: "description", label: "Описание" },
                 { id: "attributes", label: "Атрибуты" },
@@ -1747,18 +1747,18 @@ export function ModelCard({ kod, onClose }: ModelCardProps) {
                   className={
                     "relative px-3 py-2.5 text-sm transition-colors " +
                     (tab === t.id
-                      ? "text-stone-900 font-medium"
-                      : "text-stone-500 hover:text-stone-800")
+                      ? "text-primary font-medium"
+                      : "text-muted hover:text-primary")
                   }
                 >
                   {t.label}
                   {t.count != null && (
-                    <span className="ml-1.5 text-[10px] tabular-nums text-stone-400">
+                    <span className="ml-1.5 text-[10px] tabular-nums text-label">
                       {t.count}
                     </span>
                   )}
                   {tab === t.id && (
-                    <span className="absolute bottom-0 left-0 right-0 h-px bg-stone-900" />
+                    <span className="absolute bottom-0 left-0 right-0 h-px bg-elevated" />
                   )}
                 </button>
               ))}
@@ -1878,21 +1878,21 @@ function DuplicateModal({
 
   return (
     <div
-      className="fixed inset-0 z-[60] bg-stone-900/40 flex items-center justify-center p-4"
+      className="fixed inset-0 z-[60] bg-elevated/40 flex items-center justify-center p-4"
       onClick={onCancel}
     >
       <div
-        className="w-full max-w-md bg-white rounded-xl shadow-2xl border border-stone-200 overflow-hidden"
+        className="w-full max-w-md bg-surface rounded-xl shadow-2xl border border-default overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-5 py-3 border-b border-stone-200 flex items-center justify-between">
-          <div className="font-medium text-stone-900">Дублировать модель</div>
-          <button onClick={onCancel} className="p-1 hover:bg-stone-100 rounded">
-            <X className="w-4 h-4 text-stone-500" />
+        <div className="px-5 py-3 border-b border-default flex items-center justify-between">
+          <div className="font-medium text-primary">Дублировать модель</div>
+          <button onClick={onCancel} className="p-1 hover:bg-surface-muted rounded">
+            <X className="w-4 h-4 text-muted" />
           </button>
         </div>
         <div className="px-5 py-4 space-y-3">
-          <div className="text-xs text-stone-500">
+          <div className="text-xs text-muted">
             Создать копию <span className="font-mono">{srcKod}</span> с новым kod.
             Копируется только запись modeli_osnova — без вариаций, артикулов и SKU.
           </div>
@@ -1903,21 +1903,21 @@ function DuplicateModal({
             onChange={(e) => setKod(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && submit()}
             placeholder="Например, VukiV2"
-            className="w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md bg-white outline-none focus:border-stone-900 focus:ring-1 focus:ring-stone-900 font-mono"
+            className="w-full px-2.5 py-1.5 text-sm border border-default rounded-md bg-surface outline-none focus:border-[var(--color-text-primary)] focus:ring-1 focus:ring-[var(--color-ring)] font-mono"
           />
           {error && <div className="text-xs text-red-600">{error}</div>}
         </div>
-        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-stone-200 bg-stone-50">
+        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-default bg-page">
           <button
             onClick={onCancel}
-            className="px-3 py-1.5 text-sm text-stone-700 hover:bg-stone-100 rounded-md"
+            className="px-3 py-1.5 text-sm text-secondary hover:bg-surface-muted rounded-md"
           >
             Отмена
           </button>
           <button
             onClick={submit}
             disabled={pending}
-            className="px-3 py-1.5 text-sm text-white bg-stone-900 hover:bg-stone-800 rounded-md disabled:opacity-50"
+            className="px-3 py-1.5 text-sm text-white bg-elevated hover:bg-surface rounded-md disabled:opacity-50"
           >
             {pending ? "Создаём…" : "Дублировать"}
           </button>
@@ -1937,33 +1937,33 @@ function ArchiveModal({
 }) {
   return (
     <div
-      className="fixed inset-0 z-[60] bg-stone-900/40 flex items-center justify-center p-4"
+      className="fixed inset-0 z-[60] bg-elevated/40 flex items-center justify-center p-4"
       onClick={onCancel}
     >
       <div
-        className="w-full max-w-md bg-white rounded-xl shadow-2xl border border-stone-200 overflow-hidden"
+        className="w-full max-w-md bg-surface rounded-xl shadow-2xl border border-default overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-5 py-3 border-b border-stone-200 flex items-center justify-between">
-          <div className="font-medium text-stone-900">Архивировать модель</div>
-          <button onClick={onCancel} className="p-1 hover:bg-stone-100 rounded">
-            <X className="w-4 h-4 text-stone-500" />
+        <div className="px-5 py-3 border-b border-default flex items-center justify-between">
+          <div className="font-medium text-primary">Архивировать модель</div>
+          <button onClick={onCancel} className="p-1 hover:bg-surface-muted rounded">
+            <X className="w-4 h-4 text-muted" />
           </button>
         </div>
         <div className="px-5 py-4 space-y-2">
-          <div className="text-sm text-stone-700">
+          <div className="text-sm text-secondary">
             Архивировать модель <span className="font-mono font-medium">{kod}</span> и все её
             вариации, артикулы и SKU?
           </div>
-          <div className="text-xs text-stone-500">
+          <div className="text-xs text-muted">
             Откатить через UI нельзя. Каскад: modeli_osnova → Архив, артикулы → Выводим, SKU
             (WB/OZON/Сайт/Lamoda) → Архив.
           </div>
         </div>
-        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-stone-200 bg-stone-50">
+        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-default bg-page">
           <button
             onClick={onCancel}
-            className="px-3 py-1.5 text-sm text-stone-700 hover:bg-stone-100 rounded-md"
+            className="px-3 py-1.5 text-sm text-secondary hover:bg-surface-muted rounded-md"
           >
             Отмена
           </button>

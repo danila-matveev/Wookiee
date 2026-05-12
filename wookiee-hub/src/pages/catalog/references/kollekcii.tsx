@@ -84,11 +84,11 @@ export function KollekciiPage() {
       label: "Описание",
       render: (r) =>
         r.opisanie ? (
-          <span className="text-stone-600" title={r.opisanie}>
+          <span className="text-secondary" title={r.opisanie}>
             {r.opisanie.length > 60 ? `${r.opisanie.slice(0, 60)}…` : r.opisanie}
           </span>
         ) : (
-          <span className="text-stone-400">—</span>
+          <span className="text-label">—</span>
         ),
     },
     {
@@ -96,16 +96,16 @@ export function KollekciiPage() {
       label: "Год запуска",
       render: (r) =>
         r.god_zapuska ? (
-          <span className="text-stone-700 tabular-nums font-mono text-xs">{r.god_zapuska}</span>
+          <span className="text-secondary tabular-nums font-mono text-xs">{r.god_zapuska}</span>
         ) : (
-          <span className="text-stone-400">—</span>
+          <span className="text-label">—</span>
         ),
     },
     {
       key: "models_count",
       label: "Моделей",
       render: (r) => (
-        <span className="text-stone-700 tabular-nums font-mono text-xs">
+        <span className="text-secondary tabular-nums font-mono text-xs">
           {counts.data?.[r.id] ?? 0}
         </span>
       ),

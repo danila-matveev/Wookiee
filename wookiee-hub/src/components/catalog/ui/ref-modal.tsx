@@ -40,6 +40,10 @@ interface RefModalProps {
   saveLabel?: string
 }
 
+const INPUT_CLS =
+  "w-full px-2.5 py-1.5 text-sm border border-default rounded-md bg-surface text-primary outline-none transition-colors " +
+  "focus:border-strong focus:ring-1 focus:ring-[var(--color-ring)] placeholder:text-label"
+
 /**
  * RefModal — расширенная модалка для CRUD справочников.
  * Поддерживает: text, number, textarea, select, multiselect, file_url, date, checkbox.
@@ -87,27 +91,24 @@ export function RefModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-stone-900/40 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 bg-[var(--color-text-primary)]/40 flex items-center justify-center p-4"
       onClick={onCancel}
     >
       <div
-        className="w-full max-w-lg bg-white rounded-xl shadow-2xl overflow-hidden border border-stone-200"
+        className="w-full max-w-lg bg-elevated rounded-xl shadow-2xl overflow-hidden border border-default"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-3 border-b border-stone-200">
-          <h2
-            className="cat-font-serif text-xl text-stone-900 italic"
-            style={{ fontFamily: "'Instrument Serif', ui-serif, Georgia, serif" }}
-          >
+        <div className="flex items-center justify-between px-5 py-3 border-b border-default">
+          <h2 className="font-serif italic text-xl text-primary">
             {title}
           </h2>
           <button
             type="button"
             onClick={onCancel}
-            className="p-1 hover:bg-stone-100 rounded"
+            className="p-1 hover:bg-surface-muted rounded"
             aria-label="Close"
           >
-            <X className="w-4 h-4 text-stone-500" />
+            <X className="w-4 h-4 text-muted" />
           </button>
         </div>
         <div className="px-5 py-4 grid grid-cols-2 gap-3 max-h-[70vh] overflow-y-auto">
@@ -121,15 +122,15 @@ export function RefModal({
           ))}
         </div>
         {error && (
-          <div className="px-5 py-2 text-xs text-red-600 bg-red-50 border-t border-red-100">
+          <div className="px-5 py-2 text-xs text-danger bg-danger-soft border-t border-default">
             {error}
           </div>
         )}
-        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-stone-200 bg-stone-50">
+        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-default bg-surface-muted">
           <button
             type="button"
             onClick={onCancel}
-            className="px-3 py-1.5 text-sm text-stone-700 hover:bg-stone-100 rounded-md"
+            className="px-3 py-1.5 text-sm text-secondary hover:bg-surface-muted rounded-md"
           >
             Отмена
           </button>
@@ -138,7 +139,7 @@ export function RefModal({
             onClick={handleSave}
             disabled={saving}
             className={cn(
-              "px-3 py-1.5 text-sm text-white bg-stone-900 hover:bg-stone-800 rounded-md",
+              "px-3 py-1.5 text-sm text-white bg-[var(--color-text-primary)] hover:opacity-90 rounded-md",
               "disabled:opacity-50 disabled:cursor-not-allowed",
             )}
           >
@@ -158,20 +159,18 @@ interface FieldInputProps {
 
 function FieldInput({ field, value, onChange }: FieldInputProps) {
   const labelEl = (
-    <label className="block text-[11px] uppercase tracking-wider text-stone-500 mb-1">
+    <label className="block text-[11px] uppercase tracking-wider text-label mb-1">
       {field.label}
-      {field.required && <span className="text-red-500 ml-0.5">*</span>}
+      {field.required && <span className="text-danger ml-0.5">*</span>}
     </label>
   )
   const wrap = (children: React.ReactNode) => (
     <div className={field.full ?? field.type === "textarea" ? "col-span-2" : ""}>
       {labelEl}
       {children}
-      {field.hint && <div className="text-[10px] text-stone-400 mt-1">{field.hint}</div>}
+      {field.hint && <div className="text-[10px] text-label mt-1">{field.hint}</div>}
     </div>
   )
-  const inputCls =
-    "w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md bg-white outline-none focus:border-stone-900 focus:ring-1 focus:ring-stone-900"
 
   switch (field.type) {
     case "text":
@@ -182,7 +181,7 @@ function FieldInput({ field, value, onChange }: FieldInputProps) {
           value={typeof value === "string" ? value : ""}
           placeholder={field.placeholder}
           onChange={(e) => onChange(e.target.value)}
-          className={inputCls}
+          className={INPUT_CLS}
         />,
       )
     case "number":
@@ -195,7 +194,7 @@ function FieldInput({ field, value, onChange }: FieldInputProps) {
             const v = e.target.value
             onChange(v === "" ? null : Number(v))
           }}
-          className={cn(inputCls, "tabular-nums")}
+          className={cn(INPUT_CLS, "tabular-nums")}
         />,
       )
     case "textarea":
@@ -205,7 +204,7 @@ function FieldInput({ field, value, onChange }: FieldInputProps) {
           value={typeof value === "string" ? value : ""}
           placeholder={field.placeholder}
           onChange={(e) => onChange(e.target.value)}
-          className={cn(inputCls, "resize-none")}
+          className={cn(INPUT_CLS, "resize-none")}
         />,
       )
     case "date":
@@ -214,7 +213,7 @@ function FieldInput({ field, value, onChange }: FieldInputProps) {
           type="date"
           value={typeof value === "string" ? value : ""}
           onChange={(e) => onChange(e.target.value)}
-          className={inputCls}
+          className={INPUT_CLS}
         />,
       )
     case "checkbox":
@@ -224,12 +223,12 @@ function FieldInput({ field, value, onChange }: FieldInputProps) {
             type="checkbox"
             checked={Boolean(value)}
             onChange={(e) => onChange(e.target.checked)}
-            className="rounded border-stone-300"
+            className="rounded border-strong"
             id={`refmodal-${field.key}`}
           />
           <label
             htmlFor={`refmodal-${field.key}`}
-            className="text-sm text-stone-700 cursor-pointer"
+            className="text-sm text-secondary cursor-pointer"
           >
             {field.label}
           </label>
@@ -244,7 +243,7 @@ function FieldInput({ field, value, onChange }: FieldInputProps) {
             const opt = field.options?.find((o) => String(o.value) === v)
             onChange(opt ? opt.value : v)
           }}
-          className={inputCls}
+          className={INPUT_CLS}
         >
           <option value="">{field.placeholder ?? "Выберите…"}</option>
           {field.options?.map((o) => (
@@ -270,8 +269,8 @@ function FieldInput({ field, value, onChange }: FieldInputProps) {
                 className={cn(
                   "px-2.5 py-1 text-xs rounded-md border transition-colors",
                   active
-                    ? "bg-stone-900 text-white border-stone-900"
-                    : "bg-white border-stone-200 text-stone-600 hover:border-stone-400",
+                    ? "bg-[var(--color-text-primary)] text-[var(--color-surface)] border-strong"
+                    : "bg-surface border-default text-secondary hover:border-strong",
                 )}
               >
                 {o.label}

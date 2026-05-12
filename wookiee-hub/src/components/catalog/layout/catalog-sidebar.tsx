@@ -81,31 +81,29 @@ export function CatalogSidebar() {
 
   return (
     <aside
-      className={`${collapsed ? "w-16" : "w-60"} shrink-0 border-r border-stone-200 bg-stone-50/60 flex flex-col transition-all duration-200`}
+      className={`${collapsed ? "w-16" : "w-60"} shrink-0 border-r border-default bg-surface-muted flex flex-col transition-all duration-200`}
     >
       {/* Header */}
-      <div className="h-14 px-4 flex items-center justify-between border-b border-stone-200">
+      <div className="h-14 px-4 flex items-center justify-between border-b border-default">
         {!collapsed && (
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-md bg-stone-900 text-white flex items-center justify-center text-xs font-semibold">
+            <div className="w-7 h-7 rounded-md bg-[var(--color-text-primary)] text-[var(--color-surface)] flex items-center justify-center text-xs font-semibold">
               W
             </div>
-            <span
-              className="cat-font-serif text-lg leading-none italic text-stone-900"
-            >
+            <span className="font-serif text-lg leading-none italic text-primary">
               Каталог
             </span>
           </div>
         )}
         {collapsed && (
-          <div className="w-7 h-7 rounded-md bg-stone-900 text-white flex items-center justify-center text-xs font-semibold mx-auto">
+          <div className="w-7 h-7 rounded-md bg-[var(--color-text-primary)] text-[var(--color-surface)] flex items-center justify-center text-xs font-semibold mx-auto">
             W
           </div>
         )}
         <button
           type="button"
           onClick={() => setCollapsed(!collapsed)}
-          className="text-stone-400 hover:text-stone-700 -mr-1 shrink-0"
+          className="text-label hover:text-secondary -mr-1 shrink-0"
           aria-label={collapsed ? "Развернуть боковую панель" : "Свернуть боковую панель"}
         >
           <ChevronsLeft
@@ -119,7 +117,7 @@ export function CatalogSidebar() {
         {GROUPS.map((g) => (
           <div key={g.title} className="mb-4">
             {!collapsed && (
-              <div className="px-4 pb-1 text-[10px] uppercase tracking-wider text-stone-400 font-medium">
+              <div className="px-4 pb-1 text-[10px] uppercase tracking-wider text-label font-medium">
                 {g.title}
               </div>
             )}
@@ -133,8 +131,8 @@ export function CatalogSidebar() {
                   to={item.path}
                   className={`flex items-center gap-2.5 py-1.5 text-sm transition-colors ${
                     active
-                      ? "bg-stone-100 text-stone-900 font-medium"
-                      : "text-stone-700 hover:bg-stone-100/60"
+                      ? "bg-surface text-primary font-medium"
+                      : "text-secondary hover:bg-surface/60"
                   } ${collapsed ? "justify-center px-0" : "px-4"}`}
                 >
                   <Icon className="w-4 h-4 shrink-0" />
@@ -144,7 +142,7 @@ export function CatalogSidebar() {
                       {item.countKey && (
                         <span
                           className={`text-[10px] tabular-nums ${
-                            active ? "text-stone-500" : "text-stone-400"
+                            active ? "text-muted" : "text-label"
                           }`}
                         >
                           {formatCount(count)}
@@ -161,20 +159,20 @@ export function CatalogSidebar() {
 
       {/* Footer — profile */}
       {!collapsed && (
-        <div className="border-t border-stone-200 p-3 space-y-2">
+        <div className="border-t border-default p-3 space-y-2">
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-stone-700 to-stone-900 text-white flex items-center justify-center text-[11px] font-medium">
+            <div className="w-7 h-7 rounded-full bg-[var(--color-text-primary)] text-[var(--color-surface)] flex items-center justify-center text-[11px] font-medium">
               Д
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-xs font-medium text-stone-900 truncate">Данила</div>
-              <div className="text-[10px] text-stone-500">CEO · Wookiee</div>
+              <div className="text-xs font-medium text-primary truncate">Данила</div>
+              <div className="text-[10px] text-muted">CEO · Wookiee</div>
             </div>
-            <Settings className="w-3.5 h-3.5 text-stone-400" />
+            <Settings className="w-3.5 h-3.5 text-label" />
           </div>
           <Link
             to="/operations/tools"
-            className="flex items-center gap-2 text-[11px] text-stone-500 hover:text-stone-700 transition-colors"
+            className="flex items-center gap-2 text-[11px] text-muted hover:text-secondary transition-colors"
           >
             <span>← Назад в Hub</span>
           </Link>

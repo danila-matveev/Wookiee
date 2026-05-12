@@ -37,26 +37,26 @@ export function PageHeader({
 }: PageHeaderProps) {
   return (
     <div className="mb-5">
-      <div className="text-[11px] uppercase tracking-wider text-stone-400 mb-1">
+      <div className="text-[11px] uppercase tracking-wider text-label mb-1">
         Справочник
       </div>
       <div className="flex items-end justify-between gap-4">
         <div className="min-w-0">
           <h1
-            className="text-3xl text-stone-900 italic"
+            className="text-3xl text-primary italic"
             style={{ fontFamily: "'Instrument Serif', ui-serif, Georgia, serif" }}
           >
             {title}
           </h1>
           {subtitle && (
-            <p className="text-sm text-stone-500 mt-1 max-w-2xl">{subtitle}</p>
+            <p className="text-sm text-muted mt-1 max-w-2xl">{subtitle}</p>
           )}
         </div>
         <div className="flex items-center gap-3 shrink-0">
           {isLoading ? (
-            <span className="text-sm text-stone-400">Загрузка…</span>
+            <span className="text-sm text-label">Загрузка…</span>
           ) : (
-            <span className="text-sm text-stone-500 tabular-nums">
+            <span className="text-sm text-muted tabular-nums">
               {count} записей
             </span>
           )}
@@ -78,7 +78,7 @@ export function AddButton({ onClick, label = "Добавить" }: AddButtonProp
   return (
     <button
       onClick={onClick}
-      className="px-3 py-1.5 text-xs text-white bg-stone-900 hover:bg-stone-800 rounded-md flex items-center gap-1.5 transition-colors"
+      className="px-3 py-1.5 text-xs text-[var(--color-surface)] bg-[var(--color-text-primary)] hover:opacity-90 rounded-md flex items-center gap-1.5 transition-colors"
     >
       <Plus className="w-3.5 h-3.5" /> {label}
     </button>
@@ -94,13 +94,13 @@ interface SearchBoxProps {
 export function SearchBox({ value, onChange, placeholder = "Поиск…" }: SearchBoxProps) {
   return (
     <div className="relative mb-4">
-      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-stone-400 pointer-events-none" />
+      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-label pointer-events-none" />
       <input
         type="search"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full max-w-md pl-8 pr-3 py-1.5 text-sm border border-stone-200 rounded-md bg-white outline-none focus:border-stone-400 placeholder:text-stone-400"
+        className="w-full max-w-md pl-8 pr-3 py-1.5 text-sm border border-default rounded-md bg-surface text-primary outline-none focus:border-strong placeholder:text-label"
       />
     </div>
   )
@@ -128,12 +128,12 @@ export function SkeletonTable({
   cols?: number
 }) {
   return (
-    <div className="bg-white rounded-lg border border-stone-200 overflow-hidden">
-      <div className="bg-stone-50/80 border-b border-stone-200 px-3 py-2.5 flex gap-6">
+    <div className="bg-surface rounded-lg border border-default overflow-hidden">
+      <div className="bg-surface-muted/80 border-b border-default px-3 py-2.5 flex gap-6">
         {Array.from({ length: cols }).map((_, i) => (
           <div
             key={i}
-            className="h-3 bg-stone-200 rounded animate-pulse"
+            className="h-3 bg-surface-muted rounded animate-pulse"
             style={{ width: `${60 + i * 20}px` }}
           />
         ))}
@@ -141,12 +141,12 @@ export function SkeletonTable({
       {Array.from({ length: rows }).map((_, i) => (
         <div
           key={i}
-          className="flex gap-6 px-3 py-3 border-b border-stone-100 last:border-0"
+          className="flex gap-6 px-3 py-3 border-b border-subtle last:border-0"
         >
           {Array.from({ length: cols }).map((_, j) => (
             <div
               key={j}
-              className="h-3 bg-stone-100 rounded animate-pulse"
+              className="h-3 bg-surface-muted rounded animate-pulse"
               style={{ width: `${80 + j * 30}px` }}
             />
           ))}
@@ -196,20 +196,20 @@ export function RowActions({ onEdit, onDelete }: RowActionsProps) {
           e.stopPropagation()
           setOpen((v) => !v)
         }}
-        className="p-1 rounded hover:bg-stone-200/60 text-stone-400 hover:text-stone-900 opacity-40 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+        className="p-1 rounded hover:bg-surface-muted/60 text-label hover:text-primary opacity-40 group-hover:opacity-100 focus:opacity-100 transition-opacity"
         aria-label="Действия"
       >
         <MoreHorizontal className="w-4 h-4" />
       </button>
       {open && (
-        <div className="absolute right-0 top-7 z-20 min-w-[140px] py-1 bg-white border border-stone-200 rounded-md shadow-lg">
+        <div className="absolute right-0 top-7 z-20 min-w-[140px] py-1 bg-surface border border-default rounded-md shadow-lg">
           <button
             type="button"
             onClick={() => {
               setOpen(false)
               onEdit()
             }}
-            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-100 text-left"
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-secondary hover:bg-surface-muted text-left"
           >
             <Pencil className="w-3.5 h-3.5" /> Редактировать
           </button>
@@ -219,7 +219,7 @@ export function RowActions({ onEdit, onDelete }: RowActionsProps) {
               setOpen(false)
               onDelete()
             }}
-            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 text-left"
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-danger hover:bg-danger-soft text-left"
           >
             <Trash2 className="w-3.5 h-3.5" /> Удалить
           </button>
@@ -266,22 +266,22 @@ export function ConfirmDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-stone-900/40 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 bg-[var(--color-text-primary)]/40 flex items-center justify-center p-4"
       onClick={onCancel}
     >
       <div
-        className="w-full max-w-sm bg-white rounded-xl shadow-2xl border border-stone-200 overflow-hidden"
+        className="w-full max-w-sm bg-surface rounded-xl shadow-2xl border border-default overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-5 py-4 border-b border-stone-200">
-          <h3 className="text-base font-medium text-stone-900">{title}</h3>
-          {message && <p className="text-xs text-stone-500 mt-1">{message}</p>}
+        <div className="px-5 py-4 border-b border-default">
+          <h3 className="text-base font-medium text-primary">{title}</h3>
+          {message && <p className="text-xs text-muted mt-1">{message}</p>}
         </div>
-        <div className="flex items-center justify-end gap-2 px-5 py-3 bg-stone-50">
+        <div className="flex items-center justify-end gap-2 px-5 py-3 bg-surface-muted">
           <button
             type="button"
             onClick={onCancel}
-            className="px-3 py-1.5 text-sm text-stone-700 hover:bg-stone-200/60 rounded-md"
+            className="px-3 py-1.5 text-sm text-secondary hover:bg-surface-muted/60 rounded-md"
           >
             {cancelLabel}
           </button>
@@ -291,8 +291,8 @@ export function ConfirmDialog({
             disabled={busy}
             className={
               destructive
-                ? "px-3 py-1.5 text-sm text-white bg-red-600 hover:bg-red-700 rounded-md disabled:opacity-50"
-                : "px-3 py-1.5 text-sm text-white bg-stone-900 hover:bg-stone-800 rounded-md disabled:opacity-50"
+                ? "px-3 py-1.5 text-sm text-white bg-[var(--color-danger)] hover:opacity-90 rounded-md disabled:opacity-50"
+                : "px-3 py-1.5 text-sm text-[var(--color-surface)] bg-[var(--color-text-primary)] hover:opacity-90 rounded-md disabled:opacity-50"
             }
           >
             {busy ? "…" : confirmLabel}

@@ -87,11 +87,11 @@ export function SertifikatyPage() {
       label: "Тип",
       render: (r) =>
         r.tip ? (
-          <span className="inline-flex items-center px-2 py-0.5 text-[10px] uppercase tracking-wider bg-stone-100 text-stone-700 rounded">
+          <span className="inline-flex items-center px-2 py-0.5 text-[10px] uppercase tracking-wider bg-surface-muted text-secondary rounded">
             {r.tip}
           </span>
         ) : (
-          <span className="text-stone-400">—</span>
+          <span className="text-label">—</span>
         ),
     },
     {
@@ -99,23 +99,23 @@ export function SertifikatyPage() {
       label: "Номер",
       render: (r) =>
         r.nomer ? (
-          <span className="text-stone-700 font-mono text-xs">{r.nomer}</span>
+          <span className="text-secondary font-mono text-xs">{r.nomer}</span>
         ) : (
-          <span className="text-stone-400">—</span>
+          <span className="text-label">—</span>
         ),
     },
     {
       key: "data_vydachi",
       label: "Выдан",
       render: (r) => (
-        <span className="text-stone-600 text-xs tabular-nums">{formatDate(r.data_vydachi)}</span>
+        <span className="text-secondary text-xs tabular-nums">{formatDate(r.data_vydachi)}</span>
       ),
     },
     {
       key: "data_okonchaniya",
       label: "Окончание",
       render: (r) => (
-        <span className="text-stone-600 text-xs tabular-nums">{formatDate(r.data_okonchaniya)}</span>
+        <span className="text-secondary text-xs tabular-nums">{formatDate(r.data_okonchaniya)}</span>
       ),
     },
     {
@@ -123,13 +123,13 @@ export function SertifikatyPage() {
       label: "Орган",
       render: (r) =>
         r.organ_sertifikacii ? (
-          <span className="text-stone-600 text-xs" title={r.organ_sertifikacii}>
+          <span className="text-secondary text-xs" title={r.organ_sertifikacii}>
             {r.organ_sertifikacii.length > 30
               ? `${r.organ_sertifikacii.slice(0, 30)}…`
               : r.organ_sertifikacii}
           </span>
         ) : (
-          <span className="text-stone-400">—</span>
+          <span className="text-label">—</span>
         ),
     },
     {
@@ -137,9 +137,9 @@ export function SertifikatyPage() {
       label: "Группа",
       render: (r) =>
         r.gruppa_sertifikata ? (
-          <span className="text-stone-700 font-mono text-xs">{r.gruppa_sertifikata}</span>
+          <span className="text-secondary font-mono text-xs">{r.gruppa_sertifikata}</span>
         ) : (
-          <span className="text-stone-400">—</span>
+          <span className="text-label">—</span>
         ),
     },
     {
@@ -151,14 +151,14 @@ export function SertifikatyPage() {
             href={r.file_url}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-stone-700 hover:text-stone-900 text-xs"
+            className="inline-flex items-center gap-1 text-secondary hover:text-primary text-xs"
             onClick={(e) => e.stopPropagation()}
           >
             <ExternalLink className="w-3.5 h-3.5" />
             <span>открыть</span>
           </a>
         ) : (
-          <span className="text-stone-400">—</span>
+          <span className="text-label">—</span>
         ),
     },
     {

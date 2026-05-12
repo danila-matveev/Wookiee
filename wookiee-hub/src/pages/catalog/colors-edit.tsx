@@ -116,25 +116,25 @@ export function CvetEditModal({ initial, onClose }: CvetEditModalProps) {
   }
 
   const inputCls =
-    "w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md bg-white outline-none focus:border-stone-900 focus:ring-1 focus:ring-stone-900"
-  const labelCls = "block text-[11px] uppercase tracking-wider text-stone-500 mb-1"
+    "w-full px-2.5 py-1.5 text-sm border border-default rounded-md bg-surface outline-none focus:border-[var(--color-text-primary)] focus:ring-1 focus:ring-[var(--color-ring)]"
+  const labelCls = "block text-[11px] uppercase tracking-wider text-muted mb-1"
   const previewHex = /^#[0-9A-Fa-f]{6}$/.test(form.hex) ? form.hex : "#e7e5e4"
 
   return (
     <div
-      className="fixed inset-0 z-[60] bg-stone-900/40 flex items-center justify-center p-4"
+      className="fixed inset-0 z-[60] bg-elevated/40 flex items-center justify-center p-4"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg bg-white rounded-xl shadow-2xl overflow-hidden border border-stone-200"
+        className="w-full max-w-lg bg-surface rounded-xl shadow-2xl overflow-hidden border border-default"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-3 border-b border-stone-200">
-          <h2 className="cat-font-serif text-xl text-stone-900 italic">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-default">
+          <h2 className="font-serif italic text-xl text-primary italic">
             {initial ? `Редактировать ${initial.color_code}` : "Новый цвет"}
           </h2>
-          <button onClick={onClose} className="p-1 hover:bg-stone-100 rounded" aria-label="Close">
-            <X className="w-4 h-4 text-stone-500" />
+          <button onClick={onClose} className="p-1 hover:bg-surface-muted rounded" aria-label="Close">
+            <X className="w-4 h-4 text-muted" />
           </button>
         </div>
 
@@ -188,7 +188,7 @@ export function CvetEditModal({ initial, onClose }: CvetEditModalProps) {
                 type="color"
                 value={previewHex}
                 onChange={(e) => set("hex", e.target.value)}
-                className="w-12 h-10 rounded-md border border-stone-200 bg-white p-0 cursor-pointer"
+                className="w-12 h-10 rounded-md border border-default bg-surface p-0 cursor-pointer"
                 aria-label="Hex picker"
               />
               <input
@@ -199,7 +199,7 @@ export function CvetEditModal({ initial, onClose }: CvetEditModalProps) {
                 className={inputCls + " font-mono w-40"}
               />
               <div
-                className="w-10 h-10 rounded-md ring-1 ring-stone-200"
+                className="w-10 h-10 rounded-md ring-1 ring-[var(--color-border-default)]"
                 style={{ background: previewHex }}
                 title="Предпросмотр"
               />
@@ -240,15 +240,15 @@ export function CvetEditModal({ initial, onClose }: CvetEditModalProps) {
           </div>
         )}
 
-        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-stone-200 bg-stone-50">
+        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-default bg-page">
           <button
             onClick={onClose}
-            className="px-3 py-1.5 text-sm text-stone-700 hover:bg-stone-100 rounded-md"
+            className="px-3 py-1.5 text-sm text-secondary hover:bg-surface-muted rounded-md"
           >Отмена</button>
           <button
             onClick={onSave}
             disabled={saving}
-            className="px-3 py-1.5 text-sm text-white bg-stone-900 hover:bg-stone-800 rounded-md disabled:opacity-50"
+            className="px-3 py-1.5 text-sm text-white bg-elevated hover:bg-surface rounded-md disabled:opacity-50"
           >{saving ? "Сохраняем…" : "Сохранить"}</button>
         </div>
       </div>
