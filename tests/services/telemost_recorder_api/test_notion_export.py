@@ -10,6 +10,7 @@ import pytest
 from services.telemost_recorder_api.notion_export import (
     NotionExportError,
     _build_blocks,
+    _combined_tags,
     _page_properties,
     _page_title,
     export_meeting_to_notion,
@@ -82,9 +83,59 @@ def test_build_blocks_contains_all_sections():
     assert "Транскрипт" in headings
 
 
+def test_combined_tags_merges_title_participants_topical():
+    """Title + участники + LLM-теги в одной коллекции для Notion-поиска."""
+    tags = _combined_tags(_meeting())
+    # Title первым (самая сильная метка)
+    assert tags[0] == "Daily standup"
+    # Участники
+    assert "Данила" in tags
+    assert "Алина" in tags
+    # Тематические LLM-теги
+    assert "продукт" in tags
+    assert "креативы" in tags
+
+
+def test_combined_tags_dedupes_case_insensitive():
+    """Если LLM вернул 'Алина' (имя совпадает с участником) — не дублируем."""
+    m = _meeting(
+        title="алина", tags=["Алина", "АЛИНА", "продукт"],
+        summary={"participants": ["Алина"], "topics": [], "decisions": [], "tasks": []},
+    )
+    tags = _combined_tags(m)
+    # Один "алина" (нижнего регистра пришёл из title), потом "продукт"
+    lower = [t.lower() for t in tags]
+    assert lower.count("алина") == 1
+    assert "продукт" in tags
+
+
+def test_combined_tags_works_without_title():
+    tags = _combined_tags(_meeting(title=None))
+    assert "Данила" in tags
+    assert "продукт" in tags
+
+
+def test_build_blocks_tags_section_uses_combined_tags():
+    blocks = _build_blocks(_meeting())
+    # Найти раздел "Теги" и проверить что туда попали и название, и участники
+    tag_idx = next(
+        i for i, b in enumerate(blocks)
+        if b["type"].startswith("heading_")
+        and b[b["type"]]["rich_text"][0]["text"]["content"] == "Теги"
+    )
+    tag_paragraph = blocks[tag_idx + 1]["paragraph"]["rich_text"][0]["text"]["content"]
+    assert "Daily standup" in tag_paragraph
+    assert "Алина" in tag_paragraph
+    assert "продукт" in tag_paragraph
+
+
 def test_build_blocks_skips_empty_sections():
-    m = _meeting(summary={"participants": [], "topics": [], "decisions": [], "tasks": []},
-                 tags=[], processed_paragraphs=[])
+    m = _meeting(
+        title=None,
+        summary={"participants": [], "topics": [], "decisions": [], "tasks": []},
+        tags=[],
+        processed_paragraphs=[],
+    )
     blocks = _build_blocks(m)
     # Only fallback "(пустая запись)" paragraph
     assert len(blocks) == 1

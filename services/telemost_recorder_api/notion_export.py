@@ -125,10 +125,13 @@ def _build_blocks(meeting: dict[str, Any]) -> list[dict]:
             if conditions:
                 blocks.append(_bullet(f"Условия: {conditions}"))
 
-    tags = meeting.get("tags") or []
-    if tags:
+    # Объединяем тематические теги + название встречи + участников — это
+    # делает страницу находимой в Notion по любому из этих признаков
+    # (поиск по "Dayli", по "Алина", или по "продукт").
+    combined_tags = _combined_tags(meeting)
+    if combined_tags:
         blocks.append(_heading("Теги", level=2))
-        blocks.append(_paragraph(", ".join(tags)))
+        blocks.append(_paragraph(", ".join(combined_tags)))
 
     paragraphs = meeting.get("processed_paragraphs") or []
     if paragraphs:
@@ -142,6 +145,39 @@ def _build_blocks(meeting: dict[str, Any]) -> list[dict]:
         blocks.append(_paragraph("(пустая запись)"))
 
     return blocks
+
+
+def _combined_tags(meeting: dict[str, Any]) -> list[str]:
+    """Объединить тематические LLM-теги, название встречи и имена участников.
+
+    Дедуплицируем без учёта регистра, сохраняем порядок: сначала название
+    (самая сильная метка), затем участники, затем тематические теги.
+    """
+    out: list[str] = []
+    seen: set[str] = set()
+
+    def _add(tag: str) -> None:
+        tag = tag.strip()
+        if not tag:
+            return
+        key = tag.lower()
+        if key in seen:
+            return
+        seen.add(key)
+        out.append(tag)
+
+    title = (meeting.get("title") or "").strip()
+    if title:
+        _add(title)
+
+    summary = meeting.get("summary") or {}
+    for participant in summary.get("participants") or []:
+        _add(str(participant))
+
+    for tag in meeting.get("tags") or []:
+        _add(str(tag))
+
+    return out
 
 
 def _page_title(meeting: dict[str, Any]) -> str:
