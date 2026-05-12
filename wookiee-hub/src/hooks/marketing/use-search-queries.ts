@@ -9,7 +9,9 @@ import {
   type BrandQueryCreate,
   type SubstituteArticleCreate,
 } from '@/api/marketing/search-queries'
-import type { SearchQueryRow, SearchQueryStatus } from '@/types/marketing'
+import type { SearchQueryRow, StatusUI } from '@/types/marketing'
+import { STATUS_UI_TO_DB } from '@/types/marketing'
+import { parseUnifiedId } from '@/lib/marketing-helpers'
 
 export const searchQueriesKeys = {
   all:    ['marketing', 'search-queries'] as const,
@@ -75,12 +77,16 @@ export function useCreateBrandQuery() {
 export function useUpdateSearchQueryStatus() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ unifiedId, status }: { unifiedId: string; status: SearchQueryStatus }) =>
-      updateSearchQueryStatus(unifiedId, status),
+    mutationFn: ({ unifiedId, status }: { unifiedId: string; status: StatusUI }) => {
+      const { source, id } = parseUnifiedId(unifiedId)
+      return updateSearchQueryStatus(source, id, status)
+    },
     onMutate: async ({ unifiedId, status }) => {
       await qc.cancelQueries({ queryKey: searchQueriesKeys.list() })
       const prev = qc.getQueryData<SearchQueryRow[]>(searchQueriesKeys.list()) ?? []
-      const next = prev.map((r) => (r.unified_id === unifiedId ? { ...r, status } : r))
+      // Rows hold DB-shaped status; convert UI→DB for optimistic update
+      const statusDB = STATUS_UI_TO_DB[status]
+      const next = prev.map((r) => (r.unified_id === unifiedId ? { ...r, status: statusDB } : r))
       qc.setQueryData(searchQueriesKeys.list(), next)
       return { prev }
     },
