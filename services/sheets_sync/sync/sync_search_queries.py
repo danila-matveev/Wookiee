@@ -342,26 +342,30 @@ def _analyze_cabinet(
                 # Frequency is a keyword-level metric — always count regardless of nmId
                 aggregated[word]["frequency"] += item.get("frequency", 0)
 
-                # Transitions (openCard), addToCart, orders — only count for own articles
                 nm_id = item.get("nmId", 0)
-                if _should_count_transitions(word, nm_id, podmen_mapping):
-                    open_card = item.get("openCard", 0)
-                    add_to_cart = item.get("addToCart", 0)
-                    orders = item.get("orders", 0)
+                open_card = item.get("openCard", 0)
+                add_to_cart = item.get("addToCart", 0)
+                orders = item.get("orders", 0)
 
+                # Aggregate (the 4 numbers in Sheets): only count transitions to
+                # the "mapped" article — this matches GAS semantics (excludes
+                # cross-card spillover from the keyword's success score).
+                if _should_count_transitions(word, nm_id, podmen_mapping):
                     aggregated[word]["openCard"] += open_card
                     aggregated[word]["addToCart"] += add_to_cart
                     aggregated[word]["orders"] += orders
 
-                    # Per-article breakdown row (only "our" articles count).
-                    if nm_id and (open_card or add_to_cart or orders):
-                        breakdown.append({
-                            "search_word": word,
-                            "nm_id": nm_id,
-                            "openCard": open_card,
-                            "addToCart": add_to_cart,
-                            "orders": orders,
-                        })
+                # Per-article breakdown: capture EVERY our article that received
+                # traffic for this word, regardless of the mapping. Required for
+                # подменка-analysis (where traffic visibly leaks to other SKUs).
+                if nm_id and (open_card or add_to_cart or orders):
+                    breakdown.append({
+                        "search_word": word,
+                        "nm_id": nm_id,
+                        "openCard": open_card,
+                        "addToCart": add_to_cart,
+                        "orders": orders,
+                    })
 
     logger.info(
         "[%s] Done: %d/%d batches successful, %d words matched, %d breakdown rows",
