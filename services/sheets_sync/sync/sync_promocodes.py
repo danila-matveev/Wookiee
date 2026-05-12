@@ -18,7 +18,7 @@ from shared.clients.sheets_client import get_moscow_now
 
 from .promocodes.aggregate import aggregate_by_uuid
 from .promocodes.dashboard import compute_dashboard_summary, write_dashboard_header
-from .promocodes.db_io import write_weekly_metrics
+from .promocodes.db_io import write_product_breakdown, write_weekly_metrics
 from .promocodes.dictionary import _truthy, parse_dictionary
 from .promocodes.legacy import ANALYTICS_HEADERS, format_analytics_row
 from .promocodes.pivot import (
@@ -45,7 +45,7 @@ __all__ = [
     "read_dictionary_sheet", "ensure_analytics_sheet",
     "_read_pivot_state", "ensure_analytics_dict_rows", "upsert_pivot",
     "write_dashboard_header",
-    "write_weekly_metrics",
+    "write_weekly_metrics", "write_product_breakdown",
     # Orchestrator
     "run",
 ]
@@ -146,11 +146,14 @@ def run(
     last_week_aggs: dict[str, dict] = {}
 
     # Process oldest week first so columns grow left→right chronologically
+    pb_rows_written = 0
     for week_start, week_end in reversed(weeks):
         week_data: dict[tuple[str, str], dict] = {}
+        api_rows_by_cab: dict[str, list[dict]] = {}
 
         for cab_name, api_key in cabs:
             api_rows = fetch_report(api_key, cab_name, week_start, week_end)
+            api_rows_by_cab[cab_name] = api_rows
             agg = aggregate_by_uuid(api_rows)
             # Always record everything the API returns — dictionary cabinet
             # flags only drive pre-population, not API filtering. Unknown
@@ -188,7 +191,12 @@ def run(
             merged = _merge_for_db(week_data)
             written = write_weekly_metrics(week_start, merged)
             db_rows_written += written
-            logger.info("DB: wrote %d rows for week %s", written, week_start)
+            pb_written = write_product_breakdown(week_start, api_rows_by_cab)
+            pb_rows_written += pb_written
+            logger.info(
+                "DB: wrote %d weekly + %d product_breakdown for week %s",
+                written, pb_written, week_start,
+            )
 
     summary = compute_dashboard_summary(last_week_aggs, dictionary)
     write_dashboard_header(ws, summary, weeks)
@@ -202,6 +210,7 @@ def run(
         "cabinets": [c[0] for c in cabs],
         "rows_added": rows_added,
         "rows_updated": rows_updated,
+        "product_breakdown_rows": pb_rows_written,
         "db_rows_written": db_rows_written,
         "unknown_uuids": sorted(unknown_set),
     }
