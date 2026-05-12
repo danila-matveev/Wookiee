@@ -94,21 +94,21 @@ export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose, m
           </div>
         )}
 
-        <div className="border-t border-border pt-3">
-          <span className={lCls}>За выбранный период</span>
+        <div className="border-t border-stone-200 pt-3" data-testid="funnel-block">
+          <div className="text-[10px] uppercase tracking-wider text-stone-400 mb-3">За выбранный период</div>
           <div className="space-y-2">
             <Row label="Частота"  value={fmt(total.f)} />
             <Row label="Переходы" value={fmt(total.t)} />
-            <SubRow label="CR Перех→корз" value={pct(total.a, total.t)} />
+            <SubRow label="CR перех → корзина" value={pct(total.a, total.t)} />
             <Row label="Корзина" value={fmt(total.a)} />
-            <SubRow label="CR Корз→Зак" value={pct(total.o, total.a)} />
-            <Row label="Заказы"  value={fmt(total.o)} bold />
-            <div className="pt-1 mt-1 border-t border-border/50 flex items-center justify-between">
-              <span className="text-xs font-medium text-foreground">CR Перех→Зак</span>
-              <span className="text-sm font-medium text-foreground tabular-nums">{pct(total.o, total.t)}</span>
+            <SubRow label="CR корзина → заказ" value={pct(total.o, total.a)} />
+            <Row label="Заказы"  value={fmt(total.o)} />
+            <div className="pt-1 mt-1 border-t border-stone-100 flex items-center justify-between">
+              <span className="text-xs font-medium text-stone-700">CR перех → заказ</span>
+              <span className="text-sm font-medium text-stone-900 tabular-nums">{pct(total.o, total.t)}</span>
             </div>
           </div>
-          <div className="text-[10px] text-muted-foreground mt-3">
+          <div className="text-[10px] text-stone-400 mt-3">
             Всего за всё время: {fmt(allTotal.o)} заказов · {weekly.length} нед данных
           </div>
         </div>
@@ -196,21 +196,21 @@ export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose, m
   )
 }
 
-interface RowProps { label: string; value: string; bold?: boolean }
-function Row({ label, value, bold }: RowProps) {
+interface RowProps { label: string; value: string }
+function Row({ label, value }: RowProps) {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className={`text-sm tabular-nums ${bold ? 'font-semibold text-foreground' : 'font-medium text-foreground'}`}>{value}</span>
+      <span className="text-xs text-stone-500">{label}</span>
+      <span className="text-sm font-medium text-stone-900 tabular-nums">{value}</span>
     </div>
   )
 }
 
 function SubRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between pl-4 !-mt-1.5">
-      <span className="text-[11px] text-muted-foreground">{label}</span>
-      <span className="text-[11px] text-muted-foreground tabular-nums">{value}</span>
+    <div className="flex items-center justify-between pl-4 -mt-0.5">
+      <span className="text-[11px] text-stone-400">{label}</span>
+      <span className="text-[11px] text-stone-500 tabular-nums">{value}</span>
     </div>
   )
 }
