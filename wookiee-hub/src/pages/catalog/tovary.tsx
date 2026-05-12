@@ -13,6 +13,7 @@ import { ColumnsManager, type ColumnDef } from "@/components/catalog/ui/columns-
 import { BulkActionsBar } from "@/components/catalog/ui/bulk-actions-bar"
 import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
 import { useResizableColumns } from "@/hooks/use-resizable-columns"
+import { downloadCsv } from "@/lib/catalog/csv-export"
 
 // W1.5 — Default per-column widths (px) for the SKU registry (Товары) page.
 // Keys must match TOVARY_COLUMNS[i].key.
@@ -664,6 +665,66 @@ export function TovaryPage() {
     [statusOptions, onUpdateStatus],
   )
 
+  // W7.3 — CSV-экспорт выбранных SKU.  `selected` = Set<barkod>; берём строки
+  // из data (не filtered — selection переживает фильтры/группы) и проецируем
+  // в плоскую запись с человекочитаемыми колонками.
+  const statusNameById = useMemo(() => {
+    const m = new Map<number, string>()
+    for (const s of statusyData ?? []) m.set(s.id, s.nazvanie)
+    return m
+  }, [statusyData])
+  const handleBulkExport = useCallback(() => {
+    if (!data || selected.size === 0) return
+    const selectedRows = data
+      .filter((t) => selected.has(t.barkod))
+      .map((t) => ({
+        barkod: t.barkod,
+        artikul: t.artikul ?? "",
+        model_osnova_kod: t.model_osnova_kod ?? "",
+        nazvanie_etiketka: t.nazvanie_etiketka ?? "",
+        cvet_color_code: t.cvet_color_code ?? "",
+        cvet_ru: t.cvet_ru ?? "",
+        razmer: t.razmer ?? "",
+        nomenklatura_wb: t.nomenklatura_wb ?? "",
+        artikul_ozon: t.artikul_ozon ?? "",
+        status_wb: t.status_id != null ? (statusNameById.get(t.status_id) ?? `#${t.status_id}`) : "",
+        status_ozon: t.status_ozon_id != null ? (statusNameById.get(t.status_ozon_id) ?? `#${t.status_ozon_id}`) : "",
+        status_sayt: t.status_sayt_id != null ? (statusNameById.get(t.status_sayt_id) ?? `#${t.status_sayt_id}`) : "",
+        status_lamoda: t.status_lamoda_id != null ? (statusNameById.get(t.status_lamoda_id) ?? `#${t.status_lamoda_id}`) : "",
+        barkod_gs1: t.barkod_gs1 ?? "",
+        barkod_gs2: t.barkod_gs2 ?? "",
+        barkod_perehod: t.barkod_perehod ?? "",
+        kategoriya: t.kategoriya ?? "",
+        kollekciya: t.kollekciya ?? "",
+        created_at: t.created_at ?? "",
+      }))
+    downloadCsv({
+      filename: `tovary-selected-${Date.now()}.csv`,
+      rows: selectedRows,
+      columns: [
+        { key: "barkod", label: "Баркод" },
+        { key: "artikul", label: "Артикул" },
+        { key: "model_osnova_kod", label: "Модель" },
+        { key: "nazvanie_etiketka", label: "Название" },
+        { key: "cvet_color_code", label: "Цвет (код)" },
+        { key: "cvet_ru", label: "Цвет (RU)" },
+        { key: "razmer", label: "Размер" },
+        { key: "nomenklatura_wb", label: "WB номенкл." },
+        { key: "artikul_ozon", label: "OZON артикул" },
+        { key: "status_wb", label: "Статус WB" },
+        { key: "status_ozon", label: "Статус OZON" },
+        { key: "status_sayt", label: "Статус Сайт" },
+        { key: "status_lamoda", label: "Статус Lamoda" },
+        { key: "barkod_gs1", label: "Баркод GS1" },
+        { key: "barkod_gs2", label: "Баркод GS2" },
+        { key: "barkod_perehod", label: "Баркод перехода" },
+        { key: "kategoriya", label: "Категория" },
+        { key: "kollekciya", label: "Коллекция" },
+        { key: "created_at", label: "Создан" },
+      ],
+    })
+  }, [data, selected, statusNameById])
+
   const onLinkSkleyka = useCallback(async (skleykaId: number) => {
     if (!linkSkleykaChannel) return
     const barkods = Array.from(selected)
@@ -887,7 +948,7 @@ export function TovaryPage() {
           {
             id: "export",
             label: "Экспорт выбранных",
-            onClick: () => alert("TODO: экспорт CSV/XLSX выбранных SKU"),
+            onClick: handleBulkExport,
           },
         ]}
       />
