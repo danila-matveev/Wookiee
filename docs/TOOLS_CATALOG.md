@@ -1,6 +1,6 @@
 # Каталог инструментов Wookiee
 
-> Автогенерировано `scripts/generate_tools_catalog.py` из Supabase `tools` — 2026-05-12 13:52 МСК.
+> Автогенерировано `scripts/generate_tools_catalog.py` из Supabase `tools` — 2026-05-12 16:02 МСК.
 > **Не редактируй вручную.** Источник истины — Supabase. Обновляй через `/tool-register`, затем перегенерируй файл.
 
 Всего инструментов: **50**. Категории: Аналитика — 17, Контент — 3, Публикация — 3, Инфраструктура — 21, Планирование — 1, Команда — 5.
@@ -82,17 +82,21 @@ DB-таблицы (две):
 
 Single-source-of-truth справочника: Название/UUID/Канал/Скидка %/Статус живут прямо в колонках A-E основного листа — отдельного таба больше нет. Новые UUID добавляются автоматически со статусом «требует review». Статус «неактивный» исключает промо из словаря лукапа. Backfill: --mode bootstrap --weeks-back 12, либо --mode specific --from YYYY-MM-DD --to YYYY-MM-DD. --skip-db пишет только в Sheets.
 
-**Как работает:** 1. Еженедельно по расписанию запрашивает метрики промокодов из WB API (оба кабинета).
-2. Нормализует данные: выручка, заказы в штуках и рублях, выкупы.
-3. Сохраняет в таблицу базы данных — история доступна для трендового анализа.
-4. Логирует результат для мониторинга успешности синхронизации.
+**Как работает:** 1. Cron Пн 12:00 МСК (wookiee_cron) → run_wb_promocodes_sync.py.
+2. По двум кабинетам WB (ИП Медведева, ООО Вуки) тянет reportDetailByPeriod за прошлую закрытую неделю Mon–Sun.
+3. Агрегирует строки по uuid_promocode: суммы, заказы, возвраты, средняя скидка.
+4. Дедуп srid (уникальный ID продажи) ВНУТРИ uuid-фильтра — иначе non-promo строки забирают srid и реальные продажи теряются.
+5. Резолвит nm_id → public.artikuly.id (JOIN с public.modeli для model_code).
+6. Пишет в Google Sheets (single-source-of-truth таб «Промокоды_аналитика (копия)»: cols A–E справочник + F+ метрики недели).
+7. Параллельно UPSERT в Supabase: marketing.promo_stats_weekly (агрегат) + marketing.promo_product_breakdown (поартикульная история) + crm.promo_codes (placeholder WB:<UUID> для новых).
+8. Backfill: --mode bootstrap --weeks-back N, либо --mode specific.
 
 | Поле | Значение |
 |---|---|
 | Тип | Сервис |
-| Источники данных | — |
+| Источники данных | WB Statistics API reportDetailByPeriod (ИП oid 105757, ООО oid 947388), Google Sheets: 1I4UFVYkUELm5phk8MDv518kF6z5sQJFmRdaLYg_-CPY → Промокоды_аналитика (копия) |
 | Зависимости | — |
-| Результат идёт в | — |
+| Результат идёт в | Google Sheets: Промокоды_аналитика (копия) — cols A-E справочник + F+ недельные метрики, Supabase crm.promo_codes (UPSERT), Supabase marketing.promo_stats_weekly (UPSERT по promo_code_id + week_start), Supabase marketing.promo_product_breakdown (UPSERT по promo_code_id + week_start + artikul_id) |
 | Команда запуска | `python scripts/run_wb_promocodes_sync.py [--mode last_week|specific|bootstrap] [--from YYYY-MM-DD --to YYYY-MM-DD] [--weeks-back N] [--skip-db]` |
 | Запусков (всего) | 9 |
 | Последний запуск | 2026-05-12 16:26 |
@@ -109,15 +113,25 @@ Single-source-of-truth справочника: Название/UUID/Канал/
 
 Google Sheets теперь хранит только недельный агрегат (таб Аналитика по запросам) — детализация (поартикульно) убрана в БД для накопления полной истории и подачи в UI drill-down. Spreadsheet: 1I4UFVYkUELm5phk8MDv518kF6z5sQJFmRdaLYg_-CPY. Список отслеживаемых слов — col A основного таба. Backfill: --mode bootstrap --weeks-back N, либо --mode specific --from YYYY-MM-DD --to YYYY-MM-DD. --skip-db пишет только в Sheets.
 
+**Как работает:** 1. Cron Пн 10:00 МСК (wookiee_cron) → run_search_queries_sync.py.
+2. По двум кабинетам WB (ИП 30 слов/запрос, ООО 100) тянет /search-report/product/search-texts seller-analytics-api.
+3. Батчами по 50 nm_id с паузой 21s (rate-limit 3 req/min); на 429 пауза 60s.
+4. Фильтрует ответы по списку слов из col A основного таба Sheets.
+5. Aggregate (4 числа в Sheets) фильтруется по подменка-mapping (col B): только трафик на mapped target.
+6. Breakdown (DB) НЕ фильтруется — захватывает все наши nm_id с ненулевыми метриками. Это для аналитики ассоциированных конверсий (рекламируем один артикул, покупают другие SKU/модели).
+7. Резолвит nm_id → public.artikuly.id для денормализованных sku_label/model_code.
+8. UPSERT в Supabase: marketing.search_queries_weekly + marketing.search_query_product_breakdown.
+9. Google Sheets таб «Аналитика по запросам» — недельный агрегат append'ом 4 кол справа. Таб «(поартикульно)» больше НЕ пишется — заменён БД.
+
 | Поле | Значение |
 |---|---|
 | Тип | Сервис |
-| Источники данных | — |
+| Источники данных | WB Seller Analytics API /api/v2/search-report/product/search-texts (ИП oid 105757, ООО oid 947388), Google Sheets: 1I4UFVYkUELm5phk8MDv518kF6z5sQJFmRdaLYg_-CPY → таб nmIds (список nm_id × кабинет) + col A основного таба (слова) |
 | Зависимости | — |
-| Результат идёт в | — |
+| Результат идёт в | Google Sheets: Аналитика по запросам — недельный агрегат append (4 кол: Частота/Переходы/Добавления/Заказы), Supabase marketing.search_queries_weekly (UPSERT по week_start + search_word), Supabase marketing.search_query_product_breakdown (UPSERT по week_start + search_word + nm_id) |
 | Команда запуска | `python scripts/run_search_queries_sync.py [--mode last_week|specific|bootstrap] [--from YYYY-MM-DD --to YYYY-MM-DD] [--weeks-back N] [--skip-db]` |
-| Запусков (всего) | 0 |
-| Последний запуск | — |
+| Запусков (всего) | 6 |
+| Последний запуск | 2026-05-12 18:41 |
 
 ---
 
@@ -1000,7 +1014,7 @@ Interact with Slack workspaces using browser automation. Use when the user needs
 | 2 | `wb-logistics-optimizer` | Сервис | Аналитика | ✅ active | 2.0 | — |
 | 3 | `wb-promocodes-analytics` | Сервис | Аналитика | ✅ active | 1.0.0 | — |
 | 4 | `wb-promocodes-sync` | Сервис | Аналитика | ✅ active | 2.1.0 | 2026-05-12 16:26 |
-| 5 | `wb-search-queries-sync` | Сервис | Аналитика | ✅ active | 2.0.0 | — |
+| 5 | `wb-search-queries-sync` | Сервис | Аналитика | ✅ active | 2.0.0 | 2026-05-12 18:41 |
 | 6 | `/abc-audit` | Скилл | Аналитика | ✅ active | v1 | 2026-05-06 20:13 |
 | 7 | `/analytics-report` | Скилл | Аналитика | ✅ active | — | — |
 | 8 | `/coo-report` | Скилл | Аналитика | ✅ active | 1.0 | — |
@@ -1048,4 +1062,4 @@ Interact with Slack workspaces using browser automation. Use when the user needs
 | 50 | `/slack` | Скилл | Команда | ✅ active | 1.0.0 | — |
 
 
-<sub>Сгенерировано автоматически 2026-05-12 13:52 МСК. Команда: `python scripts/generate_tools_catalog.py`.</sub>
+<sub>Сгенерировано автоматически 2026-05-12 16:02 МСК. Команда: `python scripts/generate_tools_catalog.py`.</sub>
