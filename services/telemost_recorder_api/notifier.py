@@ -55,23 +55,31 @@ def _fmt_duration(seconds: int | None) -> str:
     return f"{m // 60} ч {m % 60} мин"
 
 
+def _header(meeting: dict[str, Any]) -> str:
+    """Build the `📝 *Title* (date · duration)` header — skip parts that are empty."""
+    raw_title = meeting.get("title")
+    title = _md_escape(raw_title) if raw_title else "Встреча"
+    parts: list[str] = []
+    if meeting.get("started_at"):
+        parts.append(meeting["started_at"].strftime("%d.%m %H:%M"))
+    duration_secs = meeting.get("duration_seconds")
+    if duration_secs:
+        parts.append(_fmt_duration(duration_secs))
+    suffix = f" ({' · '.join(parts)})" if parts else ""
+    return f"*{title}*{suffix}"
+
+
 def format_summary_message(meeting: dict[str, Any]) -> str:
-    title = _md_escape(meeting.get("title") or "(без названия)")
-    started = (
-        meeting["started_at"].strftime("%d.%m %H:%M")
-        if meeting.get("started_at")
-        else "—"
-    )
-    duration = _fmt_duration(meeting.get("duration_seconds"))
     summary = meeting.get("summary") or {}
+    header = _header(meeting)
 
     if summary.get("empty"):
         return (
-            f"📭 *{title}* ({started}, {duration})\n\n"
+            f"📭 {header}\n\n"
             f"Запись завершена, речь не была распознана (тишина)."
         )
 
-    lines = [f"📝 *{title}* ({started}, {duration})"]
+    lines = [f"📝 {header}"]
 
     participants = summary.get("participants") or []
     if participants:
@@ -106,7 +114,6 @@ def format_summary_message(meeting: dict[str, Any]) -> str:
         joined_tags = ", ".join(_md_escape(t) for t in tags)
         lines.append(f"\n🏷 {joined_tags}")
 
-    lines.append(f"\n_id_ `{str(meeting['id'])[:_ID_PREFIX_LEN]}`")
     return "\n".join(lines)
 
 

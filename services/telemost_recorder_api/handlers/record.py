@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 
 from services.telemost_recorder_api.auth import get_user_by_telegram_id
@@ -71,13 +72,22 @@ async def handle_record(chat_id: int, user_id: int, args: str) -> None:
         return
 
     canonical = canonicalize_telemost_url(raw_url)
+    # Seed invitees with the triggering user so the LLM has at least one real
+    # name to attribute "Speaker N" against. Bitrix enrichment (fire-and-forget
+    # below) overwrites this with the full calendar attendee list when the
+    # meeting URL matches a Bitrix calendar event.
+    seed_invitees = json.dumps([{
+        "telegram_id": user["telegram_id"],
+        "name": user["name"],
+        "bitrix_id": user.get("bitrix_id"),
+    }], ensure_ascii=False)
     pool = await get_pool()
     async with pool.acquire() as conn:
         new_id = await conn.fetchval(
             """
             INSERT INTO telemost.meetings
                 (source, triggered_by, meeting_url, organizer_id, invitees, status)
-            VALUES ('telegram', $1, $2, $1, '[]'::jsonb, 'queued')
+            VALUES ('telegram', $1, $2, $1, $3::jsonb, 'queued')
             ON CONFLICT (meeting_url)
                 WHERE status IN ('queued','recording','postprocessing')
             DO NOTHING
@@ -85,6 +95,7 @@ async def handle_record(chat_id: int, user_id: int, args: str) -> None:
             """,
             user_id,
             canonical,
+            seed_invitees,
         )
         if new_id is None:
             existing = await conn.fetchrow(

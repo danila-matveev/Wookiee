@@ -3,6 +3,10 @@
 So failures surface in chat instead of in `docker logs`. Throttling: same
 (logger, first 80 chars of message) deduplicated within 300 seconds.
 
+Format: human-friendly Russian — greeting, where it happened, what broke,
+suggested fix. The hint is selected from `_HINTS` by matching keywords in the
+logger name or message; unknown errors get a generic "пришли скрин" fallback.
+
 Env:
 - TELEGRAM_ALERTS_BOT_TOKEN — alerts bot token (shared with hygiene/autopull)
 - ADMIN_CHAT_ID — chat to deliver to
@@ -13,6 +17,7 @@ import logging
 import os
 import threading
 import time
+import traceback
 from urllib import error as _urlerror
 from urllib import parse as _urlparse
 from urllib import request as _urlrequest
@@ -21,7 +26,56 @@ _THROTTLE_SECONDS = 300
 _MAX_MSG_LEN = 3500
 _HTTP_TIMEOUT = 10.0
 
+# Keyword → user-readable hint. First match wins; checked against
+# `<logger_name> <message>` lowercased. Order matters — more specific first.
+_HINTS: tuple[tuple[str, str], ...] = (
+    ("bitrix", "Bitrix24 не отвечает. Проверь, что BITRIX24_WEBHOOK_URL в .env живой — открой его в браузере, должен вернуть JSON."),
+    ("speechkit", "Yandex SpeechKit упал. Проверь баланс/квоту в Yandex Cloud Console и валидность SPEECHKIT_API_KEY."),
+    ("transcrib", "ASR-пайплайн упал. Скорее всего ffmpeg/ffprobe в контейнере или SpeechKit. Логи: `docker logs telemost_recorder_api --tail 100`."),
+    ("openrouter", "OpenRouter не отвечает. Проверь баланс на openrouter.ai и валидность OPENROUTER_API_KEY."),
+    ("llm", "LLM-постобработка упала. Возможно, OpenRouter вернул кривой JSON — попробуй перезапустить меньшую модель."),
+    ("telegram", "Telegram Bot API ругается. Скорее всего rate-limit или невалидный TELEMOST_BOT_TOKEN — подожди минуту."),
+    ("asyncpg", "База Supabase не отвечает. Проверь SUPABASE_HOST/PASSWORD в .env, или статус проекта на supabase.com."),
+    ("pool", "Пул соединений к БД исчерпан или мёртв. Перезапусти контейнер: `docker restart telemost_recorder_api`."),
+    ("notion", "Notion API упал. Проверь NOTION_API_KEY и что у интеграции есть доступ к нужной БД."),
+    ("recorder", "Recorder-контейнер упал на этапе записи (Playwright/Xvfb/PulseAudio). Скинь логи: `docker logs <recorder-id>`."),
+)
+_GENERIC_HINT = "Скинь мне это сообщение скриншотом или текстом — разберёмся."
+
 logger = logging.getLogger(__name__)
+
+
+def _pick_hint(logger_name: str, message: str) -> str:
+    haystack = f"{logger_name} {message}".lower()
+    for needle, hint in _HINTS:
+        if needle in haystack:
+            return hint
+    return _GENERIC_HINT
+
+
+def _short_location(logger_name: str) -> str:
+    """`services.telemost_recorder_api.bitrix_calendar` → `bitrix_calendar`."""
+    return logger_name.rsplit(".", 1)[-1] or logger_name
+
+
+def _format_alert(record: logging.LogRecord, service: str) -> str:
+    location = _short_location(record.name)
+    body = record.getMessage()
+    hint = _pick_hint(record.name, body)
+
+    parts = [
+        f"🔴 Привет! В *{service}* упала ошибка.",
+        "",
+        f"📍 *Где:* `{location}`",
+        f"💥 *Что:* {body[:1200]}",
+    ]
+    if record.exc_info:
+        tb = "".join(traceback.format_exception(*record.exc_info))
+        # last lines are the most informative (the actual exception)
+        snippet = tb.strip().splitlines()[-3:]
+        parts += ["", "```", *snippet, "```"]
+    parts += ["", f"🔧 *Что делать:* {hint}"]
+    return "\n".join(parts)
 
 
 class TelegramAlertHandler(logging.Handler):
@@ -37,25 +91,26 @@ class TelegramAlertHandler(logging.Handler):
         if record.levelno < self.level:
             return
         try:
-            msg = self.format(record)
-            key = f"{record.name}:{msg[:80]}"
+            key = f"{record.name}:{record.getMessage()[:80]}"
             now = time.time()
             with self._lock:
                 last = self._last_sent.get(key)
                 if last is not None and now - last < _THROTTLE_SECONDS:
                     return
                 self._last_sent[key] = now
+            text = _format_alert(record, self.service)
             threading.Thread(
-                target=self._send, args=(msg,), daemon=True, name="tg-alert"
+                target=self._send, args=(text,), daemon=True, name="tg-alert"
             ).start()
         except Exception:
             self.handleError(record)
 
-    def _send(self, msg: str) -> None:
-        text = f"🔴 [{self.service}]\n{msg[:_MAX_MSG_LEN]}"
-        payload = _urlparse.urlencode(
-            {"chat_id": self.chat_id, "text": text}
-        ).encode("utf-8")
+    def _send(self, text: str) -> None:
+        payload = _urlparse.urlencode({
+            "chat_id": self.chat_id,
+            "text": text[:_MAX_MSG_LEN],
+            "parse_mode": "Markdown",
+        }).encode("utf-8")
         url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
         try:
             req = _urlrequest.Request(url, data=payload, method="POST")
@@ -86,9 +141,6 @@ def install_telegram_alerts(service: str = "telemost-api") -> bool:
         return False
 
     handler = TelegramAlertHandler(bot_token, chat_id, service)
-    handler.setFormatter(
-        logging.Formatter("%(name)s\n%(levelname)s: %(message)s")
-    )
     root.addHandler(handler)
     logger.info("Telegram alerts installed (service=%s)", service)
     return True

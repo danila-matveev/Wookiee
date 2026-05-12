@@ -1,4 +1,4 @@
-"""TelegramAlertHandler — throttling + send behavior."""
+"""TelegramAlertHandler — throttling, formatting, send behavior."""
 from __future__ import annotations
 
 import logging
@@ -7,6 +7,8 @@ from unittest.mock import patch
 
 from services.telemost_recorder_api.error_alerts import (
     TelegramAlertHandler,
+    _format_alert,
+    _pick_hint,
     install_telegram_alerts,
 )
 
@@ -22,12 +24,10 @@ def test_handler_throttles_duplicate_messages():
     handler = TelegramAlertHandler("tok", "chat", "svc")
     sent = []
     with patch.object(handler, "_send", side_effect=lambda m: sent.append(m)):
-        # First emit dispatches a thread (joined synchronously by the patch)
         handler.emit(_record("foo", "boom"))
         handler.emit(_record("foo", "boom"))
-        handler.emit(_record("foo", "boom different tail xxxxxxxxxx" * 5))
+        handler.emit(_record("foo", "boom different tail " + "x" * 100))
     time.sleep(0.05)
-    # Two unique 80-char prefixes → two sends; the duplicate is throttled
     assert len(sent) == 2
 
 
@@ -44,7 +44,6 @@ def test_install_skips_when_env_missing(monkeypatch):
     monkeypatch.delenv("TELEGRAM_ALERTS_BOT_TOKEN", raising=False)
     monkeypatch.delenv("ADMIN_CHAT_ID", raising=False)
     root = logging.getLogger()
-    # Reset state — another test (or app.py import) may have installed a handler
     for h in list(root.handlers):
         if isinstance(h, TelegramAlertHandler):
             root.removeHandler(h)
@@ -62,7 +61,6 @@ def test_install_attaches_handler_when_env_present(monkeypatch):
     monkeypatch.setenv("TELEGRAM_ALERTS_BOT_TOKEN", "tok")
     monkeypatch.setenv("ADMIN_CHAT_ID", "42")
     root = logging.getLogger()
-    # Clean any pre-existing handler from a previous test run
     for h in list(root.handlers):
         if isinstance(h, TelegramAlertHandler):
             root.removeHandler(h)
@@ -72,9 +70,46 @@ def test_install_attaches_handler_when_env_present(monkeypatch):
         assert len(installed) == 1
         # Idempotent
         assert install_telegram_alerts(service="test-svc") is True
-        still_one = [h for h in root.handlers if isinstance(h, TelegramAlertHandler)]
-        assert len(still_one) == 1
+        assert len([h for h in root.handlers if isinstance(h, TelegramAlertHandler)]) == 1
     finally:
         for h in list(root.handlers):
             if isinstance(h, TelegramAlertHandler):
                 root.removeHandler(h)
+
+
+def test_alert_format_is_human_readable():
+    rec = _record(
+        "services.telemost_recorder_api.bitrix_calendar",
+        "calendar.event.get returned 500",
+    )
+    text = _format_alert(rec, "telemost-api")
+    assert "Привет" in text
+    assert "telemost-api" in text
+    assert "bitrix_calendar" in text  # short location
+    assert "calendar.event.get returned 500" in text
+    assert "Bitrix24" in text  # picked hint
+
+
+def test_pick_hint_falls_back_to_generic():
+    hint = _pick_hint("unknown.module", "something unexpected")
+    assert "разберёмся" in hint or "разберёмся" in hint.lower()
+
+
+def test_pick_hint_recognizes_speechkit():
+    hint = _pick_hint("services.telemost_recorder.transcribe", "SpeechKit chunk failed")
+    # "transcribe" comes before "speechkit" in scan; either is acceptable
+    assert "SpeechKit" in hint or "ASR" in hint
+
+
+def test_alert_includes_traceback_excerpt_when_exc_info():
+    try:
+        raise ValueError("test traceback")
+    except ValueError:
+        import sys
+        rec = logging.LogRecord(
+            name="x", level=logging.ERROR, pathname=__file__, lineno=1,
+            msg="boom", args=None, exc_info=sys.exc_info(),
+        )
+    text = _format_alert(rec, "svc")
+    assert "ValueError" in text
+    assert "test traceback" in text
