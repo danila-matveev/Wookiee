@@ -28,3 +28,34 @@ PLAIN_TEXT_HINT = {
         [{"text": "❓ Помощь", "callback_data": "menu:help"}],
     ]
 }
+
+
+def list_row_button(short_id: str, title: str, when_str: str) -> dict:
+    """One row's button: '📝 Title (date)' → meet:<id>:show."""
+    label = f"📝 {title} ({when_str})"
+    if len(label) > 64:
+        label = label[:61] + "..."
+    return {"text": label, "callback_data": f"meet:{short_id}:show"}
+
+
+def meeting_actions(short_id: str) -> dict:
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "📄 Транскрипт", "callback_data": f"meet:{short_id}:transcript"},
+                {"text": "🧾 Сводка", "callback_data": f"meet:{short_id}:summary"},
+            ],
+            [{"text": "🗑 Удалить", "callback_data": f"meet:{short_id}:delete"}],
+        ]
+    }
+
+
+def confirm_delete(short_id: str) -> dict:
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "✅ Да, удалить", "callback_data": f"meet:{short_id}:confirm_delete"},
+                {"text": "↩ Отмена", "callback_data": f"meet:{short_id}:show"},
+            ]
+        ]
+    }
