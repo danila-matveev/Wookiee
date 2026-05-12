@@ -9,6 +9,7 @@ import {
   Layers,
   FolderTree,
   BookOpen,
+  Bookmark,
   Building2,
   Briefcase,
   Ruler,
@@ -48,6 +49,7 @@ const GROUPS: SidebarGroup[] = [
   {
     title: "Справочники",
     items: [
+      { key: "brendy",           icon: Bookmark,    label: "Бренды",           path: "/catalog/references/brendy",            countKey: "brendy" },
       { key: "kategorii",        icon: FolderTree,  label: "Категории",        path: "/catalog/references/kategorii",         countKey: "kategorii" },
       { key: "kollekcii",        icon: BookOpen,    label: "Коллекции",        path: "/catalog/references/kollekcii",         countKey: "kollekcii" },
       { key: "tipy-kollekciy",   icon: Layers,      label: "Типы коллекций",   path: "/catalog/references/tipy-kollekciy",    countKey: "tipy_kollekciy" },

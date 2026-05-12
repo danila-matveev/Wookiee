@@ -247,6 +247,27 @@ export async function fetchSertifikaty(): Promise<Sertifikat[]> {
   return (data ?? []) as Sertifikat[]
 }
 
+// W3.1: brendy — маркетинговые бренды (WOOKIEE / TELOWAY).
+// Не путать с fabriki (производитель). Каждая модель в modeli_osnova
+// обязана быть привязана к одному бренду через FK brand_id (NOT NULL).
+export interface Brend {
+  id: number
+  kod: string
+  nazvanie: string
+  opisanie: string | null
+  logo_url: string | null
+  status_id: number | null
+}
+
+export async function fetchBrendy(): Promise<Brend[]> {
+  const { data, error } = await supabase
+    .from("brendy")
+    .select("id, kod, nazvanie, opisanie, logo_url, status_id")
+    .order("nazvanie")
+  if (error) throw error
+  return (data ?? []) as Brend[]
+}
+
 // ─── Reference mutations ───────────────────────────────────────────────────
 
 // kategorii
@@ -526,6 +547,45 @@ export async function deleteSertifikat(id: number): Promise<void> {
   if (error) throw new Error(error.message)
 }
 
+// brendy (W3.1)
+// Нет 'brand' tip в statusy → status_id остаётся nullable, без soft-delete-паттерна.
+// archiveBrend = hard delete с защитой: нельзя удалить бренд, к которому привязаны модели.
+export interface BrendPayload {
+  kod: string
+  nazvanie: string
+  opisanie?: string | null
+  logo_url?: string | null
+  status_id?: number | null
+}
+
+export async function insertBrend(payload: BrendPayload): Promise<Brend> {
+  const { data, error } = await supabase
+    .from("brendy")
+    .insert(payload)
+    .select("id, kod, nazvanie, opisanie, logo_url, status_id")
+    .single()
+  if (error) throw new Error(error.message)
+  return data as Brend
+}
+
+export async function updateBrend(id: number, patch: Partial<BrendPayload>): Promise<void> {
+  const { error } = await supabase.from("brendy").update(patch).eq("id", id)
+  if (error) throw new Error(error.message)
+}
+
+export async function archiveBrend(id: number): Promise<void> {
+  const { count, error: countErr } = await supabase
+    .from("modeli_osnova")
+    .select("id", { count: "exact", head: true })
+    .eq("brand_id", id)
+  if (countErr) throw new Error(countErr.message)
+  if ((count ?? 0) > 0) {
+    throw new Error(`Нельзя удалить бренд: ${count} моделей привязано`)
+  }
+  const { error } = await supabase.from("brendy").delete().eq("id", id)
+  if (error) throw new Error(error.message)
+}
+
 // ─── Tags (across all models) ──────────────────────────────────────────────
 
 /**
@@ -567,6 +627,9 @@ export interface MatrixRow {
   kategoriya: string | null
   kollekciya: string | null
   fabrika: string | null
+  /** W3.2 — brand FK + denormalized name for matrix render. */
+  brand_id: number | null
+  brand: string | null
   status_id: number | null
   updated_at: string | null
   modeli_cnt: number
@@ -595,10 +658,11 @@ export async function fetchMatrixList(): Promise<MatrixRow[]> {
       id, kod, nazvanie_sayt, tip_kollekcii, kategoriya_id, updated_at,
       sostav_syrya, razmery_modeli, sku_china, ves_kg, dlina_cm, shirina_cm,
       vysota_cm, kratnost_koroba, nazvanie_etiketka, opisanie_sayt, tnved, gruppa_sertifikata,
-      kollekciya_id, fabrika_id, status_id,
+      kollekciya_id, fabrika_id, status_id, brand_id,
       kategorii(nazvanie),
       kollekcii(nazvanie),
       fabriki(nazvanie),
+      brendy(nazvanie),
       modeli(
         id, kod, nazvanie, artikul_modeli, importer_id, status_id, rossiyskiy_razmer,
         importery(nazvanie),
@@ -623,6 +687,8 @@ export async function fetchMatrixList(): Promise<MatrixRow[]> {
       kategoriya: mo.kategorii?.nazvanie ?? null,
       kollekciya: mo.kollekcii?.nazvanie ?? null,
       fabrika: mo.fabriki?.nazvanie ?? null,
+      brand_id: mo.brand_id ?? null,
+      brand: mo.brendy?.nazvanie ?? null,
       status_id: mo.status_id,
       updated_at: mo.updated_at,
       modeli_cnt: modeli.length,
@@ -1388,6 +1454,8 @@ export async function deleteCvet(id: number): Promise<void> {
 
 export interface ModelOsnovaPayload {
   kod: string
+  /** FK to `brendy.id` (WOOKIEE / TELOWAY). NOT NULL в БД — UI должен передавать при save. */
+  brand_id?: number | null
   kategoriya_id?: number | null
   kollekciya_id?: number | null
   fabrika_id?: number | null
@@ -1721,6 +1789,7 @@ export interface CatalogCounts {
   kategorii: number
   kollekcii: number
   tipy_kollekciy: number
+  brendy: number
   fabriki: number
   importery: number
   razmery: number
@@ -1755,6 +1824,7 @@ export async function fetchCatalogCounts(): Promise<CatalogCounts> {
     "kategorii",
     "kollekcii",
     "tipy_kollekciy",
+    "brendy",
     "fabriki",
     "importery",
     "razmery",
@@ -1775,6 +1845,7 @@ export async function fetchCatalogCounts(): Promise<CatalogCounts> {
     kategorii: "kategorii",
     kollekcii: "kollekcii",
     tipy_kollekciy: "tipy_kollekciy",
+    brendy: "brendy",
     fabriki: "fabriki",
     importery: "importery",
     razmery: "razmery",
