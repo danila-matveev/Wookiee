@@ -58,6 +58,9 @@ const RazmeryPage = lazy(() =>
 const StatusyPage = lazy(() =>
   import("@/pages/catalog/references/statusy").then((m) => ({ default: m.StatusyPage })),
 )
+const AtributyPage = lazy(() =>
+  import("@/pages/catalog/references/atributy").then((m) => ({ default: m.AtributyPage })),
+)
 const SemeystvaCvetovPage = lazy(() =>
   import("@/pages/catalog/semeystva-cvetov").then((m) => ({ default: m.SemeystvaCvetovPage })),
 )
@@ -123,6 +126,7 @@ export const router = createBrowserRouter([
       { path: "/catalog/references/importery",         element: withFallback(<ImporteryPage />) },
       { path: "/catalog/references/razmery",           element: withFallback(<RazmeryPage />) },
       { path: "/catalog/references/statusy",           element: withFallback(<StatusyPage />) },
+      { path: "/catalog/references/atributy",          element: withFallback(<AtributyPage />) },
     ],
   },
   {

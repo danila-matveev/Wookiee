@@ -17,6 +17,7 @@ import {
   Box,
   Tv,
   ShieldCheck,
+  SlidersHorizontal,
   ChevronsLeft,
   Settings,
 } from "lucide-react"
@@ -60,6 +61,7 @@ const GROUPS: SidebarGroup[] = [
       { key: "upakovki",         icon: Box,         label: "Упаковки",         path: "/catalog/upakovki",                     countKey: "upakovki" },
       { key: "kanaly-prodazh",   icon: Tv,          label: "Каналы продаж",    path: "/catalog/kanaly-prodazh",               countKey: "kanaly_prodazh" },
       { key: "sertifikaty",      icon: ShieldCheck, label: "Сертификаты",      path: "/catalog/sertifikaty",                  countKey: "sertifikaty" },
+      { key: "atributy",         icon: SlidersHorizontal, label: "Атрибуты",   path: "/catalog/references/atributy",          countKey: "atributy" },
     ],
   },
 ]
