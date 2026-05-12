@@ -150,6 +150,18 @@ function modelMatches(row: MatrixRow, query: string) {
     (v.artikul_modeli ?? "").toLowerCase().includes(query)
   )
 }
+// W8.3 — собирает текст tooltip-а для CompletenessRing.
+// Показывает топ-5 незаполненных полей с их «весом» (pp от общего completeness)
+// + счётчик «и ещё N», если полей больше пяти.
+function buildCompletenessTooltip(row: MatrixRow): string {
+  const pct = Math.round(row.completeness * 100)
+  if (row.missing_fields.length === 0) return `Заполнено полностью (${pct}%)`
+  const top = row.missing_fields.slice(0, 5)
+  const tail = row.missing_fields.length - top.length
+  const lines = top.map((f) => `${f.label} (${f.weight}%)`).join(" · ")
+  const moreSuffix = tail > 0 ? ` · и ещё ${tail}` : ""
+  return `Заполненность ${pct}%. Не заполнено: ${lines}${moreSuffix}`
+}
 function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, onOpen, onRegisterExport }: { rows: MatrixRow[]; brendy: Brend[]; kategorii: { id: number; nazvanie: string }[]; kollekcii: { id: number; nazvanie: string }[]; modelStatuses: StatusOption[]; onOpen: (kod: string) => void; onRegisterExport?: (fn: (() => void) | null) => void }) {
   const queryClient = useQueryClient()
   const { widths: colWidths, bindResizer } = useResizableColumns("matrix.modeli", [...MODEL_COLUMN_IDS])
@@ -464,8 +476,14 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
                           <td className="px-3 py-3"><StatusBadge status={m.status_id != null ? statusById.get(m.status_id) ?? null : null} /></td>
                           <td className="px-3 py-3"><div className="flex items-center gap-0.5">{RAZMER_LADDER.map((sz) => <span key={sz} className={`text-[10px] px-1 py-0.5 rounded ${variantSizes.has(sz) ? "bg-stone-900 text-white" : "bg-stone-50 text-stone-300 ring-1 ring-inset ring-stone-200"}`}>{sz}</span>)}</div></td>
                           <td className="px-3 py-3"><ColorChips modelKod={m.kod} count={m.cveta_cnt} /></td>
-                          <td className="px-3 py-3"><CompletenessRing value={m.completeness} size={16} hideLabel /></td>
-                          <td className="px-3 py-3 text-right tabular-nums text-stone-600"><span className="text-stone-900 font-medium">{m.cveta_cnt}</span><span className="text-stone-300 mx-1">/</span><span>{m.artikuly_cnt}</span><span className="text-stone-300 mx-1">/</span><span>{m.tovary_cnt}</span></td>
+                          <td className="px-3 py-3"><Tooltip text={buildCompletenessTooltip(m)}><CompletenessRing value={m.completeness} size={16} hideLabel /></Tooltip></td>
+                          <td className="px-3 py-3 text-right tabular-nums text-stone-600">
+                            <Tooltip text={`Цвета (привязанные к артикулам): ${m.cveta_cnt} · Артикулы: ${m.artikuly_cnt} · SKU: ${m.tovary_cnt}`}>
+                              <span>
+                                <span className="text-stone-900 font-medium">{m.cveta_cnt}</span><span className="text-stone-300 mx-1">/</span><span>{m.artikuly_cnt}</span><span className="text-stone-300 mx-1">/</span><span>{m.tovary_cnt}</span>
+                              </span>
+                            </Tooltip>
+                          </td>
                           <td className="px-3 py-3 text-stone-500 text-xs">{relativeDate(m.updated_at)}</td>
                           <td className="px-2 py-3 relative">
                             <button className="p-1 hover:bg-stone-100 rounded opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => { e.stopPropagation(); setOpenMenuKod((cur) => (cur === m.kod ? null : m.kod)) }} aria-label="Действия">

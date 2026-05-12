@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabase"
 import type { ModelOsnova } from "@/types/catalog"
-import { computeCompleteness } from "./color-utils"
+import { computeCompleteness, getMissingFields, type CompletenessField } from "./color-utils"
 
 // ─── Basic reference fetchers ──────────────────────────────────────────────
 
@@ -792,6 +792,8 @@ export interface MatrixRow {
   tovary_cnt: number
   cveta_cnt: number
   completeness: number
+  /** Список незаполненных ключевых полей для tooltip над CompletenessRing. */
+  missing_fields: CompletenessField[]
   modeli: {
     id: number
     kod: string
@@ -851,6 +853,7 @@ export async function fetchMatrixList(): Promise<MatrixRow[]> {
       tovary_cnt: tovary.length,
       cveta_cnt: cvetaIds.size,
       completeness: computeCompleteness(mo),
+      missing_fields: getMissingFields(mo),
       modeli: modeli.map((m: any) => {
         const mArts = (m.artikuly ?? []) as any[]
         const mTovary = mArts.flatMap((a: any) => a.tovary ?? [])
@@ -2400,6 +2403,44 @@ export async function bulkAddSizeToArtikuly(
     .select("id, barkod, artikul_id, razmer_id")
   if (error) throw new Error(error.message)
   return (data ?? []) as InsertedTovar[]
+}
+
+// ─── Tovary by artikul (W8.4 drill-down) ───────────────────────────────────
+//
+// Возвращает SKU одного артикула — для overlay-карточки в /catalog/artikuly.
+// Лёгкий запрос: только то, что нужно для read-only таблицы (баркод, размер,
+// 4 статуса по каналам). Для inline-edit см. tovary.tsx (W8.5 territory).
+
+export interface ArtikulTovar {
+  id: number
+  barkod: string
+  razmer_id: number | null
+  razmer_nazvanie: string | null
+  status_id: number | null
+  status_ozon_id: number | null
+  status_sayt_id: number | null
+  status_lamoda_id: number | null
+}
+
+export async function fetchTovaryByArtikul(artikulId: number): Promise<ArtikulTovar[]> {
+  const { data, error } = await supabase
+    .from("tovary")
+    .select(
+      "id, barkod, razmer_id, status_id, status_ozon_id, status_sayt_id, status_lamoda_id, razmery:razmer_id(nazvanie)",
+    )
+    .eq("artikul_id", artikulId)
+    .order("id")
+  if (error) throw new Error(error.message)
+  return ((data ?? []) as any[]).map((t) => ({
+    id: t.id,
+    barkod: t.barkod,
+    razmer_id: t.razmer_id,
+    razmer_nazvanie: t.razmery?.nazvanie ?? null,
+    status_id: t.status_id,
+    status_ozon_id: t.status_ozon_id,
+    status_sayt_id: t.status_sayt_id,
+    status_lamoda_id: t.status_lamoda_id,
+  }))
 }
 
 // ─── UI preferences (per-user-less, scope+key) ─────────────────────────────

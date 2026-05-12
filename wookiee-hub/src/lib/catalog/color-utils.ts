@@ -97,20 +97,72 @@ export const TIPY_KOLLEKCII = [
   "Бесшовное белье Audrey",
 ]
 
+// Canonical list of 18 ключевых полей `modeli_osnova`, по которым считается
+// заполненность в матрице.  Порядок отражает приоритет (primary → secondary
+// → tertiary → physical) и используется для сортировки tooltip-а
+// «незаполненные поля» — самые важные сверху.
+export interface CompletenessField {
+  key: string
+  label: string
+  /** Pretty share (pp) этого поля в общем completeness. Сумма ≈ 100. */
+  weight: number
+}
+
+const COMPLETENESS_KEY_FIELDS: readonly string[] = [
+  // primary — классификация и идентификация
+  "kod", "kategoriya_id", "kollekciya_id", "fabrika_id", "tip_kollekcii",
+  // secondary — контент и описания
+  "nazvanie_etiketka", "nazvanie_sayt", "opisanie_sayt",
+  // tertiary — производство и логистика
+  "sostav_syrya", "razmery_modeli", "sku_china", "tnved", "gruppa_sertifikata",
+  // physical — габариты
+  "ves_kg", "dlina_cm", "shirina_cm", "vysota_cm", "kratnost_koroba",
+] as const
+
+const COMPLETENESS_FIELD_LABELS: Record<string, string> = {
+  kod: "Код",
+  kategoriya_id: "Категория",
+  kollekciya_id: "Коллекция",
+  fabrika_id: "Фабрика",
+  tip_kollekcii: "Тип коллекции",
+  nazvanie_etiketka: "Название (этикетка)",
+  nazvanie_sayt: "Название (сайт)",
+  opisanie_sayt: "Описание (сайт)",
+  sostav_syrya: "Состав сырья",
+  razmery_modeli: "Размеры модели",
+  sku_china: "SKU фабрики",
+  tnved: "ТН ВЭД",
+  gruppa_sertifikata: "Группа сертификата",
+  ves_kg: "Вес, кг",
+  dlina_cm: "Длина, см",
+  shirina_cm: "Ширина, см",
+  vysota_cm: "Высота, см",
+  kratnost_koroba: "Кратность короба",
+}
+
+function isFilledValue(v: unknown): boolean {
+  return v !== null && v !== undefined && v !== ""
+}
+
 // Compute completeness ratio client-side
 export function computeCompleteness(m: Record<string, unknown>): number {
-  const key_fields = [
-    "kod", "kategoriya_id", "kollekciya_id", "fabrika_id", "tip_kollekcii",
-    "sostav_syrya", "razmery_modeli", "sku_china", "ves_kg",
-    "dlina_cm", "shirina_cm", "vysota_cm", "kratnost_koroba",
-    "nazvanie_etiketka", "nazvanie_sayt", "opisanie_sayt", "tnved",
-    "gruppa_sertifikata",
-  ]
-  const filled = key_fields.filter((k) => {
-    const v = m[k]
-    return v !== null && v !== undefined && v !== ""
-  }).length
-  return filled / key_fields.length
+  const filled = COMPLETENESS_KEY_FIELDS.filter((k) => isFilledValue(m[k])).length
+  return filled / COMPLETENESS_KEY_FIELDS.length
+}
+
+/**
+ * Список незаполненных ключевых полей с весами (pp). Используется в tooltip
+ * над CompletenessRing — пользователь сразу видит, чего не хватает.
+ */
+export function getMissingFields(m: Record<string, unknown>): CompletenessField[] {
+  const weightPerField = 100 / COMPLETENESS_KEY_FIELDS.length
+  return COMPLETENESS_KEY_FIELDS
+    .filter((k) => !isFilledValue(m[k]))
+    .map((k) => ({
+      key: k,
+      label: COMPLETENESS_FIELD_LABELS[k] ?? k,
+      weight: Math.round(weightPerField * 10) / 10,
+    }))
 }
 
 export const SEMEYSTVA = [
