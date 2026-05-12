@@ -956,10 +956,10 @@ function TabArticles({ m, hexByCvet, openColor }: TabContentProps) {
           type="button"
           onClick={() => setAddOpen(true)}
           disabled={!hasVariations}
-          title={hasVariations ? "Создать артикулы" : "Сначала создайте вариацию модели"}
+          title={hasVariations ? "Добавить цвет — создать артикулы из доступных цветов категории" : "Сначала создайте вариацию модели"}
           className="px-2.5 py-1 text-xs text-white bg-stone-900 rounded-md flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-stone-800"
         >
-          <Plus className="w-3 h-3" /> Добавить
+          <Plus className="w-3 h-3" /> Добавить цвет
         </button>
       </div>
       {addOpen && (
