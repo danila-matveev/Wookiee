@@ -5,10 +5,12 @@ import {
   fetchSemeystvaCvetov,
   fetchStatusy,
   insertCvet,
+  makeStoragePathForColorSample,
   updateCvet,
   type CvetPayload,
   type CvetRow,
 } from "@/lib/catalog/service"
+import { AssetUploader } from "@/components/catalog/ui"
 
 interface CvetEditModalProps {
   initial?: CvetRow | null
@@ -16,6 +18,7 @@ interface CvetEditModalProps {
 }
 
 interface CvetFormState {
+  id: number | null
   color_code: string
   cvet: string
   color: string
@@ -23,6 +26,7 @@ interface CvetFormState {
   hex: string
   semeystvo_id: number | null
   status_id: number | null
+  image_url: string | null
 }
 
 /**
@@ -50,6 +54,7 @@ export function CvetEditModal({ initial, onClose }: CvetEditModalProps) {
   const lastovicaOptions = useMemo(() => ["", "есть", "нет"], [])
 
   const [form, setForm] = useState<CvetFormState>(() => ({
+    id: initial?.id ?? null,
     color_code: initial?.color_code ?? "",
     cvet: initial?.cvet ?? "",
     color: initial?.color ?? "",
@@ -57,6 +62,7 @@ export function CvetEditModal({ initial, onClose }: CvetEditModalProps) {
     hex: initial?.hex ?? "",
     semeystvo_id: initial?.semeystvo_id ?? null,
     status_id: initial?.status_id ?? null,
+    image_url: initial?.image_url ?? null,
   }))
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -106,6 +112,7 @@ export function CvetEditModal({ initial, onClose }: CvetEditModalProps) {
         hex: form.hex || null,
         semeystvo_id: form.semeystvo_id ?? null,
         status_id: form.status_id ?? null,
+        image_url: form.image_url ?? null,
       }
       if (initial) await update.mutateAsync({ id: initial.id, patch: payload })
       else await insert.mutateAsync(payload)
@@ -231,6 +238,23 @@ export function CvetEditModal({ initial, onClose }: CvetEditModalProps) {
                 <option key={s.id} value={s.id}>{s.nazvanie}</option>
               ))}
             </select>
+          </div>
+
+          <div className="col-span-2">
+            <label className={labelCls}>Фото-семпл</label>
+            <AssetUploader
+              kind="image"
+              path={form.image_url ?? null}
+              buildPath={(file) => makeStoragePathForColorSample(form.id ?? 0, file.type)}
+              onChange={(newPath) => setForm((p) => ({ ...p, image_url: newPath }))}
+              label="Фото-семпл цвета"
+              disabled={form.id == null}
+            />
+            {form.id == null && (
+              <p className="text-[11px] text-stone-400 mt-1">
+                Сначала сохрани цвет, потом добавь фото.
+              </p>
+            )}
           </div>
         </div>
 

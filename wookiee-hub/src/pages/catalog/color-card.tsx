@@ -8,6 +8,7 @@ import {
   fetchCvetaWithUsage,
   fetchSemeystvaCvetov,
   fetchStatusy,
+  getCatalogAssetSignedUrl,
   updateCvet,
   deleteCvet,
   type ColorDetail,
@@ -378,6 +379,11 @@ function Sidebar({
 
   return (
     <div className="col-span-1 space-y-4">
+      {data.image_url && (
+        <SidebarBlock title="Фото">
+          <ColorPhoto path={data.image_url} alt={data.color_code} />
+        </SidebarBlock>
+      )}
       <SidebarBlock title="HEX">
         <div className="flex items-center gap-3">
           <div
@@ -476,3 +482,33 @@ function Sidebar({
   )
 }
 
+// ─── Photo preview ───────────────────────────────────────────────────────
+
+function ColorPhoto({ path, alt }: { path: string; alt: string }) {
+  const [url, setUrl] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setError(null)
+    setUrl(null)
+    void getCatalogAssetSignedUrl(path)
+      .then((u) => {
+        if (!cancelled) setUrl(u)
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e))
+      })
+    return () => { cancelled = true }
+  }, [path])
+
+  if (error) return <div className="text-xs text-rose-600">{error}</div>
+  if (!url) return <div className="h-32 bg-stone-100 rounded-md animate-pulse" />
+  return (
+    <img
+      src={url}
+      alt={alt}
+      className="w-full max-h-48 object-contain rounded-md ring-1 ring-stone-200 bg-stone-50"
+    />
+  )
+}

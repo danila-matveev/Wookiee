@@ -151,6 +151,7 @@ export interface Cvet {
   semeystvo_id?: number | null
   status_id?: number | null
   hex?: string | null
+  image_url?: string | null
   created_at?: string | null
   updated_at?: string | null
 }

@@ -858,6 +858,7 @@ export interface CvetRow {
   semeystvo: string | null
   semeystvo_id: number | null
   status_id: number | null
+  image_url: string | null
   created_at: string | null
   updated_at: string | null
   artikuly_cnt: number
@@ -868,7 +869,7 @@ export async function fetchCvetaWithUsage(): Promise<CvetRow[]> {
   const [cvetaRes, artikulyRes] = await Promise.all([
     supabase
       .from("cveta")
-      .select("id, color_code, cvet, color, lastovica, hex, semeystvo, semeystvo_id, status_id, created_at, updated_at")
+      .select("id, color_code, cvet, color, lastovica, hex, semeystvo, semeystvo_id, status_id, image_url, created_at, updated_at")
       .order("color_code"),
     supabase
       .from("artikuly")
@@ -927,7 +928,7 @@ const COLOR_DETAIL_ARTIKUL_SELECT = `
       `
 
 const CVETA_DETAIL_SELECT =
-  "id, color_code, cvet, color, lastovica, hex, semeystvo, semeystvo_id, status_id, created_at, updated_at"
+  "id, color_code, cvet, color, lastovica, hex, semeystvo, semeystvo_id, status_id, image_url, created_at, updated_at"
 
 function buildColorDetail(cvet: any, rawArts: any[]): ColorDetail {
   const artikuly: ColorDetailArtikul[] = rawArts.map((a) => ({
@@ -1422,6 +1423,7 @@ export interface CvetPayload {
   semeystvo_id?: number | null
   semeystvo?: string | null
   status_id?: number | null
+  image_url?: string | null
 }
 
 export async function insertCvet(data: CvetPayload): Promise<{ id: number }> {
