@@ -81,3 +81,16 @@ export async function updateSearchQueryStatus(unifiedId: string, status: SearchQ
     .eq('id', id)
   if (error) throw error
 }
+
+export async function fetchExistingCampaigns(): Promise<string[]> {
+  const { data, error } = await supabase
+    .schema('marketing').from('search_queries_unified')
+    .select('campaign_name')
+    .not('campaign_name', 'is', null)
+  if (error) throw error
+  const set = new Set<string>()
+  for (const r of (data ?? [])) {
+    if (r.campaign_name) set.add(r.campaign_name)
+  }
+  return Array.from(set).sort((a, b) => a.localeCompare(b, 'ru'))
+}

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   createBrandQuery,
   createSubstituteArticle,
+  fetchExistingCampaigns,
   fetchSearchQueries,
   fetchSearchQueryStats,
   fetchSearchQueryWeekly,
@@ -135,5 +136,13 @@ export function useCreateSubstituteArticle() {
       if (ctx?.prev) qc.setQueryData(searchQueriesKeys.list(), ctx.prev)
     },
     onSettled: () => qc.invalidateQueries({ queryKey: searchQueriesKeys.list() }),
+  })
+}
+
+export function useExistingCampaigns() {
+  return useQuery({
+    queryKey: ['marketing', 'existing-campaigns'],
+    queryFn:  fetchExistingCampaigns,
+    staleTime: 10 * 60_000,
   })
 }
