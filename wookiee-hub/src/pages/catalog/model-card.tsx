@@ -37,7 +37,6 @@ import {
 import { supabase } from "@/lib/supabase"
 import {
   ATTRIBUTES_BY_CATEGORY,
-  ALL_ATTRIBUTES,
   FIELD_LEVEL,
   type AttributeFieldDef,
   type FieldLevel as FieldLevelKind,
@@ -64,7 +63,6 @@ import {
   CompletenessRing,
   FieldWrap,
   LevelBadge,
-  MultiSelectField,
   NumberField,
   RefModal,
   SelectField,
@@ -552,92 +550,6 @@ function TabDescription({
 
       <Section label="Атрибуты-отношения">
         <div className="grid grid-cols-2 gap-x-4 gap-y-4">
-          <StringSelectField
-            label="Для какой груди"
-            value={view.dlya_kakoy_grudi ?? ""}
-            options={ALL_ATTRIBUTES.dlya_kakoy_grudi?.options ?? []}
-            onChange={(v) => set("dlya_kakoy_grudi", v)}
-            readonly={!editing}
-            level={lvl("dlya_kakoy_grudi")}
-          />
-          <StringSelectField
-            label="Степень поддержки"
-            value={view.stepen_podderzhki ?? ""}
-            options={ALL_ATTRIBUTES.stepen_podderzhki?.options ?? []}
-            onChange={(v) => set("stepen_podderzhki", v)}
-            readonly={!editing}
-            level={lvl("stepen_podderzhki")}
-          />
-          <StringSelectField
-            label="Форма чашки"
-            value={view.forma_chashki ?? ""}
-            options={ALL_ATTRIBUTES.forma_chashki?.options ?? []}
-            onChange={(v) => set("forma_chashki", v)}
-            readonly={!editing}
-            level={lvl("forma_chashki")}
-          />
-          <StringSelectField
-            label="Регулировка"
-            value={view.regulirovka ?? ""}
-            options={ALL_ATTRIBUTES.regulirovka?.options ?? []}
-            onChange={(v) => set("regulirovka", v)}
-            readonly={!editing}
-            level={lvl("regulirovka")}
-          />
-          <StringSelectField
-            label="Застёжка"
-            value={view.zastezhka ?? ""}
-            options={ALL_ATTRIBUTES.zastezhka?.options ?? []}
-            onChange={(v) => set("zastezhka", v)}
-            readonly={!editing}
-            level={lvl("zastezhka")}
-          />
-          <StringSelectField
-            label="Посадка трусов"
-            value={view.posadka_trusov ?? ""}
-            options={ALL_ATTRIBUTES.posadka_trusov?.options ?? []}
-            onChange={(v) => set("posadka_trusov", v)}
-            readonly={!editing}
-            level={lvl("posadka_trusov")}
-          />
-          <StringSelectField
-            label="Вид трусов"
-            value={view.vid_trusov ?? ""}
-            options={ALL_ATTRIBUTES.vid_trusov?.options ?? []}
-            onChange={(v) => set("vid_trusov", v)}
-            readonly={!editing}
-            level={lvl("vid_trusov")}
-          />
-          <MultiSelectField
-            label="Назначение"
-            value={view.naznachenie
-              ? String(view.naznachenie).split(",").map((s) => s.trim()).filter(Boolean)
-              : []}
-            options={ALL_ATTRIBUTES.naznachenie?.options ?? []}
-            onChange={(v) => set("naznachenie", v.join(", "))}
-            readonly={!editing}
-            level={lvl("naznachenie")}
-          />
-          <MultiSelectField
-            label="Стиль"
-            value={view.stil
-              ? String(view.stil).split(",").map((s) => s.trim()).filter(Boolean)
-              : []}
-            options={["Базовый", "Минимализм", "Элегантный", "Спорт", "Премиум", "Romance"]}
-            onChange={(v) => set("stil", v.join(", "))}
-            readonly={!editing}
-            level={lvl("stil")}
-          />
-          <MultiSelectField
-            label="По настроению"
-            value={view.po_nastroeniyu
-              ? String(view.po_nastroeniyu).split(",").map((s) => s.trim()).filter(Boolean)
-              : []}
-            options={["Уютный", "Лёгкий", "Чувственный", "Энергия", "Спокойствие"]}
-            onChange={(v) => set("po_nastroeniyu", v.join(", "))}
-            readonly={!editing}
-            level={lvl("po_nastroeniyu")}
-          />
           <TextField
             label="Теги"
             value={view.tegi ?? ""}
