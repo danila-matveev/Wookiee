@@ -17,8 +17,8 @@ import { CalendarPage } from "@/pages/influence/calendar/CalendarPage"
 import { RnpPage } from "@/pages/analytics/rnp"
 import { featureFlags } from "@/lib/feature-flags"
 
-// Lazy-load all catalog pages — they live in an isolated `.catalog-scope`
-// and load their own data; no need to ship them in the main bundle.
+// Lazy-load all catalog pages — they load their own data and rarely
+// open at first paint; no need to ship them in the main bundle.
 const MatrixPage = lazy(() =>
   import("@/pages/catalog/matrix").then((m) => ({ default: m.MatrixPage })),
 )
@@ -77,7 +77,7 @@ const SearchQueriesPage = lazy(() =>
 
 function CatalogFallback() {
   return (
-    <div className="px-6 py-8 text-sm text-stone-400">Загрузка…</div>
+    <div className="px-6 py-8 text-sm text-label">Загрузка…</div>
   )
 }
 

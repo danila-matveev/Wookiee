@@ -283,9 +283,8 @@
   }
 }
 
-/* DS v2 absorbed the former .catalog-scope block:
- * - stone-50 page bg = same as DS v2 --color-page (light)
- * - DM Sans = default --font-sans in tokens.css
- * - Instrument Serif = use class "font-serif italic" instead of .cat-font-serif
- * Catalog now lives in the same theme system as the rest of Hub.
+/* Catalog uses the same DS v2 tokens as the rest of Hub:
+ *  - bg-page (=stone-50 light / stone-950 dark)
+ *  - DM Sans + Instrument Serif via @theme in tokens.css
+ *  - "font-serif italic" utility for branded titles
  */

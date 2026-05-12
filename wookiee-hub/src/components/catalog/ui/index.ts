@@ -1,6 +1,6 @@
 // Catalog-local atomic UI — adapters on top of ui-v2 primitives.
 // Public API is preserved; under the hood components route to ui-v2.
-// .catalog-scope wrapper is gone — stone-50 = DS v2 --color-page (light).
+// Catalog inherits the global DS v2 theme via tokens.css.
 
 export { Tooltip } from "./tooltip"
 export type { TooltipPosition } from "./tooltip"
