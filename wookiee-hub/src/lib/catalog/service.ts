@@ -1510,6 +1510,106 @@ export async function createModel(payload: ModelOsnovaPayload): Promise<string> 
   return (data as { kod: string }).kod
 }
 
+// ─── W4.1: createModelTransactional ────────────────────────────────────────
+// Полноценное создание модели через модалку «+ Новая модель»: атомарно
+// создаёт `modeli_osnova` + первую вариацию `modeli` (с importer_id первого
+// юрлица) + опционально привязывает размеры через `modeli_osnova_razmery`.
+//
+// Транзакционность эмулируется sequential-INSERT с rollback (DELETE
+// modeli_osnova on error in modeli/razmery insert). Если в будущем появится
+// RPC `create_model_transactional` — заменить тело на supabase.rpc().
+
+export interface CreateModelTransactionalPayload {
+  /** PK для modeli_osnova.kod и modeli.kod (latin, без пробелов). */
+  kod: string
+  brand_id: number
+  kategoriya_id: number
+  kollekciya_id: number
+  /** Опционально (W2.3 справочник). */
+  tip_kollekcii_id?: number | null
+  /** Опционально. */
+  fabrika_id?: number | null
+  /** Юрлицо первой вариации. */
+  importer_id: number
+  /** Статус (tip='model'). */
+  status_id: number
+  /** ID размеров из справочника razmery. Пустой массив → не создавать привязки. */
+  razmery_ids?: number[]
+}
+
+/**
+ * Создаёт модель целиком: modeli_osnova → modeli (первая вариация) → опц.
+ * modeli_osnova_razmery. При любой ошибке откатывает уже созданное.
+ *
+ * Возвращает kod созданной модели — caller использует его для navigate в
+ * `/catalog/matrix?model=<kod>`.
+ */
+export async function createModelTransactional(
+  payload: CreateModelTransactionalPayload,
+): Promise<string> {
+  const trimmedKod = payload.kod.trim()
+  if (!trimmedKod) throw new Error("Код модели не может быть пустым")
+
+  // 1. Pre-flight uniqueness check (чтобы дать понятную ошибку до INSERT).
+  const { data: existing, error: checkErr } = await supabase
+    .from("modeli_osnova")
+    .select("kod")
+    .eq("kod", trimmedKod)
+    .maybeSingle()
+  if (checkErr) throw new Error(checkErr.message)
+  if (existing) throw new Error(`Модель с кодом «${trimmedKod}» уже существует`)
+
+  // 2. Insert modeli_osnova.
+  const osnovaPayload: ModelOsnovaPayload = {
+    kod: trimmedKod,
+    brand_id: payload.brand_id,
+    kategoriya_id: payload.kategoriya_id,
+    kollekciya_id: payload.kollekciya_id,
+    tip_kollekcii_id: payload.tip_kollekcii_id ?? null,
+    fabrika_id: payload.fabrika_id ?? null,
+    status_id: payload.status_id,
+  }
+  const { data: osnovaRow, error: osnovaErr } = await supabase
+    .from("modeli_osnova")
+    .insert(osnovaPayload)
+    .select("id, kod")
+    .single()
+  if (osnovaErr) throw new Error(osnovaErr.message)
+  const osnovaId = (osnovaRow as { id: number; kod: string }).id
+
+  // 3. Insert first modeli variation (rollback on error).
+  const { error: variantErr } = await supabase.from("modeli").insert({
+    kod: trimmedKod,
+    nazvanie: trimmedKod,
+    model_osnova_id: osnovaId,
+    importer_id: payload.importer_id,
+    status_id: payload.status_id,
+  })
+  if (variantErr) {
+    await supabase.from("modeli_osnova").delete().eq("id", osnovaId)
+    throw new Error(`Не удалось создать вариацию: ${variantErr.message}`)
+  }
+
+  // 4. Insert razmery junction (rollback on error).
+  const razmeryIds = payload.razmery_ids ?? []
+  if (razmeryIds.length > 0) {
+    const rows = razmeryIds.map((razmer_id, idx) => ({
+      model_osnova_id: osnovaId,
+      razmer_id,
+      poryadok: idx,
+    }))
+    const { error: razmErr } = await supabase.from("modeli_osnova_razmery").insert(rows)
+    if (razmErr) {
+      // Cascade: удаляем modeli (FK→modeli_osnova) и саму модель.
+      await supabase.from("modeli").delete().eq("model_osnova_id", osnovaId)
+      await supabase.from("modeli_osnova").delete().eq("id", osnovaId)
+      throw new Error(`Не удалось привязать размеры: ${razmErr.message}`)
+    }
+  }
+
+  return trimmedKod
+}
+
 /** Partial update of any modeli_osnova fields, addressed by kod. */
 export async function updateModel(kod: string, patch: Partial<ModelOsnovaPayload>): Promise<void> {
   const { error } = await supabase.from("modeli_osnova").update(patch).eq("kod", kod)
