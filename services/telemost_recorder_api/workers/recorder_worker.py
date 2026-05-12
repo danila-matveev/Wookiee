@@ -187,18 +187,38 @@ async def process_one() -> bool:
 
 
 async def run_forever() -> None:
-    """Worker loop. Phase 0 keeps MAX_PARALLEL_RECORDINGS=1."""
+    """Worker loop with bounded concurrency.
+
+    Up to MAX_PARALLEL_RECORDINGS process_one() coroutines run in parallel.
+    Each holds a semaphore slot for the full lifetime of one recorder
+    container (spawn -> monitor -> finalize), so memory/CPU caps on the host
+    bound the slot count.
+    """
+    sem = asyncio.Semaphore(MAX_PARALLEL_RECORDINGS)
     logger.info(
         "Recorder worker starting (max_parallel=%d, hard_limit=%dh)",
         MAX_PARALLEL_RECORDINGS,
         RECORDING_HARD_LIMIT_HOURS,
     )
-    while True:
-        try:
-            processed = await process_one()
-        except Exception:  # noqa: BLE001
-            logger.exception("recorder_worker.process_one crashed")
-            processed = False
-        await asyncio.sleep(
-            _BUSY_SLEEP_SECONDS if processed else _IDLE_SLEEP_SECONDS
-        )
+
+    async def _slot_runner() -> None:
+        while True:
+            async with sem:
+                try:
+                    processed = await process_one()
+                except Exception:  # noqa: BLE001
+                    logger.exception("recorder_worker.process_one crashed")
+                    processed = False
+            await asyncio.sleep(
+                _BUSY_SLEEP_SECONDS if processed else _IDLE_SLEEP_SECONDS
+            )
+
+    runners = [
+        asyncio.create_task(_slot_runner())
+        for _ in range(MAX_PARALLEL_RECORDINGS)
+    ]
+    try:
+        await asyncio.gather(*runners)
+    finally:
+        for r in runners:
+            r.cancel()

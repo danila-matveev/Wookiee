@@ -1,6 +1,7 @@
 """Tests for the recorder worker loop."""
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
@@ -227,3 +228,50 @@ async def test_finalize_marks_failed_with_timeout_reason(tmp_path):
 
     assert "failed" in captured["query"]
     assert "timeout" in captured["args"][1].lower()
+
+
+@pytest.mark.asyncio
+async def test_run_forever_spawns_up_to_max_parallel(monkeypatch):
+    """When MAX_PARALLEL_RECORDINGS=3 and queue has 5 items, 3 should be spawned concurrently."""
+    from services.telemost_recorder_api.workers import recorder_worker
+
+    monkeypatch.setattr(recorder_worker, "MAX_PARALLEL_RECORDINGS", 3)
+
+    spawn_starts: list[asyncio.Event] = []
+    active_count = {"n": 0, "max": 0}
+
+    async def fake_process_one():
+        active_count["n"] += 1
+        active_count["max"] = max(active_count["max"], active_count["n"])
+        ev = asyncio.Event()
+        spawn_starts.append(ev)
+        await ev.wait()
+        active_count["n"] -= 1
+        return True
+
+    monkeypatch.setattr(recorder_worker, "process_one", fake_process_one)
+
+    task = asyncio.create_task(recorder_worker.run_forever())
+    # Wait until 3 starts captured
+    for _ in range(50):
+        if len(spawn_starts) >= 3:
+            break
+        await asyncio.sleep(0.05)
+    assert active_count["max"] == 3, f"Expected 3 concurrent, got {active_count['max']}"
+
+    # Release one, expect a 4th to start
+    spawn_starts[0].set()
+    for _ in range(50):
+        if len(spawn_starts) >= 4:
+            break
+        await asyncio.sleep(0.05)
+    assert len(spawn_starts) >= 4
+
+    # Cleanup
+    for ev in spawn_starts:
+        ev.set()
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
