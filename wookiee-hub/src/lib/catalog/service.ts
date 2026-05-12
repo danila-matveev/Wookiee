@@ -778,6 +778,8 @@ export interface MatrixRow {
   id: number
   kod: string
   nazvanie_sayt: string | null
+  /** W9.3 — нужно в search-полях матрицы (часто более полное имя, чем nazvanie_sayt). */
+  nazvanie_etiketka: string | null
   tip_kollekcii: string | null
   kategoriya_id: number | null
   kategoriya: string | null
@@ -846,6 +848,7 @@ export async function fetchMatrixList(): Promise<MatrixRow[]> {
       id: mo.id,
       kod: mo.kod,
       nazvanie_sayt: mo.nazvanie_sayt,
+      nazvanie_etiketka: mo.nazvanie_etiketka ?? null,
       tip_kollekcii: mo.tip_kollekcii,
       kategoriya_id: mo.kategoriya_id,
       kategoriya: mo.kategorii?.nazvanie ?? null,

@@ -18,6 +18,7 @@ import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
 import { useResizableColumns } from "@/hooks/use-resizable-columns"
 import { useTableSort, type SortState } from "@/hooks/use-table-sort"
 import { usePagination } from "@/hooks/use-pagination"
+import { useDebouncedValue } from "@/hooks/use-debounced-value"
 import { downloadCsv } from "@/lib/catalog/csv-export"
 
 // W1.5 — Default per-column widths (px) for the SKU registry (Товары) page.
@@ -119,10 +120,17 @@ interface InlineStatusCellProps {
   options: StatusOption[]
   /** Применить новый статус (через service). */
   onChange: (statusId: number) => Promise<void>
+  /**
+   * W9.2 — резолвер id→{nazvanie,color} из живых `statusy` БД.
+   * Нужен, потому что `<StatusBadge statusId={…}>` использует
+   * хардкод CATALOG_STATUSES (id 1-7) и возвращает `null` для
+   * любых остальных id, отчего status-колонки выглядели пустыми.
+   */
+  resolveStatus: (statusId: number) => { nazvanie: string; color: string | null } | null
 }
 
 function InlineStatusCell({
-  currentStatusId, channel, options, onChange,
+  currentStatusId, channel, options, onChange, resolveStatus,
 }: InlineStatusCellProps) {
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -151,6 +159,11 @@ function InlineStatusCell({
     }
   }, [onChange, saving])
 
+  // W9.2 — рендер бейджа: сначала пытаемся резолвить через живой справочник
+  // statusy (любой id из БД), при отсутствии — fallback на нумерованный значок,
+  // чтобы колонка всё равно содержала видимый контент.
+  const resolved = currentStatusId != null ? resolveStatus(currentStatusId) : null
+
   return (
     <div className="relative inline-block" ref={ref} onClick={(e) => e.stopPropagation()}>
       <button
@@ -159,9 +172,18 @@ function InlineStatusCell({
         className="hover:ring-1 hover:ring-stone-400 rounded-md transition-all"
         title={`Статус ${channel.toUpperCase()} — кликните чтобы изменить`}
       >
-        {currentStatusId != null
-          ? <StatusBadge statusId={currentStatusId} compact />
-          : <span className="text-[11px] text-stone-400 italic px-1.5 py-px">—</span>}
+        {currentStatusId != null && resolved ? (
+          <StatusBadge
+            status={{ nazvanie: resolved.nazvanie, color: resolved.color ?? "gray" }}
+            compact
+          />
+        ) : currentStatusId != null ? (
+          <span className="px-1.5 py-px text-[11px] rounded-md ring-1 ring-inset bg-stone-100 text-stone-600 ring-stone-500/20 font-mono">
+            #{currentStatusId}
+          </span>
+        ) : (
+          <span className="text-[11px] text-stone-400 italic px-1.5 py-px">—</span>
+        )}
       </button>
       {open && (
         <div className="absolute top-full left-0 mt-1 w-56 bg-white border border-stone-200 rounded-lg shadow-lg z-30">
@@ -204,6 +226,8 @@ interface CellContext {
     sayt: StatusOption[]
     lamoda: StatusOption[]
   }
+  /** W9.2 — резолв любого статус-id через live `statusy`. */
+  resolveStatus: (statusId: number) => { nazvanie: string; color: string | null } | null
   onUpdateStatus: (
     barkod: string, statusId: number, channel: TovarChannel,
   ) => Promise<void>
@@ -260,6 +284,7 @@ function renderCell(
           channel="wb"
           options={ctx.statusOptions.product}
           onChange={onUpdate("wb")}
+          resolveStatus={ctx.resolveStatus}
         />
       )
     case "status_ozon":
@@ -269,6 +294,7 @@ function renderCell(
           channel="ozon"
           options={ctx.statusOptions.product}
           onChange={onUpdate("ozon")}
+          resolveStatus={ctx.resolveStatus}
         />
       )
     case "status_sayt":
@@ -278,6 +304,7 @@ function renderCell(
           channel="sayt"
           options={ctx.statusOptions.sayt}
           onChange={onUpdate("sayt")}
+          resolveStatus={ctx.resolveStatus}
         />
       )
     case "status_lamoda":
@@ -287,6 +314,7 @@ function renderCell(
           channel="lamoda"
           options={ctx.statusOptions.lamoda}
           onChange={onUpdate("lamoda")}
+          resolveStatus={ctx.resolveStatus}
         />
       )
     case "barkod_gs1":
@@ -445,49 +473,53 @@ function LinkSkleykaModal({ channel, onClose, onLink }: LinkSkleykaModalProps) {
 
 // ─── Composite search ──────────────────────────────────────────────────────
 
+// W9.3 — все строковые поля SKU, релевантные для поиска (lowercase).
+function tovarSearchFields(t: TovarRow): string[] {
+  return [
+    t.barkod,
+    t.barkod_gs1,
+    t.barkod_gs2,
+    t.barkod_perehod,
+    t.artikul,
+    t.model_osnova_kod,
+    t.model_kod,
+    t.nazvanie_etiketka,
+    t.cvet_color_code,
+    t.cvet_ru,
+    t.color_en,
+    t.razmer,
+    t.razmer_kod,
+    t.kollekciya,
+    t.kategoriya,
+    t.artikul_ozon,
+    t.sku_china_size,
+    t.lamoda_seller_sku,
+    t.nomenklatura_wb != null ? String(t.nomenklatura_wb) : null,
+    t.ozon_product_id != null ? String(t.ozon_product_id) : null,
+    t.ozon_fbo_sku_id != null ? String(t.ozon_fbo_sku_id) : null,
+  ]
+    .filter((v): v is string => typeof v === "string" && v.length > 0)
+    .map((v) => v.toLowerCase())
+}
+
 function matchesCompositeSearch(t: TovarRow, raw: string): boolean {
   if (!raw.trim()) return true
   const tokens = raw.split("/").map((s) => s.trim().toLowerCase()).filter(Boolean)
   if (tokens.length === 0) return true
 
-  // Single token — flexible search across barkod/artikul/model/cvet
+  const fields = tovarSearchFields(t)
+
+  // Single token — flexible OR-search по всем полям SKU.
   if (tokens.length === 1) {
     const q = tokens[0]
-    return (
-      t.barkod.toLowerCase().includes(q) ||
-      (t.artikul ?? "").toLowerCase().includes(q) ||
-      (t.model_osnova_kod ?? "").toLowerCase().includes(q) ||
-      (t.nazvanie_etiketka ?? "").toLowerCase().includes(q) ||
-      (t.cvet_color_code ?? "").toLowerCase().includes(q) ||
-      (t.cvet_ru ?? "").toLowerCase().includes(q) ||
-      (t.color_en ?? "").toLowerCase().includes(q) ||
-      (t.razmer_kod ?? "").toLowerCase().includes(q) ||
-      String(t.nomenklatura_wb ?? "").toLowerCase().includes(q) ||
-      (t.artikul_ozon ?? "").toLowerCase().includes(q)
-    )
+    return fields.some((f) => f.includes(q))
   }
 
-  // Composite tokens: model / color / size — AND-логика
-  const [modelTok, colorTok, sizeTok] = tokens
-
-  if (modelTok) {
-    const okModel =
-      (t.model_osnova_kod ?? "").toLowerCase().includes(modelTok) ||
-      (t.nazvanie_etiketka ?? "").toLowerCase().includes(modelTok)
-    if (!okModel) return false
-  }
-  if (colorTok) {
-    const okColor =
-      (t.cvet_ru ?? "").toLowerCase().includes(colorTok) ||
-      (t.color_en ?? "").toLowerCase().includes(colorTok) ||
-      (t.cvet_color_code ?? "").toLowerCase().includes(colorTok)
-    if (!okColor) return false
-  }
-  if (sizeTok) {
-    const okSize = (t.razmer_kod ?? "").toLowerCase() === sizeTok
-    if (!okSize) return false
-  }
-  return true
+  // Composite tokens (model/color/size) — каждый токен должен
+  // совпасть хотя бы с одним полем (AND между токенами, OR по полям).
+  // Регистр-инвариантно. Это покрывает запросы вроде `Lucky/black`,
+  // `Lucky/чёрный`, `Audrey/red/S`.
+  return tokens.every((tok) => fields.some((f) => f.includes(tok)))
 }
 
 // ─── Status group filter ───────────────────────────────────────────────────
@@ -602,6 +634,9 @@ export function TovaryPage() {
   })
 
   const [search, setSearch] = useState("")
+  // W9.3 — debounce 300мс. tovary-реестр обычно >5k строк; на каждом keystroke
+  // полный scan + render даёт jank, debounce делает поиск отзывчивым.
+  const debouncedSearch = useDebouncedValue(search, 300)
   const [statusGroup, setStatusGroup] = useState<StatusGroupFilter>("all")
   const [channelFilter, setChannelFilter] = useState<ChannelFilter>("all")
   const [groupBy, setGroupBy] = useState<GroupBy>("none")
@@ -653,6 +688,20 @@ export function TovaryPage() {
     return ids
   }, [statusyData])
 
+  // W9.2 — резолвер id→{nazvanie,color} по всем статусам из БД,
+  // вне зависимости от tip (product/sayt/lamoda/artikul/model/…).
+  const statusById = useMemo(() => {
+    const m = new Map<number, { nazvanie: string; color: string | null }>()
+    for (const s of statusyData ?? []) {
+      m.set(s.id, { nazvanie: s.nazvanie, color: s.color })
+    }
+    return m
+  }, [statusyData])
+  const resolveStatus = useCallback(
+    (id: number) => statusById.get(id) ?? null,
+    [statusById],
+  )
+
   const updateStatusMutation = useMutation({
     mutationFn: async ({ barkod, statusId, channel }: {
       barkod: string; statusId: number; channel: TovarChannel
@@ -676,11 +725,11 @@ export function TovaryPage() {
     let res: TovarRow[] = data
     res = applyChannelFilter(res, channelFilter)
     res = applyStatusGroupFilter(res, statusGroup, archiveStatusIds)
-    if (search.trim()) {
-      res = res.filter((t) => matchesCompositeSearch(t, search))
+    if (debouncedSearch.trim()) {
+      res = res.filter((t) => matchesCompositeSearch(t, debouncedSearch))
     }
     return res
-  }, [data, channelFilter, statusGroup, archiveStatusIds, search])
+  }, [data, channelFilter, statusGroup, archiveStatusIds, debouncedSearch])
 
   // W8.1 — sort after filter, before group.
   const sortedFiltered = useMemo<TovarRow[]>(
@@ -694,7 +743,7 @@ export function TovaryPage() {
 
   // W8.2 — pagination kicks in only when groupBy === "none"; when grouped, show
   // every item per group (cap removed — pagination across groups is non-obvious).
-  useEffect(() => { resetPage() }, [search, statusGroup, channelFilter, groupBy, sort.column, sort.direction, resetPage])
+  useEffect(() => { resetPage() }, [debouncedSearch, statusGroup, channelFilter, groupBy, sort.column, sort.direction, resetPage])
   const paginated = useMemo(() => paginate(sortedFiltered), [paginate, sortedFiltered])
   const visibleByGroup = useMemo(() => {
     if (groupBy === "none") {
@@ -730,8 +779,8 @@ export function TovaryPage() {
   }, [flatVisibleBarkods])
 
   const cellCtx: CellContext = useMemo(
-    () => ({ statusOptions, onUpdateStatus }),
-    [statusOptions, onUpdateStatus],
+    () => ({ statusOptions, resolveStatus, onUpdateStatus }),
+    [statusOptions, resolveStatus, onUpdateStatus],
   )
 
   // W7.3 — CSV-экспорт выбранных SKU.  `selected` = Set<barkod>; берём строки
@@ -839,7 +888,7 @@ export function TovaryPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Audrey / черный / S — модель / цвет / размер"
+            placeholder="Audrey / black / S — поиск по баркоду, модели, цвету, размеру"
             className="pl-8 pr-7 py-1.5 text-sm border border-stone-200 rounded-md bg-white outline-none focus:border-stone-400 w-96"
           />
           {search && (

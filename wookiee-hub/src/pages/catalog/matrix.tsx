@@ -14,6 +14,7 @@ import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
 import { useResizableColumns, type ResizerBindings } from "@/hooks/use-resizable-columns"
 import { useTableSort, type SortState } from "@/hooks/use-table-sort"
 import { usePagination } from "@/hooks/use-pagination"
+import { useDebouncedValue } from "@/hooks/use-debounced-value"
 import { downloadCsv } from "@/lib/catalog/csv-export"
 // Standard razmer chip-pill ladder used in the table.
 const RAZMER_LADDER = ["XS", "S", "M", "L", "XL", "XXL"] as const
@@ -142,12 +143,27 @@ function getGroupKey(row: MatrixRow, groupBy: GroupBy, statusNameById: Map<numbe
     default: return ""
   }
 }
+// W9.3 — расширенный поиск: бренд, категория, коллекция, фабрика,
+// nazvanie_etiketka, плюс все артикулы вариаций. Регистр-инвариантно.
 function modelMatches(row: MatrixRow, query: string) {
-  if (row.kod.toLowerCase().includes(query) || (row.nazvanie_sayt ?? "").toLowerCase().includes(query)) return true
+  const q = query.toLowerCase()
+  if (!q) return true
+  const headerFields = [
+    row.kod,
+    row.nazvanie_sayt,
+    row.nazvanie_etiketka,
+    row.brand,
+    row.kategoriya,
+    row.kollekciya,
+    row.fabrika,
+  ]
+  for (const f of headerFields) {
+    if (f && f.toLowerCase().includes(q)) return true
+  }
   return row.modeli.some((v) =>
-    (v.kod ?? "").toLowerCase().includes(query) ||
-    (v.nazvanie ?? "").toLowerCase().includes(query) ||
-    (v.artikul_modeli ?? "").toLowerCase().includes(query)
+    (v.kod ?? "").toLowerCase().includes(q) ||
+    (v.nazvanie ?? "").toLowerCase().includes(q) ||
+    (v.artikul_modeli ?? "").toLowerCase().includes(q)
   )
 }
 // W8.3 — собирает текст tooltip-а для CompletenessRing.
@@ -166,6 +182,10 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
   const queryClient = useQueryClient()
   const { widths: colWidths, bindResizer } = useResizableColumns("matrix.modeli", [...MODEL_COLUMN_IDS])
   const [search, setSearch] = useState("")
+  // W9.3 — дебаунс 300мс. Фильтрация по тысячам моделей на каждом keystroke
+  // даёт заметные подвисания на больших каталогах; debounced value читается
+  // в `filtered`/`useMemo`-деп.
+  const debouncedSearch = useDebouncedValue(search, 300)
   // W3.2 — brand chip filter.
   const [selectedBrandIds, setSelectedBrandIds] = useState<Set<number>>(new Set())
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<Set<number>>(new Set())
@@ -238,8 +258,8 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
     if (selectedCategoryIds.size > 0) res = res.filter((r) => r.kategoriya_id != null && selectedCategoryIds.has(r.kategoriya_id))
     if (selectedCollectionNames.size > 0) res = res.filter((r) => r.kollekciya != null && selectedCollectionNames.has(r.kollekciya))
     if (incompleteOnly) res = res.filter((r) => r.completeness < 0.5)
-    return search.trim() ? res.filter((r) => modelMatches(r, search.trim().toLowerCase())) : res
-  }, [rows, selectedBrandIds, selectedStatusIds, selectedCategoryIds, selectedCollectionNames, incompleteOnly, search])
+    return debouncedSearch.trim() ? res.filter((r) => modelMatches(r, debouncedSearch.trim().toLowerCase())) : res
+  }, [rows, selectedBrandIds, selectedStatusIds, selectedCategoryIds, selectedCollectionNames, incompleteOnly, debouncedSearch])
   // W8.1 — apply sort AFTER filters.  Computed value resolver for keys that
   // aren't 1-to-1 with MatrixRow fields.
   const sortedFiltered = useMemo<MatrixRow[]>(() => {
@@ -605,6 +625,7 @@ function ArtikulyTable({ onRegisterExport }: { onRegisterExport?: (fn: (() => vo
   const { data, isLoading } = useQuery({ queryKey: ["artikuly-registry"], queryFn: fetchArtikulyRegistry, staleTime: 5 * 60 * 1000 })
   const { widths: artWidths, bindResizer: bindArt } = useResizableColumns("matrix.artikuly", [...MATRIX_ARTIKULY_COLS])
   const [search, setSearch] = useState("")
+  const debouncedSearch = useDebouncedValue(search, 300)
   // W8.1 — sort state + ui_preferences persist.
   const { sort, toggleSort, setSortState, sortRows } = useTableSort<MatrixArtikulSortKey>()
   const sortLoadedRef = useRef(false)
@@ -621,11 +642,32 @@ function ArtikulyTable({ onRegisterExport }: { onRegisterExport?: (fn: (() => vo
   }, [sort])
   // W8.2 — pagination.
   const { page, setPage, pageSize, setPageSize, paginate, resetPage } = usePagination(50)
+  // W9.3 — расширенный поиск (артикул, модель, вариация, цвет RU/EN/код,
+  // категория, коллекция, фабрика, WB ном., OZON артикул).
   const filtered = useMemo(() => {
     if (!data) return []
-    const q = search.trim().toLowerCase()
-    return q ? data.filter((a) => a.artikul.toLowerCase().includes(q) || (a.model_osnova_kod ?? "").toLowerCase().includes(q) || (a.cvet_color_code ?? "").toLowerCase().includes(q)) : data
-  }, [data, search])
+    const q = debouncedSearch.trim().toLowerCase()
+    if (!q) return data
+    return data.filter((a) => {
+      const fields = [
+        a.artikul,
+        a.model_osnova_kod,
+        a.model_kod,
+        a.nazvanie_etiketka,
+        a.cvet_color_code,
+        a.cvet_nazvanie,
+        a.color_en,
+        a.kategoriya,
+        a.kollekciya,
+        a.fabrika,
+        a.artikul_ozon,
+        a.nomenklatura_wb != null ? String(a.nomenklatura_wb) : null,
+      ]
+      return fields.some(
+        (f) => typeof f === "string" && f.length > 0 && f.toLowerCase().includes(q),
+      )
+    })
+  }, [data, debouncedSearch])
   const sortedFiltered = useMemo(() => sortRows(
     filtered as unknown as Record<string, unknown>[],
     (row, col) => {
@@ -736,6 +778,7 @@ function TovaryTable({ onRegisterExport }: { onRegisterExport?: (fn: (() => void
   const { data, isLoading } = useQuery({ queryKey: ["tovary-registry"], queryFn: fetchTovaryRegistry, staleTime: 5 * 60 * 1000 })
   const { widths: tovWidths, bindResizer: bindTov } = useResizableColumns("matrix.tovary", [...MATRIX_TOVARY_COLS])
   const [search, setSearch] = useState("")
+  const debouncedSearch = useDebouncedValue(search, 300)
   const [channelFilter, setChannelFilter] = useState<(typeof CHANNELS)[number]["id"]>("all")
   const [statusFilter, setStatusFilter] = useState<"all" | number>("all")
   const productStatuses = CATALOG_STATUSES.filter((s) => s.tip === "product")
@@ -763,9 +806,35 @@ function TovaryTable({ onRegisterExport }: { onRegisterExport?: (fn: (() => void
     else if (channelFilter === "sayt") res = res.filter((t) => t.status_sayt_id !== null)
     else if (channelFilter === "lamoda") res = res.filter((t) => t.status_lamoda_id !== null)
     if (statusFilter !== "all") res = res.filter((t) => t.status_id === statusFilter || t.status_ozon_id === statusFilter || t.status_sayt_id === statusFilter || t.status_lamoda_id === statusFilter)
-    const q = search.trim().toLowerCase()
-    return q ? res.filter((t) => t.barkod.includes(q) || (t.model_osnova_kod ?? "").toLowerCase().includes(q) || (t.artikul ?? "").toLowerCase().includes(q)) : res
-  }, [data, channelFilter, statusFilter, search])
+    const q = debouncedSearch.trim().toLowerCase()
+    if (!q) return res
+    // W9.3 — расширенный поиск по баркоду (+gs1/gs2/переход), артикулу,
+    // моделям, цвету (RU/EN/код), размеру, WB ном., OZON, коллекции, категории.
+    return res.filter((t) => {
+      const fields = [
+        t.barkod,
+        t.barkod_gs1,
+        t.barkod_gs2,
+        t.barkod_perehod,
+        t.artikul,
+        t.model_osnova_kod,
+        t.model_kod,
+        t.nazvanie_etiketka,
+        t.cvet_color_code,
+        t.cvet_ru,
+        t.color_en,
+        t.razmer,
+        t.razmer_kod,
+        t.kollekciya,
+        t.kategoriya,
+        t.artikul_ozon,
+        t.nomenklatura_wb != null ? String(t.nomenklatura_wb) : null,
+      ]
+      return fields.some(
+        (f) => typeof f === "string" && f.length > 0 && f.toLowerCase().includes(q),
+      )
+    })
+  }, [data, channelFilter, statusFilter, debouncedSearch])
   const sortedFiltered = useMemo(() => sortRows(
     filtered as unknown as Record<string, unknown>[],
     (row, col) => {

@@ -17,6 +17,7 @@ import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
 import { useResizableColumns } from "@/hooks/use-resizable-columns"
 import { useTableSort, type SortState } from "@/hooks/use-table-sort"
 import { usePagination } from "@/hooks/use-pagination"
+import { useDebouncedValue } from "@/hooks/use-debounced-value"
 import { downloadCsv } from "@/lib/catalog/csv-export"
 
 // Default per-column widths (px) for the standalone Артикулы page (W1.5).
@@ -511,6 +512,8 @@ export function ArtikulyPage() {
   })
 
   const [search, setSearch] = useState("")
+  // W9.3 — дебаунс ввода поиска.
+  const debouncedSearch = useDebouncedValue(search, 300)
   const [statusFilter, setStatusFilter] = useState<"all" | number>("all")
   const [columns, setColumns] = useState<string[]>(DEFAULT_COLUMNS)
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -564,24 +567,33 @@ export function ArtikulyPage() {
     if (statusFilter !== "all") {
       res = res.filter((a) => a.status_id === statusFilter)
     }
-    if (search.trim()) {
-      const q = search.trim().toLowerCase()
+    if (debouncedSearch.trim()) {
+      // W9.3 — расширенный набор полей + регистр-инвариантно.
+      // TODO(W9.3-followup): включить баркоды SKU в поиск по артикулу
+      // (требует доп. join tovary в fetchArtikulyRegistry).
+      const q = debouncedSearch.trim().toLowerCase()
       res = res.filter((a) => {
-        return (
-          a.artikul.toLowerCase().includes(q) ||
-          (a.model_osnova_kod ?? "").toLowerCase().includes(q) ||
-          (a.model_kod ?? "").toLowerCase().includes(q) ||
-          (a.nazvanie_etiketka ?? "").toLowerCase().includes(q) ||
-          (a.cvet_nazvanie ?? "").toLowerCase().includes(q) ||
-          (a.color_en ?? "").toLowerCase().includes(q) ||
-          (a.cvet_color_code ?? "").toLowerCase().includes(q) ||
-          String(a.nomenklatura_wb ?? "").toLowerCase().includes(q) ||
-          (a.artikul_ozon ?? "").toLowerCase().includes(q)
+        const fields = [
+          a.artikul,
+          a.model_osnova_kod,
+          a.model_kod,
+          a.nazvanie_etiketka,
+          a.cvet_nazvanie,
+          a.color_en,
+          a.cvet_color_code,
+          a.kategoriya,
+          a.kollekciya,
+          a.fabrika,
+          a.artikul_ozon,
+          a.nomenklatura_wb != null ? String(a.nomenklatura_wb) : null,
+        ]
+        return fields.some(
+          (f) => typeof f === "string" && f.length > 0 && f.toLowerCase().includes(q),
         )
       })
     }
     return res
-  }, [data, statusFilter, search])
+  }, [data, statusFilter, debouncedSearch])
 
   // W8.1 — sort sits between filter and pagination.
   const sortedFiltered = useMemo<ArtikulRow[]>(
@@ -592,7 +604,7 @@ export function ArtikulyPage() {
     [filtered, sortRows],
   )
   // Reset to page 1 when filters/sort change.
-  useEffect(() => { resetPage() }, [search, statusFilter, sort.column, sort.direction, resetPage])
+  useEffect(() => { resetPage() }, [debouncedSearch, statusFilter, sort.column, sort.direction, resetPage])
   const paginated = useMemo(() => paginate(sortedFiltered), [paginate, sortedFiltered])
   const visible = paginated.slice
 
