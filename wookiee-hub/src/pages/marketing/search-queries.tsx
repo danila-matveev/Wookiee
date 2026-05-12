@@ -1,7 +1,6 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
 import { ChevronDown, Plus } from "lucide-react"
 import { useSearchParams } from "react-router-dom"
-import { PageHeader } from "@/components/crm/layout/PageHeader"
 import { Button } from "@/components/crm/ui/Button"
 import { SearchQueriesTable } from "./search-queries/SearchQueriesTable"
 import { AddBrandQueryPanel } from "./search-queries/AddBrandQueryPanel"
@@ -59,11 +58,18 @@ export function SearchQueriesPage() {
   return (
     <div className="flex flex-col h-full">
       <div className="px-6 pt-6 pb-0">
-        <PageHeader
-          title="Поисковые запросы"
-          sub="Брендовые, артикулы и подменные WW-коды"
-          actions={<AddMenu />}
-        />
+        <div className="flex items-end justify-between mb-6">
+          <div>
+            <h1
+              className="text-stone-900"
+              style={{ fontFamily: "'Instrument Serif', serif", fontSize: 24, fontStyle: "italic" }}
+            >
+              Поисковые запросы
+            </h1>
+            <p className="text-sm text-stone-500 mt-0.5">Брендовые, артикулы и подменные WW-коды</p>
+          </div>
+          <AddMenu />
+        </div>
       </div>
       <SearchQueriesTable />
       {addParam === 'brand' && <AddBrandQueryPanel onClose={closeAdd} />}
