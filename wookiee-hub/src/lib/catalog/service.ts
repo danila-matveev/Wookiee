@@ -1748,6 +1748,116 @@ export async function archiveModel(kod: string): Promise<void> {
   if (tErr) throw new Error(tErr.message)
 }
 
+// ─── W4.2: Create new variation row in `modeli` ────────────────────────────
+//
+// Вариация = базовая модель × юрлицо (importer). Создаётся через карточку
+// модели → SidebarBlock «Вариации» → «+ Добавить».
+//
+// Контракт:
+//   - `modelOsnovaId` — FK на `modeli_osnova.id` родительской модели
+//   - `importerId` — FK на `importery.id` (юрлицо: ИП Медведева / ООО ВУКИ / …)
+//   - `kodSuffix?` — опциональный текстовый суффикс для `kod` новой вариации.
+//     Если не задан — используется индекс `(existingVariationCount + 1)`.
+//
+// Правила:
+//   - `kod` нового modeli = `${parentKod}-${suffix}` (через дефис).
+//   - `nazvanie` NOT NULL в БД → копируем `parentKod` (PM правит позже inline).
+//   - `status_id` → копируется со status_id родительской `modeli_osnova`;
+//     если у родителя пусто — fallback на 20 («Планирование», tip=model).
+//   - При коллизии kod выкидываем понятную ошибку — PM пробует другой суффикс.
+export async function insertVariation(
+  modelOsnovaId: number,
+  importerId: number,
+  kodSuffix?: string,
+): Promise<ModelVariation> {
+  // 1. Подтянуть parent kod + parent status + текущее число вариаций.
+  const { data: parent, error: parentErr } = await supabase
+    .from("modeli_osnova")
+    .select("kod, status_id")
+    .eq("id", modelOsnovaId)
+    .single()
+  if (parentErr) throw new Error(parentErr.message)
+  if (!parent) throw new Error(`modeli_osnova ${modelOsnovaId} not found`)
+  const parentKod = (parent as { kod: string }).kod
+  const parentStatusId = (parent as { status_id: number | null }).status_id
+
+  const { data: existingRows, error: cntErr } = await supabase
+    .from("modeli")
+    .select("id, kod")
+    .eq("model_osnova_id", modelOsnovaId)
+  if (cntErr) throw new Error(cntErr.message)
+  const existing = (existingRows ?? []) as { id: number; kod: string }[]
+
+  // 2. Вычислить новый kod.
+  const trimmedSuffix = kodSuffix?.trim()
+  const suffix = trimmedSuffix && trimmedSuffix.length > 0
+    ? trimmedSuffix
+    : String(existing.length + 1)
+  const newKod = `${parentKod}-${suffix}`
+
+  if (existing.some((m) => m.kod === newKod)) {
+    throw new Error(
+      `Вариация с kod «${newKod}» уже существует. Укажите другой суффикс.`,
+    )
+  }
+
+  // 3. Дефолтный status_id.
+  let statusId: number | null = parentStatusId
+  if (statusId == null) {
+    statusId = await getStatusIdByName("model", "Планирование")
+  }
+
+  // 4. INSERT.
+  const insertPayload = {
+    model_osnova_id: modelOsnovaId,
+    importer_id: importerId,
+    kod: newKod,
+    nazvanie: parentKod, // NOT NULL — PM правит inline после создания
+    status_id: statusId,
+    nabor: false,
+  }
+  const { data: inserted, error: insErr } = await supabase
+    .from("modeli")
+    .insert(insertPayload)
+    .select(`
+      id, kod, nazvanie, nazvanie_en, artikul_modeli, importer_id, status_id,
+      rossiyskiy_razmer, nabor,
+      importery(nazvanie)
+    `)
+    .single()
+  if (insErr) throw new Error(insErr.message)
+
+  const row = inserted as {
+    id: number
+    kod: string
+    nazvanie: string
+    nazvanie_en: string | null
+    artikul_modeli: string | null
+    importer_id: number | null
+    status_id: number | null
+    rossiyskiy_razmer: string | null
+    nabor: boolean | null
+    importery: { nazvanie: string } | { nazvanie: string }[] | null
+  }
+  const importerNazvanie = Array.isArray(row.importery)
+    ? row.importery[0]?.nazvanie ?? null
+    : row.importery?.nazvanie ?? null
+
+  return {
+    id: row.id,
+    kod: row.kod,
+    nazvanie: row.nazvanie,
+    nazvanie_en: row.nazvanie_en,
+    artikul_modeli: row.artikul_modeli,
+    importer_id: row.importer_id,
+    importer_nazvanie: importerNazvanie,
+    status_id: row.status_id,
+    rossiyskiy_razmer: row.rossiyskiy_razmer,
+    nabor: row.nabor,
+    artikuly: [],
+  }
+}
+
 // ─── Bulk operations ───────────────────────────────────────────────────────
 
 export type TovarChannel = "wb" | "ozon" | "sayt" | "lamoda"

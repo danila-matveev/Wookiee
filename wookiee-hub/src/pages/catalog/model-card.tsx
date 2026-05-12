@@ -49,6 +49,7 @@ import {
   fetchAttributesForCategory,
   fetchBrendy,
   fetchFabriki,
+  fetchImportery,
   fetchKategorii,
   fetchKollekcii,
   fetchModelDetail,
@@ -59,6 +60,7 @@ import {
   fetchStatusy,
   fetchTipyKollekciy,
   fetchUpakovki,
+  insertVariation,
   updateModel,
   type ModelDetail,
   type ModelOsnovaPayload,
@@ -1503,13 +1505,26 @@ function SertPickerEmptyModal({
 // ─── Sidebar ───────────────────────────────────────────────────────────────
 
 function CardSidebar({
-  m, attrs, hexByCvet, openColor,
+  m, attrs, hexByCvet, openColor, kod,
 }: {
   m: ModelDetail
   attrs: AttributeFieldDef[]
   hexByCvet: Map<number, string | null>
   openColor: (colorCode: string) => void
+  kod: string
 }) {
+  // W4.2: state + mutation for "Добавить вариацию" modal.
+  const queryClient = useQueryClient()
+  const [variationOpen, setVariationOpen] = useState(false)
+  const createVariationMut = useMutation({
+    mutationFn: (importerId: number) => insertVariation(m.id, importerId),
+    onSuccess: () => {
+      setVariationOpen(false)
+      queryClient.invalidateQueries({ queryKey: ["catalog", "model", kod] })
+      queryClient.invalidateQueries({ queryKey: ["catalog", "matrix-list"] })
+      queryClient.invalidateQueries({ queryKey: ["matrix-list"] })
+    },
+  })
   // Ring % and "X/Y" text must agree — both reflect category-specific
   // attribute fill ratio. Earlier the ring used `computeCompleteness` (weighted
   // across all model fields) while the text counted only AttributeFieldDef
@@ -1587,9 +1602,9 @@ function CardSidebar({
         action={
           <button
             type="button"
-            disabled
-            className="text-xs text-stone-700 hover:bg-stone-100 rounded px-2 py-0.5 flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Wave 3+ (создание вариации)"
+            onClick={() => setVariationOpen(true)}
+            className="text-xs text-stone-700 hover:bg-stone-100 rounded px-2 py-0.5 flex items-center gap-1"
+            title="Добавить вариацию (новое юрлицо)"
           >
             <Plus className="w-3 h-3" /> Добавить
           </button>
@@ -1652,7 +1667,132 @@ function CardSidebar({
           )}
         </div>
       </SidebarBlock>
+
+      {variationOpen && (
+        <VariationModal
+          parentKod={m.kod}
+          existingVariations={m.modeli.map((v) => ({
+            importerId: v.importer_id,
+            importerName: v.importer_nazvanie,
+            kod: v.kod,
+          }))}
+          onCancel={() => setVariationOpen(false)}
+          onConfirm={(importerId) => createVariationMut.mutate(importerId)}
+          pending={createVariationMut.isPending}
+          error={createVariationMut.error ? String(createVariationMut.error) : null}
+        />
+      )}
     </>
+  )
+}
+
+// ─── W4.2: VariationModal — выбор юрлица для новой вариации ─────────────────
+
+function VariationModal({
+  parentKod,
+  existingVariations,
+  onCancel,
+  onConfirm,
+  pending,
+  error,
+}: {
+  parentKod: string
+  existingVariations: { importerId: number | null; importerName: string | null; kod: string }[]
+  onCancel: () => void
+  onConfirm: (importerId: number) => void
+  pending: boolean
+  error: string | null
+}) {
+  const importeryQ = useQuery({
+    queryKey: ["catalog", "importery"],
+    queryFn: fetchImportery,
+    staleTime: 5 * 60 * 1000,
+  })
+  const [importerId, setImporterId] = useState<number | null>(null)
+  const [localError, setLocalError] = useState<string | null>(null)
+
+  const submit = () => {
+    if (importerId == null) {
+      setLocalError("Выберите юрлицо")
+      return
+    }
+    setLocalError(null)
+    onConfirm(importerId)
+  }
+
+  const importery = importeryQ.data ?? []
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] bg-stone-900/40 flex items-center justify-center p-4"
+      onClick={onCancel}
+    >
+      <div
+        className="w-full max-w-md bg-white rounded-xl shadow-2xl border border-stone-200 overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-5 py-3 border-b border-stone-200 flex items-center justify-between">
+          <div className="font-medium text-stone-900">Создать вариацию</div>
+          <button onClick={onCancel} className="p-1 hover:bg-stone-100 rounded">
+            <X className="w-4 h-4 text-stone-500" />
+          </button>
+        </div>
+        <div className="px-5 py-4 space-y-3">
+          <div className="text-xs text-stone-500">
+            Вариация = базовая модель <span className="font-mono">{parentKod}</span> × юрлицо
+            (importer). Kod новой вариации будет вида{" "}
+            <span className="font-mono">{parentKod}-{existingVariations.length + 1}</span>,
+            его можно поправить позже inline.
+          </div>
+          <label className="block text-[11px] uppercase tracking-wider text-stone-500">
+            Юрлицо
+          </label>
+          <select
+            autoFocus
+            value={importerId ?? ""}
+            onChange={(e) => {
+              const val = e.target.value
+              setImporterId(val ? Number(val) : null)
+              setLocalError(null)
+            }}
+            className="w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md bg-white outline-none focus:border-stone-900 focus:ring-1 focus:ring-stone-900"
+          >
+            <option value="">— выберите —</option>
+            {importery.map((imp) => (
+              <option key={imp.id} value={imp.id}>
+                {imp.nazvanie}
+              </option>
+            ))}
+          </select>
+          {existingVariations.length > 0 && (
+            <div className="text-[11px] text-stone-400">
+              Уже есть вариации:{" "}
+              {existingVariations
+                .map((v) => `${v.kod}${v.importerName ? ` (${v.importerName.split(" ")[0]})` : ""}`)
+                .join(", ")}
+            </div>
+          )}
+          {(localError || error) && (
+            <div className="text-xs text-red-600">{localError ?? error}</div>
+          )}
+        </div>
+        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-stone-200 bg-stone-50">
+          <button
+            onClick={onCancel}
+            className="px-3 py-1.5 text-sm text-stone-700 hover:bg-stone-100 rounded-md"
+          >
+            Отмена
+          </button>
+          <button
+            onClick={submit}
+            disabled={pending || importeryQ.isLoading}
+            className="px-3 py-1.5 text-sm text-white bg-stone-900 hover:bg-stone-800 rounded-md disabled:opacity-50"
+          >
+            {pending ? "Создаём…" : "Создать"}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -2054,6 +2194,7 @@ export function ModelCard({ kod, onClose }: ModelCardProps) {
                     attrs={sidebarAttrs}
                     hexByCvet={hexByCvet}
                     openColor={openColor}
+                    kod={kod}
                   />
                 </div>
               </div>
