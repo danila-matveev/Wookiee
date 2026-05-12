@@ -13,6 +13,25 @@ export async function fetchKategorii() {
   return data as { id: number; nazvanie: string; opisanie: string | null }[]
 }
 
+/**
+ * Список ключей атрибутов, привязанных к категории.
+ *
+ * Источник истины — таблица `kategoriya_atributy` (migration 016, W2.2).
+ * До W2.2 маппинг хранился в коде (`ATTRIBUTES_BY_CATEGORY` в `types/catalog.ts`).
+ *
+ * AttributeFieldDef (label/type/options) — пока в коде в `ALL_ATTRIBUTES`,
+ * полноценный registry атрибутов в БД — задача W6.1.
+ */
+export async function fetchAttributesForCategory(kategoriyaId: number): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("kategoriya_atributy")
+    .select("atribut_key, poryadok")
+    .eq("kategoriya_id", kategoriyaId)
+    .order("poryadok")
+  if (error) throw error
+  return (data ?? []).map((r) => r.atribut_key as string)
+}
+
 export async function fetchKollekcii() {
   const { data, error } = await supabase
     .from("kollekcii")

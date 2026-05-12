@@ -410,6 +410,12 @@ export const ALL_ATTRIBUTES: Record<string, AttributeFieldDef> = {
 /**
  * `kategoriya_id` → массив атрибутов, отображаемых в карточке модели.
  *
+ * @deprecated W2.2: маппинг перенесён в таблицу `kategoriya_atributy`
+ *   (migration 016). UI читает связи через `fetchAttributesForCategory(id)`,
+ *   а описания полей (label / type / options) — через `ALL_ATTRIBUTES`.
+ *   Эта константа сохранена как fallback / документация до W6.1, в котором
+ *   AttributeFieldDef registry тоже уедет в БД (таблица `atributy`).
+ *
  * MVP покрывал 5 категорий (id 1–5 в моке). Здесь сопоставлено с
  * реальными id из БД (см. таблицу `kategorii`):
  *   1  Комплект белья  →  все базовые атрибуты

@@ -37,7 +37,7 @@ import {
 
 import { supabase } from "@/lib/supabase"
 import {
-  ATTRIBUTES_BY_CATEGORY,
+  ALL_ATTRIBUTES,
   FIELD_LEVEL,
   type AttributeFieldDef,
   type FieldLevel as FieldLevelKind,
@@ -46,6 +46,7 @@ import {
   archiveModel,
   duplicateModel,
   fetchAllTags,
+  fetchAttributesForCategory,
   fetchFabriki,
   fetchKategorii,
   fetchKollekcii,
@@ -802,9 +803,18 @@ function TabDescription({
 // ─── Tab 2: Attributes (dynamic per category) ──────────────────────────────
 
 function TabAttributes({ m, draft, setDraft, editing }: TabContentProps) {
-  const attrs: AttributeFieldDef[] = m.kategoriya_id
-    ? ATTRIBUTES_BY_CATEGORY[m.kategoriya_id] ?? []
-    : []
+  // W2.2: связь kategoriya ↔ atribut_key уезжает в БД (`kategoriya_atributy`).
+  // ALL_ATTRIBUTES остаётся в коде как registry метаданных (label/type/options)
+  // до W6.1.
+  const attrKeysQ = useQuery({
+    queryKey: ["catalog", "kategoriya-atributy", m.kategoriya_id],
+    queryFn: () => fetchAttributesForCategory(m.kategoriya_id as number),
+    enabled: m.kategoriya_id != null,
+    staleTime: 5 * 60 * 1000,
+  })
+  const attrs: AttributeFieldDef[] = (attrKeysQ.data ?? [])
+    .map((key) => ALL_ATTRIBUTES[key])
+    .filter((def): def is AttributeFieldDef => def != null)
 
   const set = (k: string, v: unknown) => {
     if (!draft) return
@@ -1821,6 +1831,18 @@ export function ModelCard({ kod, onClose }: ModelCardProps) {
   })
   const hexByCvet = hexQ.data ?? new Map<number, string | null>()
 
+  // W2.2: ключи атрибутов категории — из БД (`kategoriya_atributy`).
+  // Используется для CardSidebar (Заполненность %, "X/Y атрибутов").
+  const sidebarAttrKeysQ = useQuery({
+    queryKey: ["catalog", "kategoriya-atributy", model?.kategoriya_id],
+    queryFn: () => fetchAttributesForCategory(model!.kategoriya_id as number),
+    enabled: model?.kategoriya_id != null,
+    staleTime: 5 * 60 * 1000,
+  })
+  const sidebarAttrs: AttributeFieldDef[] = (sidebarAttrKeysQ.data ?? [])
+    .map((key) => ALL_ATTRIBUTES[key])
+    .filter((def): def is AttributeFieldDef => def != null)
+
   // Save mutation
   const saveMut = useMutation({
     mutationFn: async () => {
@@ -1989,11 +2011,7 @@ export function ModelCard({ kod, onClose }: ModelCardProps) {
                 <div className="space-y-4 min-w-0">
                   <CardSidebar
                     m={model}
-                    attrs={
-                      model.kategoriya_id
-                        ? ATTRIBUTES_BY_CATEGORY[model.kategoriya_id] ?? []
-                        : []
-                    }
+                    attrs={sidebarAttrs}
                     hexByCvet={hexByCvet}
                     openColor={openColor}
                   />
