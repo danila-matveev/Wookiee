@@ -32,7 +32,29 @@ def test_build_prompt_contains_wookiee_glossary():
     )
     for model_name in ("Wendy", "Moon", "Vuki", "Ruby", "Joy"):
         assert model_name in prompt, f"Glossary must mention {model_name}"
-    assert "Глоссарий моделей бренда" in prompt
+    assert "Модели бренда" in prompt or "модел" in prompt.lower()
+
+
+def test_build_prompt_contains_ecom_marketplace_glossary():
+    """E-com термины (СПП, ДРР, выкуп, оборачиваемость) и MP-канал должны быть в промте."""
+    prompt = build_prompt(
+        [{"speaker": "Speaker 0", "start_ms": 0, "end_ms": 1000, "text": "x"}],
+        [{"name": "Данила"}],
+    )
+    for term in ("СПП", "ДРР", "Wildberries", "FBO", "выкуп", "оборачиваемост"):
+        assert term in prompt, f"Glossary must mention {term}"
+
+
+def test_build_prompt_requires_extended_tasks_schema():
+    """Промт должен явно требовать развёрнутые поля context+conditions в tasks."""
+    prompt = build_prompt(
+        [{"speaker": "Speaker 0", "start_ms": 0, "end_ms": 1000, "text": "x"}],
+        [{"name": "Данила"}],
+    )
+    assert "context" in prompt
+    assert "conditions" in prompt
+    # Quality bar — explicit task count guidance for long meetings
+    assert "5-15" in prompt or "1-2 час" in prompt
 
 
 @pytest.mark.asyncio

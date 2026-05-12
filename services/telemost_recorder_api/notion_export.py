@@ -118,6 +118,12 @@ def _build_blocks(meeting: dict[str, Any]) -> list[dict]:
             when = t.get("when")
             suffix = f" ({when})" if when else ""
             blocks.append(_bullet(f"{assignee} — {what}{suffix}"))
+            context = t.get("context")
+            if context:
+                blocks.append(_bullet(f"Зачем: {context}"))
+            conditions = t.get("conditions")
+            if conditions:
+                blocks.append(_bullet(f"Условия: {conditions}"))
 
     tags = meeting.get("tags") or []
     if tags:
