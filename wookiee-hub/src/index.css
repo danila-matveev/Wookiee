@@ -1,10 +1,10 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/inter";
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=Instrument+Serif:ital@0;1&display=swap');
-
-@custom-variant dark (&:is(.dark *));
+@import "./styles/tokens.css";
+/* DS v2: dark variant matches [data-theme='dark'] attribute on <html>.
+   Existing `dark:` Tailwind prefixes keep working via attribute selector. */
+@custom-variant dark (&:is([data-theme='dark'] *));
 
 /* ─── Light Theme ─── */
 :root {
@@ -73,8 +73,8 @@
     --crm-surface: oklch(1 0 0);
 }
 
-/* ─── Dark Theme (default) ─── */
-.dark {
+/* ─── Dark Theme (shadcn-compat layer; activated by [data-theme='dark']) ─── */
+[data-theme='dark'] {
     color-scheme: dark;
 
     --background: oklch(0.094 0.005 285);
@@ -141,8 +141,9 @@
 }
 
 @theme inline {
-    /* Font */
-    --font-sans: 'Inter Variable', sans-serif;
+    /* Font — DS v2: DM Sans (UI) + Instrument Serif (brand). Inter retired. */
+    --font-sans: 'DM Sans', system-ui, -apple-system, sans-serif;
+    --font-serif: 'Instrument Serif', ui-serif, Georgia, serif;
 
     /* Breakpoints (spec: tablet 768, laptop 1024, desktop 1280) */
     --breakpoint-sm: 768px;
