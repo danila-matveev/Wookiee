@@ -259,7 +259,12 @@ def _format_ms(ms: int) -> str:
 
 
 def _write_transcript(segments: list, output_dir: Path) -> None:
-    """Write transcript.txt and transcript.json to output_dir."""
+    """Write transcript.txt, transcript.json, and raw_segments.json to output_dir.
+
+    raw_segments.json is the canonical artefact consumed by recorder_worker
+    (services/telemost_recorder_api/workers/recorder_worker.py) when ingesting
+    finished recordings into Supabase.
+    """
     txt_lines = [
         f"[{_format_ms(s.start_ms)}] {s.speaker}: {s.text}"
         for s in segments
@@ -270,9 +275,9 @@ def _write_transcript(segments: list, output_dir: Path) -> None:
         {"speaker": s.speaker, "start_ms": s.start_ms, "end_ms": s.end_ms, "text": s.text}
         for s in segments
     ]
-    (output_dir / "transcript.json").write_text(
-        json.dumps(json_data, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    payload = json.dumps(json_data, ensure_ascii=False, indent=2)
+    (output_dir / "transcript.json").write_text(payload, encoding="utf-8")
+    (output_dir / "raw_segments.json").write_text(payload, encoding="utf-8")
 
 
 def _emit(payload: dict) -> None:
