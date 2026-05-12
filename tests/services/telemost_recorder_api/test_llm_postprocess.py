@@ -236,3 +236,44 @@ async def test_postprocess_meeting_chunked_paragraphs_http_error_returns_summary
     assert result["summary"]["topics"][0]["title"] == "Бюджет"
     assert result["paragraphs"] == []
     assert result["speakers_map"] == {}
+
+
+@pytest.mark.asyncio
+async def test_prompt_includes_invitee_names_end_to_end():
+    """Bitrix-enriched invitees from meetings.invitees must reach the LLM prompt.
+
+    Pins the Task 3 contract: postprocess_meeting(segments, participants) — where
+    `participants` is the JSON-decoded meetings.invitees list — surfaces every
+    invitee name into the user-message sent to OpenRouter. Speaker attribution
+    in the LLM output depends on this; missing names degrade processed_paragraphs
+    back to "Speaker N".
+    """
+    captured: dict = {}
+
+    async def fake_call(prompt, model, timeout_seconds):
+        captured["prompt"] = prompt
+        return json.dumps({
+            "paragraphs": [],
+            "speakers_map": {},
+            "tags": [],
+            "summary": {
+                "participants": [], "topics": [], "decisions": [], "tasks": [],
+            },
+        })
+
+    segments = [{"speaker": "Speaker 0", "start_ms": 0, "end_ms": 1000, "text": "Привет"}]
+    invitees = [
+        {"telegram_id": 111, "name": "Иван Иванов", "bitrix_id": "1"},
+        {"telegram_id": 222, "name": "Алина А.", "bitrix_id": "42"},
+    ]
+
+    with patch(
+        "services.telemost_recorder_api.llm_postprocess._call_openrouter",
+        AsyncMock(side_effect=fake_call),
+    ):
+        await postprocess_meeting(segments, invitees)
+
+    prompt = captured["prompt"]
+    assert "Иван Иванов" in prompt
+    assert "Алина А." in prompt
+    assert "Participants:" in prompt
