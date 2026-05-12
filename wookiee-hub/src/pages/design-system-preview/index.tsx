@@ -13,6 +13,7 @@ import {
   AvatarGroup,
   Badge,
   Button,
+  Checkbox,
   Chip,
   ColorSwatch,
   FilterChip,
@@ -22,13 +23,17 @@ import {
   PermissionGate,
   PriorityBadge,
   ProgressBar,
+  Radio,
   Ring,
   Skeleton,
+  Slider,
   StatusBadge,
   Tag,
+  Toggle,
   Tooltip,
 } from "@/components/ui-v2/primitives"
 import {
+  ColorPicker,
   Combobox,
   DatePicker,
   FieldWrap,
@@ -38,7 +43,9 @@ import {
   SelectField,
   TextField,
   TextareaField,
+  TimePicker,
 } from "@/components/ui-v2/forms"
+import type { DateRange } from "@/components/ui-v2/forms"
 import {
   Breadcrumbs,
   PageHeader,
@@ -100,6 +107,20 @@ export default function DesignSystemPreview() {
   // Filter chip demo state
   const [filterA, setFilterA] = useState(true)
   const [filterB, setFilterB] = useState(false)
+
+  // Selector atoms (R3): Checkbox / Radio / Toggle / Slider
+  const [checkA, setCheckA] = useState(true)
+  const [checkB, setCheckB] = useState(false)
+  const [indeterminate, setIndeterminate] = useState(true)
+  const [radio, setRadio] = useState("model")
+  const [toggleA, setToggleA] = useState(false)
+  const [toggleB, setToggleB] = useState(true)
+  const [slider, setSlider] = useState(40)
+
+  // R3 forms — TimePicker / ColorPicker / DatePicker range
+  const [time, setTime] = useState<string | null>(null)
+  const [color, setColor] = useState("#7C3AED")
+  const [dateRange, setDateRange] = useState<DateRange | null>(null)
 
   const toast = useToast()
 
@@ -273,6 +294,33 @@ export default function DesignSystemPreview() {
           </Row>
         </Section>
 
+        {/* Selectors (R3): Checkbox / Radio / Toggle / Slider */}
+        <Section title="Checkbox / Radio / Toggle / Slider (R3)">
+          <Row>
+            <span className="text-[10px] uppercase tracking-wider text-label mr-2">Checkbox</span>
+            <Checkbox id="ds-check-a" checked={checkA} onChange={setCheckA} label="Активен" />
+            <Checkbox id="ds-check-b" checked={checkB} onChange={setCheckB} label="Скрыто" />
+            <Checkbox id="ds-check-i" checked={false} onChange={() => setIndeterminate((v) => !v)} indeterminate={indeterminate} label="Indeterminate (toggle)" />
+            <Checkbox id="ds-check-d" checked={false} onChange={() => null} label="Disabled" disabled />
+          </Row>
+          <Row>
+            <span className="text-[10px] uppercase tracking-wider text-label mr-2">Radio</span>
+            <Radio id="ds-r-m" name="ds-level" value="model" checked={radio === "model"} onChange={setRadio} label="Модель" />
+            <Radio id="ds-r-v" name="ds-level" value="variation" checked={radio === "variation"} onChange={setRadio} label="Вариация" />
+            <Radio id="ds-r-a" name="ds-level" value="artikul" checked={radio === "artikul"} onChange={setRadio} label="Артикул" />
+            <Radio id="ds-r-s" name="ds-level" value="sku" checked={radio === "sku"} onChange={setRadio} label="SKU" />
+          </Row>
+          <Row>
+            <span className="text-[10px] uppercase tracking-wider text-label mr-2">Toggle</span>
+            <Toggle id="ds-t-a" on={toggleA} onChange={setToggleA} label="Темная тема" />
+            <Toggle id="ds-t-b" on={toggleB} onChange={setToggleB} label="Уведомления" />
+            <Toggle id="ds-t-d" on={false} onChange={() => null} label="Disabled" disabled />
+          </Row>
+          <div className="max-w-md">
+            <Slider id="ds-slider" label="Объём (Slider)" value={slider} onChange={setSlider} suffix="%" />
+          </div>
+        </Section>
+
         {/* Progress + Ring + Tooltip + Skeleton */}
         <Section title="Progress, Ring, Tooltip, Skeleton">
           <Row>
@@ -361,6 +409,34 @@ export default function DesignSystemPreview() {
             </FieldWrap>
           </div>
           <FileUpload id="ds-file" label="Файлы" value={files} onChange={setFiles} multiple maxSize={5 * 1024 * 1024} />
+        </Section>
+
+        {/* R3 forms: TimePicker / ColorPicker / DatePicker range */}
+        <Section title="TimePicker / ColorPicker / DatePicker range (R3)">
+          <div className="grid md:grid-cols-2 gap-4">
+            <TimePicker
+              id="ds-time"
+              label="Время"
+              value={time}
+              onChange={setTime}
+              hint="30-мин шаг, 08:00 — 21:00"
+            />
+            <ColorPicker
+              id="ds-color"
+              label="Цвет"
+              value={color}
+              onChange={setColor}
+              hint="9-цветная палитра + hex"
+            />
+            <DatePicker
+              id="ds-date-range"
+              label="Период"
+              range
+              value={dateRange}
+              onChange={setDateRange}
+              hint="Два клика: from → to (с автоматическим swap)"
+            />
+          </div>
         </Section>
 
         {/* Tabs */}

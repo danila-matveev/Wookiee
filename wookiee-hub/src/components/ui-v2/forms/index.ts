@@ -24,7 +24,13 @@ export { TextareaField } from "./TextareaField"
 export type { TextareaFieldProps } from "./TextareaField"
 
 export { DatePicker } from "./DatePicker"
-export type { DatePickerProps } from "./DatePicker"
+export type { DatePickerProps, DateRange } from "./DatePicker"
+
+export { TimePicker } from "./TimePicker"
+export type { TimePickerProps } from "./TimePicker"
+
+export { ColorPicker } from "./ColorPicker"
+export type { ColorPickerProps } from "./ColorPicker"
 
 export { Combobox } from "./Combobox"
 export type { ComboboxProps } from "./Combobox"

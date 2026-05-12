@@ -51,3 +51,15 @@ export type { KbdProps } from "./Kbd"
 
 export { PermissionGate } from "./PermissionGate"
 export type { PermissionGateProps } from "./PermissionGate"
+
+export { Checkbox } from "./Checkbox"
+export type { CheckboxProps } from "./Checkbox"
+
+export { Radio } from "./Radio"
+export type { RadioProps } from "./Radio"
+
+export { Toggle } from "./Toggle"
+export type { ToggleProps } from "./Toggle"
+
+export { Slider } from "./Slider"
+export type { SliderProps } from "./Slider"

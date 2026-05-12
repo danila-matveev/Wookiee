@@ -4,7 +4,12 @@ import { cn } from "@/lib/utils"
 import { FieldWrap, describedBy } from "./FieldWrap"
 import { inputBase, inputError, inputSizeMd } from "./_shared"
 
-export interface DatePickerProps {
+export interface DateRange {
+  from: Date | null
+  to: Date | null
+}
+
+interface BaseDatePickerProps {
   id: string
   label?: React.ReactNode
   hint?: React.ReactNode
@@ -12,15 +17,26 @@ export interface DatePickerProps {
   required?: boolean
   labelAddon?: React.ReactNode
 
-  value: Date | null
-  onChange: (next: Date | null) => void
-
   min?: Date
   max?: Date
   placeholder?: string
   disabled?: boolean
   className?: string
 }
+
+interface SingleDatePickerProps extends BaseDatePickerProps {
+  range?: false
+  value: Date | null
+  onChange: (next: Date | null) => void
+}
+
+interface RangeDatePickerProps extends BaseDatePickerProps {
+  range: true
+  value: DateRange | null
+  onChange: (next: DateRange | null) => void
+}
+
+export type DatePickerProps = SingleDatePickerProps | RangeDatePickerProps
 
 const MONTHS = [
   "Январь",
@@ -42,7 +58,7 @@ function pad(n: number): string {
   return String(n).padStart(2, "0")
 }
 
-function formatDisplay(d: Date | null): string {
+function formatDate(d: Date | null | undefined): string {
   if (!d) return ""
   return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`
 }
@@ -56,12 +72,6 @@ function isSameDay(a: Date | null | undefined, b: Date | null | undefined): bool
   )
 }
 
-function outOfRange(d: Date, min?: Date, max?: Date): boolean {
-  if (min && d < startOfDay(min)) return true
-  if (max && d > endOfDay(max)) return true
-  return false
-}
-
 function startOfDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate())
 }
@@ -70,29 +80,50 @@ function endOfDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999)
 }
 
-export function DatePicker({
-  id,
-  label,
-  hint,
-  error,
-  required,
-  labelAddon,
-  value,
-  onChange,
-  min,
-  max,
-  placeholder = "Выберите дату",
-  disabled,
-  className,
-}: DatePickerProps) {
+function outOfRange(d: Date, min?: Date, max?: Date): boolean {
+  if (min && d < startOfDay(min)) return true
+  if (max && d > endOfDay(max)) return true
+  return false
+}
+
+export function DatePicker(props: DatePickerProps) {
+  const {
+    id,
+    label,
+    hint,
+    error,
+    required,
+    labelAddon,
+    min,
+    max,
+    placeholder,
+    disabled,
+    className,
+  } = props
+  const range = props.range === true
+
   const [open, setOpen] = React.useState(false)
-  const [view, setView] = React.useState<Date>(() => value ?? new Date())
   const rootRef = React.useRef<HTMLDivElement | null>(null)
   const aria = describedBy(id, hint, error)
 
+  const initialViewDate = React.useMemo<Date>(() => {
+    if (range) {
+      return props.value?.from ?? new Date()
+    }
+    return props.value ?? new Date()
+  }, [range, props.value])
+
+  const [view, setView] = React.useState<Date>(initialViewDate)
+
   React.useEffect(() => {
-    if (value) setView(value)
-  }, [value])
+    if (range) {
+      if (props.value?.from) setView(props.value.from)
+    } else if (props.value) {
+      setView(props.value)
+    }
+    // We intentionally include props.value, range only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range, range ? props.value?.from?.getTime() : props.value?.getTime()])
 
   React.useEffect(() => {
     if (!open) return
@@ -116,6 +147,51 @@ export function DatePicker({
     cells.push(new Date(view.getFullYear(), view.getMonth(), d))
   }
   while (cells.length % 7 !== 0) cells.push(null)
+
+  const displayText = range
+    ? props.value && (props.value.from || props.value.to)
+      ? `${formatDate(props.value.from)}${props.value.to ? " — " + formatDate(props.value.to) : ""}`
+      : ""
+    : formatDate(props.value)
+  const effectivePlaceholder =
+    placeholder ?? (range ? "Выбрать период" : "Выберите дату")
+
+  function handleCellClick(d: Date) {
+    if (range) {
+      const rng = props.value
+      // Start new range when none or both endpoints are set.
+      if (!rng?.from || (rng.from && rng.to)) {
+        props.onChange({ from: startOfDay(d), to: null })
+        return
+      }
+      // Second click: order endpoints, swap if needed.
+      const from = rng.from
+      if (d < from) {
+        props.onChange({ from: startOfDay(d), to: startOfDay(from) })
+      } else {
+        props.onChange({ from: startOfDay(from), to: startOfDay(d) })
+      }
+      setOpen(false)
+    } else {
+      props.onChange(startOfDay(d))
+      setOpen(false)
+    }
+  }
+
+  function handleClear() {
+    if (range) props.onChange(null)
+    else props.onChange(null)
+    setOpen(false)
+  }
+
+  function handleToday() {
+    if (range) {
+      props.onChange({ from: startOfDay(new Date()), to: null })
+    } else {
+      props.onChange(startOfDay(new Date()))
+      setOpen(false)
+    }
+  }
 
   return (
     <FieldWrap
@@ -144,8 +220,8 @@ export function DatePicker({
             error && inputError,
           )}
         >
-          <span className={cn(!value && "text-muted", value && "tabular-nums")}>
-            {value ? formatDisplay(value) : placeholder}
+          <span className={cn(!displayText && "text-muted", displayText && "tabular-nums")}>
+            {displayText || effectivePlaceholder}
           </span>
           <Calendar
             className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none"
@@ -165,9 +241,7 @@ export function DatePicker({
               <button
                 type="button"
                 onClick={() =>
-                  setView(
-                    new Date(view.getFullYear(), view.getMonth() - 1, 1),
-                  )
+                  setView(new Date(view.getFullYear(), view.getMonth() - 1, 1))
                 }
                 className="p-1 rounded hover:bg-surface-muted text-secondary"
                 aria-label="Предыдущий месяц"
@@ -180,9 +254,7 @@ export function DatePicker({
               <button
                 type="button"
                 onClick={() =>
-                  setView(
-                    new Date(view.getFullYear(), view.getMonth() + 1, 1),
-                  )
+                  setView(new Date(view.getFullYear(), view.getMonth() + 1, 1))
                 }
                 className="p-1 rounded hover:bg-surface-muted text-secondary"
                 aria-label="Следующий месяц"
@@ -204,24 +276,38 @@ export function DatePicker({
               {cells.map((d, i) => {
                 if (!d) return <div key={i} />
                 const isToday = isSameDay(d, today)
-                const isSelected = isSameDay(d, value)
+                let isSelected = false
+                let isInRange = false
+                if (range) {
+                  const rng = props.value
+                  isSelected = isSameDay(d, rng?.from) || isSameDay(d, rng?.to)
+                  if (rng?.from && rng?.to) {
+                    const t = d.getTime()
+                    const fromT = startOfDay(rng.from).getTime()
+                    const toT = startOfDay(rng.to).getTime()
+                    isInRange = t > fromT && t < toT
+                  }
+                } else {
+                  isSelected = isSameDay(d, props.value)
+                }
                 const disabledCell = outOfRange(d, min, max)
                 return (
                   <button
                     key={i}
                     type="button"
                     disabled={disabledCell}
-                    onClick={() => {
-                      onChange(d)
-                      setOpen(false)
-                    }}
+                    onClick={() => handleCellClick(d)}
                     className={cn(
                       "aspect-square text-xs rounded transition-colors tabular-nums",
                       isSelected
-                        ? "bg-accent text-[var(--color-accent-text)] font-medium"
-                        : isToday
-                          ? "ring-1 ring-[var(--color-border-strong)] text-primary"
-                          : "text-secondary hover:bg-surface-muted",
+                        ? // Endpoints: filled with primary token (canonical bg-stone-900/50).
+                          "bg-[var(--color-text-primary)] text-[var(--color-surface)] font-medium"
+                        : isInRange
+                          ? // In-range fill — DS §11 literal stone (no semantic token for "range tint").
+                            "bg-stone-100 dark:bg-stone-800 text-secondary"
+                          : isToday
+                            ? "ring-1 ring-[var(--color-border-strong)] text-primary"
+                            : "text-secondary hover:bg-surface-muted",
                       disabledCell && "opacity-30 cursor-not-allowed",
                     )}
                   >
@@ -233,20 +319,14 @@ export function DatePicker({
             <div className="mt-2 flex items-center justify-between">
               <button
                 type="button"
-                onClick={() => {
-                  onChange(null)
-                  setOpen(false)
-                }}
+                onClick={handleClear}
                 className="text-xs text-muted hover:text-primary"
               >
                 Очистить
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  onChange(startOfDay(new Date()))
-                  setOpen(false)
-                }}
+                onClick={handleToday}
                 className="text-xs text-accent hover:underline"
               >
                 Сегодня
