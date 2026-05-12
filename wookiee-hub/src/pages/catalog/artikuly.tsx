@@ -13,6 +13,7 @@ import { ColumnsManager, type ColumnDef } from "@/components/catalog/ui/columns-
 import { SortableHeader } from "@/components/catalog/ui/sortable-header"
 import { Pagination } from "@/components/catalog/ui/pagination"
 import { RefModal } from "@/components/catalog/ui/ref-modal"
+import { CellText } from "@/components/catalog/ui/cell-text"
 import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
 import { useResizableColumns } from "@/hooks/use-resizable-columns"
 import { useTableSort, type SortState } from "@/hooks/use-table-sort"
@@ -399,8 +400,8 @@ function ArtikulDrillDown({ row, statusyData, onClose }: ArtikulDrillDownProps) 
                     )}
                     {!tovaryQ.isLoading && tovary.map((t) => (
                       <tr key={t.id} className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60">
-                        <td className="px-3 py-2 font-mono text-xs text-stone-700">{t.barkod}</td>
-                        <td className="px-3 py-2 font-mono text-xs">{t.razmer_nazvanie ?? "—"}</td>
+                        <td className="px-3 py-2 font-mono text-xs text-stone-700"><CellText title={t.barkod}>{t.barkod}</CellText></td>
+                        <td className="px-3 py-2 font-mono text-xs"><CellText title={t.razmer_nazvanie ?? ""}>{t.razmer_nazvanie ?? "—"}</CellText></td>
                         <td className="px-3 py-2 border-l border-stone-100">{renderSkuStatus(t.status_id)}</td>
                         <td className="px-3 py-2">{renderSkuStatus(t.status_ozon_id)}</td>
                         <td className="px-3 py-2">{renderSkuStatus(t.status_sayt_id)}</td>
@@ -451,48 +452,48 @@ function ArtikulDrillDown({ row, statusyData, onClose }: ArtikulDrillDownProps) 
 function renderCell(key: string, a: ArtikulRow): React.ReactNode {
   switch (key) {
     case "artikul":
-      return <span className="font-mono text-xs text-stone-900">{a.artikul}</span>
+      return <CellText className="font-mono text-xs text-stone-900" title={a.artikul}>{a.artikul}</CellText>
     case "model":
       return (
-        <div className="flex flex-col">
-          <span className="font-mono text-xs font-medium text-stone-900">
+        <div className="flex flex-col min-w-0">
+          <CellText className="font-mono text-xs font-medium text-stone-900" title={a.model_osnova_kod ?? ""}>
             {a.model_osnova_kod ?? "—"}
-          </span>
+          </CellText>
           {a.nazvanie_etiketka && (
-            <span className="text-[11px] text-stone-500">{a.nazvanie_etiketka}</span>
+            <CellText className="text-[11px] text-stone-500" title={a.nazvanie_etiketka}>{a.nazvanie_etiketka}</CellText>
           )}
         </div>
       )
     case "cvet":
       return (
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 min-w-0">
           <ColorSwatch hex={a.cvet_hex ?? swatchColor(a.cvet_color_code ?? "")} size={14} />
-          <span className="font-mono text-xs text-stone-700">{a.cvet_color_code ?? "—"}</span>
-          {a.cvet_nazvanie && <span className="text-stone-500 text-xs">{a.cvet_nazvanie}</span>}
+          <CellText className="font-mono text-xs text-stone-700" title={a.cvet_color_code ?? ""}>{a.cvet_color_code ?? "—"}</CellText>
+          {a.cvet_nazvanie && <CellText className="text-stone-500 text-xs" title={a.cvet_nazvanie}>{a.cvet_nazvanie}</CellText>}
         </div>
       )
     case "status":
       return <StatusBadge statusId={a.status_id ?? 0} compact />
     case "wb_nom":
       return (
-        <span className="font-mono text-[11px] text-stone-600 tabular-nums">
+        <CellText className="font-mono text-[11px] text-stone-600 tabular-nums" title={a.nomenklatura_wb != null ? String(a.nomenklatura_wb) : ""}>
           {a.nomenklatura_wb ?? "—"}
-        </span>
+        </CellText>
       )
     case "ozon_art":
       return (
-        <span className="font-mono text-[11px] text-stone-600">{a.artikul_ozon ?? "—"}</span>
+        <CellText className="font-mono text-[11px] text-stone-600" title={a.artikul_ozon ?? ""}>{a.artikul_ozon ?? "—"}</CellText>
       )
     case "created":
-      return <span className="text-xs text-stone-500">{relativeDate(a.created_at)}</span>
+      return <CellText className="text-xs text-stone-500" title={a.created_at ?? ""}>{relativeDate(a.created_at)}</CellText>
     case "updated":
-      return <span className="text-xs text-stone-500">{relativeDate(a.updated_at)}</span>
+      return <CellText className="text-xs text-stone-500" title={a.updated_at ?? ""}>{relativeDate(a.updated_at)}</CellText>
     case "kategoriya":
-      return <span className="text-xs text-stone-600">{a.kategoriya ?? "—"}</span>
+      return <CellText className="text-xs text-stone-600" title={a.kategoriya ?? ""}>{a.kategoriya ?? "—"}</CellText>
     case "kollekciya":
-      return <span className="text-xs text-stone-600">{a.kollekciya ?? "—"}</span>
+      return <CellText className="text-xs text-stone-600" title={a.kollekciya ?? ""}>{a.kollekciya ?? "—"}</CellText>
     case "fabrika":
-      return <span className="text-xs text-stone-600">{a.fabrika ?? "—"}</span>
+      return <CellText className="text-xs text-stone-600" title={a.fabrika ?? ""}>{a.fabrika ?? "—"}</CellText>
     default:
       return null
   }

@@ -4,6 +4,9 @@
 export { Tooltip } from "./tooltip"
 export type { TooltipPosition } from "./tooltip"
 
+// W9.15 — ellipsis + tooltip-on-overflow для текстовых ячеек таблиц каталога.
+export { CellText } from "./cell-text"
+
 export { LevelBadge } from "./level-badge"
 export type { Level } from "./level-badge"
 

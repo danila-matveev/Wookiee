@@ -14,6 +14,7 @@ import { ColumnsManager, type ColumnDef } from "@/components/catalog/ui/columns-
 import { BulkActionsBar } from "@/components/catalog/ui/bulk-actions-bar"
 import { SortableHeader } from "@/components/catalog/ui/sortable-header"
 import { Pagination } from "@/components/catalog/ui/pagination"
+import { CellText } from "@/components/catalog/ui/cell-text"
 import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
 import { useResizableColumns } from "@/hooks/use-resizable-columns"
 import { useTableSort, type SortState } from "@/hooks/use-table-sort"
@@ -244,39 +245,39 @@ function renderCell(
   }
   switch (key) {
     case "barkod":
-      return <span className="font-mono text-xs text-stone-700">{t.barkod}</span>
+      return <CellText className="font-mono text-xs text-stone-700" title={t.barkod}>{t.barkod}</CellText>
     case "artikul":
-      return <span className="font-mono text-[11px] text-stone-600">{t.artikul ?? "—"}</span>
+      return <CellText className="font-mono text-[11px] text-stone-600" title={t.artikul ?? ""}>{t.artikul ?? "—"}</CellText>
     case "model":
       return (
-        <div className="flex flex-col">
-          <span className="font-mono text-xs font-medium text-stone-900">
+        <div className="flex flex-col min-w-0">
+          <CellText className="font-mono text-xs font-medium text-stone-900" title={t.model_osnova_kod ?? ""}>
             {t.model_osnova_kod ?? "—"}
-          </span>
+          </CellText>
           {t.nazvanie_etiketka && (
-            <span className="text-[11px] text-stone-500">{t.nazvanie_etiketka}</span>
+            <CellText className="text-[11px] text-stone-500" title={t.nazvanie_etiketka}>{t.nazvanie_etiketka}</CellText>
           )}
         </div>
       )
     case "cvet":
       return (
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 min-w-0">
           <ColorSwatch hex={t.cvet_hex ?? swatchColor(t.cvet_color_code ?? "")} size={14} />
-          <span className="font-mono text-xs text-stone-600">{t.cvet_color_code ?? "—"}</span>
-          {t.cvet_ru && <span className="text-stone-500 text-[11px]">{t.cvet_ru}</span>}
+          <CellText className="font-mono text-xs text-stone-600" title={t.cvet_color_code ?? ""}>{t.cvet_color_code ?? "—"}</CellText>
+          {t.cvet_ru && <CellText className="text-stone-500 text-[11px]" title={t.cvet_ru}>{t.cvet_ru}</CellText>}
         </div>
       )
     case "razmer":
-      return <span className="font-mono text-xs">{t.razmer ?? "—"}</span>
+      return <CellText className="font-mono text-xs" title={t.razmer ?? ""}>{t.razmer ?? "—"}</CellText>
     case "wb_nom":
       return (
-        <span className="font-mono text-[11px] text-stone-500 tabular-nums">
+        <CellText className="font-mono text-[11px] text-stone-500 tabular-nums" title={t.nomenklatura_wb != null ? String(t.nomenklatura_wb) : ""}>
           {t.nomenklatura_wb ?? "—"}
-        </span>
+        </CellText>
       )
     case "ozon_art":
       return (
-        <span className="font-mono text-[11px] text-stone-500">{t.artikul_ozon ?? "—"}</span>
+        <CellText className="font-mono text-[11px] text-stone-500" title={t.artikul_ozon ?? ""}>{t.artikul_ozon ?? "—"}</CellText>
       )
     case "status_wb":
       return (
@@ -319,17 +320,17 @@ function renderCell(
         />
       )
     case "barkod_gs1":
-      return <span className="font-mono text-[11px] text-stone-500">{t.barkod_gs1 ?? "—"}</span>
+      return <CellText className="font-mono text-[11px] text-stone-500" title={t.barkod_gs1 ?? ""}>{t.barkod_gs1 ?? "—"}</CellText>
     case "barkod_gs2":
-      return <span className="font-mono text-[11px] text-stone-500">{t.barkod_gs2 ?? "—"}</span>
+      return <CellText className="font-mono text-[11px] text-stone-500" title={t.barkod_gs2 ?? ""}>{t.barkod_gs2 ?? "—"}</CellText>
     case "barkod_perehod":
-      return <span className="font-mono text-[11px] text-stone-500">{t.barkod_perehod ?? "—"}</span>
+      return <CellText className="font-mono text-[11px] text-stone-500" title={t.barkod_perehod ?? ""}>{t.barkod_perehod ?? "—"}</CellText>
     case "cena_wb":
       return <span className="text-xs text-stone-400 italic">—</span>
     case "cena_ozon":
       return <span className="text-xs text-stone-400 italic">—</span>
     case "created":
-      return <span className="text-xs text-stone-500">{relativeDate(t.created_at)}</span>
+      return <CellText className="text-xs text-stone-500" title={t.created_at ?? ""}>{relativeDate(t.created_at)}</CellText>
     default:
       return null
   }

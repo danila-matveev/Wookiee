@@ -83,6 +83,7 @@ import {
 import {
   AssetUploader,
   AttributeControl,
+  CellText,
   CompletenessRing,
   FieldWrap,
   LevelBadge,
@@ -986,33 +987,33 @@ function TabArticles({ m, hexByCvet, openColor }: TabContentProps) {
             const swatch = hex ?? (a.cvet_color_code ? swatchColor(a.cvet_color_code) : "#E7E5E4")
             return (
               <tr key={a.id} className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60">
-                <td className="px-3 py-2 font-mono text-xs text-stone-700">{a.artikul}</td>
-                <td className="px-3 py-2 font-mono text-xs text-stone-600">{a.variantKod}</td>
+                <td className="px-3 py-2 font-mono text-xs text-stone-700"><CellText title={a.artikul}>{a.artikul}</CellText></td>
+                <td className="px-3 py-2 font-mono text-xs text-stone-600"><CellText title={a.variantKod ?? ""}>{a.variantKod}</CellText></td>
                 <td className="px-3 py-2">
                   <button
                     type="button"
                     onClick={() => a.cvet_color_code && openColor(a.cvet_color_code)}
                     disabled={!a.cvet_color_code}
-                    className="flex items-center gap-1.5 hover:bg-stone-100 rounded px-1 py-0.5 -mx-1 disabled:cursor-default"
+                    className="flex items-center gap-1.5 min-w-0 max-w-full hover:bg-stone-100 rounded px-1 py-0.5 -mx-1 disabled:cursor-default"
                   >
                     <span
                       className="inline-block w-3.5 h-3.5 rounded ring-1 ring-stone-200 shrink-0"
                       style={{ background: swatch }}
                     />
-                    <span className="font-mono text-xs text-stone-700">
+                    <CellText className="font-mono text-xs text-stone-700" title={a.cvet_color_code ?? ""}>
                       {a.cvet_color_code ?? "—"}
-                    </span>
+                    </CellText>
                     {a.cvet_nazvanie && (
-                      <span className="text-stone-500 text-xs">{a.cvet_nazvanie}</span>
+                      <CellText className="text-stone-500 text-xs" title={a.cvet_nazvanie}>{a.cvet_nazvanie}</CellText>
                     )}
                   </button>
                 </td>
                 <td className="px-3 py-2"><StatusBadge statusId={a.status_id ?? 0} compact /></td>
                 <td className="px-3 py-2 font-mono text-[11px] text-stone-500 tabular-nums">
-                  {a.nomenklatura_wb ?? "—"}
+                  <CellText title={a.nomenklatura_wb != null ? String(a.nomenklatura_wb) : ""}>{a.nomenklatura_wb ?? "—"}</CellText>
                 </td>
                 <td className="px-3 py-2 font-mono text-[11px] text-stone-500">
-                  {a.artikul_ozon ?? "—"}
+                  <CellText title={a.artikul_ozon ?? ""}>{a.artikul_ozon ?? "—"}</CellText>
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums text-stone-700">
                   {a.tovary.length}
@@ -1591,18 +1592,18 @@ function TabSKU({ m, hexByCvet }: TabContentProps) {
               const swatch = hex ?? (t.cvet_color_code ? swatchColor(t.cvet_color_code) : "#E7E5E4")
               return (
                 <tr key={t.id} className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60">
-                  <td className="px-3 py-2 font-mono text-xs text-stone-700">{t.barkod}</td>
-                  <td className="px-3 py-2 font-mono text-xs text-stone-600">{t.variantKod}</td>
+                  <td className="px-3 py-2 font-mono text-xs text-stone-700"><CellText title={t.barkod}>{t.barkod}</CellText></td>
+                  <td className="px-3 py-2 font-mono text-xs text-stone-600"><CellText title={t.variantKod ?? ""}>{t.variantKod}</CellText></td>
                   <td className="px-3 py-2">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 min-w-0">
                       <span
                         className="inline-block w-3.5 h-3.5 rounded ring-1 ring-stone-200 shrink-0"
                         style={{ background: swatch }}
                       />
-                      <span className="font-mono text-xs">{t.cvet_color_code ?? "—"}</span>
+                      <CellText className="font-mono text-xs" title={t.cvet_color_code ?? ""}>{t.cvet_color_code ?? "—"}</CellText>
                     </div>
                   </td>
-                  <td className="px-3 py-2 font-mono text-xs">{t.razmer_nazvanie ?? "—"}</td>
+                  <td className="px-3 py-2 font-mono text-xs"><CellText title={t.razmer_nazvanie ?? ""}>{t.razmer_nazvanie ?? "—"}</CellText></td>
                   <td className="px-3 py-2 border-l border-stone-100">
                     <InlineStatusCell
                       currentStatusId={t.status_id ?? null}
