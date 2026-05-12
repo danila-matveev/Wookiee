@@ -5,13 +5,14 @@ import json
 
 from services.telemost_recorder_api.auth import get_user_by_telegram_id
 from services.telemost_recorder_api.db import get_pool
-from services.telemost_recorder_api.handlers._format import fmt_history_row
+from services.telemost_recorder_api.keyboards import list_row_button
 from services.telemost_recorder_api.telegram_client import tg_send_message
 
 _EMPTY = (
     "📭 *Не нашёл ни одной твоей встречи*\n\n"
     "Пришли мне ссылку на Я.Телемост или /help для справки."
 )
+_HEADER = "📋 *Последние 10 встреч*\n\nВыбери встречу, чтобы посмотреть детали:"
 
 
 async def handle_list(chat_id: int, user_id: int) -> None:
@@ -26,9 +27,12 @@ async def handle_list(chat_id: int, user_id: int) -> None:
             """
             SELECT id, status, title, started_at
             FROM telemost.meetings
-            WHERE triggered_by = $1
-               OR organizer_id = $1
-               OR invitees @> $2::jsonb
+            WHERE deleted_at IS NULL
+              AND (
+                triggered_by = $1
+                OR organizer_id = $1
+                OR invitees @> $2::jsonb
+              )
             ORDER BY COALESCE(started_at, created_at) DESC
             LIMIT 10
             """,
@@ -38,6 +42,18 @@ async def handle_list(chat_id: int, user_id: int) -> None:
     if not rows:
         await tg_send_message(chat_id, _EMPTY)
         return
-    lines = ["📋 *Последние 10 встреч*", ""]
-    lines.extend(fmt_history_row(r) for r in rows)
-    await tg_send_message(chat_id, "\n".join(lines))
+
+    keyboard_rows = []
+    for r in rows:
+        short_id = str(r["id"])[:8]
+        title = r["title"] or "(без названия)"
+        when_str = (
+            r["started_at"].strftime("%d.%m %H:%M") if r["started_at"] else "—"
+        )
+        keyboard_rows.append([list_row_button(short_id, title, when_str)])
+
+    await tg_send_message(
+        chat_id,
+        _HEADER,
+        reply_markup={"inline_keyboard": keyboard_rows},
+    )
