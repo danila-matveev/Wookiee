@@ -81,6 +81,7 @@ import {
 } from "@/lib/catalog/service"
 import {
   AssetUploader,
+  AttributeControl,
   CompletenessRing,
   FieldWrap,
   LevelBadge,
@@ -88,7 +89,6 @@ import {
   RefModal,
   SelectField,
   StatusBadge,
-  StringSelectField,
   TagsCombobox,
   TextField,
   TextareaField,
@@ -915,26 +915,11 @@ function TabAttributes({ m, draft, setDraft, editing }: TabContentProps) {
       <div className="grid grid-cols-2 gap-x-4 gap-y-4">
         {attrs.map((a) => {
           const lvl = FIELD_LEVEL[a.key] ?? "model"
-          if (a.type === "select" && a.options.length > 0) {
-            return (
-              <StringSelectField
-                key={a.key}
-                label={a.label}
-                value={(view[a.key] as string | null) ?? ""}
-                options={a.options}
-                onChange={(v) => set(a.key, v)}
-                readonly={!editing}
-                level={lvl}
-              />
-            )
-          }
-          // W6.3 расширит набор контролов (multiselect / pills / url / date / checkbox).
-          // Сейчас — fallback на TextField для всех остальных типов.
           return (
-            <TextField
+            <AttributeControl
               key={a.key}
-              label={a.label}
-              value={(view[a.key] as string | null) ?? ""}
+              atribut={a}
+              value={view[a.key]}
               onChange={(v) => set(a.key, v)}
               readonly={!editing}
               level={lvl}
