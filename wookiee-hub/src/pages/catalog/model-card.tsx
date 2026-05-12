@@ -1060,6 +1060,10 @@ function AddArtikulModal({
   // Default — first variation. Если их больше одной, юзер может переключиться.
   const [variationId, setVariationId] = useState<number>(variations[0]?.id ?? 0)
   const [selectedCvety, setSelectedCvety] = useState<Set<number>>(new Set())
+  // W9.11 — per-cvet custom artikul name. Empty/undefined ⇒ use generated.
+  // Map keyed by cvet_id so values persist across select/deselect toggles
+  // until variation switch (then we reset along with selection).
+  const [customNames, setCustomNames] = useState<Record<number, string>>({})
   const [error, setError] = useState<string | null>(null)
 
   // W9.12 — palette filtered by category. Legacy colours (no category tags)
@@ -1080,9 +1084,24 @@ function AddArtikulModal({
     return categoryColors.filter((c) => !attachedCvetIds.has(c.id))
   }, [categoryColors, attachedCvetIds])
 
-  // Reset selection when variation changes (different attached set).
+  // W9.11 — existing artikul names across ALL variations of this model
+  // (lower-cased) for client-side uniqueness pre-check. Server-side guarantee
+  // is the global UNIQUE constraint `artikuly_artikul_key`; this is UX only —
+  // catch duplicates BEFORE submit instead of surfacing a translated 23505.
+  const existingArtikulNames = useMemo(() => {
+    const s = new Set<string>()
+    for (const v of variations) {
+      for (const a of v.artikuly) {
+        if (a.artikul) s.add(a.artikul.toLowerCase())
+      }
+    }
+    return s
+  }, [variations])
+
+  // Reset selection + custom names when variation changes (different attached set).
   useEffect(() => {
     setSelectedCvety(new Set())
+    setCustomNames({})
     setError(null)
   }, [variationId])
 
@@ -1095,7 +1114,8 @@ function AddArtikulModal({
   }, [onClose])
 
   const createMut = useMutation({
-    mutationFn: (cvetIds: number[]) => bulkCreateArtikuly(variationId, cvetIds),
+    mutationFn: (entries: { cvetId: number; customArtikul?: string }[]) =>
+      bulkCreateArtikuly(variationId, entries),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["catalog", "model", modelKod] })
       queryClient.invalidateQueries({ queryKey: ["catalog", "matrix-list"] })
@@ -1122,11 +1142,97 @@ function AddArtikulModal({
 
   const selectedVariation = variations.find((v) => v.id === variationId)
   const selectedCount = selectedCvety.size
-  const canSubmit = selectedCount > 0 && variationId > 0 && !createMut.isPending
+
+  // W9.11 — generated default for a given cvet (used as input placeholder/value).
+  const buildDefaultName = useCallback(
+    (cvet: CvetRow): string => {
+      const kod = selectedVariation?.kod ?? modelKod
+      return `${kod}/${cvet.color_code}`
+    },
+    [selectedVariation, modelKod],
+  )
+
+  // Resolve effective name for a selected cvet: user-typed value (if any)
+  // takes precedence over the generated default.
+  const effectiveName = useCallback(
+    (cvet: CvetRow): string => {
+      const custom = customNames[cvet.id]
+      if (custom !== undefined && custom.trim().length > 0) return custom.trim()
+      return buildDefaultName(cvet)
+    },
+    [customNames, buildDefaultName],
+  )
+
+  // W9.11 — per-row validation. Returns null if valid, else human message.
+  const validateRow = useCallback(
+    (cvet: CvetRow, allSelected: CvetRow[]): string | null => {
+      const raw = customNames[cvet.id]
+      // If user did not touch the input, default value applies — assume valid
+      // (default = `${kod}/${color_code}`, which is non-empty and not present
+      // in attached colours of this variation by construction).
+      const name = effectiveName(cvet)
+      if (!name) return "Имя не может быть пустым"
+      if (raw !== undefined && raw.trim().length === 0) {
+        return "Имя не может быть пустым"
+      }
+      // Spaces are not allowed in the historical `${kod}/${color_code}` format
+      // and would clash with how artikul is referenced downstream (Sheets,
+      // marketplaces). Keep the constraint conservative.
+      if (/\s/.test(name)) return "Без пробелов"
+      // Uniqueness vs already-existing artikuly across the model.
+      if (existingArtikulNames.has(name.toLowerCase())) {
+        return "Такой артикул уже существует"
+      }
+      // Uniqueness within the current batch (two selected rows could collide
+      // if the user edits one to match another).
+      const lower = name.toLowerCase()
+      const collisions = allSelected.filter(
+        (c) => effectiveName(c).toLowerCase() === lower,
+      )
+      if (collisions.length > 1) return "Дубликат в этой форме"
+      return null
+    },
+    [customNames, effectiveName, existingArtikulNames],
+  )
+
+  const selectedCveta = useMemo(
+    () => availableCveta.filter((c) => selectedCvety.has(c.id)),
+    [availableCveta, selectedCvety],
+  )
+
+  const rowErrors = useMemo(() => {
+    const errs: Record<number, string | null> = {}
+    for (const c of selectedCveta) {
+      errs[c.id] = validateRow(c, selectedCveta)
+    }
+    return errs
+  }, [selectedCveta, validateRow])
+
+  const hasValidationErrors = useMemo(
+    () => Object.values(rowErrors).some((e) => e !== null),
+    [rowErrors],
+  )
+
+  const canSubmit =
+    selectedCount > 0 &&
+    variationId > 0 &&
+    !createMut.isPending &&
+    !hasValidationErrors
 
   const handleSubmit = () => {
     if (!canSubmit) return
-    createMut.mutate(Array.from(selectedCvety))
+    const entries = selectedCveta.map((c) => {
+      const raw = customNames[c.id]
+      // Send `customArtikul` only when the user actually typed something
+      // different from default. Server falls back to generated when missing
+      // — keeps the wire payload small and the audit log clean.
+      const trimmed = raw?.trim() ?? ""
+      if (trimmed.length > 0 && trimmed !== buildDefaultName(c)) {
+        return { cvetId: c.id, customArtikul: trimmed }
+      }
+      return { cvetId: c.id }
+    })
+    createMut.mutate(entries)
   }
 
   return (
@@ -1218,11 +1324,11 @@ function AddArtikulModal({
                   : "Все доступные цвета уже привязаны к этой вариации"}
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-1.5 max-h-[40vh] overflow-y-auto pr-1">
+              <div className="grid grid-cols-2 gap-1.5 max-h-[28vh] overflow-y-auto pr-1">
                 {availableCveta.map((c) => {
                   const checked = selectedCvety.has(c.id)
                   const hex = c.hex ?? swatchColor(c.color_code)
-                  const previewArtikul = `${selectedVariation?.kod ?? modelKod}/${c.color_code}`
+                  const previewArtikul = effectiveName(c)
                   return (
                     <label
                       key={c.id}
@@ -1255,6 +1361,74 @@ function AddArtikulModal({
               </div>
             )}
           </div>
+
+          {/* W9.11 — editable artikul names for selected colours. */}
+          {selectedCveta.length > 0 && (
+            <div>
+              <label className="block text-[11px] uppercase tracking-wider text-stone-500 mb-2">
+                Имена артикулов
+              </label>
+              <div className="space-y-1.5 max-h-[32vh] overflow-y-auto pr-1">
+                {selectedCveta.map((c) => {
+                  const hex = c.hex ?? swatchColor(c.color_code)
+                  const defaultName = buildDefaultName(c)
+                  const raw = customNames[c.id]
+                  const value = raw !== undefined ? raw : defaultName
+                  const isCustom = raw !== undefined && raw.trim() !== defaultName
+                  const err = rowErrors[c.id]
+                  return (
+                    <div key={c.id} className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="inline-block w-4 h-4 rounded ring-1 ring-stone-200 shrink-0"
+                          style={{ background: hex }}
+                          aria-hidden="true"
+                        />
+                        <span className="font-mono text-xs text-stone-500 shrink-0 w-20 truncate">
+                          {c.color_code}
+                        </span>
+                        <input
+                          type="text"
+                          value={value}
+                          onChange={(e) =>
+                            setCustomNames((prev) => ({ ...prev, [c.id]: e.target.value }))
+                          }
+                          spellCheck={false}
+                          autoComplete="off"
+                          className={`flex-1 min-w-0 px-2 py-1 text-sm font-mono border rounded-md bg-white outline-none focus:ring-1 ${
+                            err
+                              ? "border-red-400 focus:border-red-600 focus:ring-red-200"
+                              : "border-stone-200 focus:border-stone-900 focus:ring-stone-900"
+                          }`}
+                          aria-label={`Имя артикула для цвета ${c.color_code}`}
+                          aria-invalid={err ? true : undefined}
+                        />
+                        {isCustom && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setCustomNames((prev) => {
+                                const next = { ...prev }
+                                delete next[c.id]
+                                return next
+                              })
+                            }
+                            className="shrink-0 text-[11px] text-stone-500 hover:text-stone-900 underline underline-offset-2"
+                            title="Вернуть автогенерированное имя"
+                          >
+                            Сбросить
+                          </button>
+                        )}
+                      </div>
+                      {err && (
+                        <div className="pl-[5.25rem] text-[11px] text-red-600">{err}</div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
 
           {error && (
             <div className="px-3 py-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded">

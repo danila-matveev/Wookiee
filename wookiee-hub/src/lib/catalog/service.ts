@@ -1318,6 +1318,8 @@ export interface ArtikulRow {
   artikul_ozon: string | null
   tovary_cnt: number
   kategoriya: string | null
+  /** W9.10 — kategoriya_id для фильтра ColorPicker по категории. */
+  kategoriya_id: number | null
   kollekciya: string | null
   fabrika: string | null
   created_at: string | null
@@ -1338,7 +1340,7 @@ export async function fetchArtikulyRegistry(): Promise<ArtikulRow[]> {
         modeli(
           id, kod, model_osnova_id,
           modeli_osnova(
-            id, kod, tip_kollekcii, nazvanie_etiketka,
+            id, kod, tip_kollekcii, nazvanie_etiketka, kategoriya_id,
             kategorii(nazvanie),
             kollekcii(nazvanie),
             fabriki(nazvanie)
@@ -1372,6 +1374,7 @@ export async function fetchArtikulyRegistry(): Promise<ArtikulRow[]> {
     artikul_ozon: a.artikul_ozon,
     tovary_cnt: (a.tovary ?? []).length,
     kategoriya: a.modeli?.modeli_osnova?.kategorii?.nazvanie ?? null,
+    kategoriya_id: a.modeli?.modeli_osnova?.kategoriya_id ?? null,
     kollekciya: a.modeli?.modeli_osnova?.kollekcii?.nazvanie ?? null,
     fabrika: a.modeli?.modeli_osnova?.fabriki?.nazvanie ?? null,
     created_at: a.created_at,
@@ -1398,6 +1401,10 @@ export interface TovarRow {
   /** modeli_osnova.kollekciya / kategoriya — для group-by. */
   kollekciya: string | null
   kategoriya: string | null
+  /** W9.10 — kategoriya_id для редактирования цвета (если когда-то понадобится). */
+  kategoriya_id: number | null
+  /** W9.10 — cvet_id (через artikuly.cvet_id). */
+  cvet_id: number | null
   cvet_color_code: string | null
   /** cveta.cvet (RU). */
   cvet_ru: string | null
@@ -1407,6 +1414,8 @@ export interface TovarRow {
   razmer: string | null
   /** razmery.kod в БД часто совпадает с nazvanie (XS/S/M/...). */
   razmer_kod: string | null
+  /** W9.10 — razmer_id для inline-edit размера. */
+  razmer_id: number | null
   status_id: number | null
   status_ozon_id: number | null
   status_sayt_id: number | null
@@ -1439,7 +1448,7 @@ export async function fetchTovaryRegistry(): Promise<TovarRow[]> {
           modeli(
             kod, model_osnova_id,
             modeli_osnova(
-              kod, nazvanie_etiketka,
+              kod, nazvanie_etiketka, kategoriya_id,
               kategorii(nazvanie),
               kollekcii(nazvanie)
             )
@@ -1470,12 +1479,15 @@ export async function fetchTovaryRegistry(): Promise<TovarRow[]> {
       nazvanie_etiketka: t.artikuly?.modeli?.modeli_osnova?.nazvanie_etiketka ?? null,
       kollekciya: t.artikuly?.modeli?.modeli_osnova?.kollekcii?.nazvanie ?? null,
       kategoriya: t.artikuly?.modeli?.modeli_osnova?.kategorii?.nazvanie ?? null,
+      kategoriya_id: t.artikuly?.modeli?.modeli_osnova?.kategoriya_id ?? null,
+      cvet_id: t.artikuly?.cvet_id ?? null,
       cvet_color_code: t.artikuly?.cveta?.color_code ?? null,
       cvet_ru: t.artikuly?.cveta?.cvet ?? null,
       color_en: t.artikuly?.cveta?.color ?? null,
       cvet_hex: t.artikuly?.cveta?.hex ?? null,
       razmer,
       razmer_kod: razmer,
+      razmer_id: t.razmer_id ?? null,
       status_id: t.status_id,
       status_ozon_id: t.status_ozon_id,
       status_sayt_id: t.status_sayt_id,
@@ -2099,6 +2111,68 @@ export async function bulkUpdateArtikulStatus(artikulIds: number[], statusId: nu
 }
 
 /**
+ * W9.10 — Patch для inline-edit одной строки artikuly.
+ *
+ * Поддерживаемые поля:
+ *   - artikul (varchar, NOT NULL) — основной код/имя
+ *   - cvet_id (FK на cveta)
+ *   - nomenklatura_wb (bigint | null)
+ *   - artikul_ozon (varchar | null)
+ *   - status_id — обычно через bulkUpdateArtikulStatus (отдельный popover)
+ *
+ * Аудит-триггер (W7.1 / W9.1) пишет в `istoriya_izmeneniy`.
+ */
+export interface ArtikulPatch {
+  artikul?: string
+  cvet_id?: number
+  nomenklatura_wb?: number | null
+  artikul_ozon?: string | null
+  status_id?: number
+}
+export async function updateArtikul(id: number, patch: ArtikulPatch): Promise<void> {
+  if (Object.keys(patch).length === 0) return
+  const { error } = await supabase
+    .from("artikuly")
+    .update(patch)
+    .eq("id", id)
+  if (error) throw new Error(error.message)
+}
+
+/**
+ * W9.10 — Patch для inline-edit одной строки tovary.
+ *
+ * Поддерживаемые поля:
+ *   - barkod (varchar, NOT NULL) — основной баркод
+ *   - barkod_gs1, barkod_gs2, barkod_perehod (varchar | null)
+ *   - razmer_id (FK на razmery)
+ *   - sku_china_size (varchar | null)
+ *   - lamoda_seller_sku (varchar | null)
+ *   - ozon_product_id, ozon_fbo_sku_id (bigint | null)
+ *   - status_<channel>_id — лучше через bulkUpdateTovaryStatus.
+ *
+ * Цены WB/OZON в схеме `tovary` отсутствуют (см. column-catalogs W9.5).
+ */
+export interface TovarPatch {
+  barkod?: string
+  barkod_gs1?: string | null
+  barkod_gs2?: string | null
+  barkod_perehod?: string | null
+  razmer_id?: number
+  sku_china_size?: string | null
+  lamoda_seller_sku?: string | null
+  ozon_product_id?: number | null
+  ozon_fbo_sku_id?: number | null
+}
+export async function updateTovar(id: number, patch: TovarPatch): Promise<void> {
+  if (Object.keys(patch).length === 0) return
+  const { error } = await supabase
+    .from("tovary")
+    .update(patch)
+    .eq("id", id)
+  if (error) throw new Error(error.message)
+}
+
+/**
  * Bulk-update status of tovary rows (addressed by barkod) on a specific channel.
  * Channel determines which status field is updated:
  *   wb     → status_id
@@ -2207,8 +2281,14 @@ async function getDefaultArtikulStatusId(): Promise<number | null> {
  * Create a single `artikuly` row for a given variation (`modeli.id`) and
  * a colour (`cveta.id`).
  *
- * `artikul` is auto-generated as `${modeli.kod}/${cveta.color_code}` to
- * match historical naming convention (e.g. `Alice-1/black`, `Nora/brown`).
+ * By default `artikul` is auto-generated as `${modeli.kod}/${cveta.color_code}`
+ * to match historical naming convention (e.g. `Alice-1/black`, `Nora/brown`).
+ *
+ * W9.11 — caller may pass `customArtikul` to override the generated name.
+ * Trimmed value is used; if empty after trim, falls back to auto-generated.
+ * Uniqueness is guaranteed by DB constraint `artikuly_artikul_key`
+ * (translated to a human message by `translateError` on 23505).
+ *
  * Default `status_id` = `statusy(tip='artikul', nazvanie='Запуск')`.
  *
  * Caller is responsible for invalidating ["catalog", "model", kod].
@@ -2216,6 +2296,7 @@ async function getDefaultArtikulStatusId(): Promise<number | null> {
 export async function insertArtikul(
   modeliId: number,
   cvetId: number,
+  customArtikul?: string,
 ): Promise<InsertedArtikul> {
   // 1. Look up the variation's kod + colour's color_code in parallel.
   const [modeliRes, cvetRes, defaultStatusId] = await Promise.all([
@@ -2231,7 +2312,10 @@ export async function insertArtikul(
   if (!modeliKod) throw new Error(`modeli.id=${modeliId} has empty kod`)
   if (!colorCode) throw new Error(`cveta.id=${cvetId} has empty color_code`)
 
-  const artikul = `${modeliKod}/${colorCode}`
+  const trimmedCustom = customArtikul?.trim() ?? ""
+  const artikul = trimmedCustom.length > 0
+    ? trimmedCustom
+    : `${modeliKod}/${colorCode}`
 
   // 2. INSERT. status_id may legitimately be null if the dictionary has no
   // tip='artikul' rows at all — schema allows it.
@@ -2252,19 +2336,28 @@ export async function insertArtikul(
 /**
  * Bulk-create artikuly for one variation across multiple colours.
  *
+ * Accepts a list of `{ cvetId, customArtikul? }` entries. If `customArtikul`
+ * is omitted/empty for an entry, the server generates `${kod}/${color_code}`
+ * (см. `insertArtikul`).
+ *
  * Skips colours that would produce a duplicate `artikul` string (the UI is
  * expected to filter these out, but the guard is here so the call is
  * idempotent). Runs the inserts sequentially via `insertArtikul` to keep
  * error handling simple — N ≤ palette size, typically < 20.
  */
+export interface ArtikulCreateInput {
+  cvetId: number
+  customArtikul?: string
+}
+
 export async function bulkCreateArtikuly(
   modeliId: number,
-  cvetIds: number[],
+  entries: ArtikulCreateInput[],
 ): Promise<InsertedArtikul[]> {
-  if (cvetIds.length === 0) return []
+  if (entries.length === 0) return []
   const out: InsertedArtikul[] = []
-  for (const cvetId of cvetIds) {
-    const row = await insertArtikul(modeliId, cvetId)
+  for (const entry of entries) {
+    const row = await insertArtikul(modeliId, entry.cvetId, entry.customArtikul)
     out.push(row)
   }
   return out
