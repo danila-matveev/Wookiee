@@ -64,6 +64,24 @@ export interface PromoStatWeekly {
   avg_check: number
 }
 
+export interface PromoProductBreakdownRow {
+  promo_code_id: number
+  week_start: string
+  artikul_id: number | null
+  sku_label: string
+  model_code: string | null
+  qty: number
+  amount_rub: number
+}
+
+/** Aggregated breakdown (sum qty/amount across weeks per sku). */
+export interface PromoProductBreakdownAgg {
+  sku_label: string
+  model_code: string | null
+  qty: number
+  amount_rub: number
+}
+
 export interface MarketingChannel {
   id: number
   slug: string

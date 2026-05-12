@@ -8,9 +8,9 @@ import { Input } from "@/components/marketing/Input"
 import { Button } from "@/components/marketing/Button"
 import { SelectMenu } from "@/components/marketing/SelectMenu"
 import { fetchPromoStatsForCode } from "@/api/marketing/promo-codes"
-import { usePromoCodes, useUpdatePromoCode } from "@/hooks/marketing/use-promo-codes"
+import { usePromoCodes, usePromoProductBreakdown, useUpdatePromoCode } from "@/hooks/marketing/use-promo-codes"
 import { useChannels } from "@/hooks/marketing/use-channels"
-import type { PromoCodeRow, PromoStatWeekly } from "@/types/marketing"
+import type { PromoCodeRow, PromoProductBreakdownAgg, PromoStatWeekly } from "@/types/marketing"
 
 interface PromoDetailPanelProps {
   promoId: number
@@ -57,6 +57,11 @@ export function PromoDetailPanel({ promoId, onClose, mode = 'drawer' }: PromoDet
     enabled: promoId > 0,
     staleTime: 60_000,
   })
+  const {
+    data: breakdownRows = [],
+    isLoading: breakdownLoading,
+    error: breakdownError,
+  } = usePromoProductBreakdown(promoId > 0 ? promoId : null)
   const { data: channels = [] } = useChannels()
   const updateMut = useUpdatePromoCode()
 
@@ -76,6 +81,29 @@ export function PromoDetailPanel({ promoId, onClose, mode = 'drawer' }: PromoDet
   const avg   = qty > 0 ? Math.round(sales / qty) : 0
 
   const statusBadge = useMemo(() => promo ? computeStatusBadge(promo, qty) : null, [promo, qty])
+
+  // Aggregate weekly breakdown rows by SKU (sum qty + amount) and sort by amount desc.
+  const breakdownAgg: PromoProductBreakdownAgg[] = useMemo(() => {
+    if (breakdownRows.length === 0) return []
+    const map = new Map<string, PromoProductBreakdownAgg>()
+    for (const r of breakdownRows) {
+      const existing = map.get(r.sku_label)
+      if (existing) {
+        existing.qty += r.qty
+        existing.amount_rub += r.amount_rub
+        // Prefer the first non-null model_code we saw.
+        if (!existing.model_code && r.model_code) existing.model_code = r.model_code
+      } else {
+        map.set(r.sku_label, {
+          sku_label: r.sku_label,
+          model_code: r.model_code,
+          qty: r.qty,
+          amount_rub: r.amount_rub,
+        })
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => b.amount_rub - a.amount_rub)
+  }, [breakdownRows])
 
   const handleSave = async () => {
     if (!promo) return
@@ -283,9 +311,40 @@ export function PromoDetailPanel({ promoId, onClose, mode = 'drawer' }: PromoDet
             )}
           </div>
 
-          {/* Product breakdown — Task A.5.3 will fill this */}
+          {/* Product breakdown — aggregated by SKU across all weeks */}
           <div className="px-5 py-4">
-            <EmptyState title="Товарная разбивка" description="Появится в Phase 2 после backfill источников выкупов." />
+            <div className="text-[11px] uppercase tracking-wider text-stone-400 mb-2">Товарная разбивка</div>
+            {breakdownLoading ? (
+              <div className="text-sm text-stone-500">Загрузка…</div>
+            ) : breakdownError ? (
+              <EmptyState title="Ошибка загрузки" description="Не удалось загрузить товарную разбивку." />
+            ) : breakdownAgg.length === 0 ? (
+              <EmptyState title="Товарная разбивка" description="Данные собираются" />
+            ) : (
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 bg-white">
+                  <tr className="border-b border-stone-100">
+                    <th className="text-left py-1 text-[10px] uppercase text-stone-400 font-medium">Товар</th>
+                    <th className="text-right py-1 text-[10px] uppercase text-stone-400 font-medium">Шт</th>
+                    <th className="text-right py-1 text-[10px] uppercase text-stone-400 font-medium">Сумма</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-stone-50">
+                  {breakdownAgg.map((p) => (
+                    <tr key={p.sku_label}>
+                      <td className="py-1.5">
+                        <div className="font-mono text-stone-900 break-all">{p.sku_label}</div>
+                        {p.model_code && (
+                          <div className="text-[10px] text-stone-400">{p.model_code}</div>
+                        )}
+                      </td>
+                      <td className="py-1.5 text-right tabular-nums text-stone-700">{fmt(p.qty)}</td>
+                      <td className="py-1.5 text-right tabular-nums text-stone-900 font-medium">{fmtR(p.amount_rub)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       </div>

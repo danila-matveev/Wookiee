@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import type { PromoCodeRow, PromoStatWeekly } from '@/types/marketing'
+import type { PromoCodeRow, PromoProductBreakdownRow, PromoStatWeekly } from '@/types/marketing'
 import { numToNumber } from '@/lib/marketing-helpers'
 
 export interface PromoCreate {
@@ -86,5 +86,20 @@ export async function fetchPromoStatsForCode(promoCodeId: number): Promise<Promo
     returns_count: numToNumber(r.returns_count as never),
     avg_discount_pct: numToNumber(r.avg_discount_pct as never),
     avg_check: numToNumber(r.avg_check as never),
+  }))
+}
+
+export async function fetchPromoProductBreakdown(promoCodeId: number): Promise<PromoProductBreakdownRow[]> {
+  const { data, error } = await supabase.schema('marketing').from('promo_product_breakdown')
+    .select('*').eq('promo_code_id', promoCodeId).order('week_start', { ascending: true })
+  if (error) throw error
+  return ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+    promo_code_id: r.promo_code_id as number,
+    week_start: r.week_start as string,
+    artikul_id: r.artikul_id == null ? null : (r.artikul_id as number),
+    sku_label: r.sku_label as string,
+    model_code: r.model_code == null ? null : (r.model_code as string),
+    qty: numToNumber(r.qty as never),
+    amount_rub: numToNumber(r.amount_rub as never),
   }))
 }

@@ -16,6 +16,7 @@ vi.mock('@/hooks/marketing/use-promo-codes', () => ({
     mutateAsync: mutateAsyncMock,
     isPending: false,
   }),
+  usePromoProductBreakdown: () => ({ data: [], isLoading: false, error: null }),
 }))
 
 vi.mock('@/hooks/marketing/use-channels', () => ({
