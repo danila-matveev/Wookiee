@@ -10,7 +10,6 @@ import { SectionHeader } from "@/components/marketing/SectionHeader"
 import { DateRange } from "@/components/marketing/DateRange"
 import { UpdateBar } from "@/components/marketing/UpdateBar"
 import type { SearchQueryGroup, SearchQueryRow, SearchQueryStatsAgg } from "@/types/marketing"
-import { SearchQueryDetailPanel } from "./SearchQueryDetailPanel"
 import { formatDateTime } from "@/lib/format"
 
 const FIRST = '2025-07-28'
@@ -225,17 +224,6 @@ export function SearchQueriesTable() {
             </table>
           </div>
         </div>
-        {(() => {
-          const openParam = params.get('open')
-          return openParam
-            ? <SearchQueryDetailPanel
-                unifiedId={openParam}
-                dateFrom={dateFrom}
-                dateTo={dateTo}
-                onClose={() => setQ('open', null)}
-              />
-            : null
-        })()}
       </div>
     </QueryStatusBoundary>
   )

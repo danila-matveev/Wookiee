@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { X } from 'lucide-react'
 import { Drawer } from '@/components/crm/ui/Drawer'
 import { Button } from '@/components/crm/ui/Button'
 import { Input } from '@/components/crm/ui/Input'
@@ -9,9 +10,11 @@ import { useChannels } from '@/hooks/marketing/use-channels'
 
 interface AddWWPanelProps {
   onClose: () => void
+  /** 'inline' renders bare content for split-pane host; 'drawer' (default) wraps in Drawer. */
+  mode?: 'drawer' | 'inline'
 }
 
-export function AddWWPanel({ onClose }: AddWWPanelProps) {
+export function AddWWPanel({ onClose, mode = 'drawer' }: AddWWPanelProps) {
   const create = useCreateSubstituteArticle()
 
   const [modelId, setModelId] = useState<string>('')
@@ -93,111 +96,139 @@ export function AddWWPanel({ onClose }: AddWWPanelProps) {
     }
   }
 
+  const formBody = (
+    <form id="add-ww-form" onSubmit={handleSubmit} className="flex flex-col gap-5">
+      <div className="flex flex-col gap-1.5">
+        <label className="text-sm font-medium text-fg">
+          Модель <span className="text-danger">*</span>
+        </label>
+        <SelectMenu
+          value={modelId}
+          options={modelOptions}
+          onChange={handleModelChange}
+          placeholder={modeliQ.isLoading ? 'Загрузка…' : 'Выбрать модель…'}
+          disabled={modeliQ.isLoading}
+          emptyHint="Модели не найдены"
+        />
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <label className="text-sm font-medium text-fg">
+          Артикул <span className="text-danger">*</span>
+        </label>
+        <SelectMenu
+          value={artikulId}
+          options={artikulOptions}
+          onChange={setArtikulId}
+          placeholder={
+            !modelId
+              ? 'Сначала выберите модель'
+              : artikulyQ.isLoading
+              ? 'Загрузка…'
+              : 'Выбрать артикул…'
+          }
+          disabled={!modelId || artikulyQ.isLoading}
+          emptyHint="Артикулы не найдены (нет nomenklatura_wb)"
+        />
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="ww-code" className="text-sm font-medium text-fg">
+          Код <span className="text-danger">*</span>
+        </label>
+        <Input
+          id="ww-code"
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          placeholder="WW123456 или 246928570"
+          autoFocus
+          autoComplete="off"
+        />
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <label className="text-sm font-medium text-fg">
+          Канал <span className="text-danger">*</span>
+        </label>
+        <SelectMenu
+          value={purpose}
+          options={channelOptions}
+          onChange={setPurpose}
+          placeholder={channelsQ.isLoading ? 'Загрузка…' : 'Выбрать канал…'}
+          disabled={channelsQ.isLoading}
+          emptyHint="Каналы не найдены"
+        />
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="ww-campaign" className="text-sm font-medium text-fg">
+          Кампания / название
+        </label>
+        <Input
+          id="ww-campaign"
+          value={campaignName}
+          onChange={(e) => setCampaignName(e.target.value)}
+          placeholder="Название кампании (опционально)"
+          autoComplete="off"
+        />
+        <p className="text-xs text-muted-foreground">
+          Для именного креатора: <code className="font-mono bg-muted px-1 rounded">креатор_&lt;Имя&gt;</code> (creator_ref заполнится автоматически)
+        </p>
+      </div>
+
+      {error && (
+        <p className="text-sm text-danger">{error}</p>
+      )}
+    </form>
+  )
+
+  const footer = (
+    <>
+      <Button variant="ghost" type="button" onClick={onClose} disabled={create.isPending}>
+        Отмена
+      </Button>
+      <Button
+        variant="primary"
+        type="submit"
+        form="add-ww-form"
+        loading={create.isPending}
+        disabled={create.isPending}
+      >
+        Создать
+      </Button>
+    </>
+  )
+
+  if (mode === 'inline') {
+    return (
+      <div className="flex flex-col h-full">
+        <header className="px-6 py-4 border-b border-border flex items-center justify-between shrink-0">
+          <h2 className="font-semibold text-lg text-fg">Новый WW-код</h2>
+          <button
+            type="button"
+            aria-label="Закрыть"
+            className="p-2 rounded-md hover:bg-primary-light cursor-pointer"
+            onClick={onClose}
+          >
+            <X size={18} />
+          </button>
+        </header>
+        <div className="flex-1 overflow-y-auto px-6 py-4">{formBody}</div>
+        <footer className="px-6 py-4 border-t border-border flex justify-end gap-2 shrink-0">
+          {footer}
+        </footer>
+      </div>
+    )
+  }
+
   return (
     <Drawer
       open={true}
       onClose={onClose}
       title="Новый WW-код"
-      footer={
-        <>
-          <Button variant="ghost" type="button" onClick={onClose} disabled={create.isPending}>
-            Отмена
-          </Button>
-          <Button
-            variant="primary"
-            type="submit"
-            form="add-ww-form"
-            loading={create.isPending}
-            disabled={create.isPending}
-          >
-            Создать
-          </Button>
-        </>
-      }
+      footer={footer}
     >
-      <form id="add-ww-form" onSubmit={handleSubmit} className="flex flex-col gap-5">
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-fg">
-            Модель <span className="text-danger">*</span>
-          </label>
-          <SelectMenu
-            value={modelId}
-            options={modelOptions}
-            onChange={handleModelChange}
-            placeholder={modeliQ.isLoading ? 'Загрузка…' : 'Выбрать модель…'}
-            disabled={modeliQ.isLoading}
-            emptyHint="Модели не найдены"
-          />
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-fg">
-            Артикул <span className="text-danger">*</span>
-          </label>
-          <SelectMenu
-            value={artikulId}
-            options={artikulOptions}
-            onChange={setArtikulId}
-            placeholder={
-              !modelId
-                ? 'Сначала выберите модель'
-                : artikulyQ.isLoading
-                ? 'Загрузка…'
-                : 'Выбрать артикул…'
-            }
-            disabled={!modelId || artikulyQ.isLoading}
-            emptyHint="Артикулы не найдены (нет nomenklatura_wb)"
-          />
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="ww-code" className="text-sm font-medium text-fg">
-            Код <span className="text-danger">*</span>
-          </label>
-          <Input
-            id="ww-code"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            placeholder="WW123456 или 246928570"
-            autoFocus
-            autoComplete="off"
-          />
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-fg">
-            Канал <span className="text-danger">*</span>
-          </label>
-          <SelectMenu
-            value={purpose}
-            options={channelOptions}
-            onChange={setPurpose}
-            placeholder={channelsQ.isLoading ? 'Загрузка…' : 'Выбрать канал…'}
-            disabled={channelsQ.isLoading}
-            emptyHint="Каналы не найдены"
-          />
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="ww-campaign" className="text-sm font-medium text-fg">
-            Кампания / название
-          </label>
-          <Input
-            id="ww-campaign"
-            value={campaignName}
-            onChange={(e) => setCampaignName(e.target.value)}
-            placeholder="Название кампании (опционально)"
-            autoComplete="off"
-          />
-          <p className="text-xs text-muted-foreground">
-            Для именного креатора: <code className="font-mono bg-muted px-1 rounded">креатор_&lt;Имя&gt;</code> (creator_ref заполнится автоматически)
-          </p>
-        </div>
-
-        {error && (
-          <p className="text-sm text-danger">{error}</p>
-        )}
-      </form>
+      {formBody}
     </Drawer>
   )
 }

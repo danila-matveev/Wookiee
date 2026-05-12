@@ -2,12 +2,16 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
 import { ChevronDown, Plus } from "lucide-react"
 import { useSearchParams } from "react-router-dom"
 import { Button } from "@/components/crm/ui/Button"
+import { useMediaQuery } from "@/hooks/use-media-query"
 import { SearchQueriesTable } from "./search-queries/SearchQueriesTable"
 import { AddBrandQueryPanel } from "./search-queries/AddBrandQueryPanel"
 import { AddWWPanel } from "./search-queries/AddWWPanel"
+import { SearchQueryDetailPanel } from "./search-queries/SearchQueryDetailPanel"
+
+const LAST = new Date().toISOString().slice(0, 10)
 
 function AddMenu() {
-  const [params, setParams] = useSearchParams()
+  const [, setParams] = useSearchParams()
 
   const openBrand = () =>
     setParams((p) => { p.set('add', 'brand'); return p })
@@ -48,32 +52,72 @@ function AddMenu() {
   )
 }
 
+type ActivePanel =
+  | { kind: 'add-brand' }
+  | { kind: 'add-ww' }
+  | { kind: 'detail'; unifiedId: string }
+  | null
+
 export function SearchQueriesPage() {
   const [params, setParams] = useSearchParams()
-  const addParam = params.get('add')
+  const addParam  = params.get('add')   // 'brand' | 'ww' | null
+  const openParam = params.get('open')  // unified_id | null
+  const dateFrom  = params.get('from') ?? '2026-03-30'
+  const dateTo    = params.get('to')   ?? LAST
+  const isWide    = useMediaQuery('(min-width: 1024px)')
 
-  const closeAdd = () =>
-    setParams((p) => { p.delete('add'); return p })
+  const closeAdd    = () => setParams((p) => { p.delete('add');  return p })
+  const closeDetail = () => setParams((p) => { p.delete('open'); return p })
+
+  // Add takes precedence over detail when both URL params are set (user just clicked Add).
+  const active: ActivePanel =
+    addParam === 'brand'      ? { kind: 'add-brand' } :
+    addParam === 'ww'         ? { kind: 'add-ww' } :
+    openParam                 ? { kind: 'detail', unifiedId: openParam } :
+    null
+
+  const renderPanel = (mode: 'drawer' | 'inline') => {
+    if (!active) return null
+    if (active.kind === 'add-brand') return <AddBrandQueryPanel onClose={closeAdd} mode={mode} />
+    if (active.kind === 'add-ww')    return <AddWWPanel onClose={closeAdd} mode={mode} />
+    return (
+      <SearchQueryDetailPanel
+        unifiedId={active.unifiedId}
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        onClose={closeDetail}
+        mode={mode}
+      />
+    )
+  }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="px-6 pt-6 pb-0">
-        <div className="flex items-end justify-between mb-6">
-          <div>
-            <h1
-              className="text-stone-900"
-              style={{ fontFamily: "'Instrument Serif', serif", fontSize: 24, fontStyle: "italic" }}
-            >
-              Поисковые запросы
-            </h1>
-            <p className="text-sm text-stone-500 mt-0.5">Брендовые, артикулы и подменные WW-коды</p>
+    <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+        <div className="px-6 pt-6 pb-0">
+          <div className="flex items-end justify-between mb-6">
+            <div>
+              <h1
+                className="text-stone-900"
+                style={{ fontFamily: "'Instrument Serif', serif", fontSize: 24, fontStyle: "italic" }}
+              >
+                Поисковые запросы
+              </h1>
+              <p className="text-sm text-stone-500 mt-0.5">Брендовые, артикулы и подменные WW-коды</p>
+            </div>
+            <AddMenu />
           </div>
-          <AddMenu />
         </div>
+        <SearchQueriesTable />
       </div>
-      <SearchQueriesTable />
-      {addParam === 'brand' && <AddBrandQueryPanel onClose={closeAdd} />}
-      {addParam === 'ww' && <AddWWPanel onClose={closeAdd} />}
+
+      {/* Split-pane on lg+ (≥1024px), Drawer fallback below. */}
+      {isWide && active && (
+        <aside className="w-[420px] shrink-0 border-l border-border bg-card flex flex-col h-full overflow-hidden">
+          {renderPanel('inline')}
+        </aside>
+      )}
+      {!isWide && active && renderPanel('drawer')}
     </div>
   )
 }
