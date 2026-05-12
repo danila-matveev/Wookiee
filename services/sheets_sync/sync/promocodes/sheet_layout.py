@@ -8,8 +8,11 @@ WEEK_LABELS_ROW = 9         # merged week date labels (e.g. "06.04–12.04.2026"
 METRIC_HEADERS_ROW = 10     # metric column names per week + fixed column names
 DATA_START_ROW = 11         # data rows start here
 
-FIXED_HEADERS = ["Название", "UUID", "Канал", "Скидка %"]
-FIXED_NCOLS = len(FIXED_HEADERS)  # 4  (cols A-D)
+FIXED_HEADERS = ["Название", "UUID", "Канал", "Скидка %", "Статус"]
+FIXED_NCOLS = len(FIXED_HEADERS)  # 5  (cols A-E)
+STATUS_COL = 5
+STATUS_NEW = "требует review"
+STATUS_INACTIVE = "неактивный"
 
 WEEK_METRICS = [
     "Продажи, ₽", "К перечислению, ₽",

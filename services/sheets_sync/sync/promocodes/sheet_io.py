@@ -8,10 +8,9 @@ import gspread
 
 from shared.clients.sheets_client import get_client, get_or_create_worksheet
 
-from .dictionary import parse_dictionary
+from .dictionary import parse_dictionary_from_pivot
 from .sheet_layout import (
     DEFAULT_DATA_SHEET,
-    DEFAULT_DICT_SHEET,
     FIXED_HEADERS,
     FIXED_NCOLS,
     METRIC_HEADERS_ROW,
@@ -34,15 +33,19 @@ def _open_spreadsheet():
 
 
 def read_dictionary_sheet() -> dict[str, dict]:
-    """Open spreadsheet and parse the dictionary sheet."""
-    sheet_name = os.getenv("PROMOCODES_DICT_SHEET", DEFAULT_DICT_SHEET)
+    """Read promocode dictionary from the main analytics sheet itself (cols A-E).
+
+    Single source of truth model: the main sheet stores name/UUID/cabinet/discount/status
+    in cols A-E. There is no separate dict tab.
+    """
+    sheet_name = os.getenv("PROMOCODES_DATA_SHEET", DEFAULT_DATA_SHEET)
     ss = _open_spreadsheet()
     try:
         ws = ss.worksheet(sheet_name)
     except gspread.WorksheetNotFound:
-        logger.warning("Dictionary sheet '%s' not found — empty mapping", sheet_name)
+        logger.warning("Data sheet '%s' not found — empty mapping", sheet_name)
         return {}
-    return parse_dictionary(ws.get_all_values())
+    return parse_dictionary_from_pivot(ws.get_all_values())
 
 
 def _clear_conditional_formats(ws: gspread.Worksheet) -> None:

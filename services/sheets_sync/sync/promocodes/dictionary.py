@@ -77,3 +77,36 @@ def parse_dictionary(raw_rows: list[list[str]]) -> dict[str, dict]:
             "note": _cell(row, col_note),
         }
     return out
+
+
+def parse_dictionary_from_pivot(all_rows: list[list[str]]) -> dict[str, dict]:
+    """Parse promocode dictionary directly from the main analytics sheet (cols A-E, rows 11+).
+
+    Single source of truth: the main sheet itself stores Название/UUID/Канал/Скидка %/Статус.
+    Returns {uuid_lower: {name, discount_pct, status}}. Rows marked as 'неактивный'
+    are excluded so the script ignores them when resolving names and DB writes.
+    """
+    from .sheet_layout import DATA_START_ROW, STATUS_INACTIVE
+
+    out: dict[str, dict] = {}
+    for row in all_rows[DATA_START_ROW - 1:]:
+        if not row or len(row) < 2:
+            continue
+        uuid = (row[1] if len(row) > 1 else "").strip().lower()
+        if not uuid:
+            continue
+        name = (row[0] or "").strip()
+        disc_str = (row[3] if len(row) > 3 else "").strip()
+        status = (row[4] if len(row) > 4 else "").strip()
+        if status.lower() == STATUS_INACTIVE.lower():
+            continue
+        try:
+            disc_pct = float(disc_str.replace(",", ".")) if disc_str else None
+        except ValueError:
+            disc_pct = None
+        out[uuid] = {
+            "name": name,
+            "discount_pct": disc_pct,
+            "status": status,
+        }
+    return out

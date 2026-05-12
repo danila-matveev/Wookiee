@@ -10,6 +10,8 @@ from .sheet_layout import (
     DATA_START_ROW,
     FIXED_NCOLS,
     METRIC_HEADERS_ROW,
+    STATUS_COL,
+    STATUS_NEW,
     WEEK_LABELS_ROW,
     WEEK_METRICS,
     WEEK_NCOLS,
@@ -147,6 +149,7 @@ def upsert_pivot(
             cells.append(gspread.Cell(row_n, 2, uuid))
             cells.append(gspread.Cell(row_n, 3, cabinet))
             cells.append(gspread.Cell(row_n, 4, row_data["discount"]))
+            cells.append(gspread.Cell(row_n, STATUS_COL, STATUS_NEW))
 
         m = row_data["metrics"]
         avg_check = (

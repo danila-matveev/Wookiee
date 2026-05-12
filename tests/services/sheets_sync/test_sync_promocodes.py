@@ -241,8 +241,8 @@ def test_run_mode_specific_calls_fetch_for_each_cabinet():
 
     assert mock_fetch.call_count == 2
     assert result["status"] == "ok"
-    # Pre-population added 2 rows; week upsert then updated those same 2 rows
-    assert result["rows_added"] == 2
+    # Single-source-of-truth: no pre-population. rows_added/updated come only from upsert_pivot.
+    assert result["rows_added"] == 0
     assert result["rows_updated"] == 2
     assert ("2026-04-13", "2026-04-19") in [
         (s, e) for s, e in result["weeks_processed"]

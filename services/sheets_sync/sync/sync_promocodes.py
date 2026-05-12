@@ -137,8 +137,9 @@ def run(
     ws = ensure_analytics_sheet()
     week_col_map, uuid_row_map = _read_pivot_state(ws)
 
-    # Pre-create rows for every (UUID, cabinet) declared in dictionary
-    rows_added = ensure_analytics_dict_rows(ws, dictionary, uuid_row_map)
+    # Dictionary IS the main sheet (single source of truth) — no pre-population.
+    # Unknown UUIDs from WB are auto-appended by upsert_pivot with status="требует review".
+    rows_added = 0
     rows_updated = 0
     db_rows_written = 0
     unknown_set: set[str] = set()
