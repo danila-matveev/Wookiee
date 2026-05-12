@@ -112,6 +112,11 @@ function ModeliOsnovaTable({ rows, kategorii, kollekcii, modelStatuses, onOpen }
     return () => document.removeEventListener("click", onDocClick)
   }, [openMenuKod, bulkStatusOpen])
   const statusNameById = useMemo(() => new Map(modelStatuses.map((s) => [s.id, s.nazvanie])), [modelStatuses])
+  // Live status lookup by id — used to render <StatusBadge> for both parent
+  // modeli_osnova rows (status_ids 20–26) and variation modeli rows. The
+  // hardcoded CATALOG_STATUSES legacy table only has ids 1–7 (stale fixture),
+  // so we cannot rely on statusId-based lookup inside StatusBadge here.
+  const statusById = useMemo(() => new Map(modelStatuses.map((s) => [s.id, s])), [modelStatuses])
   // Status counts (from full rows, not filtered) for chip badges
   const statusCounts = useMemo(() => {
     const acc = new Map<number, number>()
@@ -267,7 +272,7 @@ function ModeliOsnovaTable({ rows, kategorii, kollekcii, modelStatuses, onOpen }
                           <td className="px-3 py-3 text-stone-700">{m.kategoriya ?? "—"}</td>
                           <td className="px-3 py-3"><div className="text-stone-700">{m.kollekciya ?? "—"}</div><div className="text-[11px] text-stone-400">{m.tip_kollekcii ?? ""}</div></td>
                           <td className="px-3 py-3 text-stone-700">{m.fabrika ?? "—"}</td>
-                          <td className="px-3 py-3"><StatusBadge statusId={m.status_id ?? 0} /></td>
+                          <td className="px-3 py-3"><StatusBadge status={m.status_id != null ? statusById.get(m.status_id) ?? null : null} /></td>
                           <td className="px-3 py-3"><div className="flex items-center gap-0.5">{RAZMER_LADDER.map((sz) => <span key={sz} className={`text-[10px] px-1 py-0.5 rounded ${variantSizes.has(sz) ? "bg-stone-900 text-white" : "bg-stone-50 text-stone-300 ring-1 ring-inset ring-stone-200"}`}>{sz}</span>)}</div></td>
                           <td className="px-3 py-3"><ColorChips modelKod={m.kod} count={m.cveta_cnt} /></td>
                           <td className="px-3 py-3"><CompletenessRing value={m.completeness} size={16} hideLabel /></td>
@@ -293,7 +298,7 @@ function ModeliOsnovaTable({ rows, kategorii, kollekcii, modelStatuses, onOpen }
                             <td className="px-3 py-2 text-stone-400">—</td>
                             <td className="px-3 py-2"><div className="flex items-center gap-1 text-stone-500"><Building2 className="w-3 h-3 text-stone-400" />{v.importer_short ?? "—"}</div></td>
                             <td className="px-3 py-2 font-mono text-[11px] text-stone-500">{v.artikul_modeli ?? "—"}</td>
-                            <td className="px-3 py-2"><StatusBadge statusId={v.status_id ?? 0} compact /></td>
+                            <td className="px-3 py-2"><StatusBadge status={v.status_id != null ? statusById.get(v.status_id) ?? null : null} compact /></td>
                             <td className="px-3 py-2 text-stone-400 text-[10px]">RU: {v.rossiyskiy_razmer ?? "—"}</td>
                             <td />
                             <td />
