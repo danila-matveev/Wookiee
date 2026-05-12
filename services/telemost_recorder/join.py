@@ -9,7 +9,13 @@ from playwright.async_api import Page
 
 from services.telemost_recorder.audio import AudioCapture
 from services.telemost_recorder.browser import launch_browser
-from services.telemost_recorder.config import BOT_NAME, JOIN_TIMEOUT, SCREENSHOT_INTERVAL, WAITING_ROOM_TIMEOUT
+from services.telemost_recorder.config import (
+    BOT_NAME,
+    JOIN_TIMEOUT,
+    KNOWN_BOT_NAMES,
+    SCREENSHOT_INTERVAL,
+    WAITING_ROOM_TIMEOUT,
+)
 from services.telemost_recorder.speakers import load_speakers, resolve_speakers
 from services.telemost_recorder.state import FailReason, Meeting, MeetingStatus
 from services.telemost_recorder.transcribe import transcribe_audio
@@ -175,6 +181,14 @@ async def _mute_bot(page: Page) -> None:
             pass
 
 
+def _filter_human_participants(names: list[str]) -> list[str]:
+    """Remove known bots (case-insensitive substring match) from participant list."""
+    return [
+        n for n in names
+        if not any(bot in n.lower() for bot in KNOWN_BOT_NAMES)
+    ]
+
+
 async def extract_participants(page: Page) -> list[str]:
     """Open Participants panel and scrape display names."""
     names: list[str] = []
@@ -211,7 +225,9 @@ async def extract_participants(page: Page) -> list[str]:
         except Exception:
             pass
 
-    return list(dict.fromkeys(names))  # deduplicate, preserve order
+    # Deduplicate, preserve order, then filter known bots
+    deduped = list(dict.fromkeys(names))
+    return _filter_human_participants(deduped)
 
 
 async def detect_meeting_ended(page: Page) -> bool:
@@ -238,13 +254,21 @@ async def detect_meeting_ended(page: Page) -> bool:
         except Exception:
             continue
 
-    # Bot is alone: participant count badge shows "1"
+    # Count is dynamic — even if Telemost UI shows 2 participants,
+    # they could be us + another bot. Pull names and filter.
     try:
         btn = page.locator("button").filter(has_text="Участники")
         badge_text = (await btn.first.text_content(timeout=500) or "")
         match = re.search(r"\d+", badge_text)
-        if match and match.group() == "1":
-            return True
+        if match:
+            badge_count = int(match.group())
+            if badge_count <= 1:
+                return True
+            # Badge > 1: pull names, filter bots, check if any humans remain.
+            # extract_participants already excludes Wookiee Recorder + bots from KNOWN_BOT_NAMES.
+            human_names = await extract_participants(page)
+            if not human_names:
+                return True
     except Exception:
         pass
 

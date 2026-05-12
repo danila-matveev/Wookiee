@@ -33,3 +33,15 @@ BROWSER_FLAGS: list[str] = [
     "--disable-features=ExternalProtocolDialogShowAlwaysOpen",
     "--no-default-browser-check",
 ]
+
+# Display names of known meeting bots that should NOT count as humans for
+# meeting-ended detection. Substring match (case-insensitive) so trailing
+# emoji / suffixes don't break filtering.
+KNOWN_BOT_NAMES: frozenset[str] = frozenset({
+    "wookiee recorder",      # this bot itself
+    "navstreche.com",        # navstreche AI assistant
+    "salut",                 # Sber Salut
+    "yandex go",             # Yandex assistant
+    "ai assistant",          # generic
+    "ии-ассистент",          # russian generic
+})
