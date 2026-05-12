@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Search, Plus, MoreHorizontal, Edit3, Archive } from "lucide-react"
@@ -6,6 +6,7 @@ import {
   fetchCvetaWithUsage,
   fetchSemeystvaCvetov,
   fetchStatusy,
+  getCatalogAssetSignedUrl,
   deleteCvet,
   type CvetRow,
   type SemeystvoCveta,
@@ -81,7 +82,7 @@ function FamilyTable({ title, description, items, statusById, onOpen, onEdit, on
                   onClick={() => onOpen(c.color_code)}
                   className="group border-b border-stone-100 last:border-0 hover:bg-stone-50/60 cursor-pointer"
                 >
-                  <td className="px-3 py-2"><ColorSwatch hex={resolveSwatch(c.hex, c.color_code)} size={24} /></td>
+                  <td className="px-3 py-2"><SwatchOrPhoto cvet={c} /></td>
                   <td className="px-3 py-2"><span className="font-mono text-stone-900">{c.color_code}</span></td>
                   <td className="px-3 py-2">{c.cvet ?? "—"}</td>
                   <td className="px-3 py-2 text-stone-500">{c.color ?? "—"}</td>
@@ -146,6 +147,35 @@ function RowMenu({ onEdit, onArchive }: { onEdit: () => void; onArchive: () => v
       )}
     </div>
   )
+}
+
+// ─── Swatch or photo thumbnail ──────────────────────────────────────────
+
+function SwatchOrPhoto({ cvet }: { cvet: CvetRow }) {
+  const [url, setUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!cvet.image_url) {
+      setUrl(null)
+      return
+    }
+    let cancelled = false
+    void getCatalogAssetSignedUrl(cvet.image_url)
+      .then((u) => { if (!cancelled) setUrl(u) })
+      .catch(() => { /* fallback to swatch */ })
+    return () => { cancelled = true }
+  }, [cvet.image_url])
+
+  if (cvet.image_url && url) {
+    return (
+      <img
+        src={url}
+        alt={cvet.color_code}
+        className="w-6 h-6 rounded object-cover ring-1 ring-stone-200"
+      />
+    )
+  }
+  return <ColorSwatch hex={resolveSwatch(cvet.hex, cvet.color_code)} size={24} />
 }
 
 // ─── Colors list ─────────────────────────────────────────────────────────

@@ -43,3 +43,5 @@ export type {
   CommandResultCategory,
   SearchGlobalResult,
 } from "./command-palette"
+
+export { AssetUploader } from "./asset-uploader"

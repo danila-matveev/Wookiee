@@ -66,8 +66,10 @@ import {
   fetchStatusy,
   fetchTipyKollekciy,
   fetchUpakovki,
+  getCatalogAssetSignedUrl,
   insertTovar,
   insertVariation,
+  makeStoragePathForModelHeader,
   updateModel,
   type CvetRow,
   type ModelDetail,
@@ -79,6 +81,7 @@ import {
   type Upakovka,
 } from "@/lib/catalog/service"
 import {
+  AssetUploader,
   CompletenessRing,
   FieldWrap,
   LevelBadge,
@@ -511,6 +514,7 @@ interface TabContentProps {
 function TabDescription({
   m, draft, setDraft, editing, modelOsnovaId,
 }: TabContentProps) {
+  const queryClient = useQueryClient()
   const brendyQ = useQuery({
     queryKey: ["catalog", "brendy"],
     queryFn: fetchBrendy,
@@ -658,6 +662,26 @@ function TabDescription({
             level={lvl("fabrika_id")}
           />
         </div>
+      </Section>
+
+      {/* W5.2: header image для модели — путь хранится в modeli_osnova.header_image_url,
+         сам файл — в Supabase Storage bucket catalog-assets, доступ через signed URL.
+         Upload/delete пишут в БД напрямую (минуя draft/save flow), поэтому компонент
+         доступен и в read-mode, и в editing — modelToDraft не выгружает header_image_url
+         в draft, так что обычный «Сохранить» не перетрёт значение. */}
+      <Section label="Фото модели" hint="Хедер карточки и превью в матрице каталога">
+        <AssetUploader
+          kind="image"
+          path={m.header_image_url ?? null}
+          buildPath={(file) => makeStoragePathForModelHeader(modelOsnovaId, file.type)}
+          onChange={async (newPath) => {
+            await updateModel(m.kod, { header_image_url: newPath })
+            await queryClient.invalidateQueries({ queryKey: ["catalog", "model", m.kod] })
+            await queryClient.invalidateQueries({ queryKey: ["catalog", "matrix-list"] })
+            await queryClient.invalidateQueries({ queryKey: ["matrix-list"] })
+          }}
+          label="Хедер модели"
+        />
       </Section>
 
       <Section label="Производство">
@@ -2457,7 +2481,22 @@ function Header({
     return null
   }, [m])
 
-  const headerImageUrl = (m as { header_image_url?: string | null }).header_image_url ?? null
+  // W5.2: header_image_url хранит storage path (private bucket catalog-assets),
+  // отдаваемый в UI только через signed URL. Резолвим тут — TTL 1h.
+  const headerImagePath = m.header_image_url ?? null
+  const [headerSignedUrl, setHeaderSignedUrl] = useState<string | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    if (!headerImagePath) {
+      setHeaderSignedUrl(null)
+      return
+    }
+    void getCatalogAssetSignedUrl(headerImagePath)
+      .then((url) => { if (!cancelled) setHeaderSignedUrl(url) })
+      .catch(() => { if (!cancelled) setHeaderSignedUrl(null) })
+    return () => { cancelled = true }
+  }, [headerImagePath])
+
   const swatch = firstCvet
     ? (firstCvet.id != null ? hexByCvet.get(firstCvet.id) ?? null : null)
       ?? swatchColor(firstCvet.code)
@@ -2468,10 +2507,10 @@ function Header({
       {/* Icon */}
       <div
         className="w-14 h-14 rounded-lg ring-1 ring-stone-200 shrink-0 overflow-hidden flex items-center justify-center bg-stone-50"
-        style={!headerImageUrl ? { background: swatch } : undefined}
+        style={!headerSignedUrl ? { background: swatch } : undefined}
       >
-        {headerImageUrl ? (
-          <img src={headerImageUrl} alt="" className="w-full h-full object-cover" />
+        {headerSignedUrl ? (
+          <img src={headerSignedUrl} alt="" className="w-full h-full object-cover" />
         ) : firstCvet ? null : (
           <Box className="w-6 h-6 text-stone-400" />
         )}

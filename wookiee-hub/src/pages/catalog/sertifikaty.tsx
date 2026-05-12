@@ -1,12 +1,15 @@
-import { useMemo, useState } from "react"
-import { ExternalLink } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
+import { ExternalLink, X } from "lucide-react"
 import { CatalogTable, type TableColumn } from "@/components/catalog/layout/catalog-table"
+import { AssetUploader } from "@/components/catalog/ui"
 import { useReferenceCrud } from "./references/_use-reference"
 import {
   fetchSertifikaty,
   insertSertifikat,
   updateSertifikat,
   deleteSertifikat,
+  getCatalogAssetSignedUrl,
+  makeStoragePathForSertifikat,
   type Sertifikat,
   type SertifikatPayload,
 } from "@/lib/catalog/service"
@@ -16,12 +19,11 @@ import {
   ErrorBlock,
   PageHeader,
   PageShell,
-  RefModal,
   RowActions,
   SearchBox,
   SkeletonTable,
-  type RefFieldDef,
 } from "./references/_shared"
+import { cn } from "@/lib/utils"
 
 const TIP_OPTIONS = [
   { value: "СоответствияТР", label: "Соответствия ТР" },
@@ -36,22 +38,25 @@ const GRUPPA_OPTIONS = [
   { value: "3", label: "3 (спорт)" },
 ]
 
-const FIELDS: RefFieldDef[] = [
-  { key: "nazvanie", label: "Название", type: "text", required: true },
-  { key: "tip", label: "Тип", type: "select", options: TIP_OPTIONS },
-  { key: "nomer", label: "Номер", type: "text" },
-  { key: "data_vydachi", label: "Дата выдачи", type: "date" },
-  { key: "data_okonchaniya", label: "Дата окончания", type: "date" },
-  { key: "organ_sertifikacii", label: "Орган сертификации", type: "text" },
-  { key: "gruppa_sertifikata", label: "Группа", type: "select", options: GRUPPA_OPTIONS },
-  { key: "file_url", label: "Ссылка на файл", type: "file_url", placeholder: "https://…" },
-]
-
 function formatDate(iso: string | null): string {
   if (!iso) return "—"
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso
   return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" })
+}
+
+/**
+ * Резолвит значение `sertifikaty.file_url` в URL для открытия.
+ *
+ * Backwards compat:
+ * - Если значение начинается с `http://` или `https://` — это legacy URL,
+ *   возвращаем как есть (старые сертификаты до миграции на Storage).
+ * - Иначе — это путь в bucket `catalog-assets`, генерируем signed URL.
+ */
+async function resolveSertifikatUrl(value: string | null): Promise<string | null> {
+  if (!value) return null
+  if (/^https?:\/\//i.test(value)) return value
+  return getCatalogAssetSignedUrl(value)
 }
 
 export function SertifikatyPage() {
@@ -147,16 +152,22 @@ export function SertifikatyPage() {
       label: "Файл",
       render: (r) =>
         r.file_url ? (
-          <a
-            href={r.file_url}
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            type="button"
+            onClick={async (e) => {
+              e.stopPropagation()
+              try {
+                const url = await resolveSertifikatUrl(r.file_url)
+                if (url) window.open(url, "_blank", "noopener,noreferrer")
+              } catch {
+                /* swallow — UI: ничего страшного, signed URL может быть невалиден */
+              }
+            }}
             className="inline-flex items-center gap-1 text-stone-700 hover:text-stone-900 text-xs"
-            onClick={(e) => e.stopPropagation()}
           >
             <ExternalLink className="w-3.5 h-3.5" />
             <span>открыть</span>
-          </a>
+          </button>
         ) : (
           <span className="text-stone-400">—</span>
         ),
@@ -170,27 +181,11 @@ export function SertifikatyPage() {
     },
   ]
 
-  const handleSave = async (vals: Record<string, unknown>) => {
-    const get = (k: string): string | null => {
-      const v = vals[k]
-      return v == null || v === "" ? null : String(v)
-    }
-    const payload: SertifikatPayload = {
-      nazvanie: String(vals.nazvanie ?? "").trim(),
-      tip: get("tip"),
-      nomer: get("nomer"),
-      data_vydachi: get("data_vydachi"),
-      data_okonchaniya: get("data_okonchaniya"),
-      organ_sertifikacii: get("organ_sertifikacii"),
-      gruppa_sertifikata: get("gruppa_sertifikata"),
-      file_url: get("file_url"),
-    }
-    if (editing) {
-      await ref.update.mutateAsync({ id: editing.id, patch: payload })
-      setEditing(null)
+  const handleSave = async (payload: SertifikatPayload, id: number | null) => {
+    if (id != null) {
+      await ref.update.mutateAsync({ id, patch: payload })
     } else {
       await ref.insert.mutateAsync(payload)
-      setCreating(false)
     }
   }
 
@@ -212,27 +207,18 @@ export function SertifikatyPage() {
       )}
 
       {(creating || editing) && (
-        <RefModal
-          title={editing ? "Редактировать сертификат" : "Новый сертификат"}
-          fields={FIELDS}
-          initial={
-            editing
-              ? {
-                  nazvanie: editing.nazvanie,
-                  tip: editing.tip ?? "",
-                  nomer: editing.nomer ?? "",
-                  data_vydachi: editing.data_vydachi ?? "",
-                  data_okonchaniya: editing.data_okonchaniya ?? "",
-                  organ_sertifikacii: editing.organ_sertifikacii ?? "",
-                  gruppa_sertifikata: editing.gruppa_sertifikata ?? "",
-                  file_url: editing.file_url ?? "",
-                }
-              : undefined
-          }
+        <SertifikatModal
+          initial={editing}
           onSave={handleSave}
-          onCancel={() => {
+          onClose={() => {
             setEditing(null)
             setCreating(false)
+          }}
+          onPathChange={async (id, newPath) => {
+            // После upload — патчим только file_url, не дёргая остальные поля.
+            await ref.update.mutateAsync({ id, patch: { file_url: newPath } })
+            // Синхронизируем локальный editing, чтобы AssetUploader перерисовался.
+            setEditing((prev) => (prev && prev.id === id ? { ...prev, file_url: newPath } : prev))
           }}
         />
       )}
@@ -250,5 +236,308 @@ export function SertifikatyPage() {
         onCancel={() => setDeleting(null)}
       />
     </PageShell>
+  )
+}
+
+// ─── SertifikatModal ───────────────────────────────────────────────────────
+//
+// Кастомная модалка вместо общего RefModal — нам нужен AssetUploader для PDF,
+// который не вписывается в типы RefModal (file_url там = `<input type="url">`).
+
+interface SertifikatFormState {
+  nazvanie: string
+  tip: string
+  nomer: string
+  data_vydachi: string
+  data_okonchaniya: string
+  organ_sertifikacii: string
+  gruppa_sertifikata: string
+  file_url: string | null
+}
+
+const EMPTY_STATE: SertifikatFormState = {
+  nazvanie: "",
+  tip: "",
+  nomer: "",
+  data_vydachi: "",
+  data_okonchaniya: "",
+  organ_sertifikacii: "",
+  gruppa_sertifikata: "",
+  file_url: null,
+}
+
+function toFormState(s: Sertifikat | null): SertifikatFormState {
+  if (!s) return EMPTY_STATE
+  return {
+    nazvanie: s.nazvanie ?? "",
+    tip: s.tip ?? "",
+    nomer: s.nomer ?? "",
+    data_vydachi: s.data_vydachi ?? "",
+    data_okonchaniya: s.data_okonchaniya ?? "",
+    organ_sertifikacii: s.organ_sertifikacii ?? "",
+    gruppa_sertifikata: s.gruppa_sertifikata ?? "",
+    file_url: s.file_url ?? null,
+  }
+}
+
+interface SertifikatModalProps {
+  /** null = create mode; объект = edit mode. */
+  initial: Sertifikat | null
+  /** Сохранение метаданных (insert при initial=null, update иначе). */
+  onSave: (payload: SertifikatPayload, id: number | null) => Promise<void>
+  /** После успешного upload AssetUploader записывает path — родитель пишет в БД. */
+  onPathChange: (id: number, newPath: string | null) => Promise<void>
+  onClose: () => void
+}
+
+function SertifikatModal({ initial, onSave, onPathChange, onClose }: SertifikatModalProps) {
+  const [form, setForm] = useState<SertifikatFormState>(() => toFormState(initial))
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const id = initial?.id ?? null
+
+  // Esc to close.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose()
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [onClose])
+
+  const update = <K extends keyof SertifikatFormState>(k: K, v: SertifikatFormState[K]) => {
+    setForm((p) => ({ ...p, [k]: v }))
+  }
+
+  const handleSave = async () => {
+    if (!form.nazvanie.trim()) {
+      setError("Заполните обязательное поле «Название»")
+      return
+    }
+    setError(null)
+    setSaving(true)
+    try {
+      const payload: SertifikatPayload = {
+        nazvanie: form.nazvanie.trim(),
+        tip: form.tip || null,
+        nomer: form.nomer || null,
+        data_vydachi: form.data_vydachi || null,
+        data_okonchaniya: form.data_okonchaniya || null,
+        organ_sertifikacii: form.organ_sertifikacii || null,
+        gruppa_sertifikata: form.gruppa_sertifikata || null,
+        file_url: form.file_url,
+      }
+      await onSave(payload, id)
+      onClose()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ошибка сохранения")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const inputCls =
+    "w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md bg-white outline-none focus:border-stone-900 focus:ring-1 focus:ring-stone-900"
+  const labelCls = "block text-[11px] uppercase tracking-wider text-stone-500 mb-1"
+
+  // Если file_url выглядит как URL — это legacy, AssetUploader не покажет превью
+  // через signed URL. Показываем подсказку и кнопку «убрать», чтобы оператор
+  // мог удалить legacy URL и загрузить настоящий PDF.
+  const isLegacyUrl = form.file_url != null && /^https?:\/\//i.test(form.file_url)
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-stone-900/40 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg bg-white rounded-xl shadow-2xl overflow-hidden border border-stone-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-3 border-b border-stone-200">
+          <h2
+            className="cat-font-serif text-xl text-stone-900 italic"
+            style={{ fontFamily: "'Instrument Serif', ui-serif, Georgia, serif" }}
+          >
+            {id != null ? "Редактировать сертификат" : "Новый сертификат"}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 hover:bg-stone-100 rounded"
+            aria-label="Close"
+          >
+            <X className="w-4 h-4 text-stone-500" />
+          </button>
+        </div>
+
+        <div className="px-5 py-4 grid grid-cols-2 gap-3 max-h-[70vh] overflow-y-auto">
+          <div className="col-span-2">
+            <label className={labelCls}>
+              Название<span className="text-red-500 ml-0.5">*</span>
+            </label>
+            <input
+              type="text"
+              value={form.nazvanie}
+              onChange={(e) => update("nazvanie", e.target.value)}
+              className={inputCls}
+            />
+          </div>
+
+          <div>
+            <label className={labelCls}>Тип</label>
+            <select
+              value={form.tip}
+              onChange={(e) => update("tip", e.target.value)}
+              className={inputCls}
+            >
+              <option value="">Выберите…</option>
+              {TIP_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className={labelCls}>Номер</label>
+            <input
+              type="text"
+              value={form.nomer}
+              onChange={(e) => update("nomer", e.target.value)}
+              className={inputCls}
+            />
+          </div>
+
+          <div>
+            <label className={labelCls}>Дата выдачи</label>
+            <input
+              type="date"
+              value={form.data_vydachi}
+              onChange={(e) => update("data_vydachi", e.target.value)}
+              className={inputCls}
+            />
+          </div>
+
+          <div>
+            <label className={labelCls}>Дата окончания</label>
+            <input
+              type="date"
+              value={form.data_okonchaniya}
+              onChange={(e) => update("data_okonchaniya", e.target.value)}
+              className={inputCls}
+            />
+          </div>
+
+          <div className="col-span-2">
+            <label className={labelCls}>Орган сертификации</label>
+            <input
+              type="text"
+              value={form.organ_sertifikacii}
+              onChange={(e) => update("organ_sertifikacii", e.target.value)}
+              className={inputCls}
+            />
+          </div>
+
+          <div>
+            <label className={labelCls}>Группа</label>
+            <select
+              value={form.gruppa_sertifikata}
+              onChange={(e) => update("gruppa_sertifikata", e.target.value)}
+              className={inputCls}
+            >
+              <option value="">Выберите…</option>
+              {GRUPPA_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Файл сертификата — AssetUploader (PDF). */}
+          <div className="col-span-2">
+            <label className="block text-xs text-stone-600 mb-1.5">
+              Файл сертификата (PDF)
+            </label>
+            {id == null ? (
+              <div className="px-3 py-4 border border-dashed border-stone-300 rounded-lg bg-stone-50 text-xs text-stone-500">
+                Сначала сохраните сертификат — потом откройте его на редактирование
+                и загрузите PDF.
+              </div>
+            ) : isLegacyUrl ? (
+              <div className="space-y-2">
+                <div className="px-3 py-2 border border-stone-200 rounded-lg bg-stone-50 text-xs text-stone-600 flex items-center justify-between gap-2">
+                  <a
+                    href={form.file_url ?? "#"}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="truncate hover:underline"
+                  >
+                    {form.file_url}
+                  </a>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      // Сбрасываем file_url локально и в БД, чтобы AssetUploader
+                      // перешёл в режим "загрузить новый".
+                      update("file_url", null)
+                      await onPathChange(id, null)
+                    }}
+                    className="shrink-0 text-[11px] text-stone-500 hover:text-stone-900 underline"
+                  >
+                    убрать legacy URL
+                  </button>
+                </div>
+                <p className="text-[11px] text-stone-400">
+                  Это старая ссылка. Уберите её и загрузите PDF в Storage —
+                  будет работать стабильнее (через signed URL).
+                </p>
+              </div>
+            ) : (
+              <>
+                <AssetUploader
+                  kind="pdf"
+                  path={form.file_url}
+                  buildPath={(file) => makeStoragePathForSertifikat(id, file.name)}
+                  onChange={async (newPath) => {
+                    update("file_url", newPath)
+                    await onPathChange(id, newPath)
+                  }}
+                  label="Сертификат"
+                />
+                <p className="text-[11px] text-stone-400 mt-1">
+                  PDF до 10 МБ. Старые сертификаты с URL продолжают работать.
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+
+        {error && (
+          <div className="px-5 py-2 text-xs text-red-600 bg-red-50 border-t border-red-100">
+            {error}
+          </div>
+        )}
+
+        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-stone-200 bg-stone-50">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-3 py-1.5 text-sm text-stone-700 hover:bg-stone-100 rounded-md"
+          >
+            Отмена
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className={cn(
+              "px-3 py-1.5 text-sm text-white bg-stone-900 hover:bg-stone-800 rounded-md",
+              "disabled:opacity-50 disabled:cursor-not-allowed",
+            )}
+          >
+            {saving ? "Сохраняем…" : "Сохранить"}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
