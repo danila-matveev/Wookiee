@@ -71,6 +71,24 @@ export interface MarketingChannel {
   is_active: boolean
 }
 
+export interface PromoProductBreakdownRow {
+  id: number
+  promo_code_id: number
+  week_start: string                        // ISO yyyy-mm-dd
+  artikul_id: number | null
+  sku_label: string                         // denormalized cache: "Wendy/dark_beige/S"
+  model_code: string | null
+  qty: number
+  amount_rub: number
+}
+
+export interface PromoProductTotal {
+  sku_label: string
+  model_code: string | null
+  qty:        number
+  amount_rub: number
+}
+
 export interface SyncLogEntry {
   id: number
   job_name: string

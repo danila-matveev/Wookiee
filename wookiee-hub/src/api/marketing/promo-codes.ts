@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import type { PromoCodeRow, PromoStatWeekly } from '@/types/marketing'
+import type { PromoCodeRow, PromoStatWeekly, PromoProductBreakdownRow } from '@/types/marketing'
 import { numToNumber } from '@/lib/marketing-helpers'
 
 export interface PromoCreate {
@@ -27,6 +27,33 @@ export async function createPromoCode(input: PromoCreate): Promise<PromoCodeRow>
   return data as PromoCodeRow
 }
 
+export interface PromoUpdate {
+  code?: string
+  channel?: string | null
+  discount_pct?: number | null
+  valid_from?: string | null
+  valid_until?: string | null
+  status?: 'active' | 'paused' | 'expired' | 'archived'
+  notes?: string | null
+}
+
+export async function updatePromoCode(id: number, patch: PromoUpdate): Promise<PromoCodeRow> {
+  const payload: Record<string, unknown> = {}
+  if (patch.code         != null) payload.code         = patch.code.toUpperCase().trim()
+  if (patch.channel      !== undefined) payload.channel      = patch.channel ?? null
+  if (patch.discount_pct !== undefined) payload.discount_pct = patch.discount_pct ?? null
+  if (patch.valid_from   !== undefined) payload.valid_from   = patch.valid_from || null
+  if (patch.valid_until  !== undefined) payload.valid_until  = patch.valid_until || null
+  if (patch.status       != null) payload.status       = patch.status
+  if (patch.notes        !== undefined) payload.notes        = patch.notes ?? null
+  payload.updated_at = new Date().toISOString()
+
+  const { data, error } = await supabase.schema('crm').from('promo_codes')
+    .update(payload).eq('id', id).select('*').single()
+  if (error) throw error
+  return data as PromoCodeRow
+}
+
 export async function fetchPromoCodes(): Promise<PromoCodeRow[]> {
   const { data, error } = await supabase.schema('marketing').from('promo_codes').select('*').order('updated_at', { ascending: false })
   if (error) throw error
@@ -48,6 +75,24 @@ export async function fetchPromoStatsWeekly(): Promise<PromoStatWeekly[]> {
     returns_count: numToNumber(r.returns_count as never),
     avg_discount_pct: numToNumber(r.avg_discount_pct as never),
     avg_check: numToNumber(r.avg_check as never),
+  }))
+}
+
+export async function fetchPromoProductBreakdown(promoCodeId: number): Promise<PromoProductBreakdownRow[]> {
+  const { data, error } = await supabase
+    .schema('marketing').from('promo_product_breakdown')
+    .select('*').eq('promo_code_id', promoCodeId)
+    .order('amount_rub', { ascending: false })
+  if (error) throw error
+  return ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+    id:            r.id as number,
+    promo_code_id: r.promo_code_id as number,
+    week_start:    r.week_start    as string,
+    artikul_id:    (r.artikul_id ?? null) as number | null,
+    sku_label:     (r.sku_label    as string) ?? '—',
+    model_code:    (r.model_code ?? null) as string | null,
+    qty:           numToNumber(r.qty as never),
+    amount_rub:    numToNumber(r.amount_rub as never),
   }))
 }
 

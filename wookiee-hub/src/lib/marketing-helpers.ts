@@ -17,3 +17,40 @@ export const numToNumber = (v: number | string | null | undefined): number => {
   const n = Number(v)
   return Number.isFinite(n) ? n : 0
 }
+
+const RU_MONTHS_SHORT = ['янв','фев','мар','апр','мая','июн','июл','авг','сен','окт','ноя','дек']
+
+/** "2026-04-20" -> "20 апр". Used in weekly tables to match marketing v4 spec. */
+export function formatWeekShort(iso: string): string {
+  if (!iso || iso.length < 10) return iso
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return `${String(d.getDate()).padStart(2, '0')} ${RU_MONTHS_SHORT[d.getMonth()]}`
+}
+
+/**
+ * Promo display status — derived from DB status + presence of channel.
+ * Matches the marketing v4 spec which uses an "unidentified" pseudo-state for promos
+ * that arrived from raw WB feeds without a known channel mapping.
+ */
+export type PromoDisplayStatus =
+  | { kind: 'active';       label: 'Активен';      tone: 'success'   }
+  | { kind: 'no_data';      label: 'Нет данных';   tone: 'secondary' }
+  | { kind: 'unidentified'; label: 'Не идентиф.';  tone: 'warning'   }
+  | { kind: 'paused';       label: 'На паузе';     tone: 'info'      }
+  | { kind: 'expired';      label: 'Истёк';        tone: 'warning'   }
+  | { kind: 'archived';     label: 'Архив';        tone: 'secondary' }
+
+export function derivePromoStatus(args: {
+  status:  'active' | 'paused' | 'expired' | 'archived'
+  qty:     number
+  channel: string | null
+}): PromoDisplayStatus {
+  if (args.status === 'paused')   return { kind: 'paused',   label: 'На паузе', tone: 'info'      }
+  if (args.status === 'expired')  return { kind: 'expired',  label: 'Истёк',    tone: 'warning'   }
+  if (args.status === 'archived') return { kind: 'archived', label: 'Архив',    tone: 'secondary' }
+  // status === 'active' below
+  if (args.qty > 0 && args.channel == null) return { kind: 'unidentified', label: 'Не идентиф.', tone: 'warning'   }
+  if (args.qty === 0)                       return { kind: 'no_data',      label: 'Нет данных',  tone: 'secondary' }
+  return { kind: 'active', label: 'Активен', tone: 'success' }
+}
