@@ -1,32 +1,41 @@
 import * as React from "react"
-import { cn } from "@/lib/utils"
-import { Badge, type BadgeSize } from "./Badge"
+import { Badge, type BadgeColor } from "./Badge"
 
-export type PriorityLevel = "P0" | "P1" | "P2" | "P3"
+// Canonical: catalog hierarchy markers M / V / A / S — foundation.jsx:308-315.
+export type CatalogLevel = "model" | "variation" | "artikul" | "sku"
 
-export interface LevelBadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
-  level: PriorityLevel
-  size?: BadgeSize
+const LEVEL_MAP: Record<CatalogLevel, { letter: string; color: BadgeColor }> = {
+  model: { letter: "M", color: "blue" },
+  variation: { letter: "V", color: "purple" },
+  artikul: { letter: "A", color: "orange" },
+  sku: { letter: "S", color: "emerald" },
 }
 
-const levelToVariant = {
-  P0: "danger",
-  P1: "warning",
-  P2: "info",
-  P3: "default",
-} as const
+export interface LevelBadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
+  level: CatalogLevel
+}
 
+/**
+ * LevelBadge — canonical catalog-hierarchy marker.
+ *
+ * `<LevelBadge level="model" />` → blue "M" pill. Used inside FieldWrap to
+ * indicate which level a field is editable at.
+ *
+ * For task-priority badges (P0..P3) see `PriorityBadge`.
+ */
 export const LevelBadge = React.forwardRef<HTMLSpanElement, LevelBadgeProps>(
-  function LevelBadge({ level, size = "sm", className, ...props }, ref) {
+  function LevelBadge({ level, className, ...props }, ref) {
+    const entry = LEVEL_MAP[level]
+    if (!entry) return null
     return (
       <Badge
         ref={ref}
-        variant={levelToVariant[level]}
-        size={size}
-        className={cn("font-mono tabular-nums tracking-wider", className)}
+        variant={entry.color}
+        compact
+        className={className}
         {...props}
       >
-        {level}
+        {entry.letter}
       </Badge>
     )
   },

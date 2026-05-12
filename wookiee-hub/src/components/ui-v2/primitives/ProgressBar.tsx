@@ -1,29 +1,58 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
 
-export type ProgressVariant = "default" | "success" | "warning" | "danger"
+// Canonical palette — foundation.jsx:383. We accept both canonical color
+// names and the legacy semantic aliases that were already in the codebase.
+export type ProgressColor = "stone" | "emerald" | "blue" | "amber" | "red"
+export type ProgressVariant = ProgressColor | "default" | "success" | "warning" | "danger"
 
 export interface ProgressBarProps extends React.HTMLAttributes<HTMLDivElement> {
   value: number
+  /** Canonical name is `color`. `variant` kept as alias. */
+  color?: ProgressVariant
   variant?: ProgressVariant
   label?: string
   showValue?: boolean
   compact?: boolean
 }
 
-const fillColor: Record<ProgressVariant, string> = {
-  default: "bg-[var(--color-text-primary)]",
-  success: "bg-[var(--color-success)]",
-  warning: "bg-[var(--color-warning)]",
-  danger: "bg-[var(--color-danger)]",
+const aliasToColor: Record<Exclude<ProgressVariant, ProgressColor>, ProgressColor> = {
+  default: "stone",
+  success: "emerald",
+  warning: "amber",
+  danger: "red",
+}
+
+const fillColor: Record<ProgressColor, string> = {
+  stone: "bg-[var(--color-text-primary)]",
+  emerald: "bg-[var(--color-success)]",
+  blue: "bg-[var(--color-info)]",
+  amber: "bg-[var(--color-warning)]",
+  red: "bg-[var(--color-danger)]",
+}
+
+function resolveColor(input: ProgressVariant | undefined): ProgressColor {
+  if (!input) return "stone"
+  if (input in aliasToColor) return aliasToColor[input as keyof typeof aliasToColor]
+  return input as ProgressColor
 }
 
 export const ProgressBar = React.forwardRef<HTMLDivElement, ProgressBarProps>(
   function ProgressBar(
-    { value, variant = "default", label, showValue = false, compact = false, className, ...props },
+    {
+      value,
+      color,
+      variant,
+      label,
+      showValue = false,
+      compact = false,
+      className,
+      ...props
+    },
     ref,
   ) {
     const clamped = Math.max(0, Math.min(100, value))
+    const resolved = resolveColor(color ?? variant)
 
     return (
       <div ref={ref} className={cn("w-full", className)} {...props}>
@@ -47,7 +76,7 @@ export const ProgressBar = React.forwardRef<HTMLDivElement, ProgressBarProps>(
           )}
         >
           <div
-            className={cn("h-full transition-all duration-200 rounded-full", fillColor[variant])}
+            className={cn("h-full transition-all duration-200 rounded-full", fillColor[resolved])}
             style={{ width: `${clamped}%` }}
           />
         </div>

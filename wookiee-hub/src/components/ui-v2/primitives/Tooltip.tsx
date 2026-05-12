@@ -5,7 +5,10 @@ import { cn } from "@/lib/utils"
 export type TooltipPosition = "top" | "bottom" | "left" | "right"
 
 export interface TooltipProps {
-  content: React.ReactNode
+  /** ReactNode tooltip content. Takes precedence over `text`. */
+  content?: React.ReactNode
+  /** Canonical string alias for `content` (foundation.jsx:414). */
+  text?: string
   position?: TooltipPosition
   delay?: number
   disabled?: boolean
@@ -20,12 +23,15 @@ interface Coords {
 
 export function Tooltip({
   content,
+  text,
   position = "top",
   delay = 150,
   disabled = false,
   children,
   className,
 }: TooltipProps) {
+  // `content` wins over `text` when both are supplied.
+  const tooltipBody: React.ReactNode = content ?? text
   const [open, setOpen] = React.useState(false)
   const [coords, setCoords] = React.useState<Coords>({ top: 0, left: 0 })
   const triggerRef = React.useRef<HTMLElement | null>(null)
@@ -81,7 +87,7 @@ export function Tooltip({
   }, [open, computePosition])
 
   const show = () => {
-    if (disabled || !content) return
+    if (disabled || !tooltipBody) return
     if (timerRef.current) window.clearTimeout(timerRef.current)
     timerRef.current = window.setTimeout(() => setOpen(true), delay)
   }
@@ -125,7 +131,7 @@ export function Tooltip({
   return (
     <>
       {trigger}
-      {mounted && open && content
+      {mounted && open && tooltipBody
         ? createPortal(
             <div
               ref={tooltipRef}
@@ -137,7 +143,7 @@ export function Tooltip({
               )}
               style={{ top: coords.top, left: coords.left, position: "absolute" }}
             >
-              {content}
+              {tooltipBody}
             </div>,
             document.body,
           )

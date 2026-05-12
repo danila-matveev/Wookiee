@@ -1,49 +1,85 @@
 import * as React from "react"
-import { cn } from "@/lib/utils"
-import { Badge, type BadgeSize } from "./Badge"
+import { Badge, type BadgeColor, type BadgeVariant, type BadgeSize } from "./Badge"
 
+// Canonical STATUS_MAP — foundation.jsx:148-154.
+export type StatusId = 1 | 2 | 3 | 4 | 5
+
+export const STATUS_MAP: Record<StatusId, { label: string; color: BadgeColor }> = {
+  1: { label: "В продаже", color: "emerald" },
+  2: { label: "Запуск", color: "blue" },
+  3: { label: "Выводим", color: "amber" },
+  4: { label: "Не выводится", color: "red" },
+  5: { label: "Архив", color: "gray" },
+}
+
+// Legacy tone API — kept as a thin alias for backwards compatibility.
 export type StatusTone = "success" | "warning" | "danger" | "info" | "muted"
 
-export interface StatusBadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
-  tone?: StatusTone
-  size?: BadgeSize
-}
-
-const dotColor: Record<StatusTone, string> = {
-  success: "bg-[var(--color-success)]",
-  warning: "bg-[var(--color-warning)]",
-  danger: "bg-[var(--color-danger)]",
-  info: "bg-[var(--color-info)]",
-  muted: "bg-[var(--color-text-muted)]",
-}
-
-const toneToBadgeVariant = {
+const toneToVariant: Record<StatusTone, BadgeVariant> = {
   success: "success",
   warning: "warning",
   danger: "danger",
   info: "info",
   muted: "default",
-} as const
+}
 
+type StatusBadgePropsById = {
+  statusId: StatusId | number
+  dot?: boolean
+  compact?: boolean
+  className?: string
+  size?: BadgeSize
+}
+
+type StatusBadgePropsByTone = {
+  /** @deprecated Use `statusId` and rely on STATUS_MAP. */
+  tone: StatusTone
+  children: React.ReactNode
+  size?: BadgeSize
+  className?: string
+}
+
+export type StatusBadgeProps = StatusBadgePropsById | StatusBadgePropsByTone
+
+function isToneProps(props: StatusBadgeProps): props is StatusBadgePropsByTone {
+  return "tone" in props
+}
+
+/**
+ * StatusBadge — canonical: `statusId={1..5}` resolves through STATUS_MAP.
+ *
+ * Overload (deprecated): `tone="success" | ...`+`children` renders a thin
+ * Badge alias. Kept so legacy consumers in this repo keep compiling while
+ * we migrate to the canonical API.
+ */
 export const StatusBadge = React.forwardRef<HTMLSpanElement, StatusBadgeProps>(
-  function StatusBadge({ tone = "muted", size = "md", className, children, ...props }, ref) {
+  function StatusBadge(props, ref) {
+    if (isToneProps(props)) {
+      const { tone, children, size = "md", className } = props
+      return (
+        <Badge
+          ref={ref}
+          variant={toneToVariant[tone]}
+          size={size}
+          className={className}
+        >
+          {children}
+        </Badge>
+      )
+    }
+    const { statusId, dot = true, compact = true, className, size } = props
+    const entry = STATUS_MAP[statusId as StatusId]
+    if (!entry) return null
     return (
       <Badge
         ref={ref}
-        variant={toneToBadgeVariant[tone]}
+        variant={entry.color}
         size={size}
-        className={cn(className)}
-        {...props}
+        compact={compact}
+        dot={dot}
+        className={className}
       >
-        <span
-          aria-hidden
-          className={cn(
-            "inline-block rounded-full shrink-0",
-            size === "sm" ? "w-1.5 h-1.5" : "w-2 h-2",
-            dotColor[tone],
-          )}
-        />
-        {children}
+        {entry.label}
       </Badge>
     )
   },

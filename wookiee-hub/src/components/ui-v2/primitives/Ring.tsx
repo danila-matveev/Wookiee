@@ -3,11 +3,22 @@ import { cn } from "@/lib/utils"
 
 export type RingVariant = "default" | "success" | "warning" | "danger" | "info"
 
+/**
+ * `inputScale` — explicit because canonical (foundation.jsx:402) takes
+ * value in 0..1 ("fraction") and CompletenessRing legacy adapter passes 0..100
+ * ("percent"). Default = canonical ("fraction"). Pass `inputScale="percent"`
+ * to keep the legacy 0..100 contract.
+ */
+export type RingInputScale = "fraction" | "percent"
+export type RingSize = "sm" | "md" | "lg"
+
 export interface RingProps extends React.HTMLAttributes<HTMLDivElement> {
   value: number
-  size?: number
+  /** number = px, preset = sm 32 / md 40 / lg 56. Default = 32. */
+  size?: number | RingSize
   strokeWidth?: number
   variant?: RingVariant
+  inputScale?: RingInputScale
   label?: React.ReactNode
 }
 
@@ -19,47 +30,69 @@ const strokeColor: Record<RingVariant, string> = {
   info: "var(--color-info)",
 }
 
-function pickVariant(value: number, variant?: RingVariant): RingVariant {
+const sizePresets: Record<RingSize, number> = {
+  sm: 32,
+  md: 40,
+  lg: 56,
+}
+
+// Canonical thresholds (foundation.jsx:403) are expressed on 0..1.
+// emerald ≥ 0.85, blue ≥ 0.6, amber ≥ 0.4, else rose (danger).
+function pickVariant(fraction: number, variant?: RingVariant): RingVariant {
   if (variant) return variant
-  if (value >= 85) return "success"
-  if (value >= 60) return "info"
-  if (value >= 40) return "warning"
+  if (fraction >= 0.85) return "success"
+  if (fraction >= 0.6) return "info"
+  if (fraction >= 0.4) return "warning"
   return "danger"
 }
 
 export const Ring = React.forwardRef<HTMLDivElement, RingProps>(function Ring(
-  { value, size = 32, strokeWidth = 3, variant, label, className, ...props },
+  {
+    value,
+    size = 32,
+    strokeWidth = 3,
+    variant,
+    inputScale = "fraction",
+    label,
+    className,
+    ...props
+  },
   ref,
 ) {
-  const clamped = Math.max(0, Math.min(100, value))
-  const v = pickVariant(clamped, variant)
-  const r = (size - strokeWidth) / 2
+  const resolvedSize = typeof size === "number" ? size : sizePresets[size]
+  // Normalize to 0..1 regardless of input scale.
+  const fraction =
+    inputScale === "percent"
+      ? Math.max(0, Math.min(1, value / 100))
+      : Math.max(0, Math.min(1, value))
+  const v = pickVariant(fraction, variant)
+  const r = (resolvedSize - strokeWidth) / 2
   const c = 2 * Math.PI * r
-  const offset = c * (1 - clamped / 100)
+  const offset = c * (1 - fraction)
 
   return (
     <div
       ref={ref}
       role="progressbar"
-      aria-valuenow={Math.round(clamped)}
+      aria-valuenow={Math.round(fraction * 100)}
       aria-valuemin={0}
       aria-valuemax={100}
       className={cn("relative inline-flex items-center justify-center", className)}
-      style={{ width: size, height: size }}
+      style={{ width: resolvedSize, height: resolvedSize }}
       {...props}
     >
-      <svg width={size} height={size} className="-rotate-90">
+      <svg width={resolvedSize} height={resolvedSize} className="-rotate-90">
         <circle
-          cx={size / 2}
-          cy={size / 2}
+          cx={resolvedSize / 2}
+          cy={resolvedSize / 2}
           r={r}
           fill="none"
           stroke="var(--color-border-default)"
           strokeWidth={strokeWidth}
         />
         <circle
-          cx={size / 2}
-          cy={size / 2}
+          cx={resolvedSize / 2}
+          cy={resolvedSize / 2}
           r={r}
           fill="none"
           stroke={strokeColor[v]}

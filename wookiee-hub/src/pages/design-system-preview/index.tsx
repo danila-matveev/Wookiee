@@ -15,10 +15,12 @@ import {
   Button,
   Chip,
   ColorSwatch,
+  FilterChip,
   IconButton,
   Kbd,
   LevelBadge,
   PermissionGate,
+  PriorityBadge,
   ProgressBar,
   Ring,
   Skeleton,
@@ -95,6 +97,10 @@ export default function DesignSystemPreview() {
   const [tabPills, setTabPills] = useState("monthly")
   const [tabVertical, setTabVertical] = useState("general")
 
+  // Filter chip demo state
+  const [filterA, setFilterA] = useState(true)
+  const [filterB, setFilterB] = useState(false)
+
   const toast = useToast()
 
   const colorOptions = [
@@ -155,6 +161,7 @@ export default function DesignSystemPreview() {
         {/* Primitives — Buttons */}
         <Section title="Buttons">
           <Row>
+            <Button variant="primary" size="xs">Primary xs</Button>
             <Button variant="primary" size="sm">Primary sm</Button>
             <Button variant="primary" size="md">Primary md</Button>
             <Button variant="primary" size="lg">Primary lg</Button>
@@ -164,9 +171,16 @@ export default function DesignSystemPreview() {
           <Row>
             <Button variant="secondary">Secondary</Button>
             <Button variant="ghost">Ghost</Button>
-            <Button variant="destructive" icon={Trash2}>Удалить</Button>
+            <Button variant="danger" icon={Trash2}>Удалить</Button>
+            <Button variant="danger-ghost" icon={Trash2}>Danger ghost</Button>
+            <Button variant="success">Success</Button>
+          </Row>
+          <Row>
             <IconButton aria-label="search" icon={Search} />
-            <IconButton aria-label="trash" icon={Trash2} variant="destructive" />
+            <IconButton aria-label="search secondary" icon={Search} variant="secondary" />
+            <IconButton aria-label="search primary" icon={Search} variant="primary" />
+            <IconButton aria-label="trash" icon={Trash2} variant="danger" />
+            <IconButton aria-label="settings active" icon={Settings} active />
           </Row>
           <Row>
             <PermissionGate allowed={false}>
@@ -180,54 +194,82 @@ export default function DesignSystemPreview() {
         <Section title="Badges, Tags, Chips, Avatars">
           <Row>
             <Badge>default</Badge>
-            <Badge variant="accent">accent</Badge>
-            <Badge variant="success">success</Badge>
-            <Badge variant="warning">warning</Badge>
-            <Badge variant="danger">danger</Badge>
-            <Badge variant="info">info</Badge>
+            <Badge variant="emerald">emerald</Badge>
+            <Badge variant="blue">blue</Badge>
+            <Badge variant="amber">amber</Badge>
+            <Badge variant="red">red</Badge>
+            <Badge variant="rose">rose</Badge>
+            <Badge variant="purple">purple</Badge>
+            <Badge variant="orange">orange</Badge>
+            <Badge variant="teal">teal</Badge>
+            <Badge variant="indigo">indigo</Badge>
+            <Badge variant="emerald" dot>+12.4%</Badge>
+            <Badge variant="rose" dot compact>−2.1%</Badge>
           </Row>
           <Row>
-            <StatusBadge tone="success">Опубликовано</StatusBadge>
-            <StatusBadge tone="warning">В работе</StatusBadge>
-            <StatusBadge tone="danger">Заблокировано</StatusBadge>
-            <StatusBadge tone="info">Черновик</StatusBadge>
-            <StatusBadge tone="muted">Архив</StatusBadge>
+            <span className="text-[10px] uppercase tracking-wider text-label mr-2">StatusBadge (statusId)</span>
+            <StatusBadge statusId={1} />
+            <StatusBadge statusId={2} />
+            <StatusBadge statusId={3} />
+            <StatusBadge statusId={4} />
+            <StatusBadge statusId={5} />
           </Row>
           <Row>
-            <LevelBadge level="P0" />
-            <LevelBadge level="P1" />
-            <LevelBadge level="P2" />
-            <LevelBadge level="P3" />
+            <span className="text-[10px] uppercase tracking-wider text-label mr-2">LevelBadge (M/V/A/S)</span>
+            <LevelBadge level="model" />
+            <LevelBadge level="variation" />
+            <LevelBadge level="artikul" />
+            <LevelBadge level="sku" />
           </Row>
           <Row>
-            <Tag onRemove={() => null}>Filter A</Tag>
-            <Tag onRemove={() => null}>Filter B</Tag>
-            <Chip>Hover me</Chip>
-            <Chip selected>Selected</Chip>
+            <span className="text-[10px] uppercase tracking-wider text-label mr-2">PriorityBadge (P0..P3)</span>
+            <PriorityBadge level="P0" />
+            <PriorityBadge level="P1" />
+            <PriorityBadge level="P2" />
+            <PriorityBadge level="P3" />
           </Row>
           <Row>
-            <Avatar name="Даня М" size="sm" />
-            <Avatar name="Лиля П" size="md" status="online" />
-            <Avatar name="Алина К" size="lg" status="busy" />
-            <Avatar name="Витя Б" size="xl" />
+            <span className="text-[10px] uppercase tracking-wider text-label mr-2">Tag</span>
+            <Tag>gray</Tag>
+            <Tag color="blue">blue</Tag>
+            <Tag color="emerald">emerald</Tag>
+            <Tag color="purple">purple</Tag>
+            <Tag color="orange">orange</Tag>
+            <Tag onRemove={() => null}>removable</Tag>
+          </Row>
+          <Row>
+            <span className="text-[10px] uppercase tracking-wider text-label mr-2">Chip (removable)</span>
+            <Chip>Vuki</Chip>
+            <Chip onRemove={() => null}>Removable</Chip>
+            <span className="text-[10px] uppercase tracking-wider text-label mx-2">FilterChip (toggle)</span>
+            <FilterChip selected={filterA} onClick={() => setFilterA((v) => !v)}>Filter A</FilterChip>
+            <FilterChip selected={filterB} onClick={() => setFilterB((v) => !v)}>Filter B</FilterChip>
+          </Row>
+          <Row>
+            <Avatar name="Даня М" size="sm" color="stone" />
+            <Avatar name="Лиля П" size="md" status="online" color="emerald" />
+            <Avatar name="Алина К" size="lg" status="busy" color="blue" />
+            <Avatar name="Витя Б" size="xl" color="purple" />
+            <Avatar name="Маша С" size="md" color="rose" />
+            <Avatar name="Костя Т" size="md" color="amber" />
             <AvatarGroup
               size="md"
               max={3}
               users={[
-                { name: "Даня М" },
-                { name: "Лиля П" },
-                { name: "Алина К" },
-                { name: "Витя Б" },
-                { name: "Маша С" },
+                { name: "Даня М", color: "stone" },
+                { name: "Лиля П", color: "emerald" },
+                { name: "Алина К", color: "blue" },
+                { name: "Витя Б", color: "purple" },
+                { name: "Маша С", color: "rose" },
               ]}
             />
           </Row>
           <Row>
-            <ColorSwatch color="#7c3aed" size="md" selected />
-            <ColorSwatch color="#16a34a" size="md" />
-            <ColorSwatch color="#d97706" size="md" />
-            <ColorSwatch color="#dc2626" size="md" />
-            <ColorSwatch color="#0ea5e9" size="md" />
+            <ColorSwatch hex="#1C1917" label />
+            <ColorSwatch hex="#7C3AED" label size={20} />
+            <ColorSwatch hex="#16a34a" />
+            <ColorSwatch hex="#d97706" size={24} />
+            <ColorSwatch hex="#E11D48" size={32} label />
           </Row>
         </Section>
 
@@ -235,16 +277,21 @@ export default function DesignSystemPreview() {
         <Section title="Progress, Ring, Tooltip, Skeleton">
           <Row>
             <div className="w-48 space-y-2">
-              <ProgressBar value={30} />
-              <ProgressBar value={70} variant="success" />
-              <ProgressBar value={92} variant="warning" />
-              <ProgressBar value={20} variant="danger" />
+              <ProgressBar value={30} color="stone" />
+              <ProgressBar value={70} color="emerald" />
+              <ProgressBar value={55} color="blue" />
+              <ProgressBar value={92} color="amber" />
+              <ProgressBar value={20} color="red" />
             </div>
-            <Ring value={30} />
-            <Ring value={70} />
-            <Ring value={92} />
-            <Tooltip content="Tooltip text">
+            <Ring value={0.3} />
+            <Ring value={0.7} />
+            <Ring value={0.92} />
+            <Ring value={70} inputScale="percent" size="md" label={<span>70%</span>} />
+            <Tooltip text="Tooltip via text prop">
               <Badge variant="info">hover me</Badge>
+            </Tooltip>
+            <Tooltip content={<span>ReactNode <strong>content</strong></span>}>
+              <Badge variant="purple">hover (node)</Badge>
             </Tooltip>
           </Row>
           <Row>

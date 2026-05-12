@@ -1,13 +1,14 @@
-import { Badge, type BadgeVariant } from "@/components/ui-v2/primitives"
 import { Tooltip } from "./tooltip"
+import { LevelBadge as V2LevelBadge, type CatalogLevel } from "@/components/ui-v2/primitives"
 
-export type Level = "model" | "variation" | "artikul" | "sku"
+// Catalog uses the same canonical level vocabulary as ui-v2.
+export type Level = CatalogLevel
 
-const LEVEL_MAP: Record<Level, { label: string; variant: BadgeVariant }> = {
-  model:     { label: "модель",   variant: "info"    },
-  variation: { label: "вариация", variant: "accent"  },
-  artikul:   { label: "артикул",  variant: "warning" },
-  sku:       { label: "SKU",      variant: "success" },
+const LEVEL_LABEL: Record<Level, string> = {
+  model: "модель",
+  variation: "вариация",
+  artikul: "артикул",
+  sku: "SKU",
 }
 
 interface LevelBadgeProps {
@@ -15,26 +16,18 @@ interface LevelBadgeProps {
 }
 
 /**
- * LevelBadge — отметка уровня поля (модель / вариация / артикул / SKU).
+ * LevelBadge — catalog-flavoured wrapper over canonical ui-v2 LevelBadge.
  *
- * Использует `<Badge>` из ui-v2 с маппингом на semantic variants:
- * - model     → info     (синий)
- * - variation → accent   (фиолетовый бренд)
- * - artikul   → warning  (оранжевый)
- * - sku       → success  (зелёный)
+ * Canonical badge shows a single letter (M/V/A/S) in the brand-mandated color.
+ * The catalog adapter additionally wraps the badge in a Tooltip explaining
+ * which level the field is editable at.
  */
 export function LevelBadge({ level }: LevelBadgeProps) {
-  const m = LEVEL_MAP[level]
-  if (!m) return null
+  const label = LEVEL_LABEL[level]
+  if (!label) return null
   return (
-    <Tooltip text={`Поле редактируется на уровне «${m.label}»`}>
-      <Badge
-        variant={m.variant}
-        size="sm"
-        className="uppercase tracking-wider text-[9px]"
-      >
-        {m.label}
-      </Badge>
+    <Tooltip text={`Поле редактируется на уровне «${label}»`}>
+      <V2LevelBadge level={level} />
     </Tooltip>
   )
 }

@@ -2,8 +2,14 @@ import * as React from "react"
 import { Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-type ButtonVariant = "primary" | "secondary" | "ghost" | "destructive"
-type ButtonSize = "sm" | "md" | "lg"
+export type ButtonVariant =
+  | "primary"
+  | "secondary"
+  | "ghost"
+  | "danger"
+  | "danger-ghost"
+  | "success"
+export type ButtonSize = "xs" | "sm" | "md" | "lg"
 
 type ButtonOwnProps = {
   variant?: ButtonVariant
@@ -20,12 +26,14 @@ type PolymorphicProps<E extends React.ElementType> = ButtonOwnProps & {
 export type ButtonProps = PolymorphicProps<"button">
 
 const sizeStyles: Record<ButtonSize, string> = {
+  xs: "h-7 px-2 text-xs gap-1 rounded-md",
   sm: "h-7 px-2.5 text-xs gap-1.5 rounded-md",
   md: "h-8 px-3 text-sm gap-1.5 rounded-md",
   lg: "h-10 px-4 text-sm gap-2 rounded-md",
 }
 
 const iconSizeStyles: Record<ButtonSize, string> = {
+  xs: "w-3 h-3",
   sm: "w-3 h-3",
   md: "w-3.5 h-3.5",
   lg: "w-4 h-4",
@@ -38,8 +46,12 @@ const variantStyles: Record<ButtonVariant, string> = {
     "bg-surface text-secondary border border-default hover:bg-surface-muted disabled:opacity-50",
   ghost:
     "bg-transparent text-secondary hover:bg-surface-muted disabled:opacity-50",
-  destructive:
+  danger:
     "bg-[var(--color-danger)] text-white hover:opacity-90 active:opacity-80 disabled:opacity-50",
+  "danger-ghost":
+    "bg-transparent text-danger hover:bg-danger-soft disabled:opacity-50",
+  success:
+    "bg-[var(--color-success)] text-white hover:opacity-90 active:opacity-80 disabled:opacity-50",
 }
 
 const baseStyles =

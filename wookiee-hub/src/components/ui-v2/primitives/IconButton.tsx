@@ -2,8 +2,13 @@ import * as React from "react"
 import { Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-type IconButtonVariant = "primary" | "secondary" | "ghost" | "destructive"
-type IconButtonSize = "sm" | "md" | "lg"
+export type IconButtonVariant =
+  | "primary"
+  | "secondary"
+  | "ghost"
+  | "danger"
+  | "active"
+export type IconButtonSize = "sm" | "md" | "lg"
 
 export interface IconButtonProps
   extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "children"> {
@@ -15,14 +20,15 @@ export interface IconButtonProps
   active?: boolean
 }
 
+// Canonical default = 28×28 via p-1.5 (md). sm = 24×24, lg = 32×32 — extensions.
 const sizeStyles: Record<IconButtonSize, string> = {
-  sm: "w-7 h-7 rounded-md",
-  md: "w-8 h-8 rounded-md",
-  lg: "w-10 h-10 rounded-md",
+  sm: "w-6 h-6 rounded-md p-1",
+  md: "w-7 h-7 rounded-md p-1.5",
+  lg: "w-8 h-8 rounded-md p-1.5",
 }
 
 const iconSizeStyles: Record<IconButtonSize, string> = {
-  sm: "w-3.5 h-3.5",
+  sm: "w-3 h-3",
   md: "w-4 h-4",
   lg: "w-[18px] h-[18px]",
 }
@@ -34,8 +40,10 @@ const variantStyles: Record<IconButtonVariant, string> = {
     "bg-surface text-secondary border border-default hover:bg-surface-muted",
   ghost:
     "bg-transparent text-secondary hover:bg-surface-muted",
-  destructive:
-    "bg-transparent text-[var(--color-danger)] hover:bg-danger-soft",
+  danger:
+    "bg-transparent text-danger hover:bg-danger-soft",
+  active:
+    "bg-surface-muted text-primary hover:bg-surface-muted",
 }
 
 export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
@@ -53,6 +61,8 @@ export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
     ref,
   ) {
     const isDisabled = disabled || loading
+    // `active` boolean overrides variant to the canonical pressed-state look.
+    const effectiveVariant: IconButtonVariant = active ? "active" : variant
     return (
       <button
         ref={ref}
@@ -62,9 +72,7 @@ export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
         className={cn(
           "inline-flex items-center justify-center transition-colors select-none outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-surface)] disabled:opacity-50 disabled:cursor-not-allowed",
           sizeStyles[size],
-          variantStyles[variant],
-          active &&
-            "bg-[var(--color-text-primary)] text-[var(--color-surface)] hover:opacity-90",
+          variantStyles[effectiveVariant],
           className,
         )}
         {...props}

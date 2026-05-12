@@ -1,57 +1,39 @@
 import * as React from "react"
-import { Check } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-export type ColorSwatchSize = "sm" | "md" | "lg"
-
-export interface ColorSwatchProps
-  extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "type"> {
-  color: string
-  size?: ColorSwatchSize
-  selected?: boolean
-  label?: string
+export interface ColorSwatchProps extends Omit<React.HTMLAttributes<HTMLSpanElement>, "children"> {
+  /** CSS color (hex / rgb / var(--…) / etc.). */
+  hex: string
+  /** Edge length in px. Default 16 (canonical). */
+  size?: number
+  /** If true, render the hex string as a monospace label after the swatch. */
+  label?: boolean
 }
 
-const sizeStyles: Record<ColorSwatchSize, string> = {
-  sm: "w-4 h-4",
-  md: "w-6 h-6",
-  lg: "w-8 h-8",
-}
-
-const checkSize: Record<ColorSwatchSize, string> = {
-  sm: "w-2.5 h-2.5",
-  md: "w-3.5 h-3.5",
-  lg: "w-4 h-4",
-}
-
-export const ColorSwatch = React.forwardRef<HTMLButtonElement, ColorSwatchProps>(
-  function ColorSwatch(
-    { color, size = "md", selected = false, label, onClick, className, ...props },
-    ref,
-  ) {
-    const interactive = Boolean(onClick)
+/**
+ * ColorSwatch — passive token-display per canonical (foundation.jsx:373).
+ *
+ * `<ColorSwatch hex="#1C1917" size={20} label />` renders a 20px coloured
+ * square + the hex code in mono. For interactive color pickers, see future
+ * `ColorPicker` primitive (R3).
+ */
+export const ColorSwatch = React.forwardRef<HTMLSpanElement, ColorSwatchProps>(
+  function ColorSwatch({ hex, size = 16, label = false, className, ...props }, ref) {
     return (
-      <button
+      <span
         ref={ref}
-        type="button"
-        onClick={onClick}
-        aria-label={label ?? `Цвет ${color}`}
-        aria-pressed={interactive ? selected : undefined}
-        className={cn(
-          "relative inline-flex items-center justify-center rounded-full border border-default transition-transform",
-          sizeStyles[size],
-          interactive && "cursor-pointer hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-surface)]",
-          !interactive && "cursor-default",
-          selected && "ring-2 ring-[var(--color-ring)] ring-offset-2 ring-offset-[var(--color-surface)]",
-          className,
-        )}
-        style={{ backgroundColor: color }}
+        className={cn("inline-flex items-center gap-1.5", className)}
         {...props}
       >
-        {selected && (
-          <Check className={cn(checkSize[size], "text-white mix-blend-difference")} aria-hidden />
+        <span
+          aria-hidden
+          className="inline-block rounded ring-1 ring-[var(--color-border-default)] shrink-0"
+          style={{ width: size, height: size, background: hex }}
+        />
+        {label && (
+          <span className="text-[10px] font-mono text-muted">{hex}</span>
         )}
-      </button>
+      </span>
     )
   },
 )
