@@ -314,3 +314,17 @@
   font-family: 'Instrument Serif', ui-serif, Georgia, serif;
   font-style: italic;
 }
+
+/* Marketing section — stone palette override per design 2026-05-12 */
+[data-section="marketing"] {
+  --background: oklch(0.985 0 0);   /* near-white */
+  --foreground: oklch(0.146 0.005 60); /* stone-900 */
+  --card: oklch(1 0 0);             /* white */
+  --card-foreground: oklch(0.146 0.005 60);
+  --muted: oklch(0.97 0.005 60);    /* stone-50 */
+  --muted-foreground: oklch(0.55 0.01 60); /* stone-400 */
+  --border: oklch(0.91 0.005 60);   /* stone-200 */
+  --input: oklch(0.91 0.005 60);
+  --primary: oklch(0.146 0.005 60); /* stone-900 */
+  --primary-foreground: oklch(1 0 0);
+}
