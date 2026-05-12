@@ -21,6 +21,7 @@ services:
       - TZ=Europe/Moscow
 
     volumes:
+      - ../.env:/app/.env:ro
       - ../services/etl/data:/app/services/etl/data
       - ../reports:/app/reports
       - ../scripts:/app/scripts:ro
