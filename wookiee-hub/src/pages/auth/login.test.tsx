@@ -7,6 +7,7 @@ vi.mock('@/lib/supabase', () => ({
   supabase: {
     auth: {
       signInWithPassword: vi.fn(),
+      signInWithOtp: vi.fn(),
     },
   },
 }))
@@ -28,13 +29,25 @@ function renderLogin() {
   )
 }
 
+function switchToPasswordMode() {
+  fireEvent.click(screen.getByRole('button', { name: /войти с паролем/i }))
+}
+
 describe('LoginPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('renders email and password inputs', () => {
+  it('renders email field in magic-link mode by default', () => {
     renderLogin()
+    expect(screen.getByLabelText(/email/i)).toBeInTheDocument()
+    expect(screen.queryByLabelText(/пароль/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /получить ссылку для входа/i })).toBeInTheDocument()
+  })
+
+  it('switches to password mode and reveals password field', () => {
+    renderLogin()
+    switchToPasswordMode()
     expect(screen.getByLabelText(/email/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/пароль/i)).toBeInTheDocument()
   })
@@ -45,16 +58,17 @@ describe('LoginPage', () => {
     expect(screen.queryByText(/sign up/i)).not.toBeInTheDocument()
   })
 
-  it('calls signInWithPassword on submit', async () => {
+  it('calls signInWithPassword on submit in password mode', async () => {
     vi.mocked(supabase.auth.signInWithPassword).mockResolvedValue({
       data: { user: { id: '1' }, session: {} },
       error: null,
     } as any)
 
     renderLogin()
+    switchToPasswordMode()
     fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'a@b.com' } })
     fireEvent.change(screen.getByLabelText(/пароль/i), { target: { value: 'pass' } })
-    fireEvent.click(screen.getByRole('button', { name: /войти/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^войти$/i }))
 
     await waitFor(() => {
       expect(supabase.auth.signInWithPassword).toHaveBeenCalledWith({
@@ -64,16 +78,17 @@ describe('LoginPage', () => {
     })
   })
 
-  it('shows error message on failed login', async () => {
+  it('shows error message on failed password login', async () => {
     vi.mocked(supabase.auth.signInWithPassword).mockResolvedValue({
       data: { user: null, session: null },
       error: { message: 'Invalid credentials' },
     } as any)
 
     renderLogin()
+    switchToPasswordMode()
     fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'bad@b.com' } })
     fireEvent.change(screen.getByLabelText(/пароль/i), { target: { value: 'wrong' } })
-    fireEvent.click(screen.getByRole('button', { name: /войти/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^войти$/i }))
 
     await waitFor(() => {
       expect(screen.getByText(/неверный логин или пароль/i)).toBeInTheDocument()
