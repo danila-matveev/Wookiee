@@ -1497,6 +1497,8 @@ export interface ModelOsnovaPayload {
   po_nastroeniyu?: string | null
   tnved?: string | null
   gruppa_sertifikata?: string | null
+  /** W5.2: storage path inside catalog-assets bucket (e.g. models/123/header.jpg). */
+  header_image_url?: string | null
 }
 
 /** Create a new modeli_osnova row. Returns inserted kod. */

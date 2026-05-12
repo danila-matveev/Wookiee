@@ -196,6 +196,8 @@ export interface ModelOsnova {
   notion_link?: string | null
   notion_strategy_link?: string | null
   yandex_disk_link?: string | null
+  /** W5.2: storage path inside catalog-assets bucket (e.g. models/123/header.jpg). Resolve via getCatalogAssetSignedUrl(). */
+  header_image_url?: string | null
 
   // Атрибуты по категории
   stepen_podderzhki?: string | null
