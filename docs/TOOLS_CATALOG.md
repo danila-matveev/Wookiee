@@ -1,6 +1,6 @@
 # Каталог инструментов Wookiee
 
-> Автогенерировано `scripts/generate_tools_catalog.py` из Supabase `tools` — 2026-05-12 12:49 МСК.
+> Автогенерировано `scripts/generate_tools_catalog.py` из Supabase `tools` — 2026-05-12 13:27 МСК.
 > **Не редактируй вручную.** Источник истины — Supabase. Обновляй через `/tool-register`, затем перегенерируй файл.
 
 Всего инструментов: **50**. Категории: Аналитика — 17, Контент — 3, Публикация — 3, Инфраструктура — 21, Планирование — 1, Команда — 5.
@@ -71,9 +71,16 @@
 
 ---
 
-### ✅ `wb-promocodes-sync` — WB Promocodes Sync `2.0.0`
+### ✅ `wb-promocodes-sync` — WB Promocodes Sync `2.1.0`
 
-Еженедельный sync аналитики промокодов WB. Cron: понедельник 12:00 МСК в контейнере wookiee_cron. Тянет reportDetailByPeriod из WB API по двум кабинетам (ИП Медведева, ООО Вуки), агрегирует по uuid_promocode, пишет одновременно в Google Sheets (таб Промокоды_аналитика в Wookiee — Аналитика поисковых запросов) и в Supabase: marketing.promo_stats_weekly (метрики недели с UPSERT по promo_code_id + week_start) и crm.promo_codes (placeholder-строка для новых UUID). Single-source-of-truth: справочник промокодов (Название/UUID/Канал/Скидка %/Статус) живёт прямо в колонках A-E основного листа — отдельного таба больше нет. Новые UUID, появившиеся в выручке WB, автоматически добавляются в конец списка со статусом «требует review» для последующего ручного именования. Статус «неактивный» исключает промо из словаря лукапа. Backfill: --mode specific --from YYYY-MM-DD --to YYYY-MM-DD.
+Еженедельный sync аналитики промокодов WB. Cron: понедельник 12:00 МСК в контейнере wookiee_cron. Тянет reportDetailByPeriod из WB API по двум кабинетам (ИП Медведева, ООО Вуки), агрегирует по uuid_promocode, пишет одновременно в Google Sheets (таб Промокоды_аналитика (копия) в Wookiee — Аналитика поисковых запросов) и в Supabase. 
+
+DB-таблицы (две): 
+(1) marketing.promo_stats_weekly — недельные метрики (sales_rub, payout_rub, orders_count, returns_count, avg_discount_pct, avg_check), UPSERT по (promo_code_id, week_start). 
+(2) marketing.promo_product_breakdown — понедельная разбивка по артикулам (qty, amount_rub, model_code, sku_label), UPSERT по (promo_code_id, week_start, artikul_id). Резолвит nm_id → public.artikuly.id; нерезолвленные строки скипаются с логом-counter'ом. 
+(3) crm.promo_codes — placeholder-строка с code=WB:<UUID> для новых UUID, появившихся в выручке WB. 
+
+Single-source-of-truth справочника: Название/UUID/Канал/Скидка %/Статус живут прямо в колонках A-E основного листа — отдельного таба больше нет. Новые UUID добавляются автоматически со статусом «требует review». Статус «неактивный» исключает промо из словаря лукапа. Backfill: --mode bootstrap --weeks-back 12, либо --mode specific --from YYYY-MM-DD --to YYYY-MM-DD. --skip-db пишет только в Sheets.
 
 **Как работает:** 1. Еженедельно по расписанию запрашивает метрики промокодов из WB API (оба кабинета).
 2. Нормализует данные: выручка, заказы в штуках и рублях, выкупы.
@@ -86,9 +93,9 @@
 | Источники данных | — |
 | Зависимости | — |
 | Результат идёт в | — |
-| Команда запуска | `python scripts/run_wb_promocodes_sync.py [--mode last_week|specific|bootstrap] [--from YYYY-MM-DD --to YYYY-MM-DD] [--skip-db]` |
-| Запусков (всего) | 7 |
-| Последний запуск | 2026-05-12 15:37 |
+| Команда запуска | `python scripts/run_wb_promocodes_sync.py [--mode last_week|specific|bootstrap] [--from YYYY-MM-DD --to YYYY-MM-DD] [--weeks-back N] [--skip-db]` |
+| Запусков (всего) | 9 |
+| Последний запуск | 2026-05-12 16:26 |
 
 ---
 
@@ -986,7 +993,7 @@ Interact with Slack workspaces using browser automation. Use when the user needs
 | 1 | `logistics-audit` | Сервис | Аналитика | ✅ active | — | — |
 | 2 | `wb-logistics-optimizer` | Сервис | Аналитика | ✅ active | 2.0 | — |
 | 3 | `wb-promocodes-analytics` | Сервис | Аналитика | ✅ active | 1.0.0 | — |
-| 4 | `wb-promocodes-sync` | Сервис | Аналитика | ✅ active | 2.0.0 | 2026-05-12 15:37 |
+| 4 | `wb-promocodes-sync` | Сервис | Аналитика | ✅ active | 2.1.0 | 2026-05-12 16:26 |
 | 5 | `wb-search-queries-sync` | Сервис | Аналитика | ✅ active | 1.0.0 | — |
 | 6 | `/abc-audit` | Скилл | Аналитика | ✅ active | v1 | 2026-05-06 20:13 |
 | 7 | `/analytics-report` | Скилл | Аналитика | ✅ active | — | — |
@@ -1035,4 +1042,4 @@ Interact with Slack workspaces using browser automation. Use when the user needs
 | 50 | `/slack` | Скилл | Команда | ✅ active | 1.0.0 | — |
 
 
-<sub>Сгенерировано автоматически 2026-05-12 12:49 МСК. Команда: `python scripts/generate_tools_catalog.py`.</sub>
+<sub>Сгенерировано автоматически 2026-05-12 13:27 МСК. Команда: `python scripts/generate_tools_catalog.py`.</sub>
