@@ -45,6 +45,12 @@ const TOVARY_DEFAULT_WIDTHS: Record<string, number> = {
   created: 110,
 }
 
+// W9.9 — синтетический ключ колонки «Статус» (для одного выбранного канала).
+// В TOVARY_COLUMNS не включаем — он подставляется в effectiveColumns динамически
+// и заменяет 4 раздельные колонки status_<channel> когда выбран конкретный канал.
+const STATUS_CHANNEL_KEY = "status_channel"
+const CHANNEL_STATUS_KEYS = ["status_wb", "status_ozon", "status_sayt", "status_lamoda"] as const
+
 // 17 columns; all default-visible per Final Report MINOR fix.
 const TOVARY_COLUMNS: ColumnDef[] = [
   { key: "barkod",          label: "Баркод",          default: true },
@@ -233,6 +239,31 @@ interface CellContext {
   onUpdateStatus: (
     barkod: string, statusId: number, channel: TovarChannel,
   ) => Promise<void>
+  /** W9.9 — для синтетической колонки «Статус» (один выбранный канал). */
+  selectedChannel?: TovarChannel
+}
+
+function renderChannelStatusCell(t: TovarRow, ctx: CellContext): React.ReactNode {
+  const ch = ctx.selectedChannel
+  if (!ch) return null
+  const onChange = async (id: number) => { await ctx.onUpdateStatus(t.barkod, id, ch) }
+  const currentId =
+    ch === "wb" ? t.status_id
+      : ch === "ozon" ? t.status_ozon_id
+      : ch === "sayt" ? t.status_sayt_id
+      : t.status_lamoda_id
+  const options =
+    ch === "sayt" ? ctx.statusOptions.sayt
+      : ch === "lamoda" ? ctx.statusOptions.lamoda
+      : ctx.statusOptions.product
+  return (
+    <InlineStatusCell
+      currentStatusId={currentId ?? null}
+      channel={ch}
+      options={options}
+      onChange={onChange}
+    />
+  )
 }
 
 function renderCell(
@@ -243,6 +274,7 @@ function renderCell(
   const onUpdate = (channel: TovarChannel) => async (statusId: number) => {
     await ctx.onUpdateStatus(t.barkod, statusId, channel)
   }
+  if (key === STATUS_CHANNEL_KEY) return renderChannelStatusCell(t, ctx)
   switch (key) {
     case "barkod":
       return <CellText className="font-mono text-xs text-stone-700" title={t.barkod}>{t.barkod}</CellText>
@@ -553,13 +585,36 @@ function applyStatusGroupFilter(
   return rows.filter((t) => hasAnyStatus(t) && !isAllArchive(t, archiveIds))
 }
 
-function applyChannelFilter(rows: TovarRow[], channel: ChannelFilter): TovarRow[] {
+// W9.9 — статусы продукта на канале, означающие «ещё не выведен в продажу»
+// (pre-launch). SKU с таким статусом по каналу не считается продаваемым на нём.
+// Все остальные статусы (Продаётся / Выводим / Архив / Запуск / Скрыт) — это
+// «канал засветился»: active или blocked, но факт продажи был. Это совпадает
+// с поведением WB-кабинета: архивные карточки видны.
+const PRE_LAUNCH_STATUS_NAMES: ReadonlySet<string> = new Set([
+  "План", "Подготовка", "Планирование",
+])
+
+interface StatusLookup {
+  isPreLaunch: (statusId: number | null | undefined) => boolean
+}
+
+function channelStatusField(channel: Exclude<ChannelFilter, "all">): keyof TovarRow {
+  return channel === "wb" ? "status_id"
+    : channel === "ozon" ? "status_ozon_id"
+    : channel === "sayt" ? "status_sayt_id" : "status_lamoda_id"
+}
+
+function applyChannelFilter(
+  rows: TovarRow[], channel: ChannelFilter, lookup: StatusLookup,
+): TovarRow[] {
   if (channel === "all") return rows
-  const field: keyof TovarRow =
-    channel === "wb" ? "status_id"
-      : channel === "ozon" ? "status_ozon_id"
-      : channel === "sayt" ? "status_sayt_id" : "status_lamoda_id"
-  return rows.filter((t) => t[field] != null)
+  const field = channelStatusField(channel)
+  return rows.filter((t) => {
+    const id = t[field] as number | null | undefined
+    if (id == null) return false
+    // active + blocked включаем, pre-launch (План/Подготовка) — исключаем.
+    return !lookup.isPreLaunch(id)
+  })
 }
 
 // ─── Group by ──────────────────────────────────────────────────────────────
@@ -692,6 +747,7 @@ export function TovaryPage() {
     return ids
   }, [statusyData])
 
+<<<<<<< HEAD
   // W9.2 — резолвер id→{nazvanie,color} по всем статусам из БД,
   // вне зависимости от tip (product/sayt/lamoda/artikul/model/…).
   const statusById = useMemo(() => {
@@ -704,6 +760,21 @@ export function TovaryPage() {
   const resolveStatus = useCallback(
     (id: number) => statusById.get(id) ?? null,
     [statusById],
+=======
+  // W9.9 — pre-launch статусы: SKU с таким статусом по каналу считаем «ещё не
+  // в продаже» и отфильтровываем при выборе конкретного канала.
+  const preLaunchStatusIds = useMemo(() => {
+    const ids = new Set<number>()
+    for (const s of statusyData ?? []) {
+      if (PRE_LAUNCH_STATUS_NAMES.has(s.nazvanie)) ids.add(s.id)
+    }
+    return ids
+  }, [statusyData])
+
+  const statusLookup = useMemo<StatusLookup>(
+    () => ({ isPreLaunch: (id) => id != null && preLaunchStatusIds.has(id) }),
+    [preLaunchStatusIds],
+>>>>>>> de2e5df (fix(w9.9): channel switcher filters /tovary list and adapts status columns)
   )
 
   const updateStatusMutation = useMutation({
@@ -727,13 +798,17 @@ export function TovaryPage() {
   const filtered = useMemo<TovarRow[]>(() => {
     if (!data) return []
     let res: TovarRow[] = data
-    res = applyChannelFilter(res, channelFilter)
+    res = applyChannelFilter(res, channelFilter, statusLookup)
     res = applyStatusGroupFilter(res, statusGroup, archiveStatusIds)
     if (debouncedSearch.trim()) {
       res = res.filter((t) => matchesCompositeSearch(t, debouncedSearch))
     }
     return res
+<<<<<<< HEAD
   }, [data, channelFilter, statusGroup, archiveStatusIds, debouncedSearch])
+=======
+  }, [data, channelFilter, statusLookup, statusGroup, archiveStatusIds, search])
+>>>>>>> de2e5df (fix(w9.9): channel switcher filters /tovary list and adapts status columns)
 
   // W8.1 — sort after filter, before group.
   const sortedFiltered = useMemo<TovarRow[]>(
@@ -782,10 +857,67 @@ export function TovaryPage() {
     })
   }, [flatVisibleBarkods])
 
+<<<<<<< HEAD
   const cellCtx: CellContext = useMemo(
     () => ({ statusOptions, resolveStatus, onUpdateStatus }),
     [statusOptions, resolveStatus, onUpdateStatus],
+=======
+  // W9.9 — когда выбран один канал, прячем 4 колонки status_<channel> и
+  // показываем одну колонку «Статус» (status_channel) на месте первой из них.
+  const selectedChannel: TovarChannel | undefined = useMemo(
+    () => (channelFilter === "all" ? undefined : channelFilter),
+    [channelFilter],
+>>>>>>> de2e5df (fix(w9.9): channel switcher filters /tovary list and adapts status columns)
   )
+
+  const cellCtx: CellContext = useMemo(
+    () => ({ statusOptions, onUpdateStatus, selectedChannel }),
+    [statusOptions, onUpdateStatus, selectedChannel],
+  )
+
+  // Список ключей колонок, фактически отрисованных в таблице (учитывает фильтр канала).
+  const effectiveColumns = useMemo<string[]>(() => {
+    if (!selectedChannel) return columns
+    const result: string[] = []
+    let inserted = false
+    for (const key of columns) {
+      if ((CHANNEL_STATUS_KEYS as readonly string[]).includes(key)) {
+        if (!inserted) {
+          result.push(STATUS_CHANNEL_KEY)
+          inserted = true
+        }
+        continue
+      }
+      result.push(key)
+    }
+    // Если у пользователя были скрыты все channel-status колонки — всё равно
+    // вставим status_channel перед barkod_gs1, чтобы статус был виден.
+    if (!inserted) {
+      const anchorIdx = result.findIndex((k) => k === "barkod_gs1")
+      if (anchorIdx >= 0) result.splice(anchorIdx, 0, STATUS_CHANNEL_KEY)
+      else result.push(STATUS_CHANNEL_KEY)
+    }
+    return result
+  }, [columns, selectedChannel])
+
+  const channelLabel = (ch: TovarChannel): string =>
+    ch === "wb" ? "WB" : ch === "ozon" ? "OZON" : ch === "sayt" ? "Сайт" : "Lamoda"
+
+  const labelForColumn = useCallback((key: string): string => {
+    if (key === STATUS_CHANNEL_KEY && selectedChannel) {
+      return `Статус ${channelLabel(selectedChannel)}`
+    }
+    return TOVARY_COLUMNS.find((c) => c.key === key)?.label ?? key
+  }, [selectedChannel])
+
+  // Ширина для status_channel — берём из соответствующей канальной колонки.
+  const widthForColumn = useCallback((key: string): number => {
+    if (key === STATUS_CHANNEL_KEY && selectedChannel) {
+      const srcKey = `status_${selectedChannel}` as keyof typeof TOVARY_DEFAULT_WIDTHS
+      return colWidths[srcKey] ?? TOVARY_DEFAULT_WIDTHS[srcKey] ?? 130
+    }
+    return colWidths[key] ?? TOVARY_DEFAULT_WIDTHS[key] ?? 130
+  }, [colWidths, selectedChannel])
 
   // W7.3 — CSV-экспорт выбранных SKU.  `selected` = Set<barkod>; берём строки
   // из data (не filtered — selection переживает фильтры/группы) и проецируем
@@ -974,8 +1106,8 @@ export function TovaryPage() {
           <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
             <colgroup>
               <col style={{ width: 40 }} />
-              {columns.map((key) => (
-                <col key={key} style={{ width: `${colWidths[key] ?? TOVARY_DEFAULT_WIDTHS[key] ?? 130}px` }} />
+              {effectiveColumns.map((key) => (
+                <col key={key} style={{ width: `${widthForColumn(key)}px` }} />
               ))}
             </colgroup>
             <thead className="bg-stone-50/80 border-b border-stone-200 sticky top-0 z-10">
@@ -991,11 +1123,23 @@ export function TovaryPage() {
                     onChange={toggleAll}
                   />
                 </th>
+<<<<<<< HEAD
                 {columns.map((key, idx) => {
                   const col = TOVARY_COLUMNS.find((c) => c.key === key)
                   // W9.7 — первая (якорная) data-колонка sticky на left:40 (после checkbox).
                   const stickyCls = idx === 0 ? " cat-sticky-col cat-sticky-col-offset cat-sticky-col-head" : ""
                   const baseCls = `relative px-3 py-2.5 font-medium whitespace-nowrap${stickyCls}`
+=======
+                {effectiveColumns.map((key) => {
+                  const label = labelForColumn(key)
+                  const baseCls = "relative px-3 py-2.5 font-medium whitespace-nowrap"
+                  // status_channel — не сортируемая (синтетика). Resizer привязан
+                  // к исходной канальной колонке status_<channel>.
+                  const resizerKey =
+                    key === STATUS_CHANNEL_KEY && selectedChannel
+                      ? `status_${selectedChannel}`
+                      : key
+>>>>>>> de2e5df (fix(w9.9): channel switcher filters /tovary list and adapts status columns)
                   if (TOVARY_SORTABLE.has(key)) {
                     const sortKey = key as TovarSortKey
                     return (
@@ -1006,15 +1150,15 @@ export function TovaryPage() {
                         onClick={() => toggleSort(sortKey)}
                         className={baseCls}
                       >
-                        {col?.label}
-                        <span {...bindResizer(key)} />
+                        {label}
+                        <span {...bindResizer(resizerKey)} />
                       </SortableHeader>
                     )
                   }
                   return (
                     <th key={key} className={baseCls}>
-                      {col?.label}
-                      <span {...bindResizer(key)} />
+                      {label}
+                      <span {...bindResizer(resizerKey)} />
                     </th>
                   )
                 })}
@@ -1027,6 +1171,7 @@ export function TovaryPage() {
                 <React.Fragment key={group.key}>
                   {groupBy !== "none" && (
                     <tr className="bg-stone-50 border-b border-stone-200 sticky top-[36px] z-[1]">
+<<<<<<< HEAD
                       <td colSpan={columns.length + 1} className="px-3 py-2">
                         <button
                           type="button"
@@ -1038,6 +1183,10 @@ export function TovaryPage() {
                           {collapsed
                             ? <ChevronRight className="w-3.5 h-3.5 text-stone-500 self-center shrink-0" />
                             : <ChevronDown className="w-3.5 h-3.5 text-stone-500 self-center shrink-0" />}
+=======
+                      <td colSpan={effectiveColumns.length + 1} className="px-3 py-2">
+                        <div className="flex items-baseline gap-2">
+>>>>>>> de2e5df (fix(w9.9): channel switcher filters /tovary list and adapts status columns)
                           <h3 className="cat-font-serif italic text-base text-stone-800">
                             {group.label || "—"}
                           </h3>
@@ -1061,11 +1210,16 @@ export function TovaryPage() {
                           onChange={() => toggleRow(t.barkod)}
                         />
                       </td>
+<<<<<<< HEAD
                       {columns.map((key, idx) => (
                         <td
                           key={key}
                           className={`px-3 py-2.5 whitespace-nowrap${idx === 0 ? " cat-sticky-col cat-sticky-col-offset" : ""}`}
                         >
+=======
+                      {effectiveColumns.map((key) => (
+                        <td key={key} className="px-3 py-2.5 whitespace-nowrap">
+>>>>>>> de2e5df (fix(w9.9): channel switcher filters /tovary list and adapts status columns)
                           {renderCell(key, t, cellCtx)}
                         </td>
                       ))}
