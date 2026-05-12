@@ -3,13 +3,18 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Search, X, ChevronDown } from "lucide-react"
 import {
   fetchArtikulyRegistry, fetchStatusy, bulkUpdateArtikulStatus,
+  getUiPref, setUiPref,
   type ArtikulRow,
 } from "@/lib/catalog/service"
 import { StatusBadge } from "@/components/catalog/ui/status-badge"
 import { ColorSwatch } from "@/components/catalog/ui/color-swatch"
 import { ColumnsManager, type ColumnDef } from "@/components/catalog/ui/columns-manager"
+import { SortableHeader } from "@/components/catalog/ui/sortable-header"
+import { Pagination } from "@/components/catalog/ui/pagination"
 import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
 import { useResizableColumns } from "@/hooks/use-resizable-columns"
+import { useTableSort, type SortState } from "@/hooks/use-table-sort"
+import { usePagination } from "@/hooks/use-pagination"
 import { useSearchParams } from "react-router-dom"
 import { downloadCsv } from "@/lib/catalog/csv-export"
 
@@ -45,6 +50,30 @@ const ARTIKULY_COLUMNS: ColumnDef[] = [
 ]
 
 const DEFAULT_COLUMNS = ARTIKULY_COLUMNS.filter((c) => c.default).map((c) => c.key)
+
+// W8.1 — sort keys must match column keys above.
+type ArtikulSortKey =
+  | "artikul" | "model" | "cvet" | "status" | "wb_nom" | "ozon_art"
+  | "created" | "updated" | "kategoriya" | "kollekciya" | "fabrika"
+const ARTIKULY_SORTABLE: ReadonlySet<string> = new Set<ArtikulSortKey>([
+  "artikul", "model", "cvet", "status", "wb_nom", "ozon_art",
+  "created", "updated", "kategoriya", "kollekciya", "fabrika",
+])
+function getArtikulSortValue(a: ArtikulRow, col: ArtikulSortKey): unknown {
+  switch (col) {
+    case "artikul": return a.artikul
+    case "model": return a.model_osnova_kod ?? ""
+    case "cvet": return a.cvet_color_code ?? ""
+    case "status": return a.status_id ?? null
+    case "wb_nom": return a.nomenklatura_wb ?? null
+    case "ozon_art": return a.artikul_ozon ?? ""
+    case "created": return a.created_at ?? ""
+    case "updated": return a.updated_at ?? ""
+    case "kategoriya": return a.kategoriya ?? ""
+    case "kollekciya": return a.kollekciya ?? ""
+    case "fabrika": return a.fabrika ?? ""
+  }
+}
 
 function renderCell(key: string, a: ArtikulRow): React.ReactNode {
   switch (key) {
@@ -123,6 +152,24 @@ export function ArtikulyPage() {
     ARTIKULY_COLUMNS.map((c) => ({ id: c.key, defaultWidth: ARTIKULY_DEFAULT_WIDTHS[c.key] ?? 140 })),
   )
 
+  // W8.1 — sort + ui_preferences persist (scope: "artikuly", key: "sort").
+  const { sort, toggleSort, setSortState, sortRows } = useTableSort<ArtikulSortKey>()
+  const sortLoadedRef = useRef(false)
+  useEffect(() => {
+    if (sortLoadedRef.current) return
+    sortLoadedRef.current = true
+    getUiPref<SortState<ArtikulSortKey>>("artikuly", "sort").then((v) => {
+      if (v && v.column != null && v.direction != null) setSortState(v)
+    }).catch(() => { /* ignore */ })
+  }, [setSortState])
+  useEffect(() => {
+    if (!sortLoadedRef.current) return
+    setUiPref("artikuly", "sort", sort).catch(() => { /* non-fatal */ })
+  }, [sort])
+
+  // W8.2 — pagination.
+  const { page, setPage, pageSize, setPageSize, paginate, resetPage } = usePagination(50)
+
   // Все статусы tip='artikul' — для chips и bulk popover
   const artikulStatuses = useMemo(
     () => (statusyData ?? []).filter((s) => s.tip === "artikul"),
@@ -163,7 +210,18 @@ export function ArtikulyPage() {
     return res
   }, [data, statusFilter, search])
 
-  const visible = filtered.slice(0, 200)
+  // W8.1 — sort sits between filter and pagination.
+  const sortedFiltered = useMemo<ArtikulRow[]>(
+    () => sortRows(
+      filtered as unknown as Record<string, unknown>[],
+      (row, col) => getArtikulSortValue(row as unknown as ArtikulRow, col),
+    ) as unknown as ArtikulRow[],
+    [filtered, sortRows],
+  )
+  // Reset to page 1 when filters/sort change.
+  useEffect(() => { resetPage() }, [search, statusFilter, sort.column, sort.direction, resetPage])
+  const paginated = useMemo(() => paginate(sortedFiltered), [paginate, sortedFiltered])
+  const visible = paginated.slice
 
   const toggleRow = useCallback((artikul: string) => {
     setSelected((prev) => {
@@ -380,8 +438,24 @@ export function ArtikulyPage() {
                 </th>
                 {columns.map((key) => {
                   const col = ARTIKULY_COLUMNS.find((c) => c.key === key)
+                  const baseCls = "relative px-3 py-2.5 font-medium whitespace-nowrap"
+                  if (ARTIKULY_SORTABLE.has(key)) {
+                    const sortKey = key as ArtikulSortKey
+                    return (
+                      <SortableHeader
+                        key={key}
+                        active={sort.column === sortKey}
+                        direction={sort.column === sortKey ? sort.direction : null}
+                        onClick={() => toggleSort(sortKey)}
+                        className={baseCls}
+                      >
+                        {col?.label}
+                        <span {...bindResizer(key)} />
+                      </SortableHeader>
+                    )
+                  }
                   return (
-                    <th key={key} className="relative px-3 py-2.5 font-medium whitespace-nowrap">
+                    <th key={key} className={baseCls}>
                       {col?.label}
                       <span {...bindResizer(key)} />
                     </th>
@@ -413,11 +487,14 @@ export function ArtikulyPage() {
               ))}
             </tbody>
           </table>
-          {filtered.length > visible.length && (
-            <div className="px-3 py-2 text-xs text-stone-400 border-t border-stone-100">
-              Показаны первые {visible.length} из {filtered.length}.
-            </div>
-          )}
+          <Pagination
+            page={paginated.page}
+            totalPages={paginated.totalPages}
+            total={paginated.total}
+            pageSize={paginated.pageSize}
+            onPage={setPage}
+            onPageSize={(s) => { setPageSize(s); resetPage() }}
+          />
         </div>
       </div>
 
