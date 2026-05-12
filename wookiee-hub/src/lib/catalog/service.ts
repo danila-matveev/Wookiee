@@ -2787,3 +2787,38 @@ export function validateCatalogAsset(
   }
   return { ok: true }
 }
+
+// ─── W7.1: Audit log ──────────────────────────────────────────────────────
+
+export interface AuditEntry {
+  id: number
+  table_name: string
+  row_id: string
+  user_id: string | null
+  action: "INSERT" | "UPDATE" | "DELETE"
+  before: Record<string, unknown> | null
+  after: Record<string, unknown> | null
+  changed: Record<string, { from: unknown; to: unknown }> | null
+  created_at: string
+}
+
+/**
+ * Возвращает историю изменений конкретной строки (table_name + row_id),
+ * отсортированную по `created_at DESC`. Бэк — таблица `audit_log` + триггеры
+ * на 9 таблицах каталога (см. migration 023).
+ */
+export async function fetchAuditFor(
+  tableName: string,
+  rowId: string | number,
+  limit = 100,
+): Promise<AuditEntry[]> {
+  const { data, error } = await supabase
+    .from("audit_log")
+    .select("*")
+    .eq("table_name", tableName)
+    .eq("row_id", String(rowId))
+    .order("created_at", { ascending: false })
+    .limit(limit)
+  if (error) throw new Error(error.message)
+  return (data ?? []) as AuditEntry[]
+}
