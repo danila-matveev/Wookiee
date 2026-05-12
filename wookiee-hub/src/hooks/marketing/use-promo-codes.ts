@@ -1,5 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createPromoCode, fetchPromoCodes, fetchPromoStatsWeekly, type PromoCreate } from '@/api/marketing/promo-codes'
+import {
+  createPromoCode,
+  fetchPromoCodes,
+  fetchPromoStatsWeekly,
+  updatePromoCode,
+  type PromoCreate,
+  type UpdatePromoCodeInput,
+} from '@/api/marketing/promo-codes'
 import type { PromoCodeRow } from '@/types/marketing'
 
 export const promoCodesKeys = {
@@ -39,5 +46,15 @@ export function useCreatePromoCode() {
       if (ctx?.prev) qc.setQueryData(promoCodesKeys.list(), ctx.prev)
     },
     onSettled: () => qc.invalidateQueries({ queryKey: promoCodesKeys.list() }),
+  })
+}
+
+export function useUpdatePromoCode() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: UpdatePromoCodeInput) => updatePromoCode(input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: promoCodesKeys.list() })
+    },
   })
 }
