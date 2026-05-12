@@ -82,7 +82,7 @@ export default function DesignSystemPreview() {
   const [multi, setMulti] = useState<string[]>(["red", "blue"])
   const [textarea, setTextarea] = useState("")
   const [date, setDate] = useState<Date | null>(null)
-  const [combo, setCombo] = useState("")
+  const [combo, setCombo] = useState<string | null>(null)
   const [files, setFiles] = useState<File[] | null>(null)
 
   // Overlay state demo
@@ -213,7 +213,7 @@ export default function DesignSystemPreview() {
             <AvatarGroup
               size="md"
               max={3}
-              members={[
+              users={[
                 { name: "Даня М" },
                 { name: "Лиля П" },
                 { name: "Алина К" },
@@ -313,7 +313,7 @@ export default function DesignSystemPreview() {
               <TextField id="ds-err-inner" value="" onChange={() => null} error="Поле обязательно" />
             </FieldWrap>
           </div>
-          <FileUpload value={files} onChange={setFiles} multiple maxSize={5 * 1024 * 1024} />
+          <FileUpload id="ds-file" label="Файлы" value={files} onChange={setFiles} multiple maxSize={5 * 1024 * 1024} />
         </Section>
 
         {/* Tabs */}

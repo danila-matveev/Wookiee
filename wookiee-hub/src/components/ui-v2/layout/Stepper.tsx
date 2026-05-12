@@ -6,7 +6,9 @@ export type StepStatus = "pending" | "active" | "done"
 
 export interface Step {
   label: string
-  status: StepStatus
+  /** Per-item status. Optional — when omitted, Stepper resolves
+   *  statuses from the `current` prop on the parent. */
+  status?: StepStatus
 }
 
 export interface StepperProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -24,7 +26,7 @@ function resolveStatuses(steps: Step[], current?: number): StepStatus[] {
       i < current ? "done" : i === current ? "active" : "pending",
     )
   }
-  return steps.map((s) => s.status)
+  return steps.map((s) => s.status ?? "pending")
 }
 
 export const Stepper = React.forwardRef<HTMLDivElement, StepperProps>(

@@ -12,7 +12,7 @@ export interface FileUploadProps {
   labelAddon?: React.ReactNode
 
   value: File[] | null
-  onChange: (next: File[]) => void
+  onChange: (next: File[] | null) => void
 
   /** Comma-separated MIME types or extensions. */
   accept?: string
@@ -79,7 +79,8 @@ export function FileUpload({
   }
 
   const remove = (idx: number) => {
-    onChange(files.filter((_, i) => i !== idx))
+    const next = files.filter((_, i) => i !== idx)
+    onChange(next.length ? next : null)
   }
 
   const displayedError = error ?? localError
