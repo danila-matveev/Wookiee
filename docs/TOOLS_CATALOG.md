@@ -1,9 +1,9 @@
 # Каталог инструментов Wookiee
 
-> Автогенерировано `scripts/generate_tools_catalog.py` из Supabase `tools` — 2026-05-07 17:52 МСК.
+> Автогенерировано `scripts/generate_tools_catalog.py` из Supabase `tools` — 2026-05-12 12:49 МСК.
 > **Не редактируй вручную.** Источник истины — Supabase. Обновляй через `/tool-register`, затем перегенерируй файл.
 
-Всего инструментов: **49**. Категории: Аналитика — 16, Контент — 3, Публикация — 3, Инфраструктура — 21, Планирование — 1, Команда — 5.
+Всего инструментов: **50**. Категории: Аналитика — 17, Контент — 3, Публикация — 3, Инфраструктура — 21, Планирование — 1, Команда — 5.
 
 ## Аналитика
 
@@ -71,9 +71,9 @@
 
 ---
 
-### ✅ `wb-promocodes-sync` — WB Promocodes Sync `1.0.0`
+### ✅ `wb-promocodes-sync` — WB Promocodes Sync `2.0.0`
 
-Автоматически синхронизирует метрики WB-промокодов в базу данных каждую неделю, чтобы история накапливалась для анализа.
+Еженедельный sync аналитики промокодов WB. Cron: понедельник 12:00 МСК в контейнере wookiee_cron. Тянет reportDetailByPeriod из WB API по двум кабинетам (ИП Медведева, ООО Вуки), агрегирует по uuid_promocode, пишет одновременно в Google Sheets (таб Промокоды_аналитика в Wookiee — Аналитика поисковых запросов) и в Supabase: marketing.promo_stats_weekly (метрики недели с UPSERT по promo_code_id + week_start) и crm.promo_codes (placeholder-строка для новых UUID). Single-source-of-truth: справочник промокодов (Название/UUID/Канал/Скидка %/Статус) живёт прямо в колонках A-E основного листа — отдельного таба больше нет. Новые UUID, появившиеся в выручке WB, автоматически добавляются в конец списка со статусом «требует review» для последующего ручного именования. Статус «неактивный» исключает промо из словаря лукапа. Backfill: --mode specific --from YYYY-MM-DD --to YYYY-MM-DD.
 
 **Как работает:** 1. Еженедельно по расписанию запрашивает метрики промокодов из WB API (оба кабинета).
 2. Нормализует данные: выручка, заказы в штуках и рублях, выкупы.
@@ -86,7 +86,23 @@
 | Источники данных | — |
 | Зависимости | — |
 | Результат идёт в | — |
-| Команда запуска | `python scripts/run_wb_promocodes_sync.py` |
+| Команда запуска | `python scripts/run_wb_promocodes_sync.py [--mode last_week|specific|bootstrap] [--from YYYY-MM-DD --to YYYY-MM-DD] [--skip-db]` |
+| Запусков (всего) | 7 |
+| Последний запуск | 2026-05-12 15:37 |
+
+---
+
+### ✅ `wb-search-queries-sync` — WB Search Queries Sync `1.0.0`
+
+Еженедельный sync аналитики поисковых запросов WB. Cron: понедельник 10:00 МСК в контейнере wookiee_cron. Тянет search-report/product/search-texts из seller-analytics-api WB по двум кабинетам (ИП 30 слов/запрос, ООО 100 слов/запрос), батчами по 50 nmId с обязательной паузой 21s между запросами (rate-limit 3 req/min); на 429 — пауза 60s и abort. Список nmId берётся из таба nmIds того же spreadsheet. Пишет в Google Sheets (Wookiee — Аналитика поисковых запросов) сразу в два таба: «Аналитика по запросам» (агрегаты по словам, append новой недельной колонки 4-в-1: Частота/Переходы/Добавления/Заказы) и «Аналитика по запросам (поартикульно)» (полная перезапись каждый прогон, разрез по nmId). Backfill: позиционные аргументы DD.MM.YYYY DD.MM.YYYY. Без cron auto-mode подхватит последнюю закрытую неделю Mon-Sun.
+
+| Поле | Значение |
+|---|---|
+| Тип | Сервис |
+| Источники данных | — |
+| Зависимости | — |
+| Результат идёт в | — |
+| Команда запуска | `python scripts/run_search_queries_sync.py [DD.MM.YYYY DD.MM.YYYY]` |
 | Запусков (всего) | 0 |
 | Последний запуск | — |
 
@@ -544,8 +560,8 @@ UI/UX design intelligence. 67 styles, 96 palettes, 57 font pairings, 25 charts, 
 | Зависимости | — |
 | Результат идёт в | Supabase: public.wb_tariffs |
 | Команда запуска | `ssh timeweb 'bash /home/danila/projects/wookiee/services/logistics_audit/etl/cron_tariff_collector.sh'` |
-| Запусков (всего) | 12 |
-| Последний запуск | 2026-04-27 08:00 |
+| Запусков (всего) | 16 |
+| Последний запуск | 2026-05-12 08:00 |
 
 ---
 
@@ -677,8 +693,8 @@ Automate Electron desktop apps (VS Code, Slack, Discord, Figma, Notion, Spotify,
 | Зависимости | — |
 | Результат идёт в | — |
 | Команда запуска | `запиши расход ...` |
-| Запусков (всего) | 0 |
-| Последний запуск | — |
+| Запусков (всего) | 1 |
+| Последний запуск | 2026-05-10 14:28 |
 
 ---
 
@@ -834,8 +850,8 @@ Daily repo hygiene — push ready, delete garbage, sync skills cross-platform, s
 | Зависимости | — |
 | Результат идёт в | — |
 | Команда запуска | `/hygiene` |
-| Запусков (всего) | 13 |
-| Последний запуск | 2026-05-07 06:22 |
+| Запусков (всего) | 18 |
+| Последний запуск | 2026-05-12 06:26 |
 
 ---
 
@@ -970,52 +986,53 @@ Interact with Slack workspaces using browser automation. Use when the user needs
 | 1 | `logistics-audit` | Сервис | Аналитика | ✅ active | — | — |
 | 2 | `wb-logistics-optimizer` | Сервис | Аналитика | ✅ active | 2.0 | — |
 | 3 | `wb-promocodes-analytics` | Сервис | Аналитика | ✅ active | 1.0.0 | — |
-| 4 | `wb-promocodes-sync` | Сервис | Аналитика | ✅ active | 1.0.0 | — |
-| 5 | `/abc-audit` | Скилл | Аналитика | ✅ active | v1 | 2026-05-06 20:13 |
-| 6 | `/analytics-report` | Скилл | Аналитика | ✅ active | — | — |
-| 7 | `/coo-report` | Скилл | Аналитика | ✅ active | 1.0 | — |
-| 8 | `/daily-brief` | Скилл | Аналитика | ✅ active | v3.1 | 2026-05-06 20:13 |
-| 9 | `/finance-report` | Скилл | Аналитика | ✅ active | v4 | 2026-05-04 13:52 |
-| 10 | `/finolog-dds-report` | Скилл | Аналитика | ✅ active | v2 | — |
-| 11 | `/funnel-report` | Скилл | Аналитика | ✅ active | v3 | 2026-04-27 09:36 |
-| 12 | `/logistics-report` | Скилл | Аналитика | ✅ active | v2 | — |
-| 13 | `/market-review` | Скилл | Аналитика | ✅ active | — | 2026-05-06 16:52 |
-| 14 | `/marketing-report` | Скилл | Аналитика | ✅ active | v1 | 2026-05-04 13:52 |
-| 15 | `/product-launch-review` | Скилл | Аналитика | ✅ active | 2.0.0 | — |
-| 16 | `/reviews-audit` | Скилл | Аналитика | ✅ active | — | — |
-| 17 | `content-kb` | Сервис | Контент | ✅ active | — | — |
-| 18 | `/content-search` | Скилл | Контент | ✅ active | — | 2026-04-17 16:50 |
-| 19 | `/ui-ux-pro-max` | Скилл | Контент | ✅ active | 1.0.0 | — |
-| 20 | `observability` | Сервис | Инфраструктура | ✅ active | 1.0 | — |
-| 21 | `sheets-sync` | Сервис | Инфраструктура | ✅ active | — | — |
-| 22 | `sync-sheets-to-supabase` | Сервис | Инфраструктура | ✅ active | — | — |
-| 23 | `wb-tariffs-collector` | Сервис | Инфраструктура | ✅ active | 1.0 | 2026-04-27 08:00 |
-| 24 | `/agent-browser` | Скилл | Инфраструктура | ✅ active | 1.0.0 | — |
-| 25 | `/agentcore` | Скилл | Инфраструктура | ✅ active | 1.0.0 | — |
-| 26 | `/codex-arch-review` | Скилл | Инфраструктура | ✅ active | 1.0.0 | — |
-| 27 | `/codex-quality-gate` | Скилл | Инфраструктура | ✅ active | 1.0.0 | — |
-| 28 | `/codex-refactor` | Скилл | Инфраструктура | ✅ active | 1.0.0 | — |
-| 29 | `/dogfood` | Скилл | Инфраструктура | ✅ active | 1.0.0 | — |
-| 30 | `/electron` | Скилл | Инфраструктура | ✅ active | 1.0.0 | — |
-| 31 | `/finolog` | Скилл | Инфраструктура | ✅ active | — | — |
-| 32 | `/gws` | Скилл | Инфраструктура | ✅ active | 1.0.0 | — |
-| 33 | `/gws-drive` | Скилл | Инфраструктура | ✅ active | — | — |
-| 34 | `/gws-sheets` | Скилл | Инфраструктура | ✅ active | — | — |
-| 35 | `/hygiene-followup` | Скилл | Инфраструктура | ✅ active | 1.0.0 | — |
-| 36 | `/pullrequest` | Скилл | Инфраструктура | ✅ active | 1.0.0 | — |
-| 37 | `/tool-register` | Скилл | Инфраструктура | ✅ active | 1.0.0 | — |
-| 38 | `/tool-status` | Скилл | Инфраструктура | ✅ active | 1.0.0 | — |
-| 39 | `/vercel-sandbox` | Скилл | Инфраструктура | ✅ active | 1.0.0 | — |
-| 40 | `hygiene` | Скилл | Инфраструктура | ✅ active | 1.0.0 | 2026-05-07 06:22 |
-| 41 | `/monthly-plan` | Скилл | Планирование | ✅ active | — | — |
-| 42 | `/cloudflare-pub` | Скилл | Публикация | ✅ active | — | — |
-| 43 | `/notebooklm` | Скилл | Публикация | ⚠️ deprecated | — | — |
-| 44 | `/workflow-diagram` | Скилл | Публикация | ✅ active | — | — |
-| 45 | `/bitrix-analytics` | Скилл | Команда | ✅ active | v3 | 2026-05-04 12:25 |
-| 46 | `/bitrix-task` | Скилл | Команда | ✅ active | — | 2026-05-07 20:48 |
-| 47 | `/calendar` | Скилл | Команда | ✅ active | 1.0.0 | — |
-| 48 | `/hh-research` | Скилл | Команда | ✅ active | 1.0.0 | 2026-05-07 20:29 |
-| 49 | `/slack` | Скилл | Команда | ✅ active | 1.0.0 | — |
+| 4 | `wb-promocodes-sync` | Сервис | Аналитика | ✅ active | 2.0.0 | 2026-05-12 15:37 |
+| 5 | `wb-search-queries-sync` | Сервис | Аналитика | ✅ active | 1.0.0 | — |
+| 6 | `/abc-audit` | Скилл | Аналитика | ✅ active | v1 | 2026-05-06 20:13 |
+| 7 | `/analytics-report` | Скилл | Аналитика | ✅ active | — | — |
+| 8 | `/coo-report` | Скилл | Аналитика | ✅ active | 1.0 | — |
+| 9 | `/daily-brief` | Скилл | Аналитика | ✅ active | v3.1 | 2026-05-06 20:13 |
+| 10 | `/finance-report` | Скилл | Аналитика | ✅ active | v4 | 2026-05-04 13:52 |
+| 11 | `/finolog-dds-report` | Скилл | Аналитика | ✅ active | v2 | — |
+| 12 | `/funnel-report` | Скилл | Аналитика | ✅ active | v3 | 2026-04-27 09:36 |
+| 13 | `/logistics-report` | Скилл | Аналитика | ✅ active | v2 | — |
+| 14 | `/market-review` | Скилл | Аналитика | ✅ active | — | 2026-05-06 16:52 |
+| 15 | `/marketing-report` | Скилл | Аналитика | ✅ active | v1 | 2026-05-04 13:52 |
+| 16 | `/product-launch-review` | Скилл | Аналитика | ✅ active | 2.0.0 | — |
+| 17 | `/reviews-audit` | Скилл | Аналитика | ✅ active | — | — |
+| 18 | `content-kb` | Сервис | Контент | ✅ active | — | — |
+| 19 | `/content-search` | Скилл | Контент | ✅ active | — | 2026-04-17 16:50 |
+| 20 | `/ui-ux-pro-max` | Скилл | Контент | ✅ active | 1.0.0 | — |
+| 21 | `observability` | Сервис | Инфраструктура | ✅ active | 1.0 | — |
+| 22 | `sheets-sync` | Сервис | Инфраструктура | ✅ active | — | — |
+| 23 | `sync-sheets-to-supabase` | Сервис | Инфраструктура | ✅ active | — | — |
+| 24 | `wb-tariffs-collector` | Сервис | Инфраструктура | ✅ active | 1.0 | 2026-05-12 08:00 |
+| 25 | `/agent-browser` | Скилл | Инфраструктура | ✅ active | 1.0.0 | — |
+| 26 | `/agentcore` | Скилл | Инфраструктура | ✅ active | 1.0.0 | — |
+| 27 | `/codex-arch-review` | Скилл | Инфраструктура | ✅ active | 1.0.0 | — |
+| 28 | `/codex-quality-gate` | Скилл | Инфраструктура | ✅ active | 1.0.0 | — |
+| 29 | `/codex-refactor` | Скилл | Инфраструктура | ✅ active | 1.0.0 | — |
+| 30 | `/dogfood` | Скилл | Инфраструктура | ✅ active | 1.0.0 | — |
+| 31 | `/electron` | Скилл | Инфраструктура | ✅ active | 1.0.0 | — |
+| 32 | `/finolog` | Скилл | Инфраструктура | ✅ active | — | 2026-05-10 14:28 |
+| 33 | `/gws` | Скилл | Инфраструктура | ✅ active | 1.0.0 | — |
+| 34 | `/gws-drive` | Скилл | Инфраструктура | ✅ active | — | — |
+| 35 | `/gws-sheets` | Скилл | Инфраструктура | ✅ active | — | — |
+| 36 | `/hygiene-followup` | Скилл | Инфраструктура | ✅ active | 1.0.0 | — |
+| 37 | `/pullrequest` | Скилл | Инфраструктура | ✅ active | 1.0.0 | — |
+| 38 | `/tool-register` | Скилл | Инфраструктура | ✅ active | 1.0.0 | — |
+| 39 | `/tool-status` | Скилл | Инфраструктура | ✅ active | 1.0.0 | — |
+| 40 | `/vercel-sandbox` | Скилл | Инфраструктура | ✅ active | 1.0.0 | — |
+| 41 | `hygiene` | Скилл | Инфраструктура | ✅ active | 1.0.0 | 2026-05-12 06:26 |
+| 42 | `/monthly-plan` | Скилл | Планирование | ✅ active | — | — |
+| 43 | `/cloudflare-pub` | Скилл | Публикация | ✅ active | — | — |
+| 44 | `/notebooklm` | Скилл | Публикация | ⚠️ deprecated | — | — |
+| 45 | `/workflow-diagram` | Скилл | Публикация | ✅ active | — | — |
+| 46 | `/bitrix-analytics` | Скилл | Команда | ✅ active | v3 | 2026-05-04 12:25 |
+| 47 | `/bitrix-task` | Скилл | Команда | ✅ active | — | 2026-05-07 20:48 |
+| 48 | `/calendar` | Скилл | Команда | ✅ active | 1.0.0 | — |
+| 49 | `/hh-research` | Скилл | Команда | ✅ active | 1.0.0 | 2026-05-07 20:29 |
+| 50 | `/slack` | Скилл | Команда | ✅ active | 1.0.0 | — |
 
 
-<sub>Сгенерировано автоматически 2026-05-07 17:52 МСК. Команда: `python scripts/generate_tools_catalog.py`.</sub>
+<sub>Сгенерировано автоматически 2026-05-12 12:49 МСК. Команда: `python scripts/generate_tools_catalog.py`.</sub>
