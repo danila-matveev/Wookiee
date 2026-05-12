@@ -38,6 +38,8 @@ def _parse_args() -> argparse.Namespace:
                    help="bootstrap depth (default 12)")
     p.add_argument("--skip-db", action="store_true",
                    help="write to Google Sheets only, skip Supabase write")
+    p.add_argument("--skip-sheets", action="store_true",
+                   help="write to Supabase only, skip Google Sheets (use for long backfills)")
     return p.parse_args()
 
 
@@ -60,6 +62,7 @@ def main() -> int:
             week_to=args.date_to,
             weeks_back=args.weeks_back,
             write_to_db=not args.skip_db,
+            write_to_sheets=not args.skip_sheets,
         )
 
         print(f"status={result['status']}  added={result.get('rows_added', 0)}  "

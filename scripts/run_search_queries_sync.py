@@ -53,6 +53,8 @@ def _parse_args() -> argparse.Namespace:
                    help="bootstrap depth (default 12)")
     p.add_argument("--skip-db", action="store_true",
                    help="write to Google Sheets only, skip Supabase write")
+    p.add_argument("--skip-sheets", action="store_true",
+                   help="write to Supabase only, skip Google Sheets (use for long backfills)")
     return p.parse_args()
 
 
@@ -109,7 +111,11 @@ def main() -> int:
         # Process oldest week first so Sheets columns grow chronologically L→R.
         for mon, sun in reversed(weeks):
             logger.info("=== Week %s — %s ===", mon, sun)
-            rows = sync(_fmt(mon), _fmt(sun), write_to_db=not args.skip_db)
+            rows = sync(
+                _fmt(mon), _fmt(sun),
+                write_to_db=not args.skip_db,
+                write_to_sheets=not args.skip_sheets,
+            )
             total_sheet_rows += rows
 
         run_meta["items"] = total_sheet_rows

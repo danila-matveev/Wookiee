@@ -67,6 +67,7 @@ def sync(
     start_date: str | None = None,
     end_date: str | None = None,
     write_to_db: bool = True,
+    write_to_sheets: bool = True,
 ) -> int:
     """Run search query analytics: Sheets aggregate + Supabase (weekly + per-article).
 
@@ -74,6 +75,8 @@ def sync(
         start_date: Start date DD.MM.YYYY (if None, auto last week).
         end_date: End date DD.MM.YYYY (if None, auto last week).
         write_to_db: If False, write to Google Sheets only.
+        write_to_sheets: If False, skip Sheets writes (useful for DB-only backfills
+            on long historical periods so we don't pollute the live Sheets view).
 
     Returns total rows written to Sheets (DB rows logged separately).
     """
@@ -82,7 +85,9 @@ def sync(
     gc = get_client(GOOGLE_SA_FILE)
     spreadsheet = gc.open_by_key(get_active_spreadsheet_id())
 
-    total = _sync_search_words(spreadsheet, start_date, end_date, write_to_db)
+    total = _sync_search_words(
+        spreadsheet, start_date, end_date, write_to_db, write_to_sheets
+    )
 
     logger.info("=== sync_search_queries: done (%d sheet rows) ===", total)
     return total
@@ -98,6 +103,7 @@ def _sync_search_words(
     start_date: str | None,
     end_date: str | None,
     write_to_db: bool = True,
+    write_to_sheets: bool = True,
 ) -> int:
     """Aggregate search analytics by keyword -> 'Аналитика по запросам' + Supabase."""
     ws = get_or_create_worksheet(spreadsheet, get_sheet_name(SHEET_NAME))
@@ -191,54 +197,56 @@ def _sync_search_words(
 
         breakdown_all.extend(cabinet_breakdown)
 
-    # Preflight: check column limit
-    row1 = ws.row_values(1) if ws.row_count >= 1 else []
-    row2 = ws.row_values(2) if ws.row_count >= 2 else []
-    start_col = max(len(row1), len(row2)) + 1
-    if start_col + 3 > GS_MAX_COLS:
-        logger.error(
-            "Sheet column limit reached (start_col=%d, max=%d). Aborting.",
-            start_col,
-            GS_MAX_COLS,
+    sheet_rows_written = 0
+    if write_to_sheets:
+        # Preflight: check column limit
+        row1 = ws.row_values(1) if ws.row_count >= 1 else []
+        row2 = ws.row_values(2) if ws.row_count >= 2 else []
+        start_col = max(len(row1), len(row2)) + 1
+        if start_col + 3 > GS_MAX_COLS:
+            logger.error(
+                "Sheet column limit reached (start_col=%d, max=%d). Aborting.",
+                start_col, GS_MAX_COLS,
+            )
+            return 0
+
+        # Write headers at row 1
+        headers = [["Частота", "Переходы", "Добавления", "Заказы"]]
+        write_range(ws, start_row=1, start_col=start_col, data=headers)
+
+        # Write dates at row 2
+        dates_row = [[display_start, display_end, "", ""]]
+        write_range(ws, start_row=2, start_col=start_col, data=dates_row)
+
+        # Write data starting at row 3
+        last_data_row = max(row_map.values()) if row_map else 2
+        data_rows: list[list] = []
+        for row_num in range(3, last_data_row + 1):
+            found = False
+            for word, r in row_map.items():
+                if r == row_num:
+                    d = combined.get(word, {})
+                    data_rows.append([
+                        d.get("frequency", 0),
+                        d.get("openCard", 0),
+                        d.get("addToCart", 0),
+                        d.get("orders", 0),
+                    ])
+                    found = True
+                    break
+            if not found:
+                data_rows.append(["", "", "", ""])
+
+        if data_rows:
+            write_range(ws, start_row=3, start_col=start_col, data=data_rows)
+
+        logger.info(
+            "Search words: wrote %d rows in columns %d-%d",
+            len(data_rows), start_col, start_col + 3,
         )
-        return 0
-
-    # Write headers at row 1
-    headers = [["Частота", "Переходы", "Добавления", "Заказы"]]
-    write_range(ws, start_row=1, start_col=start_col, data=headers)
-
-    # Write dates at row 2
-    dates_row = [[display_start, display_end, "", ""]]
-    write_range(ws, start_row=2, start_col=start_col, data=dates_row)
-
-    # Write data starting at row 3
-    last_data_row = max(row_map.values()) if row_map else 2
-    data_rows: list[list] = []
-    for row_num in range(3, last_data_row + 1):
-        found = False
-        for word, r in row_map.items():
-            if r == row_num:
-                d = combined.get(word, {})
-                data_rows.append([
-                    d.get("frequency", 0),
-                    d.get("openCard", 0),
-                    d.get("addToCart", 0),
-                    d.get("orders", 0),
-                ])
-                found = True
-                break
-        if not found:
-            data_rows.append(["", "", "", ""])
-
-    if data_rows:
-        write_range(ws, start_row=3, start_col=start_col, data=data_rows)
-
-    logger.info(
-        "Search words: wrote %d rows in columns %d-%d",
-        len(data_rows),
-        start_col,
-        start_col + 3,
-    )
+        sheet_rows_written = len(data_rows)
+    else:
+        logger.info("Search words: Sheets write skipped (write_to_sheets=False)")
 
     # DB persistence — single source of truth for history & UI drill-down.
     if write_to_db:
@@ -253,7 +261,7 @@ def _sync_search_words(
         except (ValueError, KeyError) as e:
             logger.exception("DB write failed for week starting %s: %s", api_start, e)
 
-    return len(data_rows)
+    return sheet_rows_written
 
 
 # ============================================================================
@@ -469,7 +477,17 @@ def _fetch_search_data(
             )
             return None
 
-        data = resp.json()
+        # WB sometimes returns malformed UTF-8 in response body — retry on this.
+        try:
+            data = resp.json()
+        except (UnicodeDecodeError, ValueError) as e:
+            logger.warning(
+                "[%s] Malformed response (attempt %d): %s — retrying after pause",
+                cabinet_name, attempt + 1, type(e).__name__,
+            )
+            time.sleep(RATE_LIMIT_PAUSE)
+            continue
+
         items = data.get("data", {}).get("items", [])
         if not items:
             logger.info("[%s] No search items returned", cabinet_name)

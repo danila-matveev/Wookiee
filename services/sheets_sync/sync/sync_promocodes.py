@@ -120,11 +120,17 @@ def run(
     weeks_back: int = 12,
     cabinets: list[tuple[str, str]] | None = None,
     write_to_db: bool = True,
+    write_to_sheets: bool = True,
 ) -> dict:
     """Main entry point. Returns status dict.
 
     Each side-effecting helper is referenced by its module-level name so tests
     can substitute them with `unittest.mock.patch` against this module.
+
+    write_to_sheets=False is used for long historical backfills so we don't
+    pollute the live pivot with many weeks of legacy data. Dictionary lookups
+    still happen — only the per-week pivot UPSERT and dashboard header are
+    skipped.
     """
     started = get_moscow_now()
     cabs = cabinets or _cabinets_from_env()
@@ -134,8 +140,11 @@ def run(
 
     weeks = _resolve_weeks(mode, week_from, week_to, weeks_back)
     dictionary = read_dictionary_sheet()
-    ws = ensure_analytics_sheet()
-    week_col_map, uuid_row_map = _read_pivot_state(ws)
+    ws = ensure_analytics_sheet() if write_to_sheets else None
+    if write_to_sheets:
+        week_col_map, uuid_row_map = _read_pivot_state(ws)
+    else:
+        week_col_map, uuid_row_map = {}, {}
 
     # Dictionary IS the main sheet (single source of truth) — no pre-population.
     # Unknown UUIDs from WB are auto-appended by upsert_pivot with status="требует review".
@@ -182,10 +191,11 @@ def run(
                         last_week_aggs[uuid]["sales_rub"] += m["sales_rub"]
                         last_week_aggs[uuid]["orders_count"] += m["orders_count"]
 
-        a, u = upsert_pivot(ws, week_start, week_end, week_data,
-                            week_col_map, uuid_row_map)
-        rows_added += a
-        rows_updated += u
+        if write_to_sheets:
+            a, u = upsert_pivot(ws, week_start, week_end, week_data,
+                                week_col_map, uuid_row_map)
+            rows_added += a
+            rows_updated += u
 
         if write_to_db and week_data:
             merged = _merge_for_db(week_data)
@@ -198,8 +208,9 @@ def run(
                 written, pb_written, week_start,
             )
 
-    summary = compute_dashboard_summary(last_week_aggs, dictionary)
-    write_dashboard_header(ws, summary, weeks)
+    if write_to_sheets:
+        summary = compute_dashboard_summary(last_week_aggs, dictionary)
+        write_dashboard_header(ws, summary, weeks)
 
     finished = get_moscow_now()
     return {
