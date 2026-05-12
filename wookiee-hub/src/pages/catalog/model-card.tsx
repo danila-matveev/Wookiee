@@ -277,6 +277,55 @@ function Section({ label, hint, children, action }: {
   )
 }
 
+/**
+ * Numeric input that reads/writes a string value (DB column is text but the
+ * field is conceptually numeric, e.g. `srok_proizvodstva` — text in БД,
+ * "дни" по смыслу). Visual parity with `NumberField` — same suffix slot, same
+ * styling. Browser blocks non-numeric input via `type="number"`.
+ */
+function NumericStringField({
+  label, value, onChange, suffix, readonly, level,
+  min = 0, step = "any",
+}: {
+  label: string
+  value?: string | null
+  onChange?: (v: string) => void
+  suffix?: string
+  readonly?: boolean
+  level?: FieldLevelKind
+  min?: number | string
+  step?: number | string
+}) {
+  return (
+    <FieldWrap label={label} level={level}>
+      {readonly ? (
+        <div className="px-2.5 py-1.5 text-sm text-stone-900 tabular-nums">
+          {value ? (
+            <>{value}{suffix && <span className="text-stone-400 ml-1">{suffix}</span>}</>
+          ) : (
+            <span className="text-stone-400 italic">не задано</span>
+          )}
+        </div>
+      ) : (
+        <div className="relative">
+          <input
+            type="number"
+            inputMode="numeric"
+            min={min}
+            step={step}
+            value={value ?? ""}
+            onChange={(e) => onChange?.(e.target.value)}
+            className="w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md bg-white outline-none focus:border-stone-900 focus:ring-1 focus:ring-stone-900 tabular-nums pr-10"
+          />
+          {suffix && (
+            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-stone-400">{suffix}</span>
+          )}
+        </div>
+      )}
+    </FieldWrap>
+  )
+}
+
 function SidebarBlock({ title, subtitle, badge, action, children }: {
   title: string
   subtitle?: string
@@ -506,10 +555,13 @@ function TabDescription({
             level={lvl("composition")}
             full
           />
-          <TextField
+          <NumericStringField
             label="Срок производства"
             value={view.srok_proizvodstva ?? ""}
             onChange={(v) => set("srok_proizvodstva", v)}
+            suffix="дни"
+            min={0}
+            step={1}
             readonly={!editing}
             level={lvl("srok_proizvodstva")}
           />
@@ -517,6 +569,9 @@ function TabDescription({
             label="Кратность короба"
             value={view.kratnost_koroba ?? null}
             onChange={(v) => set("kratnost_koroba", v)}
+            suffix="шт"
+            min={0}
+            step={1}
             readonly={!editing}
             level={lvl("kratnost_koroba")}
           />
@@ -525,6 +580,8 @@ function TabDescription({
             value={view.ves_kg ?? null}
             onChange={(v) => set("ves_kg", v)}
             suffix="кг"
+            min={0}
+            step={0.01}
             readonly={!editing}
             level={lvl("ves_kg")}
           />
@@ -533,6 +590,8 @@ function TabDescription({
             value={view.dlina_cm ?? null}
             onChange={(v) => set("dlina_cm", v)}
             suffix="см"
+            min={0}
+            step={0.01}
             readonly={!editing}
             level={lvl("dlina_cm")}
           />
@@ -541,6 +600,8 @@ function TabDescription({
             value={view.shirina_cm ?? null}
             onChange={(v) => set("shirina_cm", v)}
             suffix="см"
+            min={0}
+            step={0.01}
             readonly={!editing}
             level={lvl("shirina_cm")}
           />
@@ -549,6 +610,8 @@ function TabDescription({
             value={view.vysota_cm ?? null}
             onChange={(v) => set("vysota_cm", v)}
             suffix="см"
+            min={0}
+            step={0.01}
             readonly={!editing}
             level={lvl("vysota_cm")}
           />
