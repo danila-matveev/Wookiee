@@ -18,6 +18,7 @@ import { TOVARY_COLUMNS_FULL } from "@/lib/catalog/column-catalogs"
 import { BulkActionsBar } from "@/components/catalog/ui/bulk-actions-bar"
 import { SortableHeader } from "@/components/catalog/ui/sortable-header"
 import { Pagination } from "@/components/catalog/ui/pagination"
+import { EmptyState } from "@/components/catalog/ui/empty-state"
 import { FilterBar } from "@/components/catalog/ui/filter-bar"
 import { CellText } from "@/components/catalog/ui/cell-text"
 import { InlineTextCell } from "@/components/catalog/ui/inline-text-cell"
@@ -628,9 +629,12 @@ function LinkSkleykaModal({ channel, onClose, onLink }: LinkSkleykaModalProps) {
             <div className="px-5 py-6 text-sm text-stone-400">Загрузка склеек…</div>
           )}
           {!isLoading && filtered.length === 0 && (
-            <div className="px-5 py-6 text-sm text-stone-400 italic">
-              {search ? "Ничего не найдено" : "Склеек пока нет"}
-            </div>
+            <EmptyState
+              title={search ? "Ничего не найдено" : "Склеек пока нет"}
+              description={search ? "Попробуйте другой запрос или сбросьте поиск." : "Создайте первую склейку чтобы связать SKU между WB и Ozon."}
+              secondaryCta={search ? { label: "Сбросить поиск", onClick: () => setSearch("") } : undefined}
+              className="px-0"
+            />
           )}
           {filtered.map((s) => (
             <button

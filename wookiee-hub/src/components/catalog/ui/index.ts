@@ -7,6 +7,10 @@ export type { TooltipPosition } from "./tooltip"
 // W9.15 — ellipsis + tooltip-on-overflow для текстовых ячеек таблиц каталога.
 export { CellText } from "./cell-text"
 
+// W9.19 — единый плейсхолдер для пустых состояний каталога (списки/таблицы/вкладки).
+export { EmptyState } from "./empty-state"
+export type { EmptyStateProps, EmptyStateAction } from "./empty-state"
+
 export { LevelBadge } from "./level-badge"
 export type { Level } from "./level-badge"
 

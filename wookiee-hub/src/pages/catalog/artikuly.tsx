@@ -13,6 +13,7 @@ import { ColorSwatch } from "@/components/catalog/ui/color-swatch"
 import { ColumnsManager } from "@/components/catalog/ui/columns-manager"
 import { SortableHeader } from "@/components/catalog/ui/sortable-header"
 import { Pagination } from "@/components/catalog/ui/pagination"
+import { EmptyState } from "@/components/catalog/ui/empty-state"
 import { RefModal } from "@/components/catalog/ui/ref-modal"
 import { CellText } from "@/components/catalog/ui/cell-text"
 import { FilterBar } from "@/components/catalog/ui/filter-bar"
@@ -393,8 +394,12 @@ function ArtikulDrillDown({ row, statusyData, onClose }: ArtikulDrillDownProps) 
                     )}
                     {!tovaryQ.isLoading && tovary.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="px-3 py-8 text-center text-sm text-stone-400 italic">
-                          Нет SKU для этого артикула
+                        <td colSpan={6} className="px-0 py-0">
+                          <EmptyState
+                            title="Нет SKU для этого артикула"
+                            description="SKU создаются автоматически по размерному ряду модели."
+                            className="py-10"
+                          />
                         </td>
                       </tr>
                     )}
