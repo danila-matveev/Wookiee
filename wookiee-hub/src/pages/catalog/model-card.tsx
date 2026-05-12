@@ -14,6 +14,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react"
@@ -29,6 +30,7 @@ import {
   HelpCircle,
   Info,
   Link2,
+  Loader2,
   Plus,
   Save,
   Trash2,
@@ -44,11 +46,16 @@ import {
 } from "@/types/catalog"
 import {
   archiveModel,
+  bulkAddSizeToArtikuly,
+  bulkCreateArtikuly,
+  bulkUpdateTovaryStatus,
   duplicateModel,
   fetchAllTags,
   fetchAttributesForCategory,
   fetchBrendy,
+  fetchCvetaWithUsage,
   fetchFabriki,
+  fetchImportery,
   fetchKategorii,
   fetchKollekcii,
   fetchModelDetail,
@@ -59,11 +66,16 @@ import {
   fetchStatusy,
   fetchTipyKollekciy,
   fetchUpakovki,
+  insertTovar,
+  insertVariation,
   updateModel,
+  type CvetRow,
   type ModelDetail,
   type ModelOsnovaPayload,
+  type ModelVariation,
   type Razmer,
   type Sertifikat,
+  type TovarChannel,
   type Upakovka,
 } from "@/lib/catalog/service"
 import {
@@ -917,6 +929,8 @@ function TabArticles({ m, hexByCvet, openColor }: TabContentProps) {
   const allArts = m.modeli.flatMap((v) =>
     v.artikuly.map((a) => ({ ...a, variantKod: v.kod, importerName: v.importer_nazvanie })),
   )
+  const [addOpen, setAddOpen] = useState(false)
+  const hasVariations = m.modeli.length > 0
   return (
     <div className="bg-white rounded-lg border border-stone-200 overflow-hidden">
       <div className="px-5 py-3 border-b border-stone-200 flex items-center justify-between">
@@ -928,13 +942,21 @@ function TabArticles({ m, hexByCvet, openColor }: TabContentProps) {
         </div>
         <button
           type="button"
-          className="px-2.5 py-1 text-xs text-white bg-stone-900 rounded-md flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-          disabled
-          title="Wave 3+ (Add артикула)"
+          onClick={() => setAddOpen(true)}
+          disabled={!hasVariations}
+          title={hasVariations ? "Создать артикулы" : "Сначала создайте вариацию модели"}
+          className="px-2.5 py-1 text-xs text-white bg-stone-900 rounded-md flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-stone-800"
         >
           <Plus className="w-3 h-3" /> Добавить
         </button>
       </div>
+      {addOpen && (
+        <AddArtikulModal
+          modelKod={m.kod}
+          variations={m.modeli}
+          onClose={() => setAddOpen(false)}
+        />
+      )}
       <table className="w-full text-sm">
         <thead className="bg-stone-50/80 border-b border-stone-200">
           <tr className="text-left text-[11px] uppercase tracking-wider text-stone-500">
@@ -1000,9 +1022,418 @@ function TabArticles({ m, hexByCvet, openColor }: TabContentProps) {
   )
 }
 
+// ─── Add-artikul modal (W4.3) ──────────────────────────────────────────────
+//
+// Палитра цветов + чекбоксы. По умолчанию выбраны все цвета модели, которые
+// ещё НЕ привязаны к выбранной вариации (исключение дублей). Кнопка «Создать»
+// делает bulk-create через `bulkCreateArtikuly`.
+//
+// artikul генерируется автоматически как `${modeli.kod}/${cveta.color_code}`
+// — это поведение сервиса, не UI. См. `insertArtikul` в service.ts.
+function AddArtikulModal({
+  modelKod,
+  variations,
+  onClose,
+}: {
+  modelKod: string
+  variations: ModelVariation[]
+  onClose: () => void
+}) {
+  const queryClient = useQueryClient()
+
+  // Default — first variation. Если их больше одной, юзер может переключиться.
+  const [variationId, setVariationId] = useState<number>(variations[0]?.id ?? 0)
+  const [selectedCvety, setSelectedCvety] = useState<Set<number>>(new Set())
+  const [error, setError] = useState<string | null>(null)
+
+  const cvetaQ = useQuery({
+    queryKey: ["catalog", "cveta-with-usage"],
+    queryFn: fetchCvetaWithUsage,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  // Already-attached cveta ids — для исключения из выбора (нельзя создать
+  // дубликат `${kod}/${color_code}` — артикул должен быть уникальным).
+  const attachedCvetIds = useMemo(() => {
+    const v = variations.find((x) => x.id === variationId)
+    if (!v) return new Set<number>()
+    return new Set(v.artikuly.map((a) => a.cvet_id).filter((id): id is number => id != null))
+  }, [variationId, variations])
+
+  // Available colours — exclude already attached.
+  const availableCveta: CvetRow[] = useMemo(() => {
+    const rows = cvetaQ.data ?? []
+    return rows.filter((c) => !attachedCvetIds.has(c.id))
+  }, [cvetaQ.data, attachedCvetIds])
+
+  // Reset selection when variation changes (different attached set).
+  useEffect(() => {
+    setSelectedCvety(new Set())
+    setError(null)
+  }, [variationId])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose()
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [onClose])
+
+  const createMut = useMutation({
+    mutationFn: (cvetIds: number[]) => bulkCreateArtikuly(variationId, cvetIds),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["catalog", "model", modelKod] })
+      queryClient.invalidateQueries({ queryKey: ["catalog", "matrix-list"] })
+      queryClient.invalidateQueries({ queryKey: ["matrix-list"] })
+      queryClient.invalidateQueries({ queryKey: ["catalog", "cveta-with-usage"] })
+      onClose()
+    },
+    onError: (e: unknown) => {
+      setError(e instanceof Error ? e.message : String(e))
+    },
+  })
+
+  const toggle = (id: number) => {
+    setSelectedCvety((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const selectAll = () => setSelectedCvety(new Set(availableCveta.map((c) => c.id)))
+  const clearAll = () => setSelectedCvety(new Set())
+
+  const selectedVariation = variations.find((v) => v.id === variationId)
+  const selectedCount = selectedCvety.size
+  const canSubmit = selectedCount > 0 && variationId > 0 && !createMut.isPending
+
+  const handleSubmit = () => {
+    if (!canSubmit) return
+    createMut.mutate(Array.from(selectedCvety))
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-stone-900/40 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-2xl bg-white rounded-xl shadow-2xl overflow-hidden border border-stone-200 flex flex-col max-h-[85vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-3 border-b border-stone-200 shrink-0">
+          <h2
+            className="cat-font-serif text-xl text-stone-900 italic"
+            style={{ fontFamily: "'Instrument Serif', ui-serif, Georgia, serif" }}
+          >
+            Создать артикулы
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 hover:bg-stone-100 rounded"
+            aria-label="Close"
+          >
+            <X className="w-4 h-4 text-stone-500" />
+          </button>
+        </div>
+
+        <div className="px-5 py-4 space-y-4 overflow-y-auto">
+          {/* Variation picker (only if >1) */}
+          {variations.length > 1 && (
+            <div>
+              <label className="block text-[11px] uppercase tracking-wider text-stone-500 mb-1">
+                Вариация
+              </label>
+              <select
+                value={variationId}
+                onChange={(e) => setVariationId(Number(e.target.value))}
+                className="w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md bg-white outline-none focus:border-stone-900 focus:ring-1 focus:ring-stone-900"
+              >
+                {variations.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.kod}{v.importer_nazvanie ? ` · ${v.importer_nazvanie}` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {variations.length === 1 && selectedVariation && (
+            <div className="text-xs text-stone-500">
+              Вариация: <span className="font-mono text-stone-700">{selectedVariation.kod}</span>
+              {selectedVariation.importer_nazvanie ? ` · ${selectedVariation.importer_nazvanie}` : ""}
+            </div>
+          )}
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-[11px] uppercase tracking-wider text-stone-500">
+                Палитра цветов
+              </label>
+              <div className="flex items-center gap-2 text-xs">
+                <button
+                  type="button"
+                  onClick={selectAll}
+                  disabled={availableCveta.length === 0}
+                  className="text-stone-600 hover:text-stone-900 underline underline-offset-2 disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed"
+                >
+                  Выбрать все
+                </button>
+                <span className="text-stone-300">·</span>
+                <button
+                  type="button"
+                  onClick={clearAll}
+                  disabled={selectedCount === 0}
+                  className="text-stone-600 hover:text-stone-900 underline underline-offset-2 disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed"
+                >
+                  Очистить
+                </button>
+              </div>
+            </div>
+
+            {cvetaQ.isLoading ? (
+              <div className="text-sm text-stone-400 italic py-6 text-center">Загрузка цветов…</div>
+            ) : availableCveta.length === 0 ? (
+              <div className="text-sm text-stone-400 italic py-6 text-center">
+                Все доступные цвета уже привязаны к этой вариации
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-1.5 max-h-[40vh] overflow-y-auto pr-1">
+                {availableCveta.map((c) => {
+                  const checked = selectedCvety.has(c.id)
+                  const hex = c.hex ?? swatchColor(c.color_code)
+                  const previewArtikul = `${selectedVariation?.kod ?? modelKod}/${c.color_code}`
+                  return (
+                    <label
+                      key={c.id}
+                      className={`flex items-center gap-2 px-2 py-1.5 rounded-md border cursor-pointer text-sm transition-colors ${
+                        checked
+                          ? "border-stone-900 bg-stone-50"
+                          : "border-stone-200 hover:border-stone-400"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggle(c.id)}
+                        className="shrink-0 accent-stone-900"
+                      />
+                      <span
+                        className="inline-block w-4 h-4 rounded ring-1 ring-stone-200 shrink-0"
+                        style={{ background: hex }}
+                      />
+                      <span className="font-mono text-xs text-stone-700 shrink-0">{c.color_code}</span>
+                      {c.cvet && (
+                        <span className="text-stone-500 text-xs truncate">{c.cvet}</span>
+                      )}
+                      <span className="ml-auto font-mono text-[10px] text-stone-400 truncate shrink-0 pl-1">
+                        {previewArtikul}
+                      </span>
+                    </label>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {error && (
+            <div className="px-3 py-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded">
+              {error}
+            </div>
+          )}
+        </div>
+
+        <div className="px-5 py-3 border-t border-stone-200 flex items-center justify-between shrink-0 bg-stone-50/50">
+          <div className="text-xs text-stone-500">
+            Выбрано: <span className="font-medium text-stone-700">{selectedCount}</span>
+            {selectedCount > 0 && (
+              <span className="ml-2">
+                · Артикулы будут созданы со статусом «Запуск»
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3 py-1.5 text-sm text-stone-700 hover:bg-stone-100 rounded-md"
+            >
+              Отмена
+            </button>
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={!canSubmit}
+              className="px-3 py-1.5 text-sm text-white bg-stone-900 hover:bg-stone-800 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {createMut.isPending
+                ? "Создаём…"
+                : selectedCount > 1
+                  ? `Создать ${selectedCount}`
+                  : "Создать"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Tab 4: SKU ────────────────────────────────────────────────────────────
 
+// W4.5 — inline-edit статусов SKU.
+// Дизайн-выборы (см. PLAN.md row W4.5):
+//   * popover — не зависим от @base-ui/@radix: ручная absolute-разметка с
+//     click-outside listener (как в `pages/catalog/tovary.tsx::InlineStatusCell`
+//     и `matrix.tsx::BulkBar`). Лёгкая, без новых импортов.
+//   * options — все `statusy` где `tip='product'` (одинаковый набор для всех
+//     четырёх каналов wb/ozon/sayt/lamoda). Это согласовано в PLAN W4.5
+//     ("dropdown статусов (только tip='product')"). Канал-специфичные
+//     tip-ы ('sayt'/'lamoda') здесь намеренно не используются — спецификация
+//     просит единый набор product-статусов для inline-edit.
+//   * clear (NULL) — отдельный пункт «—» в начале списка; сетит поле в NULL
+//     через `bulkUpdateTovaryStatus(..., null, channel)`.
+//   * Стратегия обновления: pessimistic — ждём ответ Supabase, затем
+//     invalidate `["catalog", "model", kod]`. Без оптимистики:
+//       (a) `kod` не доступен внутри TabSKU без прокидывания пропса;
+//       (b) network к Supabase локальный, latency низкий — UX страдает мало.
+//     Если задержка станет заметной — добавим `onMutate` с
+//     `queryClient.setQueryData` поверх `ModelDetail`.
+
+interface StatusOption {
+  id: number
+  nazvanie: string
+  color: string | null
+}
+
+interface InlineStatusCellProps {
+  currentStatusId: number | null
+  channel: TovarChannel
+  options: StatusOption[]
+  onChange: (statusId: number | null) => Promise<void>
+}
+
+function InlineStatusCell({
+  currentStatusId, channel, options, onChange,
+}: InlineStatusCellProps) {
+  const [open, setOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener("mousedown", onDoc)
+    return () => document.removeEventListener("mousedown", onDoc)
+  }, [open])
+
+  const onSelect = useCallback(async (id: number | null) => {
+    if (saving) return
+    setSaving(true)
+    try {
+      await onChange(id)
+      setOpen(false)
+    } catch (err) {
+      // eslint-disable-next-line no-alert
+      alert(`Не удалось обновить статус: ${(err as Error).message}`)
+    } finally {
+      setSaving(false)
+    }
+  }, [onChange, saving])
+
+  const current = currentStatusId != null
+    ? options.find((s) => s.id === currentStatusId) ?? null
+    : null
+
+  return (
+    <div className="relative inline-block" ref={ref} onClick={(e) => e.stopPropagation()}>
+      <button
+        type="button"
+        onClick={() => setOpen((p) => !p)}
+        className="hover:ring-1 hover:ring-stone-400 rounded-md transition-all"
+        title={`Статус ${channel.toUpperCase()} — кликните чтобы изменить`}
+      >
+        {current
+          ? <StatusBadge status={{ nazvanie: current.nazvanie, color: current.color ?? "gray" }} compact />
+          : <span className="text-[11px] text-stone-400 italic px-1.5 py-px">—</span>}
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 w-56 bg-white border border-stone-200 rounded-lg shadow-lg z-30">
+          <div className="p-2 border-b border-stone-100 flex items-center justify-between">
+            <div className="text-[10px] uppercase tracking-wider text-stone-400">
+              Канал {channel.toUpperCase()}
+            </div>
+            {saving && <Loader2 className="w-3 h-3 text-stone-400 animate-spin" />}
+          </div>
+          <div className="p-1 max-h-72 overflow-y-auto">
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => onSelect(null)}
+              className="w-full flex items-center gap-2 px-2 py-1.5 hover:bg-stone-50 rounded text-left text-[11px] text-stone-500 italic disabled:opacity-50"
+            >
+              — (без статуса)
+              {currentStatusId == null && (
+                <span className="ml-auto text-[10px] text-emerald-600 not-italic">текущий</span>
+              )}
+            </button>
+            {options.length === 0 && (
+              <div className="px-2 py-3 text-xs text-stone-400 italic">Нет статусов</div>
+            )}
+            {options.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                disabled={saving}
+                onClick={() => onSelect(s.id)}
+                className="w-full flex items-center gap-2 px-2 py-1.5 hover:bg-stone-50 rounded text-left disabled:opacity-50"
+              >
+                <StatusBadge status={{ nazvanie: s.nazvanie, color: s.color ?? "gray" }} compact />
+                {s.id === currentStatusId && (
+                  <span className="ml-auto text-[10px] text-emerald-600">текущий</span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function TabSKU({ m, hexByCvet }: TabContentProps) {
+  const queryClient = useQueryClient()
+  const [addSkuOpen, setAddSkuOpen] = useState(false)
+  const [bulkAddOpen, setBulkAddOpen] = useState(false)
+
+  // Список всех артикулов модели (для select-полей в модалках)
+  const allArtikuly = useMemo(
+    () =>
+      m.modeli.flatMap((v) =>
+        v.artikuly.map((a) => ({
+          id: a.id,
+          artikul: a.artikul,
+          cvet_color_code: a.cvet_color_code,
+          variantKod: v.kod,
+        })),
+      ),
+    [m],
+  )
+
+  // Все размеры (общий справочник)
+  const razmeryQ = useQuery({
+    queryKey: ["catalog", "razmery"],
+    queryFn: fetchRazmery,
+    staleTime: 5 * 60 * 1000,
+  })
+  const razmery: Razmer[] = razmeryQ.data ?? []
+
   const allSku = m.modeli.flatMap((v) =>
     v.artikuly.flatMap((a) =>
       a.tovary.map((t) => ({
@@ -1014,12 +1445,116 @@ function TabSKU({ m, hexByCvet }: TabContentProps) {
     ),
   )
 
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["catalog", "model", m.kod] })
+    queryClient.invalidateQueries({ queryKey: ["catalog", "matrix-list"] })
+    queryClient.invalidateQueries({ queryKey: ["matrix-list"] })
+  }
+
+  const insertMut = useMutation({
+    mutationFn: ({ artikulId, razmerId }: { artikulId: number; razmerId: number }) =>
+      insertTovar(artikulId, razmerId),
+    onSuccess: () => {
+      setAddSkuOpen(false)
+      invalidate()
+    },
+  })
+
+  const bulkAddMut = useMutation({
+    mutationFn: ({ artikulIds, razmerId }: { artikulIds: number[]; razmerId: number }) =>
+      bulkAddSizeToArtikuly(artikulIds, razmerId),
+    onSuccess: () => {
+      setBulkAddOpen(false)
+      invalidate()
+    },
+  })
+
+  const canAdd = allArtikuly.length > 0 && razmery.length > 0
+
+  // Опции артикулов/размеров для select-полей
+  const artikulOptions = allArtikuly.map((a) => ({
+    value: a.id,
+    label: `${a.artikul}${a.cvet_color_code ? " · " + a.cvet_color_code : ""}`,
+  }))
+  const razmerOptions = razmery.map((r) => ({
+    value: r.id,
+    label: r.nazvanie ?? `#${r.id}`,
+  }))
+
+  const statusyQ = useQuery({
+    queryKey: ["catalog", "statusy"],
+    queryFn: fetchStatusy,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  // W4.5 — единый набор product-статусов для всех 4 каналов (см. шапку файла).
+  const productStatusOptions: StatusOption[] = useMemo(
+    () => (statusyQ.data ?? [])
+      .filter((s) => s.tip === "product")
+      .map((s) => ({ id: s.id, nazvanie: s.nazvanie, color: s.color })),
+    [statusyQ.data],
+  )
+
+  const updateStatusMut = useMutation({
+    mutationFn: async ({ barkod, statusId, channel }: {
+      barkod: string; statusId: number | null; channel: TovarChannel
+    }) => {
+      await bulkUpdateTovaryStatus([barkod], statusId, channel)
+    },
+    onSuccess: () => {
+      // Перечитываем модель — карточка пересоберёт TabSKU с новыми статусами.
+      void queryClient.invalidateQueries({
+        queryKey: ["catalog", "model"],
+        exact: false,
+      })
+    },
+  })
+
+  const onChangeStatus = useCallback(
+    (barkod: string, channel: TovarChannel) =>
+      async (statusId: number | null) => {
+        await updateStatusMut.mutateAsync({ barkod, statusId, channel })
+      },
+    [updateStatusMut],
+  )
+
   return (
+    <>
     <div className="bg-white rounded-lg border border-stone-200 overflow-hidden">
-      <div className="px-5 py-3 border-b border-stone-200">
-        <div className="font-medium text-stone-900">SKU модели</div>
-        <div className="text-xs text-stone-500">
-          {allSku.length} SKU · inline-edit статусов — Wave 3+ (TODO)
+      <div className="px-5 py-3 border-b border-stone-200 flex items-center justify-between gap-3">
+        <div>
+          <div className="font-medium text-stone-900">SKU модели</div>
+          <div className="text-xs text-stone-500">
+            {allSku.length} SKU · клик по статусу — изменить
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            className="px-2.5 py-1 text-xs text-stone-700 bg-white border border-stone-200 rounded-md flex items-center gap-1.5 hover:bg-stone-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={!canAdd}
+            onClick={() => setBulkAddOpen(true)}
+            title={
+              canAdd
+                ? "Добавить один размер сразу всем артикулам модели"
+                : "Сначала создайте артикулы и убедитесь, что справочник размеров загружен"
+            }
+          >
+            <Plus className="w-3 h-3" /> Размер ко всем артикулам
+          </button>
+          <button
+            type="button"
+            className="px-2.5 py-1 text-xs text-white bg-stone-900 rounded-md flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={!canAdd}
+            onClick={() => setAddSkuOpen(true)}
+            title={
+              canAdd
+                ? "Создать новый SKU (артикул + размер)"
+                : "Сначала создайте артикулы и убедитесь, что справочник размеров загружен"
+            }
+          >
+            <Plus className="w-3 h-3" /> SKU
+          </button>
         </div>
       </div>
       <div className="overflow-x-auto">
@@ -1055,11 +1590,37 @@ function TabSKU({ m, hexByCvet }: TabContentProps) {
                   </td>
                   <td className="px-3 py-2 font-mono text-xs">{t.razmer_nazvanie ?? "—"}</td>
                   <td className="px-3 py-2 border-l border-stone-100">
-                    <StatusBadge statusId={t.status_id ?? 0} compact />
+                    <InlineStatusCell
+                      currentStatusId={t.status_id ?? null}
+                      channel="wb"
+                      options={productStatusOptions}
+                      onChange={onChangeStatus(t.barkod, "wb")}
+                    />
                   </td>
-                  <td className="px-3 py-2"><StatusBadge statusId={t.status_ozon_id ?? 0} compact /></td>
-                  <td className="px-3 py-2"><StatusBadge statusId={t.status_sayt_id ?? 0} compact /></td>
-                  <td className="px-3 py-2"><StatusBadge statusId={t.status_lamoda_id ?? 0} compact /></td>
+                  <td className="px-3 py-2">
+                    <InlineStatusCell
+                      currentStatusId={t.status_ozon_id ?? null}
+                      channel="ozon"
+                      options={productStatusOptions}
+                      onChange={onChangeStatus(t.barkod, "ozon")}
+                    />
+                  </td>
+                  <td className="px-3 py-2">
+                    <InlineStatusCell
+                      currentStatusId={t.status_sayt_id ?? null}
+                      channel="sayt"
+                      options={productStatusOptions}
+                      onChange={onChangeStatus(t.barkod, "sayt")}
+                    />
+                  </td>
+                  <td className="px-3 py-2">
+                    <InlineStatusCell
+                      currentStatusId={t.status_lamoda_id ?? null}
+                      channel="lamoda"
+                      options={productStatusOptions}
+                      onChange={onChangeStatus(t.barkod, "lamoda")}
+                    />
+                  </td>
                 </tr>
               )
             })}
@@ -1079,6 +1640,79 @@ function TabSKU({ m, hexByCvet }: TabContentProps) {
         </div>
       )}
     </div>
+
+    {/* Модалка «+ SKU» — один артикул + один размер */}
+    {addSkuOpen && (
+      <RefModal
+        title="Создать SKU"
+        fields={[
+          {
+            key: "artikul_id",
+            label: "Артикул",
+            type: "select",
+            required: true,
+            options: artikulOptions,
+            full: true,
+            hint: "Артикул, к которому добавляем новый размер",
+          },
+          {
+            key: "razmer_id",
+            label: "Размер",
+            type: "select",
+            required: true,
+            options: razmerOptions,
+            full: true,
+          },
+        ]}
+        onSave={async (vals) => {
+          const artikulId = Number(vals.artikul_id)
+          const razmerId = Number(vals.razmer_id)
+          if (!Number.isFinite(artikulId) || !Number.isFinite(razmerId)) return
+          await insertMut.mutateAsync({ artikulId, razmerId })
+        }}
+        onCancel={() => setAddSkuOpen(false)}
+        saveLabel="Создать"
+      />
+    )}
+
+    {/* Модалка «+ Размер ко всем артикулам» — multiselect артикулов + один размер */}
+    {bulkAddOpen && (
+      <RefModal
+        title="Размер ко всем артикулам"
+        initial={{ artikul_ids: allArtikuly.map((a) => a.id) }}
+        fields={[
+          {
+            key: "artikul_ids",
+            label: "Артикулы",
+            type: "multiselect",
+            required: true,
+            options: artikulOptions,
+            full: true,
+            hint: "По умолчанию выбраны все артикулы модели — снимите ненужные. Артикулы, у которых выбранный размер уже есть, будут пропущены автоматически.",
+          },
+          {
+            key: "razmer_id",
+            label: "Размер",
+            type: "select",
+            required: true,
+            options: razmerOptions,
+            full: true,
+          },
+        ]}
+        onSave={async (vals) => {
+          const raw = vals.artikul_ids
+          const ids = Array.isArray(raw)
+            ? (raw as Array<string | number>).map((x) => Number(x)).filter((n) => Number.isFinite(n))
+            : []
+          const razmerId = Number(vals.razmer_id)
+          if (ids.length === 0 || !Number.isFinite(razmerId)) return
+          await bulkAddMut.mutateAsync({ artikulIds: ids, razmerId })
+        }}
+        onCancel={() => setBulkAddOpen(false)}
+        saveLabel="Создать"
+      />
+    )}
+    </>
   )
 }
 
@@ -1503,13 +2137,26 @@ function SertPickerEmptyModal({
 // ─── Sidebar ───────────────────────────────────────────────────────────────
 
 function CardSidebar({
-  m, attrs, hexByCvet, openColor,
+  m, attrs, hexByCvet, openColor, kod,
 }: {
   m: ModelDetail
   attrs: AttributeFieldDef[]
   hexByCvet: Map<number, string | null>
   openColor: (colorCode: string) => void
+  kod: string
 }) {
+  // W4.2: state + mutation for "Добавить вариацию" modal.
+  const queryClient = useQueryClient()
+  const [variationOpen, setVariationOpen] = useState(false)
+  const createVariationMut = useMutation({
+    mutationFn: (importerId: number) => insertVariation(m.id, importerId),
+    onSuccess: () => {
+      setVariationOpen(false)
+      queryClient.invalidateQueries({ queryKey: ["catalog", "model", kod] })
+      queryClient.invalidateQueries({ queryKey: ["catalog", "matrix-list"] })
+      queryClient.invalidateQueries({ queryKey: ["matrix-list"] })
+    },
+  })
   // Ring % and "X/Y" text must agree — both reflect category-specific
   // attribute fill ratio. Earlier the ring used `computeCompleteness` (weighted
   // across all model fields) while the text counted only AttributeFieldDef
@@ -1587,9 +2234,9 @@ function CardSidebar({
         action={
           <button
             type="button"
-            disabled
-            className="text-xs text-stone-700 hover:bg-stone-100 rounded px-2 py-0.5 flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Wave 3+ (создание вариации)"
+            onClick={() => setVariationOpen(true)}
+            className="text-xs text-stone-700 hover:bg-stone-100 rounded px-2 py-0.5 flex items-center gap-1"
+            title="Добавить вариацию (новое юрлицо)"
           >
             <Plus className="w-3 h-3" /> Добавить
           </button>
@@ -1652,7 +2299,132 @@ function CardSidebar({
           )}
         </div>
       </SidebarBlock>
+
+      {variationOpen && (
+        <VariationModal
+          parentKod={m.kod}
+          existingVariations={m.modeli.map((v) => ({
+            importerId: v.importer_id,
+            importerName: v.importer_nazvanie,
+            kod: v.kod,
+          }))}
+          onCancel={() => setVariationOpen(false)}
+          onConfirm={(importerId) => createVariationMut.mutate(importerId)}
+          pending={createVariationMut.isPending}
+          error={createVariationMut.error ? String(createVariationMut.error) : null}
+        />
+      )}
     </>
+  )
+}
+
+// ─── W4.2: VariationModal — выбор юрлица для новой вариации ─────────────────
+
+function VariationModal({
+  parentKod,
+  existingVariations,
+  onCancel,
+  onConfirm,
+  pending,
+  error,
+}: {
+  parentKod: string
+  existingVariations: { importerId: number | null; importerName: string | null; kod: string }[]
+  onCancel: () => void
+  onConfirm: (importerId: number) => void
+  pending: boolean
+  error: string | null
+}) {
+  const importeryQ = useQuery({
+    queryKey: ["catalog", "importery"],
+    queryFn: fetchImportery,
+    staleTime: 5 * 60 * 1000,
+  })
+  const [importerId, setImporterId] = useState<number | null>(null)
+  const [localError, setLocalError] = useState<string | null>(null)
+
+  const submit = () => {
+    if (importerId == null) {
+      setLocalError("Выберите юрлицо")
+      return
+    }
+    setLocalError(null)
+    onConfirm(importerId)
+  }
+
+  const importery = importeryQ.data ?? []
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] bg-stone-900/40 flex items-center justify-center p-4"
+      onClick={onCancel}
+    >
+      <div
+        className="w-full max-w-md bg-white rounded-xl shadow-2xl border border-stone-200 overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-5 py-3 border-b border-stone-200 flex items-center justify-between">
+          <div className="font-medium text-stone-900">Создать вариацию</div>
+          <button onClick={onCancel} className="p-1 hover:bg-stone-100 rounded">
+            <X className="w-4 h-4 text-stone-500" />
+          </button>
+        </div>
+        <div className="px-5 py-4 space-y-3">
+          <div className="text-xs text-stone-500">
+            Вариация = базовая модель <span className="font-mono">{parentKod}</span> × юрлицо
+            (importer). Kod новой вариации будет вида{" "}
+            <span className="font-mono">{parentKod}-{existingVariations.length + 1}</span>,
+            его можно поправить позже inline.
+          </div>
+          <label className="block text-[11px] uppercase tracking-wider text-stone-500">
+            Юрлицо
+          </label>
+          <select
+            autoFocus
+            value={importerId ?? ""}
+            onChange={(e) => {
+              const val = e.target.value
+              setImporterId(val ? Number(val) : null)
+              setLocalError(null)
+            }}
+            className="w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md bg-white outline-none focus:border-stone-900 focus:ring-1 focus:ring-stone-900"
+          >
+            <option value="">— выберите —</option>
+            {importery.map((imp) => (
+              <option key={imp.id} value={imp.id}>
+                {imp.nazvanie}
+              </option>
+            ))}
+          </select>
+          {existingVariations.length > 0 && (
+            <div className="text-[11px] text-stone-400">
+              Уже есть вариации:{" "}
+              {existingVariations
+                .map((v) => `${v.kod}${v.importerName ? ` (${v.importerName.split(" ")[0]})` : ""}`)
+                .join(", ")}
+            </div>
+          )}
+          {(localError || error) && (
+            <div className="text-xs text-red-600">{localError ?? error}</div>
+          )}
+        </div>
+        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-stone-200 bg-stone-50">
+          <button
+            onClick={onCancel}
+            className="px-3 py-1.5 text-sm text-stone-700 hover:bg-stone-100 rounded-md"
+          >
+            Отмена
+          </button>
+          <button
+            onClick={submit}
+            disabled={pending || importeryQ.isLoading}
+            className="px-3 py-1.5 text-sm text-white bg-stone-900 hover:bg-stone-800 rounded-md disabled:opacity-50"
+          >
+            {pending ? "Создаём…" : "Создать"}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -2054,6 +2826,7 @@ export function ModelCard({ kod, onClose }: ModelCardProps) {
                     attrs={sidebarAttrs}
                     hexByCvet={hexByCvet}
                     openColor={openColor}
+                    kod={kod}
                   />
                 </div>
               </div>

@@ -32,6 +32,8 @@ export type { ColumnDef } from "./columns-manager"
 export { RefModal } from "./ref-modal"
 export type { RefFieldDef, RefFieldType, RefFieldOption } from "./ref-modal"
 
+export { NewModelModal } from "./new-model-modal"
+
 export { BulkActionsBar } from "./bulk-actions-bar"
 export type { BulkAction } from "./bulk-actions-bar"
 

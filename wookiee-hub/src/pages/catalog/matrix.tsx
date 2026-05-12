@@ -2,11 +2,12 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { useSearchParams } from "react-router-dom"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { AlertCircle, Archive, Building2, ChevronDown, ChevronRight, Copy, Download, Edit3, Info, MoreHorizontal, Plus, Search } from "lucide-react"
-import { archiveModel, bulkUpdateModelStatus, createModel, duplicateModel, fetchArtikulyRegistry, fetchBrendy, fetchKategorii, fetchKollekcii, fetchMatrixList, fetchStatusy, fetchTovaryRegistry, getUiPref, setUiPref } from "@/lib/catalog/service"
+import { archiveModel, bulkUpdateModelStatus, duplicateModel, fetchArtikulyRegistry, fetchBrendy, fetchKategorii, fetchKollekcii, fetchMatrixList, fetchStatusy, fetchTovaryRegistry, getUiPref, setUiPref } from "@/lib/catalog/service"
 import type { Brend, MatrixRow } from "@/lib/catalog/service"
 import { StatusBadge, CATALOG_STATUSES } from "@/components/catalog/ui/status-badge"
 import { CompletenessRing } from "@/components/catalog/ui/completeness-ring"
 import { Tooltip } from "@/components/catalog/ui/tooltip"
+import { NewModelModal } from "@/components/catalog/ui/new-model-modal"
 import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
 import { useResizableColumns, type ResizerBindings } from "@/hooks/use-resizable-columns"
 // Standard razmer chip-pill ladder used in the table.
@@ -606,17 +607,19 @@ export function MatrixPage() {
     next.delete("id")
     setSearchParams(next)
   }, [searchParams, setSearchParams])
-  const handleNewModel = useCallback(async () => {
-    const kod = window.prompt("Код новой модели (latin, без пробелов):", "")
-    if (!kod || !kod.trim()) return
-    try {
-      const created = await createModel({ kod: kod.trim() })
-      await queryClient.invalidateQueries({ queryKey: ["matrix-list"] })
-      const next = new URLSearchParams(searchParams)
-      next.set("model", created)
-      next.delete("id")
-      setSearchParams(next)
-    } catch (err) { window.alert(`Не удалось создать модель: ${(err as Error).message}`) }
+  // W4.1: открытие модалки «+ Новая модель». Реальное создание — внутри
+  // <NewModelModal>, после успеха срабатывает onCreated → navigate в карточку.
+  const [newModelOpen, setNewModelOpen] = useState(false)
+  const handleNewModel = useCallback(() => {
+    setNewModelOpen(true)
+  }, [])
+  const handleNewModelCreated = useCallback(async (createdKod: string) => {
+    await queryClient.invalidateQueries({ queryKey: ["matrix-list"] })
+    setNewModelOpen(false)
+    const next = new URLSearchParams(searchParams)
+    next.set("model", createdKod)
+    next.delete("id")
+    setSearchParams(next)
   }, [queryClient, searchParams, setSearchParams])
   // ?model=KOD opens B3's <ModelCardModal /> as overlay from CatalogLayout.
   const rows = matrixQ.data ?? []
@@ -669,6 +672,12 @@ export function MatrixPage() {
         {listTab === "artikuly" && <ArtikulyTable />}
         {listTab === "tovary" && <TovaryTable />}
       </div>
+      {/* W4.1: модалка «+ Новая модель» вместо window.prompt. */}
+      <NewModelModal
+        isOpen={newModelOpen}
+        onClose={() => setNewModelOpen(false)}
+        onCreated={handleNewModelCreated}
+      />
     </div>
   )
 }

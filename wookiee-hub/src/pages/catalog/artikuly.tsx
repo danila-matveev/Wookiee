@@ -1,14 +1,13 @@
-import { useMemo, useState, useCallback } from "react"
-import { useQuery } from "@tanstack/react-query"
-import { Search, X } from "lucide-react"
+import { useMemo, useState, useCallback, useEffect, useRef } from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { Search, X, ChevronDown } from "lucide-react"
 import {
-  fetchArtikulyRegistry, fetchStatusy,
+  fetchArtikulyRegistry, fetchStatusy, bulkUpdateArtikulStatus,
   type ArtikulRow,
 } from "@/lib/catalog/service"
 import { StatusBadge } from "@/components/catalog/ui/status-badge"
 import { ColorSwatch } from "@/components/catalog/ui/color-swatch"
 import { ColumnsManager, type ColumnDef } from "@/components/catalog/ui/columns-manager"
-import { BulkActionsBar } from "@/components/catalog/ui/bulk-actions-bar"
 import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
 import { useResizableColumns } from "@/hooks/use-resizable-columns"
 import { useSearchParams } from "react-router-dom"
@@ -97,6 +96,7 @@ function renderCell(key: string, a: ArtikulRow): React.ReactNode {
 }
 
 export function ArtikulyPage() {
+  const queryClient = useQueryClient()
   const { data, isLoading, error } = useQuery({
     queryKey: ["artikuly-registry"],
     queryFn: fetchArtikulyRegistry,
@@ -112,6 +112,8 @@ export function ArtikulyPage() {
   const [statusFilter, setStatusFilter] = useState<"all" | number>("all")
   const [columns, setColumns] = useState<string[]>(DEFAULT_COLUMNS)
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkStatusOpen, setBulkStatusOpen] = useState(false)
+  const bulkStatusRef = useRef<HTMLDivElement | null>(null)
   const [, setSearchParams] = useSearchParams()
   // W1.5 — drag-resize колонок + persist через ui_preferences. Регистрируем все
   // возможные колонки (visibility управляется ColumnsManager-ом отдельно).
@@ -183,6 +185,46 @@ export function ArtikulyPage() {
       return new Set([...prev, ...allKeys])
     })
   }, [visible])
+
+  // Resolve selected artikul strings → numeric ids (для bulk-update).
+  const selectedIds = useMemo<number[]>(() => {
+    if (!data || selected.size === 0) return []
+    const ids: number[] = []
+    for (const a of data) {
+      if (selected.has(a.artikul)) ids.push(a.id)
+    }
+    return ids
+  }, [data, selected])
+
+  const handleBulkSetStatus = useCallback(async (statusId: number) => {
+    if (selectedIds.length === 0) return
+    try {
+      await bulkUpdateArtikulStatus(selectedIds, statusId)
+      await queryClient.invalidateQueries({ queryKey: ["artikuly-registry"] })
+      setSelected(new Set())
+      setBulkStatusOpen(false)
+    } catch (err) {
+      window.alert(`Не удалось обновить статус: ${(err as Error).message}`)
+    }
+  }, [selectedIds, queryClient])
+
+  // Close popover on outside click / Escape.
+  useEffect(() => {
+    if (!bulkStatusOpen) return
+    function onDocDown(e: MouseEvent) {
+      if (!bulkStatusRef.current) return
+      if (!bulkStatusRef.current.contains(e.target as Node)) setBulkStatusOpen(false)
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setBulkStatusOpen(false)
+    }
+    document.addEventListener("mousedown", onDocDown)
+    document.addEventListener("keydown", onKey)
+    return () => {
+      document.removeEventListener("mousedown", onDocDown)
+      document.removeEventListener("keydown", onKey)
+    }
+  }, [bulkStatusOpen])
 
   if (isLoading) {
     return <div className="px-6 py-8 text-sm text-stone-400">Загрузка артикулов…</div>
@@ -325,23 +367,65 @@ export function ArtikulyPage() {
         </div>
       </div>
 
-      {/* Bulk actions */}
-      <BulkActionsBar
-        selectedCount={selected.size}
-        onClear={() => setSelected(new Set())}
-        actions={[
-          {
-            id: "change-status",
-            label: "Изменить статус",
-            onClick: () => alert("TODO Wave 3: модалка bulk-change status (artikul)"),
-          },
-          {
-            id: "export",
-            label: "Экспорт выбранных",
-            onClick: () => alert("TODO: экспорт CSV/XLSX выбранных артикулов"),
-          },
-        ]}
-      />
+      {/* Bulk actions — кастомный бар, т.к. atomic BulkActionsBar не поддерживает
+          submenu/popover. Стилистика — copy от matrix.tsx BulkBar. */}
+      {selected.size > 0 && (
+        <div
+          className="border-t border-stone-200 bg-white px-6 py-3 flex items-center gap-3 shrink-0 shadow-[0_-4px_16px_-8px_rgba(0,0,0,0.08)]"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <span className="text-sm">
+            Выбрано: <span className="font-medium tabular-nums">{selected.size}</span>
+          </span>
+          <div className="h-5 w-px bg-stone-200" />
+          <div className="relative" ref={bulkStatusRef}>
+            <button
+              type="button"
+              onClick={() => setBulkStatusOpen((v) => !v)}
+              className="px-3 py-1 text-xs text-stone-700 hover:bg-stone-100 rounded-md flex items-center gap-1.5"
+            >
+              Изменить статус
+              <ChevronDown className="w-3 h-3" />
+            </button>
+            {bulkStatusOpen && (
+              <div className="absolute bottom-9 left-0 z-50 w-48 bg-white border border-stone-200 rounded-md shadow-lg py-1">
+                {artikulStatuses.length === 0 ? (
+                  <div className="px-3 py-2 text-xs text-stone-400 italic">Нет статусов</div>
+                ) : (
+                  artikulStatuses.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => handleBulkSetStatus(s.id)}
+                      className="w-full text-left px-3 py-1.5 text-xs hover:bg-stone-50 flex items-center gap-2"
+                    >
+                      <StatusBadge
+                        status={{ nazvanie: s.nazvanie, color: s.color }}
+                        compact
+                        size="sm"
+                      />
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => alert("TODO: экспорт CSV/XLSX выбранных артикулов")}
+            className="px-3 py-1 text-xs text-stone-700 hover:bg-stone-100 rounded-md"
+          >
+            Экспорт выбранных
+          </button>
+          <button
+            type="button"
+            onClick={() => { setSelected(new Set()); setBulkStatusOpen(false) }}
+            className="ml-auto px-3 py-1 text-xs text-stone-500 hover:bg-stone-100 rounded-md flex items-center gap-1.5"
+          >
+            <X className="w-3 h-3" /> Очистить
+          </button>
+        </div>
+      )}
     </div>
   )
 }

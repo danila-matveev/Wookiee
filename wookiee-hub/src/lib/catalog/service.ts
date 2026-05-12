@@ -1510,6 +1510,106 @@ export async function createModel(payload: ModelOsnovaPayload): Promise<string> 
   return (data as { kod: string }).kod
 }
 
+// ─── W4.1: createModelTransactional ────────────────────────────────────────
+// Полноценное создание модели через модалку «+ Новая модель»: атомарно
+// создаёт `modeli_osnova` + первую вариацию `modeli` (с importer_id первого
+// юрлица) + опционально привязывает размеры через `modeli_osnova_razmery`.
+//
+// Транзакционность эмулируется sequential-INSERT с rollback (DELETE
+// modeli_osnova on error in modeli/razmery insert). Если в будущем появится
+// RPC `create_model_transactional` — заменить тело на supabase.rpc().
+
+export interface CreateModelTransactionalPayload {
+  /** PK для modeli_osnova.kod и modeli.kod (latin, без пробелов). */
+  kod: string
+  brand_id: number
+  kategoriya_id: number
+  kollekciya_id: number
+  /** Опционально (W2.3 справочник). */
+  tip_kollekcii_id?: number | null
+  /** Опционально. */
+  fabrika_id?: number | null
+  /** Юрлицо первой вариации. */
+  importer_id: number
+  /** Статус (tip='model'). */
+  status_id: number
+  /** ID размеров из справочника razmery. Пустой массив → не создавать привязки. */
+  razmery_ids?: number[]
+}
+
+/**
+ * Создаёт модель целиком: modeli_osnova → modeli (первая вариация) → опц.
+ * modeli_osnova_razmery. При любой ошибке откатывает уже созданное.
+ *
+ * Возвращает kod созданной модели — caller использует его для navigate в
+ * `/catalog/matrix?model=<kod>`.
+ */
+export async function createModelTransactional(
+  payload: CreateModelTransactionalPayload,
+): Promise<string> {
+  const trimmedKod = payload.kod.trim()
+  if (!trimmedKod) throw new Error("Код модели не может быть пустым")
+
+  // 1. Pre-flight uniqueness check (чтобы дать понятную ошибку до INSERT).
+  const { data: existing, error: checkErr } = await supabase
+    .from("modeli_osnova")
+    .select("kod")
+    .eq("kod", trimmedKod)
+    .maybeSingle()
+  if (checkErr) throw new Error(checkErr.message)
+  if (existing) throw new Error(`Модель с кодом «${trimmedKod}» уже существует`)
+
+  // 2. Insert modeli_osnova.
+  const osnovaPayload: ModelOsnovaPayload = {
+    kod: trimmedKod,
+    brand_id: payload.brand_id,
+    kategoriya_id: payload.kategoriya_id,
+    kollekciya_id: payload.kollekciya_id,
+    tip_kollekcii_id: payload.tip_kollekcii_id ?? null,
+    fabrika_id: payload.fabrika_id ?? null,
+    status_id: payload.status_id,
+  }
+  const { data: osnovaRow, error: osnovaErr } = await supabase
+    .from("modeli_osnova")
+    .insert(osnovaPayload)
+    .select("id, kod")
+    .single()
+  if (osnovaErr) throw new Error(osnovaErr.message)
+  const osnovaId = (osnovaRow as { id: number; kod: string }).id
+
+  // 3. Insert first modeli variation (rollback on error).
+  const { error: variantErr } = await supabase.from("modeli").insert({
+    kod: trimmedKod,
+    nazvanie: trimmedKod,
+    model_osnova_id: osnovaId,
+    importer_id: payload.importer_id,
+    status_id: payload.status_id,
+  })
+  if (variantErr) {
+    await supabase.from("modeli_osnova").delete().eq("id", osnovaId)
+    throw new Error(`Не удалось создать вариацию: ${variantErr.message}`)
+  }
+
+  // 4. Insert razmery junction (rollback on error).
+  const razmeryIds = payload.razmery_ids ?? []
+  if (razmeryIds.length > 0) {
+    const rows = razmeryIds.map((razmer_id, idx) => ({
+      model_osnova_id: osnovaId,
+      razmer_id,
+      poryadok: idx,
+    }))
+    const { error: razmErr } = await supabase.from("modeli_osnova_razmery").insert(rows)
+    if (razmErr) {
+      // Cascade: удаляем modeli (FK→modeli_osnova) и саму модель.
+      await supabase.from("modeli").delete().eq("model_osnova_id", osnovaId)
+      await supabase.from("modeli_osnova").delete().eq("id", osnovaId)
+      throw new Error(`Не удалось привязать размеры: ${razmErr.message}`)
+    }
+  }
+
+  return trimmedKod
+}
+
 /** Partial update of any modeli_osnova fields, addressed by kod. */
 export async function updateModel(kod: string, patch: Partial<ModelOsnovaPayload>): Promise<void> {
   const { error } = await supabase.from("modeli_osnova").update(patch).eq("kod", kod)
@@ -1648,6 +1748,116 @@ export async function archiveModel(kod: string): Promise<void> {
   if (tErr) throw new Error(tErr.message)
 }
 
+// ─── W4.2: Create new variation row in `modeli` ────────────────────────────
+//
+// Вариация = базовая модель × юрлицо (importer). Создаётся через карточку
+// модели → SidebarBlock «Вариации» → «+ Добавить».
+//
+// Контракт:
+//   - `modelOsnovaId` — FK на `modeli_osnova.id` родительской модели
+//   - `importerId` — FK на `importery.id` (юрлицо: ИП Медведева / ООО ВУКИ / …)
+//   - `kodSuffix?` — опциональный текстовый суффикс для `kod` новой вариации.
+//     Если не задан — используется индекс `(existingVariationCount + 1)`.
+//
+// Правила:
+//   - `kod` нового modeli = `${parentKod}-${suffix}` (через дефис).
+//   - `nazvanie` NOT NULL в БД → копируем `parentKod` (PM правит позже inline).
+//   - `status_id` → копируется со status_id родительской `modeli_osnova`;
+//     если у родителя пусто — fallback на 20 («Планирование», tip=model).
+//   - При коллизии kod выкидываем понятную ошибку — PM пробует другой суффикс.
+export async function insertVariation(
+  modelOsnovaId: number,
+  importerId: number,
+  kodSuffix?: string,
+): Promise<ModelVariation> {
+  // 1. Подтянуть parent kod + parent status + текущее число вариаций.
+  const { data: parent, error: parentErr } = await supabase
+    .from("modeli_osnova")
+    .select("kod, status_id")
+    .eq("id", modelOsnovaId)
+    .single()
+  if (parentErr) throw new Error(parentErr.message)
+  if (!parent) throw new Error(`modeli_osnova ${modelOsnovaId} not found`)
+  const parentKod = (parent as { kod: string }).kod
+  const parentStatusId = (parent as { status_id: number | null }).status_id
+
+  const { data: existingRows, error: cntErr } = await supabase
+    .from("modeli")
+    .select("id, kod")
+    .eq("model_osnova_id", modelOsnovaId)
+  if (cntErr) throw new Error(cntErr.message)
+  const existing = (existingRows ?? []) as { id: number; kod: string }[]
+
+  // 2. Вычислить новый kod.
+  const trimmedSuffix = kodSuffix?.trim()
+  const suffix = trimmedSuffix && trimmedSuffix.length > 0
+    ? trimmedSuffix
+    : String(existing.length + 1)
+  const newKod = `${parentKod}-${suffix}`
+
+  if (existing.some((m) => m.kod === newKod)) {
+    throw new Error(
+      `Вариация с kod «${newKod}» уже существует. Укажите другой суффикс.`,
+    )
+  }
+
+  // 3. Дефолтный status_id.
+  let statusId: number | null = parentStatusId
+  if (statusId == null) {
+    statusId = await getStatusIdByName("model", "Планирование")
+  }
+
+  // 4. INSERT.
+  const insertPayload = {
+    model_osnova_id: modelOsnovaId,
+    importer_id: importerId,
+    kod: newKod,
+    nazvanie: parentKod, // NOT NULL — PM правит inline после создания
+    status_id: statusId,
+    nabor: false,
+  }
+  const { data: inserted, error: insErr } = await supabase
+    .from("modeli")
+    .insert(insertPayload)
+    .select(`
+      id, kod, nazvanie, nazvanie_en, artikul_modeli, importer_id, status_id,
+      rossiyskiy_razmer, nabor,
+      importery(nazvanie)
+    `)
+    .single()
+  if (insErr) throw new Error(insErr.message)
+
+  const row = inserted as {
+    id: number
+    kod: string
+    nazvanie: string
+    nazvanie_en: string | null
+    artikul_modeli: string | null
+    importer_id: number | null
+    status_id: number | null
+    rossiyskiy_razmer: string | null
+    nabor: boolean | null
+    importery: { nazvanie: string } | { nazvanie: string }[] | null
+  }
+  const importerNazvanie = Array.isArray(row.importery)
+    ? row.importery[0]?.nazvanie ?? null
+    : row.importery?.nazvanie ?? null
+
+  return {
+    id: row.id,
+    kod: row.kod,
+    nazvanie: row.nazvanie,
+    nazvanie_en: row.nazvanie_en,
+    artikul_modeli: row.artikul_modeli,
+    importer_id: row.importer_id,
+    importer_nazvanie: importerNazvanie,
+    status_id: row.status_id,
+    rossiyskiy_razmer: row.rossiyskiy_razmer,
+    nabor: row.nabor,
+    artikuly: [],
+  }
+}
+
 // ─── Bulk operations ───────────────────────────────────────────────────────
 
 export type TovarChannel = "wb" | "ozon" | "sayt" | "lamoda"
@@ -1669,6 +1879,16 @@ export async function bulkUpdateModelStatus(kods: string[], statusId: number): P
   if (error) throw new Error(error.message)
 }
 
+/** Bulk-update status_id of artikuly rows (addressed by id). */
+export async function bulkUpdateArtikulStatus(artikulIds: number[], statusId: number): Promise<void> {
+  if (artikulIds.length === 0) return
+  const { error } = await supabase
+    .from("artikuly")
+    .update({ status_id: statusId })
+    .in("id", artikulIds)
+  if (error) throw new Error(error.message)
+}
+
 /**
  * Bulk-update status of tovary rows (addressed by barkod) on a specific channel.
  * Channel determines which status field is updated:
@@ -1676,10 +1896,12 @@ export async function bulkUpdateModelStatus(kods: string[], statusId: number): P
  *   ozon   → status_ozon_id
  *   sayt   → status_sayt_id
  *   lamoda → status_lamoda_id
+ *
+ * Pass `statusId = null` to clear the status (sets the field to NULL).
  */
 export async function bulkUpdateTovaryStatus(
   barkods: string[],
-  statusId: number,
+  statusId: number | null,
   channel: TovarChannel,
 ): Promise<void> {
   if (barkods.length === 0) return
@@ -1739,6 +1961,286 @@ export async function bulkUnlinkTovaryFromSkleyka(
 
   const { error } = await supabase.from(junction).delete().in("tovar_id", ids)
   if (error) throw new Error(error.message)
+}
+
+// ─── Artikul create (W4.3) ─────────────────────────────────────────────────
+
+/**
+ * Row returned after inserting an artikul (subset of full artikuly columns).
+ */
+export interface InsertedArtikul {
+  id: number
+  artikul: string
+  model_id: number
+  cvet_id: number
+  status_id: number | null
+}
+
+/**
+ * Resolve "Запуск" (tip='artikul') status id — default for newly created
+ * artikuly. Falls back to any row with tip='artikul' if exact name is missing,
+ * to avoid hard-blocking the UI in case of dictionary edits.
+ */
+async function getDefaultArtikulStatusId(): Promise<number | null> {
+  const byName = await getStatusIdByName("artikul", "Запуск")
+  if (byName != null) return byName
+  const { data, error } = await supabase
+    .from("statusy")
+    .select("id")
+    .eq("tip", "artikul")
+    .limit(1)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  return (data as { id: number } | null)?.id ?? null
+}
+
+/**
+ * Create a single `artikuly` row for a given variation (`modeli.id`) and
+ * a colour (`cveta.id`).
+ *
+ * `artikul` is auto-generated as `${modeli.kod}/${cveta.color_code}` to
+ * match historical naming convention (e.g. `Alice-1/black`, `Nora/brown`).
+ * Default `status_id` = `statusy(tip='artikul', nazvanie='Запуск')`.
+ *
+ * Caller is responsible for invalidating ["catalog", "model", kod].
+ */
+export async function insertArtikul(
+  modeliId: number,
+  cvetId: number,
+): Promise<InsertedArtikul> {
+  // 1. Look up the variation's kod + colour's color_code in parallel.
+  const [modeliRes, cvetRes, defaultStatusId] = await Promise.all([
+    supabase.from("modeli").select("kod").eq("id", modeliId).single(),
+    supabase.from("cveta").select("color_code").eq("id", cvetId).single(),
+    getDefaultArtikulStatusId(),
+  ])
+  if (modeliRes.error) throw new Error(modeliRes.error.message)
+  if (cvetRes.error) throw new Error(cvetRes.error.message)
+
+  const modeliKod = (modeliRes.data as { kod: string | null }).kod
+  const colorCode = (cvetRes.data as { color_code: string | null }).color_code
+  if (!modeliKod) throw new Error(`modeli.id=${modeliId} has empty kod`)
+  if (!colorCode) throw new Error(`cveta.id=${cvetId} has empty color_code`)
+
+  const artikul = `${modeliKod}/${colorCode}`
+
+  // 2. INSERT. status_id may legitimately be null if the dictionary has no
+  // tip='artikul' rows at all — schema allows it.
+  const { data, error } = await supabase
+    .from("artikuly")
+    .insert({
+      model_id: modeliId,
+      cvet_id: cvetId,
+      artikul,
+      status_id: defaultStatusId,
+    })
+    .select("id, artikul, model_id, cvet_id, status_id")
+    .single()
+  if (error) throw new Error(error.message)
+  return data as InsertedArtikul
+}
+
+/**
+ * Bulk-create artikuly for one variation across multiple colours.
+ *
+ * Skips colours that would produce a duplicate `artikul` string (the UI is
+ * expected to filter these out, but the guard is here so the call is
+ * idempotent). Runs the inserts sequentially via `insertArtikul` to keep
+ * error handling simple — N ≤ palette size, typically < 20.
+ */
+export async function bulkCreateArtikuly(
+  modeliId: number,
+  cvetIds: number[],
+): Promise<InsertedArtikul[]> {
+  if (cvetIds.length === 0) return []
+  const out: InsertedArtikul[] = []
+  for (const cvetId of cvetIds) {
+    const row = await insertArtikul(modeliId, cvetId)
+    out.push(row)
+  }
+  return out
+}
+
+// ─── Tovar creation (W4.4) ─────────────────────────────────────────────────
+//
+// Создание новых SKU (`tovary` rows). Используется кнопками «+ SKU» и
+// «+ Размер ко всем артикулам» в TabSKU карточки модели.
+//
+// `barkod` — NOT NULL + UNIQUE. Реальные баркоды получают офлайн через GS1
+// (`barkod_gs1`/`barkod_gs2`), поэтому при создании генерируем валидный
+// EAN-13 в internal-диапазоне (prefix `200`) с правильным check-digit —
+// он гарантированно не пересечётся с GS1-номерами реальных производителей.
+// Поле останется placeholder-ом до тех пор, пока команда не запросит
+// настоящие баркоды через `barkod_gs1`/`barkod_gs2`.
+//
+// Defaults (выбор задокументирован в commit W4.4):
+//   status_id        = 12  (План)  — модель ещё не продаётся
+//   status_ozon_id   = 12  (План)
+//   status_sayt_id   = 12  (План)
+//   status_lamoda_id = null         — lamoda опциональна
+//   barkod_gs1/gs2/perehod, ozon_*, lamoda_seller_sku, sku_china_size = null
+
+export const TOVAR_DEFAULT_STATUS_ID = 12 // 'План' — статус для свежесозданных SKU
+export const TOVAR_DEFAULT_LAMODA_STATUS_ID: number | null = null
+
+export interface InsertedTovar {
+  id: number
+  barkod: string
+  artikul_id: number
+  razmer_id: number
+}
+
+/**
+ * Generate a valid EAN-13 barkod in the internal-use prefix `200`.
+ * Returns 13-digit string with correct check-digit; collisions are extremely
+ * unlikely (10^9 namespace), and DB UNIQUE-constraint will reject the rare hit
+ * — the caller can retry.
+ */
+function generateInternalBarkod(): string {
+  // 12-digit payload: '200' + 9 random digits
+  let body = "200"
+  for (let i = 0; i < 9; i++) body += Math.floor(Math.random() * 10).toString()
+  // EAN-13 check-digit: sum of digits — odd positions (1-based) ×1, even ×3,
+  // then check = (10 - sum % 10) % 10
+  let sum = 0
+  for (let i = 0; i < 12; i++) {
+    const d = body.charCodeAt(i) - 48
+    sum += i % 2 === 0 ? d : d * 3
+  }
+  const check = (10 - (sum % 10)) % 10
+  return body + check.toString()
+}
+
+/**
+ * Generate a fresh barkod that does not yet exist in `tovary`.
+ * Retries up to `maxAttempts` times — astronomically unlikely to need more
+ * than 1 attempt given the 10^9 namespace, but the loop guards against
+ * pathological luck.
+ */
+async function generateUniqueBarkod(maxAttempts = 5): Promise<string> {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const candidate = generateInternalBarkod()
+    const { data, error } = await supabase
+      .from("tovary")
+      .select("id")
+      .eq("barkod", candidate)
+      .maybeSingle()
+    if (error && error.code !== "PGRST116") throw new Error(error.message)
+    if (!data) return candidate
+  }
+  throw new Error("Не удалось сгенерировать уникальный barkod после нескольких попыток")
+}
+
+/**
+ * Insert a single tovar (SKU) for the given artikul + razmer combination.
+ * Generates a placeholder EAN-13 barkod automatically and applies default
+ * statuses (12 = 'План' for WB/OZON/sayt; null for lamoda).
+ *
+ * Throws if (artikul_id, razmer_id) combination already exists — caller
+ * should detect this before calling.
+ */
+export async function insertTovar(
+  artikulId: number,
+  razmerId: number,
+): Promise<InsertedTovar> {
+  // Pre-check: refuse if combination already exists.
+  const { data: existing, error: probeErr } = await supabase
+    .from("tovary")
+    .select("id")
+    .eq("artikul_id", artikulId)
+    .eq("razmer_id", razmerId)
+    .maybeSingle()
+  if (probeErr && probeErr.code !== "PGRST116") throw new Error(probeErr.message)
+  if (existing) {
+    throw new Error(`SKU для этого артикула + размера уже существует (id=${existing.id})`)
+  }
+
+  const barkod = await generateUniqueBarkod()
+  const { data, error } = await supabase
+    .from("tovary")
+    .insert({
+      barkod,
+      artikul_id: artikulId,
+      razmer_id: razmerId,
+      status_id: TOVAR_DEFAULT_STATUS_ID,
+      status_ozon_id: TOVAR_DEFAULT_STATUS_ID,
+      status_sayt_id: TOVAR_DEFAULT_STATUS_ID,
+      status_lamoda_id: TOVAR_DEFAULT_LAMODA_STATUS_ID,
+    })
+    .select("id, barkod, artikul_id, razmer_id")
+    .single()
+  if (error) throw new Error(error.message)
+  return data as InsertedTovar
+}
+
+/**
+ * Bulk-add the same `razmer_id` to a list of artikuly.
+ * Skips artikuly that already have this size — returns the rows actually
+ * inserted (may be shorter than the input list).
+ *
+ * Implementation: probes existing `tovary` for the (artikul_ids[], razmer_id)
+ * combos in one query, then issues a single multi-row INSERT for the rest.
+ */
+export async function bulkAddSizeToArtikuly(
+  artikulIds: number[],
+  razmerId: number,
+): Promise<InsertedTovar[]> {
+  if (artikulIds.length === 0) return []
+
+  // Detect existing combinations to skip.
+  const { data: existing, error: existingErr } = await supabase
+    .from("tovary")
+    .select("artikul_id")
+    .in("artikul_id", artikulIds)
+    .eq("razmer_id", razmerId)
+  if (existingErr) throw new Error(existingErr.message)
+  const existingSet = new Set(
+    ((existing ?? []) as { artikul_id: number }[]).map((r) => r.artikul_id),
+  )
+  const toCreate = artikulIds.filter((id) => !existingSet.has(id))
+  if (toCreate.length === 0) return []
+
+  // Pre-generate unique barkods (sequentially to use the same DB-uniqueness
+  // probe; cheap given typical N ≤ 20).
+  const rows: Array<{
+    barkod: string
+    artikul_id: number
+    razmer_id: number
+    status_id: number
+    status_ozon_id: number
+    status_sayt_id: number
+    status_lamoda_id: number | null
+  }> = []
+  const localBarkods = new Set<string>()
+  for (const artikulId of toCreate) {
+    let barkod: string
+    // ensure uniqueness both vs DB и vs already-prepared rows in this batch
+    // (probability ≈ 0 but cheap to guard)
+    while (true) {
+      const candidate = await generateUniqueBarkod()
+      if (!localBarkods.has(candidate)) {
+        barkod = candidate
+        localBarkods.add(candidate)
+        break
+      }
+    }
+    rows.push({
+      barkod,
+      artikul_id: artikulId,
+      razmer_id: razmerId,
+      status_id: TOVAR_DEFAULT_STATUS_ID,
+      status_ozon_id: TOVAR_DEFAULT_STATUS_ID,
+      status_sayt_id: TOVAR_DEFAULT_STATUS_ID,
+      status_lamoda_id: TOVAR_DEFAULT_LAMODA_STATUS_ID,
+    })
+  }
+
+  const { data, error } = await supabase
+    .from("tovary")
+    .insert(rows)
+    .select("id, barkod, artikul_id, razmer_id")
+  if (error) throw new Error(error.message)
+  return (data ?? []) as InsertedTovar[]
 }
 
 // ─── UI preferences (per-user-less, scope+key) ─────────────────────────────
