@@ -6,7 +6,8 @@ import { EmptyState } from "@/components/crm/ui/EmptyState"
 import { StatusEditor } from "@/components/marketing/StatusEditor"
 import { useSearchQueries, useSearchQueryWeekly, useUpdateSearchQueryStatus } from "@/hooks/marketing/use-search-queries"
 import { parseUnifiedId } from "@/lib/marketing-helpers"
-import type { SearchQueryRow, SearchQueryWeeklyStat } from "@/types/marketing"
+import type { SearchQueryRow, SearchQueryWeeklyStat, StatusUI } from "@/types/marketing"
+import { STATUS_DB_TO_UI } from "@/types/marketing"
 
 interface SearchQueryDetailPanelProps {
   unifiedId: string
@@ -52,9 +53,10 @@ export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose, m
       <div className="flex flex-col gap-4">
         <div className="flex items-center gap-1.5 flex-wrap">
           <StatusEditor
-            status={item.status}
-            onChange={(s) => updateStatus.mutate({ unifiedId: item.unified_id, status: s })}
-            disabled={updateStatus.isPending}
+            status={STATUS_DB_TO_UI[item.status]}
+            onChange={(next: StatusUI) =>
+              updateStatus.mutate({ unifiedId: item.unified_id, status: next })
+            }
           />
           {updateStatus.isError && (
             <span className="text-xs text-danger">Не удалось сохранить статус</span>
