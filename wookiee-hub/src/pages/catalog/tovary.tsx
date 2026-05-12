@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useCallback, useRef, useEffect } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { Search, X, Plus, Loader2 } from "lucide-react"
+import { Search, X, Plus, Loader2, ChevronDown, ChevronRight } from "lucide-react"
 import {
   fetchTovaryRegistry, fetchStatusy, fetchSkleykiWb, fetchSkleykiOzon,
   bulkUpdateTovaryStatus, bulkLinkTovaryToSkleyka,
@@ -18,6 +18,7 @@ import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
 import { useResizableColumns } from "@/hooks/use-resizable-columns"
 import { useTableSort, type SortState } from "@/hooks/use-table-sort"
 import { usePagination } from "@/hooks/use-pagination"
+import { useCollapsibleGroups } from "@/hooks/use-collapsible-groups"
 import { downloadCsv } from "@/lib/catalog/csv-export"
 
 // W1.5 — Default per-column widths (px) for the SKU registry (Товары) page.
@@ -605,6 +606,8 @@ export function TovaryPage() {
   const [statusGroup, setStatusGroup] = useState<StatusGroupFilter>("all")
   const [channelFilter, setChannelFilter] = useState<ChannelFilter>("all")
   const [groupBy, setGroupBy] = useState<GroupBy>("none")
+  // W9.6 — Notion-style collapsible group headers.
+  const { isCollapsed: isGroupCollapsed, toggle: toggleGroupCollapsed } = useCollapsibleGroups("tovary")
   const [columns, setColumns] = useState<string[]>(DEFAULT_COLUMNS)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [linkSkleykaChannel, setLinkSkleykaChannel] = useState<"wb" | "ozon" | null>(null)
@@ -966,23 +969,34 @@ export function TovaryPage() {
               </tr>
             </thead>
             <tbody>
-              {visibleByGroup.map((group) => (
+              {visibleByGroup.map((group) => {
+                const collapsed = groupBy !== "none" && isGroupCollapsed(group.key)
+                return (
                 <React.Fragment key={group.key}>
                   {groupBy !== "none" && (
                     <tr className="bg-stone-50 border-b border-stone-200 sticky top-[36px] z-[1]">
                       <td colSpan={columns.length + 1} className="px-3 py-2">
-                        <div className="flex items-baseline gap-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleGroupCollapsed(group.key)}
+                          className="flex items-baseline gap-2 w-full text-left hover:opacity-80 transition-opacity"
+                          aria-expanded={!collapsed}
+                          aria-label={collapsed ? `Развернуть группу ${group.label || "—"}` : `Свернуть группу ${group.label || "—"}`}
+                        >
+                          {collapsed
+                            ? <ChevronRight className="w-3.5 h-3.5 text-stone-500 self-center shrink-0" />
+                            : <ChevronDown className="w-3.5 h-3.5 text-stone-500 self-center shrink-0" />}
                           <h3 className="cat-font-serif italic text-base text-stone-800">
                             {group.label || "—"}
                           </h3>
                           <span className="text-[11px] text-stone-400 tabular-nums">
                             {group.items.length} SKU
                           </span>
-                        </div>
+                        </button>
                       </td>
                     </tr>
                   )}
-                  {group.visibleItems.map((t) => (
+                  {!collapsed && group.visibleItems.map((t) => (
                     <tr
                       key={t.id}
                       className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60"
@@ -1003,7 +1017,8 @@ export function TovaryPage() {
                     </tr>
                   ))}
                 </React.Fragment>
-              ))}
+                )
+              })}
             </tbody>
           </table>
           {groupBy === "none" ? (

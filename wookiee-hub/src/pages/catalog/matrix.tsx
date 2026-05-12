@@ -7,13 +7,16 @@ import type { ArtikulRow, Brend, MatrixRow, TovarRow } from "@/lib/catalog/servi
 import { StatusBadge, CATALOG_STATUSES } from "@/components/catalog/ui/status-badge"
 import { CompletenessRing } from "@/components/catalog/ui/completeness-ring"
 import { Tooltip } from "@/components/catalog/ui/tooltip"
+import { CellText } from "@/components/catalog/ui/cell-text"
 import { NewModelModal } from "@/components/catalog/ui/new-model-modal"
 import { SortableHeader } from "@/components/catalog/ui/sortable-header"
 import { Pagination } from "@/components/catalog/ui/pagination"
+import { FilterBar, type FilterBarFilter } from "@/components/catalog/ui/filter-bar"
 import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
 import { useResizableColumns, type ResizerBindings } from "@/hooks/use-resizable-columns"
 import { useTableSort, type SortState } from "@/hooks/use-table-sort"
 import { usePagination } from "@/hooks/use-pagination"
+import { useCollapsibleGroups } from "@/hooks/use-collapsible-groups"
 import { downloadCsv } from "@/lib/catalog/csv-export"
 // Standard razmer chip-pill ladder used in the table.
 const RAZMER_LADDER = ["XS", "S", "M", "L", "XL", "XXL"] as const
@@ -173,6 +176,8 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
   const [selectedStatusIds, setSelectedStatusIds] = useState<Set<number>>(new Set())
   const [incompleteOnly, setIncompleteOnly] = useState(false)
   const [groupBy, setGroupBy] = useState<GroupBy>("none")
+  // W9.6 — Notion-style collapsible group headers.
+  const { isCollapsed: isGroupCollapsed, toggle: toggleGroupCollapsed } = useCollapsibleGroups("matrix-modeli")
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set())
   const [selectedKods, setSelectedKods] = useState<Set<string>>(new Set())
   const [openMenuKod, setOpenMenuKod] = useState<string | null>(null)
@@ -231,15 +236,39 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
     for (const r of rows) if (r.brand_id != null) acc.set(r.brand_id, (acc.get(r.brand_id) ?? 0) + 1)
     return acc
   }, [rows])
+  // W9.4 — category / collection / season counts (used for chip badges).
+  const categoryCounts = useMemo(() => {
+    const acc = new Map<number, number>()
+    for (const r of rows) if (r.kategoriya_id != null) acc.set(r.kategoriya_id, (acc.get(r.kategoriya_id) ?? 0) + 1)
+    return acc
+  }, [rows])
+  const collectionCounts = useMemo(() => {
+    const acc = new Map<string, number>()
+    for (const r of rows) if (r.kollekciya) acc.set(r.kollekciya, (acc.get(r.kollekciya) ?? 0) + 1)
+    return acc
+  }, [rows])
+  // W9.4 — season (tip_kollekcii) options derived from rows.
+  const [selectedSeasons, setSelectedSeasons] = useState<Set<string>>(new Set())
+  const seasonOptions = useMemo(() => {
+    const acc = new Map<string, number>()
+    for (const r of rows) {
+      const s = (r.tip_kollekcii ?? "").trim()
+      if (s) acc.set(s, (acc.get(s) ?? 0) + 1)
+    }
+    return Array.from(acc.entries())
+      .sort(([a], [b]) => a.localeCompare(b, "ru"))
+      .map(([value, count]) => ({ value, label: value, count }))
+  }, [rows])
   const filtered = useMemo(() => {
     let res = rows
     if (selectedBrandIds.size > 0) res = res.filter((r) => r.brand_id != null && selectedBrandIds.has(r.brand_id))
     if (selectedStatusIds.size > 0) res = res.filter((r) => r.status_id != null && selectedStatusIds.has(r.status_id))
     if (selectedCategoryIds.size > 0) res = res.filter((r) => r.kategoriya_id != null && selectedCategoryIds.has(r.kategoriya_id))
     if (selectedCollectionNames.size > 0) res = res.filter((r) => r.kollekciya != null && selectedCollectionNames.has(r.kollekciya))
+    if (selectedSeasons.size > 0) res = res.filter((r) => r.tip_kollekcii != null && selectedSeasons.has(r.tip_kollekcii))
     if (incompleteOnly) res = res.filter((r) => r.completeness < 0.5)
     return search.trim() ? res.filter((r) => modelMatches(r, search.trim().toLowerCase())) : res
-  }, [rows, selectedBrandIds, selectedStatusIds, selectedCategoryIds, selectedCollectionNames, incompleteOnly, search])
+  }, [rows, selectedBrandIds, selectedStatusIds, selectedCategoryIds, selectedCollectionNames, selectedSeasons, incompleteOnly, search])
   // W8.1 — apply sort AFTER filters.  Computed value resolver for keys that
   // aren't 1-to-1 with MatrixRow fields.
   const sortedFiltered = useMemo<MatrixRow[]>(() => {
@@ -275,7 +304,7 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
   useEffect(() => {
     resetPage()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, selectedBrandIds, selectedCategoryIds, selectedCollectionNames, selectedStatusIds, incompleteOnly, groupBy, sort.column, sort.direction])
+  }, [search, selectedBrandIds, selectedCategoryIds, selectedCollectionNames, selectedSeasons, selectedStatusIds, incompleteOnly, groupBy, sort.column, sort.direction])
   // Pagination only kicks in when groupBy === "none" (otherwise we render full
   // groups — pagination across groups is non-obvious UX).
   const paginated = useMemo(() => paginate(sortedFiltered), [paginate, sortedFiltered])
@@ -408,7 +437,9 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
                 <th className="px-3 py-2.5"><input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAllVisible} style={{ accentColor: "#1C1917" }} className="rounded border-stone-300" aria-label="Выбрать все" /></th>
                 {MODEL_COLUMNS.map(([label, cls, sortKey], idx) => {
                   const colId = MODEL_COLUMN_IDS[idx].id
-                  const baseCls = `relative px-3 py-2.5 font-medium ${cls ?? ""}`
+                  // W9.7 — первая (якорная) колонка «Название» — sticky.
+                  const stickyCls = idx === 0 ? " cat-sticky-col cat-sticky-col-head" : ""
+                  const baseCls = `relative px-3 py-2.5 font-medium ${cls ?? ""}${stickyCls}`
                   if (sortKey) {
                     return (
                       <SortableHeader
@@ -434,14 +465,28 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
               </tr>
             </thead>
             <tbody>
-              {pagedGrouped.map((group) => (
+              {pagedGrouped.map((group) => {
+                const collapsed = groupBy !== "none" && isGroupCollapsed(group.key)
+                return (
                 <Fragment key={`group-${group.key}`}>
                   {groupBy !== "none" && (
                     <tr className="bg-stone-100/60 border-b border-stone-200">
-                      <td colSpan={14} className="px-3 py-2"><div className="flex items-center gap-2"><span className="text-sm font-medium text-stone-800">{group.label}</span><span className="text-xs text-stone-500 tabular-nums">· {group.items.length}</span></div></td>
+                      <td colSpan={14} className="px-3 py-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleGroupCollapsed(group.key)}
+                          className="flex items-center gap-2 w-full text-left hover:opacity-80 transition-opacity"
+                          aria-expanded={!collapsed}
+                          aria-label={collapsed ? `Развернуть группу ${group.label}` : `Свернуть группу ${group.label}`}
+                        >
+                          {collapsed ? <ChevronRight className="w-3.5 h-3.5 text-stone-500 shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 text-stone-500 shrink-0" />}
+                          <span className="text-sm font-medium text-stone-800">{group.label}</span>
+                          <span className="text-xs text-stone-500 tabular-nums">· {group.items.length}</span>
+                        </button>
+                      </td>
                     </tr>
                   )}
-                  {group.items.map((m) => {
+                  {!collapsed && group.items.map((m) => {
                     const canExpand = m.modeli.length >= 2
                     const isExpanded = expandedRows.has(m.id)
                     const checked = selectedKods.has(m.kod)
@@ -464,7 +509,7 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
                             )}
                           </td>
                           <td className="px-3 py-3"><input type="checkbox" checked={checked} onChange={() => toggleSelect(m.kod)} onClick={(e) => e.stopPropagation()} style={{ accentColor: "#1C1917" }} className="rounded border-stone-300" aria-label={`Выбрать ${m.kod}`} /></td>
-                          <td className="px-3 py-3 cursor-pointer" onClick={() => onOpen(m.kod)}>
+                          <td className="px-3 py-3 cursor-pointer cat-sticky-col" onClick={() => onOpen(m.kod)}>
                             <div className="font-medium text-stone-900 hover:underline font-mono">{m.kod}</div>
                             <div className="text-xs text-stone-500 truncate max-w-[220px]">{m.nazvanie_sayt || <span className="italic text-stone-400">без названия</span>}</div>
                           </td>
@@ -499,9 +544,9 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
                           </td>
                         </tr>
                         {isExpanded && m.modeli.map((v) => (
-                          <tr key={`v-${v.id}`} className="bg-stone-50/40 border-b border-stone-100 text-xs">
+                          <tr key={`v-${v.id}`} className="cat-sticky-row-alt bg-stone-50/40 border-b border-stone-100 text-xs">
                             <td colSpan={2} />
-                            <td className="pl-3 py-2 pr-3"><div className="flex items-center gap-2"><div className="w-4 h-px bg-stone-300" /><span className="font-medium text-stone-800 font-mono">{v.kod}</span></div><div className="text-[11px] text-stone-500 ml-6 mt-0.5 truncate max-w-[200px]">{v.nazvanie}</div></td>
+                            <td className="pl-3 py-2 pr-3 cat-sticky-col"><div className="flex items-center gap-2"><div className="w-4 h-px bg-stone-300" /><span className="font-medium text-stone-800 font-mono">{v.kod}</span></div><div className="text-[11px] text-stone-500 ml-6 mt-0.5 truncate max-w-[200px]">{v.nazvanie}</div></td>
                             {/* W3.2 — Бренд (наследуется от модели — здесь пусто) */}
                             <td className="px-3 py-2 text-stone-300">—</td>
                             <td className="px-3 py-2 text-stone-400">—</td>
@@ -520,7 +565,8 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
                     )
                   })}
                 </Fragment>
-              ))}
+                )
+              })}
             </tbody>
           </table>
           {groupBy === "none" && (
@@ -889,7 +935,7 @@ function RegistryTop({ search, setSearch, placeholder, count, total }: { search:
 }
 function RegistryHead({
   labels, rightLabel, borderedLabel, columnIds, bindResizer,
-  sortKeys, sortColumn, sortDirection, onSort,
+  sortKeys, sortColumn, sortDirection, onSort, stickyFirst,
 }: {
   labels: string[]
   rightLabel?: string
@@ -901,6 +947,8 @@ function RegistryHead({
   sortColumn?: string | null
   sortDirection?: "asc" | "desc" | null
   onSort?: (key: string) => void
+  /** W9.7 — pin the first header cell to `left: 0`. */
+  stickyFirst?: boolean
 }) {
   return (
     <thead className="bg-stone-50/80 border-b border-stone-200">
@@ -908,7 +956,8 @@ function RegistryHead({
         {labels.map((label, idx) => {
           const colId = columnIds?.[idx]
           const sortKey = sortKeys?.[idx] ?? null
-          const baseCls = `relative px-3 py-2.5 font-medium ${label === rightLabel ? "text-right" : ""} ${label === borderedLabel ? "border-l border-stone-200" : ""}`
+          const stickyCls = stickyFirst && idx === 0 ? " cat-sticky-col cat-sticky-col-head" : ""
+          const baseCls = `relative px-3 py-2.5 font-medium ${label === rightLabel ? "text-right" : ""} ${label === borderedLabel ? "border-l border-stone-200" : ""}${stickyCls}`
           if (sortKey && onSort) {
             return (
               <SortableHeader
