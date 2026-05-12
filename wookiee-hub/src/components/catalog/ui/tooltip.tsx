@@ -1,4 +1,5 @@
 import type { ReactNode } from "react"
+import * as RTooltip from "@radix-ui/react-tooltip"
 import { cn } from "@/lib/utils"
 
 export type TooltipPosition = "top" | "bottom" | "left" | "right"
@@ -10,30 +11,37 @@ interface TooltipProps {
   className?: string
 }
 
-const POSITION_MAP: Record<TooltipPosition, string> = {
-  top: "left-1/2 -translate-x-1/2 bottom-full mb-1.5",
-  bottom: "left-1/2 -translate-x-1/2 top-full mt-1.5",
-  left: "right-full mr-1.5 top-1/2 -translate-y-1/2",
-  right: "left-full ml-1.5 top-1/2 -translate-y-1/2",
-}
-
 /**
- * Tooltip — позиционируемая подсказка на hover.
+ * Tooltip — позиционируемая подсказка на hover/focus.
+ * Реализована на Radix Tooltip с collisionPadding={8}, чтобы не обрезаться
+ * за сайдбаром/краем вьюпорта. Сохраняет прежний API (text, children, position, className).
  * MVP-spec: stone-900 fill, white text, 11px, fade-in.
  */
 export function Tooltip({ text, children, position = "top", className }: TooltipProps) {
   return (
-    <span className={cn("group relative inline-flex", className)}>
-      {children}
-      <span
-        className={cn(
-          "absolute px-2 py-1 bg-stone-900 text-white text-[11px] rounded whitespace-nowrap",
-          "opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50",
-          POSITION_MAP[position],
-        )}
-      >
-        {text}
-      </span>
-    </span>
+    <RTooltip.Provider delayDuration={150} skipDelayDuration={100}>
+      <RTooltip.Root>
+        <RTooltip.Trigger asChild>
+          <span className={cn("inline-flex", className)}>{children}</span>
+        </RTooltip.Trigger>
+        <RTooltip.Portal>
+          <RTooltip.Content
+            side={position}
+            align="center"
+            sideOffset={6}
+            collisionPadding={8}
+            avoidCollisions
+            className={cn(
+              "z-50 px-2 py-1 bg-stone-900 text-white text-[11px] rounded",
+              "max-w-xs whitespace-normal break-words",
+              "data-[state=delayed-open]:animate-in data-[state=closed]:animate-out",
+              "data-[state=delayed-open]:fade-in-0 data-[state=closed]:fade-out-0",
+            )}
+          >
+            {text}
+          </RTooltip.Content>
+        </RTooltip.Portal>
+      </RTooltip.Root>
+    </RTooltip.Provider>
   )
 }
