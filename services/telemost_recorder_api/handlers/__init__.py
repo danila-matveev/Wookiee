@@ -10,6 +10,7 @@ import logging
 from services.telemost_recorder_api.auth import get_user_by_telegram_id
 from services.telemost_recorder_api.handlers.help import handle_help
 from services.telemost_recorder_api.handlers.list_meetings import handle_list
+from services.telemost_recorder_api.handlers.meeting_actions import handle_meet
 from services.telemost_recorder_api.handlers.record import handle_record
 from services.telemost_recorder_api.handlers.start import handle_start
 from services.telemost_recorder_api.handlers.status import handle_status
@@ -112,5 +113,15 @@ async def _handle_callback_query(cq: dict) -> None:
         await handle_status(chat_id, user_id)
     elif data == "menu:help":
         await handle_help(chat_id)
+    elif data.startswith("meet:"):
+        parts = data.split(":", 2)
+        if len(parts) == 3:
+            _, short_id, action = parts
+            await handle_meet(
+                chat_id=chat_id, user_id=user_id,
+                short_id=short_id, action=action,
+            )
+        else:
+            logger.info("Malformed meet callback: %s", data)
     else:
         logger.info("Unknown callback data: %s", data)

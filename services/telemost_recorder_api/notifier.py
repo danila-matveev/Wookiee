@@ -12,6 +12,7 @@ from typing import Any
 from uuid import UUID
 
 from services.telemost_recorder_api.db import get_pool
+from services.telemost_recorder_api.keyboards import meeting_actions
 from services.telemost_recorder_api.meetings_repo import (
     build_transcript_text,  # re-export for back-compat
 )
@@ -172,8 +173,13 @@ async def notify_meeting_result(meeting_id: UUID) -> None:
         return
 
     summary_text = format_summary_message(meeting)
+    short_id = str(meeting_id)[:_ID_PREFIX_LEN]
     try:
-        await tg_send_message(triggered_by, summary_text)
+        await tg_send_message(
+            triggered_by,
+            summary_text,
+            reply_markup=meeting_actions(short_id),
+        )
     except TelegramAPIError:
         logger.exception("Failed to send summary for %s", meeting_id)
         return
