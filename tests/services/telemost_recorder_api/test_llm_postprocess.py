@@ -24,6 +24,17 @@ def test_build_prompt_includes_segments_and_participants():
     assert "JSON" in prompt
 
 
+def test_build_prompt_contains_wookiee_glossary():
+    """Без глоссария LLM возвращает 'венди'/'мун' кириллицей и теряет привязку к моделям."""
+    prompt = build_prompt(
+        [{"speaker": "Speaker 0", "start_ms": 0, "end_ms": 1000, "text": "x"}],
+        [{"name": "Данила"}],
+    )
+    for model_name in ("Wendy", "Moon", "Vuki", "Ruby", "Joy"):
+        assert model_name in prompt, f"Glossary must mention {model_name}"
+    assert "Глоссарий моделей бренда" in prompt
+
+
 @pytest.mark.asyncio
 async def test_postprocess_returns_structured_json():
     valid_response = {
