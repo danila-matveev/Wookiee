@@ -18,6 +18,9 @@ import { useTableSort, type SortState } from "@/hooks/use-table-sort"
 import { usePagination } from "@/hooks/use-pagination"
 import { useDebouncedValue } from "@/hooks/use-debounced-value"
 import { useCollapsibleGroups } from "@/hooks/use-collapsible-groups"
+import { useColumnConfig } from "@/hooks/use-column-config"
+import { MATRIX_COLUMNS } from "@/lib/catalog/column-catalogs"
+import { ColumnsManager } from "@/components/catalog/ui/columns-manager"
 import { downloadCsv } from "@/lib/catalog/csv-export"
 import { translateError } from "@/lib/catalog/error-translator"
 // Standard razmer chip-pill ladder used in the table.
@@ -168,6 +171,30 @@ function buildCompletenessTooltip(row: MatrixRow): string {
 function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, onOpen, onRegisterExport }: { rows: MatrixRow[]; brendy: Brend[]; kategorii: { id: number; nazvanie: string }[]; kollekcii: { id: number; nazvanie: string }[]; modelStatuses: StatusOption[]; onOpen: (kod: string) => void; onRegisterExport?: (fn: (() => void) | null) => void }) {
   const queryClient = useQueryClient()
   const { widths: colWidths, bindResizer } = useResizableColumns("matrix.modeli", [...MODEL_COLUMN_IDS])
+  // W9.5 — конфигуратор колонок матрицы. Видимость управляет рендер-ключами
+  // MODEL_COLUMN_IDS; для полей из БД, не имеющих рендерера, тоггл активирует
+  // их в каталоге, но в таблице они пока не отрисовываются (TODO ниже).
+  const columnConfig = useColumnConfig("matrix", MATRIX_COLUMNS)
+  const isColVisible = (key: string): boolean => columnConfig.visibility[key] !== false
+  // Маппинг render-ключей (MODEL_COLUMN_IDS) → ключи каталога колонок.
+  // Совпадают по именам, кроме razmery / cveta / zapoln / cv_art_sku / obnovleno.
+  const renderKeyToCatalogKey: Record<string, string> = {
+    nazvanie: "nazvanie",
+    brand: "brand",
+    kategoriya: "kategoriya",
+    kollekciya: "kollekciya",
+    fabrika: "fabrika",
+    status: "status",
+    razmery: "razmery",
+    cveta: "cveta",
+    zapoln: "completeness",
+    cv_art_sku: "cv_art_sku",
+    obnovleno: "obnovleno",
+  }
+  const isRenderColVisible = (renderKey: string): boolean => {
+    const catalogKey = renderKeyToCatalogKey[renderKey] ?? renderKey
+    return isColVisible(catalogKey)
+  }
   const [search, setSearch] = useState("")
   // W9.3 — дебаунс 300мс. Фильтрация по тысячам моделей на каждом keystroke
   // даёт заметные подвисания на больших каталогах; debounced value читается
@@ -413,6 +440,7 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
             <select value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)} className="px-2.5 py-1 text-xs border border-stone-200 rounded-md bg-white outline-none">
               {GROUP_BY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
+            <ColumnsManager state={columnConfig} />
             <span className="text-xs text-stone-500 tabular-nums">{filtered.length} из {rows.length}</span>
           </div>
         </div>
@@ -477,7 +505,13 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
               <col style={{ width: 32 }} />
               <col style={{ width: 40 }} />
               {MODEL_COLUMN_IDS.map((c) => (
-                <col key={c.id} style={{ width: `${colWidths[c.id] ?? c.defaultWidth}px` }} />
+                <col
+                  key={c.id}
+                  style={{
+                    width: `${colWidths[c.id] ?? c.defaultWidth}px`,
+                    display: isRenderColVisible(c.id) ? undefined : "none",
+                  }}
+                />
               ))}
               <col style={{ width: 40 }} />
             </colgroup>
@@ -487,9 +521,11 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
                 <th className="px-3 py-2.5"><input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAllVisible} style={{ accentColor: "#1C1917" }} className="rounded border-stone-300" aria-label="Выбрать все" /></th>
                 {MODEL_COLUMNS.map(([label, cls, sortKey], idx) => {
                   const colId = MODEL_COLUMN_IDS[idx].id
+                  const visible = isRenderColVisible(colId)
                   // W9.7 — первая (якорная) колонка «Название» — sticky.
                   const stickyCls = idx === 0 ? " cat-sticky-col cat-sticky-col-head" : ""
                   const baseCls = `relative px-3 py-2.5 font-medium ${cls ?? ""}${stickyCls}`
+                  const hiddenStyle = !visible ? { display: "none" } : undefined
                   if (sortKey) {
                     return (
                       <SortableHeader
@@ -498,6 +534,7 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
                         direction={sort.column === sortKey ? sort.direction : null}
                         onClick={() => toggleSort(sortKey)}
                         className={baseCls}
+                        style={hiddenStyle}
                       >
                         {label}
                         <span {...bindResizer(colId)} />
@@ -505,7 +542,7 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
                     )
                   }
                   return (
-                    <th key={label} className={baseCls}>
+                    <th key={label} className={baseCls} style={hiddenStyle}>
                       {label}
                       <span {...bindResizer(colId)} />
                     </th>
@@ -560,30 +597,30 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
                             )}
                           </td>
                           <td className="px-3 py-3"><input type="checkbox" checked={checked} onChange={() => toggleSelect(m.kod)} onClick={(e) => e.stopPropagation()} style={{ accentColor: "#1C1917" }} className="rounded border-stone-300" aria-label={`Выбрать ${m.kod}`} /></td>
-                          <td className="px-3 py-3 cursor-pointer cat-sticky-col" onClick={() => onOpen(m.kod)}>
+                          <td className="px-3 py-3 cursor-pointer cat-sticky-col" onClick={() => onOpen(m.kod)} style={!isRenderColVisible("nazvanie") ? { display: "none" } : undefined}>
                             <CellText className="font-medium text-stone-900 hover:underline font-mono" title={m.kod}>{m.kod}</CellText>
                             <CellText className="text-xs text-stone-500" title={m.nazvanie_sayt ?? ""}>{m.nazvanie_sayt || <span className="italic text-stone-400">без названия</span>}</CellText>
                           </td>
                           {/* W3.2 — Бренд */}
-                          <td className="px-3 py-3 text-stone-700"><CellText title={m.brand ?? ""}>{m.brand ?? <span className="text-stone-300">—</span>}</CellText></td>
-                          <td className="px-3 py-3 text-stone-700"><CellText title={m.kategoriya ?? ""}>{m.kategoriya ?? "—"}</CellText></td>
-                          <td className="px-3 py-3">
+                          <td className="px-3 py-3 text-stone-700" style={!isRenderColVisible("brand") ? { display: "none" } : undefined}><CellText title={m.brand ?? ""}>{m.brand ?? <span className="text-stone-300">—</span>}</CellText></td>
+                          <td className="px-3 py-3 text-stone-700" style={!isRenderColVisible("kategoriya") ? { display: "none" } : undefined}><CellText title={m.kategoriya ?? ""}>{m.kategoriya ?? "—"}</CellText></td>
+                          <td className="px-3 py-3" style={!isRenderColVisible("kollekciya") ? { display: "none" } : undefined}>
                             <CellText className="text-stone-700" title={m.kollekciya ?? ""}>{m.kollekciya ?? "—"}</CellText>
                             <CellText className="text-[11px] text-stone-400" title={m.tip_kollekcii ?? ""}>{m.tip_kollekcii ?? ""}</CellText>
                           </td>
-                          <td className="px-3 py-3 text-stone-700"><CellText title={m.fabrika ?? ""}>{m.fabrika ?? "—"}</CellText></td>
-                          <td className="px-3 py-3"><StatusBadge status={m.status_id != null ? statusById.get(m.status_id) ?? null : null} /></td>
-                          <td className="px-3 py-3"><div className="flex items-center gap-0.5">{RAZMER_LADDER.map((sz) => <span key={sz} className={`text-[10px] px-1 py-0.5 rounded ${variantSizes.has(sz) ? "bg-stone-900 text-white" : "bg-stone-50 text-stone-300 ring-1 ring-inset ring-stone-200"}`}>{sz}</span>)}</div></td>
-                          <td className="px-3 py-3"><ColorChips modelKod={m.kod} count={m.cveta_cnt} /></td>
-                          <td className="px-3 py-3"><Tooltip text={buildCompletenessTooltip(m)}><CompletenessRing value={m.completeness} size={16} hideLabel /></Tooltip></td>
-                          <td className="px-3 py-3 text-right tabular-nums text-stone-600">
+                          <td className="px-3 py-3 text-stone-700" style={!isRenderColVisible("fabrika") ? { display: "none" } : undefined}><CellText title={m.fabrika ?? ""}>{m.fabrika ?? "—"}</CellText></td>
+                          <td className="px-3 py-3" style={!isRenderColVisible("status") ? { display: "none" } : undefined}><StatusBadge status={m.status_id != null ? statusById.get(m.status_id) ?? null : null} /></td>
+                          <td className="px-3 py-3" style={!isRenderColVisible("razmery") ? { display: "none" } : undefined}><div className="flex items-center gap-0.5">{RAZMER_LADDER.map((sz) => <span key={sz} className={`text-[10px] px-1 py-0.5 rounded ${variantSizes.has(sz) ? "bg-stone-900 text-white" : "bg-stone-50 text-stone-300 ring-1 ring-inset ring-stone-200"}`}>{sz}</span>)}</div></td>
+                          <td className="px-3 py-3" style={!isRenderColVisible("cveta") ? { display: "none" } : undefined}><ColorChips modelKod={m.kod} count={m.cveta_cnt} /></td>
+                          <td className="px-3 py-3" style={!isRenderColVisible("zapoln") ? { display: "none" } : undefined}><Tooltip text={buildCompletenessTooltip(m)}><CompletenessRing value={m.completeness} size={16} hideLabel /></Tooltip></td>
+                          <td className="px-3 py-3 text-right tabular-nums text-stone-600" style={!isRenderColVisible("cv_art_sku") ? { display: "none" } : undefined}>
                             <Tooltip text={`Цвета (привязанные к артикулам): ${m.cveta_cnt} · Артикулы: ${m.artikuly_cnt} · SKU: ${m.tovary_cnt}`}>
                               <span>
                                 <span className="text-stone-900 font-medium">{m.cveta_cnt}</span><span className="text-stone-300 mx-1">/</span><span>{m.artikuly_cnt}</span><span className="text-stone-300 mx-1">/</span><span>{m.tovary_cnt}</span>
                               </span>
                             </Tooltip>
                           </td>
-                          <td className="px-3 py-3 text-stone-500 text-xs">{relativeDate(m.updated_at)}</td>
+                          <td className="px-3 py-3 text-stone-500 text-xs" style={!isRenderColVisible("obnovleno") ? { display: "none" } : undefined}>{relativeDate(m.updated_at)}</td>
                           <td className="px-2 py-3 relative">
                             <button className="p-1 hover:bg-stone-100 rounded opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => { e.stopPropagation(); setOpenMenuKod((cur) => (cur === m.kod ? null : m.kod)) }} aria-label="Действия">
                               <MoreHorizontal className="w-3.5 h-3.5 text-stone-500" />
@@ -600,23 +637,23 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
                         {isExpanded && m.modeli.map((v) => (
                           <tr key={`v-${v.id}`} className="cat-sticky-row-alt bg-stone-50/40 border-b border-stone-100 text-xs">
                             <td colSpan={2} />
-                            <td className="pl-3 py-2 pr-3 cat-sticky-col">
+                            <td className="pl-3 py-2 pr-3 cat-sticky-col" style={!isRenderColVisible("nazvanie") ? { display: "none" } : undefined}>
                               <div className="flex items-center gap-2 min-w-0"><div className="w-4 h-px bg-stone-300 shrink-0" /><CellText className="font-medium text-stone-800 font-mono" title={v.kod}>{v.kod}</CellText></div>
                               <CellText className="text-[11px] text-stone-500 ml-6 mt-0.5" title={v.nazvanie ?? ""}>{v.nazvanie}</CellText>
                             </td>
                             {/* W3.2 — Бренд (наследуется от модели — здесь пусто) */}
-                            <td className="px-3 py-2 text-stone-300">—</td>
-                            <td className="px-3 py-2 text-stone-400">—</td>
-                            <td className="px-3 py-2">
+                            <td className="px-3 py-2 text-stone-300" style={!isRenderColVisible("brand") ? { display: "none" } : undefined}>—</td>
+                            <td className="px-3 py-2 text-stone-400" style={!isRenderColVisible("kategoriya") ? { display: "none" } : undefined}>—</td>
+                            <td className="px-3 py-2" style={!isRenderColVisible("kollekciya") ? { display: "none" } : undefined}>
                               <div className="flex items-center gap-1 text-stone-500 min-w-0"><Building2 className="w-3 h-3 text-stone-400 shrink-0" /><CellText title={v.importer_short ?? ""}>{v.importer_short ?? "—"}</CellText></div>
                             </td>
-                            <td className="px-3 py-2 font-mono text-[11px] text-stone-500"><CellText title={v.artikul_modeli ?? ""}>{v.artikul_modeli ?? "—"}</CellText></td>
-                            <td className="px-3 py-2"><StatusBadge status={v.status_id != null ? statusById.get(v.status_id) ?? null : null} compact /></td>
-                            <td className="px-3 py-2 text-stone-400 text-[10px]">RU: {v.rossiyskiy_razmer ?? "—"}</td>
-                            <td />
-                            <td />
-                            <td className="px-3 py-2 text-right tabular-nums text-stone-600"><span className="text-stone-300">—</span><span className="text-stone-300 mx-1">/</span><span className="text-stone-700 font-medium">{v.artikuly_cnt}</span><span className="text-stone-300 mx-1">/</span><span>{v.tovary_cnt}</span></td>
-                            <td className="px-3 py-2 text-stone-400">—</td>
+                            <td className="px-3 py-2 font-mono text-[11px] text-stone-500" style={!isRenderColVisible("fabrika") ? { display: "none" } : undefined}><CellText title={v.artikul_modeli ?? ""}>{v.artikul_modeli ?? "—"}</CellText></td>
+                            <td className="px-3 py-2" style={!isRenderColVisible("status") ? { display: "none" } : undefined}><StatusBadge status={v.status_id != null ? statusById.get(v.status_id) ?? null : null} compact /></td>
+                            <td className="px-3 py-2 text-stone-400 text-[10px]" style={!isRenderColVisible("razmery") ? { display: "none" } : undefined}>RU: {v.rossiyskiy_razmer ?? "—"}</td>
+                            <td style={!isRenderColVisible("cveta") ? { display: "none" } : undefined} />
+                            <td style={!isRenderColVisible("zapoln") ? { display: "none" } : undefined} />
+                            <td className="px-3 py-2 text-right tabular-nums text-stone-600" style={!isRenderColVisible("cv_art_sku") ? { display: "none" } : undefined}><span className="text-stone-300">—</span><span className="text-stone-300 mx-1">/</span><span className="text-stone-700 font-medium">{v.artikuly_cnt}</span><span className="text-stone-300 mx-1">/</span><span>{v.tovary_cnt}</span></td>
+                            <td className="px-3 py-2 text-stone-400" style={!isRenderColVisible("obnovleno") ? { display: "none" } : undefined}>—</td>
                             <td />
                           </tr>
                         ))}

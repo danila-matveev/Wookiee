@@ -1154,13 +1154,7 @@ export function TovaryPage() {
             <option value="collection">По коллекции</option>
             <option value="channel">По каналу</option>
           </select>
-          <ColumnsManager
-            columns={TOVARY_COLUMNS}
-            value={columns}
-            onChange={setColumns}
-            scope="tovary"
-            storageKey="columns"
-          />
+          <ColumnsManager state={columnConfig} />
         </div>
       </div>
 
