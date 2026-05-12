@@ -54,7 +54,8 @@ export const navigationGroups: NavGroup[] = [
       { id: "catalog-artikuly", label: "Артикулы",       icon: Tag,     path: "/catalog/artikuly" },
       { id: "catalog-tovary",   label: "Товары/SKU",     icon: Boxes,   path: "/catalog/tovary"   },
       { id: "catalog-skleyki",  label: "Склейки",        icon: Layers,  path: "/catalog/skleyki"  },
-      // Справочники (9)
+      // Справочники (10)
+      { id: "ref-brendy",           label: "Бренды",           icon: Tag,         path: "/catalog/references/brendy"    },
       { id: "ref-kategorii",        label: "Категории",        icon: FolderTree,  path: "/catalog/references/kategorii" },
       { id: "ref-kollekcii",        label: "Коллекции",        icon: BookOpen,    path: "/catalog/references/kollekcii" },
       { id: "ref-tipy-kollekciy",   label: "Типы коллекций",   icon: Layers,      path: "/catalog/references/tipy-kollekciy" },

@@ -2,8 +2,8 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { useSearchParams } from "react-router-dom"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { AlertCircle, Archive, Building2, ChevronDown, ChevronRight, Copy, Download, Edit3, Info, MoreHorizontal, Plus, Search } from "lucide-react"
-import { archiveModel, bulkUpdateModelStatus, createModel, duplicateModel, fetchArtikulyRegistry, fetchKategorii, fetchKollekcii, fetchMatrixList, fetchStatusy, fetchTovaryRegistry, getUiPref, setUiPref } from "@/lib/catalog/service"
-import type { MatrixRow } from "@/lib/catalog/service"
+import { archiveModel, bulkUpdateModelStatus, createModel, duplicateModel, fetchArtikulyRegistry, fetchBrendy, fetchKategorii, fetchKollekcii, fetchMatrixList, fetchStatusy, fetchTovaryRegistry, getUiPref, setUiPref } from "@/lib/catalog/service"
+import type { Brend, MatrixRow } from "@/lib/catalog/service"
 import { StatusBadge, CATALOG_STATUSES } from "@/components/catalog/ui/status-badge"
 import { CompletenessRing } from "@/components/catalog/ui/completeness-ring"
 import { Tooltip } from "@/components/catalog/ui/tooltip"
@@ -51,23 +51,26 @@ function FilterChips<T extends ChipValue>({ title, items, selected, onChange, cl
   )
 }
 // ─── Matrix list view (Базовые модели) — Wave 2 B1 ─────────────────────────
-type GroupBy = "none" | "kategoriya" | "kollekciya" | "fabrika" | "status"
+type GroupBy = "none" | "brand" | "kategoriya" | "kollekciya" | "fabrika" | "status"
 type ListTab = "modeli_osnova" | "artikuly" | "tovary"
 type StatusOption = { id: number; nazvanie: string; tip: string; color: string | null }
 const GROUP_BY_OPTIONS: { value: GroupBy; label: string }[] = [
   { value: "none", label: "Без группировки" },
+  { value: "brand", label: "По бренду" },
   { value: "kategoriya", label: "По категории" },
   { value: "kollekciya", label: "По коллекции" },
   { value: "fabrika", label: "По фабрике" },
   { value: "status", label: "По статусу" },
 ]
+// W3.2 — добавлена колонка «Бренд» между «Название» и «Категория».
 const MODEL_COLUMNS = [
-  ["Название"], ["Категория"], ["Коллекция"], ["Фабрика"], ["Статус"], ["Размеры"], ["Цвета"], ["Заполн."],
+  ["Название"], ["Бренд"], ["Категория"], ["Коллекция"], ["Фабрика"], ["Статус"], ["Размеры"], ["Цвета"], ["Заполн."],
   ["Цв / Арт / SKU", "text-right"], ["Обновлено"],
 ] as const
 // Column IDs + default widths for useResizableColumns (W1.5). Order must match MODEL_COLUMNS.
 const MODEL_COLUMN_IDS = [
   { id: "nazvanie", defaultWidth: 240 },
+  { id: "brand", defaultWidth: 110 },
   { id: "kategoriya", defaultWidth: 140 },
   { id: "kollekciya", defaultWidth: 160 },
   { id: "fabrika", defaultWidth: 140 },
@@ -80,6 +83,7 @@ const MODEL_COLUMN_IDS = [
 ] as const
 function getGroupKey(row: MatrixRow, groupBy: GroupBy, statusNameById: Map<number, string>): string {
   switch (groupBy) {
+    case "brand": return row.brand ?? "Без бренда"
     case "kategoriya": return row.kategoriya ?? "Без категории"
     case "kollekciya": return row.kollekciya ?? "Без коллекции"
     case "fabrika": return row.fabrika ?? "Без фабрики"
@@ -95,10 +99,12 @@ function modelMatches(row: MatrixRow, query: string) {
     (v.artikul_modeli ?? "").toLowerCase().includes(query)
   )
 }
-function ModeliOsnovaTable({ rows, kategorii, kollekcii, modelStatuses, onOpen }: { rows: MatrixRow[]; kategorii: { id: number; nazvanie: string }[]; kollekcii: { id: number; nazvanie: string }[]; modelStatuses: StatusOption[]; onOpen: (kod: string) => void }) {
+function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, onOpen }: { rows: MatrixRow[]; brendy: Brend[]; kategorii: { id: number; nazvanie: string }[]; kollekcii: { id: number; nazvanie: string }[]; modelStatuses: StatusOption[]; onOpen: (kod: string) => void }) {
   const queryClient = useQueryClient()
   const { widths: colWidths, bindResizer } = useResizableColumns("matrix.modeli", [...MODEL_COLUMN_IDS])
   const [search, setSearch] = useState("")
+  // W3.2 — brand chip filter.
+  const [selectedBrandIds, setSelectedBrandIds] = useState<Set<number>>(new Set())
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<Set<number>>(new Set())
   const [selectedCollectionNames, setSelectedCollectionNames] = useState<Set<string>>(new Set())
   const [selectedStatusIds, setSelectedStatusIds] = useState<Set<number>>(new Set())
@@ -138,14 +144,21 @@ function ModeliOsnovaTable({ rows, kategorii, kollekcii, modelStatuses, onOpen }
     for (const r of rows) if (r.status_id != null) acc.set(r.status_id, (acc.get(r.status_id) ?? 0) + 1)
     return acc
   }, [rows])
+  // W3.2 — brand counts (from full rows, not filtered) for chip badges.
+  const brandCounts = useMemo(() => {
+    const acc = new Map<number, number>()
+    for (const r of rows) if (r.brand_id != null) acc.set(r.brand_id, (acc.get(r.brand_id) ?? 0) + 1)
+    return acc
+  }, [rows])
   const filtered = useMemo(() => {
     let res = rows
+    if (selectedBrandIds.size > 0) res = res.filter((r) => r.brand_id != null && selectedBrandIds.has(r.brand_id))
     if (selectedStatusIds.size > 0) res = res.filter((r) => r.status_id != null && selectedStatusIds.has(r.status_id))
     if (selectedCategoryIds.size > 0) res = res.filter((r) => r.kategoriya_id != null && selectedCategoryIds.has(r.kategoriya_id))
     if (selectedCollectionNames.size > 0) res = res.filter((r) => r.kollekciya != null && selectedCollectionNames.has(r.kollekciya))
     if (incompleteOnly) res = res.filter((r) => r.completeness < 0.5)
     return search.trim() ? res.filter((r) => modelMatches(r, search.trim().toLowerCase())) : res
-  }, [rows, selectedStatusIds, selectedCategoryIds, selectedCollectionNames, incompleteOnly, search])
+  }, [rows, selectedBrandIds, selectedStatusIds, selectedCategoryIds, selectedCollectionNames, incompleteOnly, search])
   // Group filtered rows
   const grouped = useMemo(() => {
     if (groupBy === "none") return [{ key: "_all", label: "", items: filtered }]
@@ -232,6 +245,8 @@ function ModeliOsnovaTable({ rows, kategorii, kollekcii, modelStatuses, onOpen }
             <span className="text-xs text-stone-500 tabular-nums">{filtered.length} из {rows.length}</span>
           </div>
         </div>
+        {/* W3.2 — Brand chips (placed first — бренд = главная ось каталога) */}
+        <FilterChips title="Бренды:" items={brendy.map((b) => ({ key: String(b.id), value: b.id, label: b.nazvanie, count: brandCounts.get(b.id) ?? 0 }))} selected={selectedBrandIds} onChange={setSelectedBrandIds} />
         {/* Category chips */}
         <FilterChips title="Категории:" items={kategorii.map((k) => ({ key: String(k.id), value: k.id, label: k.nazvanie }))} selected={selectedCategoryIds} onChange={setSelectedCategoryIds} />
         {/* Collection chips */}
@@ -270,7 +285,7 @@ function ModeliOsnovaTable({ rows, kategorii, kollekcii, modelStatuses, onOpen }
                 <Fragment key={`group-${group.key}`}>
                   {groupBy !== "none" && (
                     <tr className="bg-stone-100/60 border-b border-stone-200">
-                      <td colSpan={13} className="px-3 py-2"><div className="flex items-center gap-2"><span className="text-sm font-medium text-stone-800">{group.label}</span><span className="text-xs text-stone-500 tabular-nums">· {group.items.length}</span></div></td>
+                      <td colSpan={14} className="px-3 py-2"><div className="flex items-center gap-2"><span className="text-sm font-medium text-stone-800">{group.label}</span><span className="text-xs text-stone-500 tabular-nums">· {group.items.length}</span></div></td>
                     </tr>
                   )}
                   {group.items.map((m) => {
@@ -300,6 +315,8 @@ function ModeliOsnovaTable({ rows, kategorii, kollekcii, modelStatuses, onOpen }
                             <div className="font-medium text-stone-900 hover:underline font-mono">{m.kod}</div>
                             <div className="text-xs text-stone-500 truncate max-w-[220px]">{m.nazvanie_sayt || <span className="italic text-stone-400">без названия</span>}</div>
                           </td>
+                          {/* W3.2 — Бренд */}
+                          <td className="px-3 py-3 text-stone-700">{m.brand ?? <span className="text-stone-300">—</span>}</td>
                           <td className="px-3 py-3 text-stone-700">{m.kategoriya ?? "—"}</td>
                           <td className="px-3 py-3"><div className="text-stone-700">{m.kollekciya ?? "—"}</div><div className="text-[11px] text-stone-400">{m.tip_kollekcii ?? ""}</div></td>
                           <td className="px-3 py-3 text-stone-700">{m.fabrika ?? "—"}</td>
@@ -326,6 +343,8 @@ function ModeliOsnovaTable({ rows, kategorii, kollekcii, modelStatuses, onOpen }
                           <tr key={`v-${v.id}`} className="bg-stone-50/40 border-b border-stone-100 text-xs">
                             <td colSpan={2} />
                             <td className="pl-3 py-2 pr-3"><div className="flex items-center gap-2"><div className="w-4 h-px bg-stone-300" /><span className="font-medium text-stone-800 font-mono">{v.kod}</span></div><div className="text-[11px] text-stone-500 ml-6 mt-0.5 truncate max-w-[200px]">{v.nazvanie}</div></td>
+                            {/* W3.2 — Бренд (наследуется от модели — здесь пусто) */}
+                            <td className="px-3 py-2 text-stone-300">—</td>
                             <td className="px-3 py-2 text-stone-400">—</td>
                             <td className="px-3 py-2"><div className="flex items-center gap-1 text-stone-500"><Building2 className="w-3 h-3 text-stone-400" />{v.importer_short ?? "—"}</div></td>
                             <td className="px-3 py-2 font-mono text-[11px] text-stone-500">{v.artikul_modeli ?? "—"}</td>
@@ -576,6 +595,8 @@ export function MatrixPage() {
   const [listTab, setListTab] = useState<ListTab>("modeli_osnova")
   const queryClient = useQueryClient()
   const matrixQ = useQuery({ queryKey: ["matrix-list"], queryFn: fetchMatrixList, staleTime: 3 * 60 * 1000 })
+  // W3.2 — brendy для chip-filter в шапке матрицы.
+  const brendyQ = useQuery({ queryKey: ["catalog", "brendy"], queryFn: fetchBrendy, staleTime: 10 * 60 * 1000 })
   const kategoriiQ = useQuery({ queryKey: ["kategorii"], queryFn: fetchKategorii, staleTime: 10 * 60 * 1000 })
   const kollekciiQ = useQuery({ queryKey: ["kollekcii"], queryFn: fetchKollekcii, staleTime: 10 * 60 * 1000 })
   const statusyQ = useQuery({ queryKey: ["statusy"], queryFn: fetchStatusy, staleTime: 30 * 60 * 1000 })
@@ -599,6 +620,7 @@ export function MatrixPage() {
   }, [queryClient, searchParams, setSearchParams])
   // ?model=KOD opens B3's <ModelCardModal /> as overlay from CatalogLayout.
   const rows = matrixQ.data ?? []
+  const brendy = brendyQ.data ?? []
   const kategorii = kategoriiQ.data ?? []
   const kollekcii = kollekciiQ.data ?? []
   const modelStatuses = (statusyQ.data ?? []).filter((s) => s.tip === "model")
@@ -642,7 +664,7 @@ export function MatrixPage() {
         {matrixQ.isLoading && listTab === "modeli_osnova" && <div className="px-6 py-8 text-sm text-stone-400">Загрузка…</div>}
         {matrixQ.error && <div className="px-6 py-8 text-sm text-red-500">Ошибка загрузки: {String(matrixQ.error)}</div>}
         {listTab === "modeli_osnova" && !matrixQ.isLoading && !matrixQ.error && (
-          <ModeliOsnovaTable rows={rows} kategorii={kategorii} kollekcii={kollekcii} modelStatuses={modelStatuses} onOpen={openModel} />
+          <ModeliOsnovaTable rows={rows} brendy={brendy} kategorii={kategorii} kollekcii={kollekcii} modelStatuses={modelStatuses} onOpen={openModel} />
         )}
         {listTab === "artikuly" && <ArtikulyTable />}
         {listTab === "tovary" && <TovaryTable />}

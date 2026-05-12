@@ -47,6 +47,7 @@ import {
   duplicateModel,
   fetchAllTags,
   fetchAttributesForCategory,
+  fetchBrendy,
   fetchFabriki,
   fetchKategorii,
   fetchKollekcii,
@@ -274,6 +275,7 @@ type ModelDraft = ModelOsnovaPayload & {
 function modelToDraft(m: ModelDetail): ModelDraft {
   return {
     kod: m.kod,
+    brand_id: m.brand_id ?? null,
     kategoriya_id: m.kategoriya_id ?? null,
     kollekciya_id: m.kollekciya_id ?? null,
     fabrika_id: m.fabrika_id ?? null,
@@ -497,6 +499,11 @@ interface TabContentProps {
 function TabDescription({
   m, draft, setDraft, editing, modelOsnovaId,
 }: TabContentProps) {
+  const brendyQ = useQuery({
+    queryKey: ["catalog", "brendy"],
+    queryFn: fetchBrendy,
+    staleTime: 5 * 60 * 1000,
+  })
   const kategoriiQ = useQuery({
     queryKey: ["catalog", "kategorii"],
     queryFn: fetchKategorii,
@@ -540,6 +547,7 @@ function TabDescription({
     setDraft({ ...draft, [k]: v as never })
   }
 
+  const brendy = brendyQ.data ?? []
   const kategorii = kategoriiQ.data ?? []
   const kollekcii = kollekciiQ.data ?? []
   const tipyKollekciy = tipyKollekciyQ.data ?? []
@@ -569,6 +577,22 @@ function TabDescription({
             readonly
             mono
             level={lvl("kod")}
+          />
+          {/*
+            W3.2 — Бренд (REQUIRED). FK to brendy(id), NOT NULL после
+            миграции W3.1. Если в БД ещё не выставлен — UI всё равно даёт
+            редактировать, ошибка проявится на save.
+          */}
+          <SelectField
+            label="Бренд *"
+            value={view.brand_id ?? ""}
+            options={brendy.map((b) => ({ id: b.id, nazvanie: b.nazvanie }))}
+            onChange={(v) => {
+              const id = typeof v === "number" ? v : v === "" || v == null ? null : Number(v)
+              set("brand_id", id)
+            }}
+            readonly={!editing}
+            level={lvl("brand_id")}
           />
           <SelectField
             label="Статус"

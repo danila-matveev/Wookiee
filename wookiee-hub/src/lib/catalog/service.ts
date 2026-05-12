@@ -627,6 +627,9 @@ export interface MatrixRow {
   kategoriya: string | null
   kollekciya: string | null
   fabrika: string | null
+  /** W3.2 — brand FK + denormalized name for matrix render. */
+  brand_id: number | null
+  brand: string | null
   status_id: number | null
   updated_at: string | null
   modeli_cnt: number
@@ -655,10 +658,11 @@ export async function fetchMatrixList(): Promise<MatrixRow[]> {
       id, kod, nazvanie_sayt, tip_kollekcii, kategoriya_id, updated_at,
       sostav_syrya, razmery_modeli, sku_china, ves_kg, dlina_cm, shirina_cm,
       vysota_cm, kratnost_koroba, nazvanie_etiketka, opisanie_sayt, tnved, gruppa_sertifikata,
-      kollekciya_id, fabrika_id, status_id,
+      kollekciya_id, fabrika_id, status_id, brand_id,
       kategorii(nazvanie),
       kollekcii(nazvanie),
       fabriki(nazvanie),
+      brendy(nazvanie),
       modeli(
         id, kod, nazvanie, artikul_modeli, importer_id, status_id, rossiyskiy_razmer,
         importery(nazvanie),
@@ -683,6 +687,8 @@ export async function fetchMatrixList(): Promise<MatrixRow[]> {
       kategoriya: mo.kategorii?.nazvanie ?? null,
       kollekciya: mo.kollekcii?.nazvanie ?? null,
       fabrika: mo.fabriki?.nazvanie ?? null,
+      brand_id: mo.brand_id ?? null,
+      brand: mo.brendy?.nazvanie ?? null,
       status_id: mo.status_id,
       updated_at: mo.updated_at,
       modeli_cnt: modeli.length,
@@ -1448,8 +1454,8 @@ export async function deleteCvet(id: number): Promise<void> {
 
 export interface ModelOsnovaPayload {
   kod: string
-  /** W3.1: бренд (WOOKIEE / TELOWAY). NOT NULL в БД — обязателен при создании модели. */
-  brand_id?: number
+  /** FK to `brendy.id` (WOOKIEE / TELOWAY). NOT NULL в БД — UI должен передавать при save. */
+  brand_id?: number | null
   kategoriya_id?: number | null
   kollekciya_id?: number | null
   fabrika_id?: number | null
@@ -1783,6 +1789,7 @@ export interface CatalogCounts {
   kategorii: number
   kollekcii: number
   tipy_kollekciy: number
+  brendy: number
   fabriki: number
   importery: number
   razmery: number
@@ -1817,6 +1824,7 @@ export async function fetchCatalogCounts(): Promise<CatalogCounts> {
     "kategorii",
     "kollekcii",
     "tipy_kollekciy",
+    "brendy",
     "fabriki",
     "importery",
     "razmery",
@@ -1837,6 +1845,7 @@ export async function fetchCatalogCounts(): Promise<CatalogCounts> {
     kategorii: "kategorii",
     kollekcii: "kollekcii",
     tipy_kollekciy: "tipy_kollekciy",
+    brendy: "brendy",
     fabriki: "fabriki",
     importery: "importery",
     razmery: "razmery",
