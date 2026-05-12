@@ -348,16 +348,16 @@ def _analyze_cabinet(
                 orders = item.get("orders", 0)
 
                 # Aggregate (the 4 numbers in Sheets): only count transitions to
-                # the "mapped" article — this matches GAS semantics (excludes
-                # cross-card spillover from the keyword's success score).
+                # the "mapped" article — keyword's intent metric (GAS semantics).
                 if _should_count_transitions(word, nm_id, podmen_mapping):
                     aggregated[word]["openCard"] += open_card
                     aggregated[word]["addToCart"] += add_to_cart
                     aggregated[word]["orders"] += orders
 
                 # Per-article breakdown: capture EVERY our article that received
-                # traffic for this word, regardless of the mapping. Required for
-                # подменка-analysis (where traffic visibly leaks to other SKUs).
+                # traffic for this word, regardless of the mapping. Surfaces
+                # associated conversions — другие SKU/модели, которые получают
+                # покупки от продвижения данного слова (подменки, бренд-запросы).
                 if nm_id and (open_card or add_to_cart or orders):
                     breakdown.append({
                         "search_word": word,
