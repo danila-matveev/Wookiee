@@ -46,6 +46,13 @@
 | /tool-status | [skills/tool-status.md](skills/tool-status.md) |
 | /tool-register | [skills/tool-register.md](skills/tool-register.md) |
 
+## Runbooks
+
+| Документ | Назначение |
+|---|---|
+| [runbooks/wb-marketing-sync.md](runbooks/wb-marketing-sync.md) | WB Promocodes Sync 2.1.0 + Search Queries Sync 2.0.0 (cron Пн 10:00/12:00, Google Sheets + Supabase, схема таблиц, бекфил, troubleshooting) |
+| [runbooks/influencer-crm-cutover.md](runbooks/influencer-crm-cutover.md) | Influencer CRM cutover |
+
 ## Guides
 
 | Документ | Назначение |
