@@ -167,6 +167,8 @@ export interface ModelOsnova {
 
   // Состав / производство
   tip_kollekcii?: string | null
+  /** W2.3: FK to `tipy_kollekciy.id`. Authoritative source going forward; `tip_kollekcii` (text) kept temporarily for back-compat. */
+  tip_kollekcii_id?: number | null
   material?: string | null
   sostav_syrya?: string | null
   composition?: string | null
@@ -480,6 +482,7 @@ export const FIELD_LEVEL: Record<string, FieldLevel> = {
   kollekciya_id: "model",
   fabrika_id: "model",
   tip_kollekcii: "model",
+  tip_kollekcii_id: "model",
   material: "model",
   sostav_syrya: "model",
   composition: "model",

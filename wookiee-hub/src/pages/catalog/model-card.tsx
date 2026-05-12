@@ -56,6 +56,7 @@ import {
   fetchSertifikaty,
   fetchSizesForModel,
   fetchStatusy,
+  fetchTipyKollekciy,
   fetchUpakovki,
   updateModel,
   type ModelDetail,
@@ -82,11 +83,8 @@ import { computeCompleteness, relativeDate, swatchColor } from "@/lib/catalog/co
 
 // ─── Local helpers ─────────────────────────────────────────────────────────
 
-const TIPY_KOLLEKCII = [
-  "commercial",
-  "creative",
-  "collab",
-] as const
+// W2.3: `TIPY_KOLLEKCII` хардкод убран — теперь справочник `tipy_kollekciy`
+// + FK `modeli_osnova.tip_kollekcii_id`. См. fetchTipyKollekciy().
 
 // Default lineup (XS..XXL) — fallback на случай, если БД-запрос ещё грузится
 // или модель не имеет ни одной записи в junction `modeli_osnova_razmery`.
@@ -281,6 +279,7 @@ function modelToDraft(m: ModelDetail): ModelDraft {
     fabrika_id: m.fabrika_id ?? null,
     status_id: m.status_id ?? null,
     tip_kollekcii: m.tip_kollekcii ?? null,
+    tip_kollekcii_id: m.tip_kollekcii_id ?? null,
     material: m.material ?? null,
     sostav_syrya: m.sostav_syrya ?? null,
     composition: m.composition ?? null,
@@ -508,6 +507,11 @@ function TabDescription({
     queryFn: fetchKollekcii,
     staleTime: 5 * 60 * 1000,
   })
+  const tipyKollekciyQ = useQuery({
+    queryKey: ["catalog", "tipy-kollekciy"],
+    queryFn: fetchTipyKollekciy,
+    staleTime: 5 * 60 * 1000,
+  })
   const fabrikiQ = useQuery({
     queryKey: ["catalog", "fabriki"],
     queryFn: fetchFabriki,
@@ -538,6 +542,7 @@ function TabDescription({
 
   const kategorii = kategoriiQ.data ?? []
   const kollekcii = kollekciiQ.data ?? []
+  const tipyKollekciy = tipyKollekciyQ.data ?? []
   const fabriki = fabrikiQ.data ?? []
   const statusy = (statusyQ.data ?? []).filter((s) => s.tip === "model")
   // Размерная линейка из БД. Если junction-таблица ещё не заполнена для модели,
@@ -589,13 +594,24 @@ function TabDescription({
             readonly={!editing}
             level={lvl("kollekciya_id")}
           />
-          <StringSelectField
+          <SelectField
             label="Тип коллекции"
-            value={view.tip_kollekcii ?? ""}
-            options={[...TIPY_KOLLEKCII]}
-            onChange={(v) => set("tip_kollekcii", v)}
+            value={view.tip_kollekcii_id ?? ""}
+            options={tipyKollekciy.map((t) => ({ id: t.id, nazvanie: t.nazvanie }))}
+            onChange={(v) => {
+              // W2.3 dual-write: FK + текстовая колонка (для back-compat).
+              const id = typeof v === "number" ? v : v === "" || v == null ? null : Number(v)
+              const next: ModelDraft = {
+                ...(draft as ModelDraft),
+                tip_kollekcii_id: id,
+                tip_kollekcii: id == null
+                  ? null
+                  : tipyKollekciy.find((t) => t.id === id)?.nazvanie ?? null,
+              }
+              setDraft(next)
+            }}
             readonly={!editing}
-            level={lvl("tip_kollekcii")}
+            level={lvl("tip_kollekcii_id")}
           />
           <SelectField
             label="Фабрика"

@@ -57,6 +57,7 @@ export const navigationGroups: NavGroup[] = [
       // Справочники (9)
       { id: "ref-kategorii",        label: "Категории",        icon: FolderTree,  path: "/catalog/references/kategorii" },
       { id: "ref-kollekcii",        label: "Коллекции",        icon: BookOpen,    path: "/catalog/references/kollekcii" },
+      { id: "ref-tipy-kollekciy",   label: "Типы коллекций",   icon: Layers,      path: "/catalog/references/tipy-kollekciy" },
       { id: "ref-fabriki",          label: "Производители",    icon: Building2,   path: "/catalog/references/fabriki"   },
       { id: "ref-importery",        label: "Юрлица",           icon: Briefcase,   path: "/catalog/references/importery" },
       { id: "ref-razmery",          label: "Размеры",          icon: Ruler,       path: "/catalog/references/razmery"   },

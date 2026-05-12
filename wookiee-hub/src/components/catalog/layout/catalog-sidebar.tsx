@@ -50,6 +50,7 @@ const GROUPS: SidebarGroup[] = [
     items: [
       { key: "kategorii",        icon: FolderTree,  label: "Категории",        path: "/catalog/references/kategorii",         countKey: "kategorii" },
       { key: "kollekcii",        icon: BookOpen,    label: "Коллекции",        path: "/catalog/references/kollekcii",         countKey: "kollekcii" },
+      { key: "tipy-kollekciy",   icon: Layers,      label: "Типы коллекций",   path: "/catalog/references/tipy-kollekciy",    countKey: "tipy_kollekciy" },
       { key: "fabriki",          icon: Building2,   label: "Производители",    path: "/catalog/references/fabriki",           countKey: "fabriki" },
       { key: "importery",        icon: Briefcase,   label: "Юрлица",           path: "/catalog/references/importery",         countKey: "importery" },
       { key: "razmery",          icon: Ruler,       label: "Размеры",          path: "/catalog/references/razmery",           countKey: "razmery" },
