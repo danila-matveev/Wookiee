@@ -441,6 +441,36 @@ export async function deleteSertifikat(id: number): Promise<void> {
   if (error) throw new Error(error.message)
 }
 
+// ─── Tags (across all models) ──────────────────────────────────────────────
+
+/**
+ * Все уникальные теги из `modeli_osnova.tegi` (text, CSV).
+ * Используется TagsCombobox для автокомплита.
+ */
+export async function fetchAllTags(): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("modeli_osnova")
+    .select("tegi")
+    .not("tegi", "is", null)
+  if (error) throw error
+  const rows = (data ?? []) as { tegi: string | null }[]
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const row of rows) {
+    if (!row.tegi) continue
+    for (const part of row.tegi.split(",")) {
+      const t = part.trim()
+      if (!t) continue
+      const key = t.toLowerCase()
+      if (seen.has(key)) continue
+      seen.add(key)
+      result.push(t)
+    }
+  }
+  result.sort((a, b) => a.localeCompare(b, "ru"))
+  return result
+}
+
 // ─── Matrix list (modeli_osnova with aggregated counts) ────────────────────
 
 export interface MatrixRow {

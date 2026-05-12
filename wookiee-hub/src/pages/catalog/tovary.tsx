@@ -12,6 +12,29 @@ import { ColorSwatch } from "@/components/catalog/ui/color-swatch"
 import { ColumnsManager, type ColumnDef } from "@/components/catalog/ui/columns-manager"
 import { BulkActionsBar } from "@/components/catalog/ui/bulk-actions-bar"
 import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
+import { useResizableColumns } from "@/hooks/use-resizable-columns"
+
+// W1.5 — Default per-column widths (px) for the SKU registry (Товары) page.
+// Keys must match TOVARY_COLUMNS[i].key.
+const TOVARY_DEFAULT_WIDTHS: Record<string, number> = {
+  barkod: 150,
+  artikul: 150,
+  model: 140,
+  cvet: 160,
+  razmer: 80,
+  wb_nom: 130,
+  ozon_art: 140,
+  status_wb: 130,
+  status_ozon: 130,
+  status_sayt: 130,
+  status_lamoda: 140,
+  barkod_gs1: 140,
+  barkod_gs2: 140,
+  barkod_perehod: 150,
+  cena_wb: 110,
+  cena_ozon: 110,
+  created: 110,
+}
 
 // 17 columns; all default-visible per Final Report MINOR fix.
 const TOVARY_COLUMNS: ColumnDef[] = [
@@ -546,6 +569,11 @@ export function TovaryPage() {
   const [columns, setColumns] = useState<string[]>(DEFAULT_COLUMNS)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [linkSkleykaChannel, setLinkSkleykaChannel] = useState<"wb" | "ozon" | null>(null)
+  // W1.5 — drag-resize колонок + persist. Регистрируем все возможные колонки.
+  const { widths: colWidths, bindResizer } = useResizableColumns(
+    "tovary",
+    TOVARY_COLUMNS.map((c) => ({ id: c.key, defaultWidth: TOVARY_DEFAULT_WIDTHS[c.key] ?? 130 })),
+  )
 
   const statusOptions = useMemo(() => {
     const all = statusyData ?? []
@@ -761,10 +789,16 @@ export function TovaryPage() {
       {/* Table */}
       <div className="flex-1 overflow-auto px-6 pb-3">
         <div className="bg-white rounded-lg border border-stone-200 overflow-hidden">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
+            <colgroup>
+              <col style={{ width: 40 }} />
+              {columns.map((key) => (
+                <col key={key} style={{ width: `${colWidths[key] ?? TOVARY_DEFAULT_WIDTHS[key] ?? 130}px` }} />
+              ))}
+            </colgroup>
             <thead className="bg-stone-50/80 border-b border-stone-200 sticky top-0 z-10">
               <tr className="text-left text-[11px] uppercase tracking-wider text-stone-500">
-                <th className="w-10 px-3 py-2.5">
+                <th className="px-3 py-2.5">
                   <input
                     type="checkbox"
                     className="rounded border-stone-300"
@@ -778,8 +812,9 @@ export function TovaryPage() {
                 {columns.map((key) => {
                   const col = TOVARY_COLUMNS.find((c) => c.key === key)
                   return (
-                    <th key={key} className="px-3 py-2.5 font-medium whitespace-nowrap">
+                    <th key={key} className="relative px-3 py-2.5 font-medium whitespace-nowrap">
                       {col?.label}
+                      <span {...bindResizer(key)} />
                     </th>
                   )
                 })}

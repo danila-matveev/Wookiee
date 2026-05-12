@@ -71,9 +71,16 @@ interface NumberFieldProps {
   readonly?: boolean
   full?: boolean
   level?: FieldLevel
+  /** HTML `min` attribute for the underlying `<input type="number">`. Default: `0`. */
+  min?: number | string
+  /** HTML `step` attribute for the underlying `<input type="number">`. Default: `"any"`. */
+  step?: number | string
 }
 
-export function NumberField({ label, value, onChange, suffix, readonly, full, level }: NumberFieldProps) {
+export function NumberField({
+  label, value, onChange, suffix, readonly, full, level,
+  min = 0, step = "any",
+}: NumberFieldProps) {
   return (
     <FieldWrap label={label} level={level} full={full}>
       {readonly ? (
@@ -88,6 +95,8 @@ export function NumberField({ label, value, onChange, suffix, readonly, full, le
         <div className="relative">
           <input
             type="number"
+            min={min}
+            step={step}
             value={value ?? ""}
             onChange={(e) => onChange?.(parseFloat(e.target.value) || 0)}
             className="w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md bg-white outline-none focus:border-stone-900 focus:ring-1 focus:ring-stone-900 tabular-nums pr-10"

@@ -17,7 +17,7 @@ import {
   useState,
   type ReactNode,
 } from "react"
-import { useSearchParams } from "react-router-dom"
+import { Link, useSearchParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   Archive,
@@ -26,6 +26,7 @@ import {
   Edit3,
   ExternalLink,
   FileText,
+  HelpCircle,
   Info,
   Link2,
   Plus,
@@ -37,7 +38,6 @@ import {
 import { supabase } from "@/lib/supabase"
 import {
   ATTRIBUTES_BY_CATEGORY,
-  ALL_ATTRIBUTES,
   FIELD_LEVEL,
   type AttributeFieldDef,
   type FieldLevel as FieldLevelKind,
@@ -45,6 +45,7 @@ import {
 import {
   archiveModel,
   duplicateModel,
+  fetchAllTags,
   fetchFabriki,
   fetchKategorii,
   fetchKollekcii,
@@ -64,12 +65,12 @@ import {
   CompletenessRing,
   FieldWrap,
   LevelBadge,
-  MultiSelectField,
   NumberField,
   RefModal,
   SelectField,
   StatusBadge,
   StringSelectField,
+  TagsCombobox,
   TextField,
   TextareaField,
   Tooltip,
@@ -85,6 +86,72 @@ const TIPY_KOLLEKCII = [
 ] as const
 
 const SIZES_LINEUP = ["XS", "S", "M", "L", "XL", "XXL"] as const
+
+// ─── Hint helpers (W1.6) ───────────────────────────────────────────────────
+// (?) icon next to a field label. На hover показывает подсказку, что
+// именно вводить — формат ссылки или единицы измерения.
+
+/** (?) Tooltip icon used inline next to a label. */
+function HintIcon({ text }: { text: string }) {
+  return (
+    <Tooltip text={text}>
+      <HelpCircle
+        className="w-3 h-3 text-stone-400 hover:text-stone-600 cursor-help"
+        aria-label="Подсказка"
+      />
+    </Tooltip>
+  )
+}
+
+/**
+ * Wraps a FieldWrap-based field (TextField / NumberField / SelectField) and
+ * renders a (?) icon overlay in the top-right of the field block, vertically
+ * aligned with the label row (which uses `mb-1` spacing inside FieldWrap).
+ * Since fields.tsx is owned by another wave, the icon is positioned
+ * absolutely above the field instead of injected into the label's flex row.
+ */
+function FieldWithHint({ hint, children }: { hint: string; children: ReactNode }) {
+  return (
+    <div className="relative">
+      {children}
+      <div className="absolute top-0 right-0 z-10 flex items-center h-[18px]">
+        <HintIcon text={hint} />
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Drop-in replacement for `<FieldWrap label="...">` that renders the label
+ * row inline with a (?) hint icon. Used in model-card.tsx only.
+ */
+function FieldWrapWithHint({
+  label,
+  hint,
+  level,
+  full,
+  bottomHint,
+  children,
+}: {
+  label: string
+  hint: string
+  level?: FieldLevelKind
+  full?: boolean
+  bottomHint?: string
+  children: ReactNode
+}) {
+  return (
+    <div className={full ? "col-span-2" : ""}>
+      <div className="flex items-center gap-1.5 mb-1">
+        <label className="block text-[11px] uppercase tracking-wider text-stone-500">{label}</label>
+        <HintIcon text={hint} />
+        {level && <LevelBadge level={level} />}
+      </div>
+      {children}
+      {bottomHint && <div className="text-[10px] text-stone-400 mt-1">{bottomHint}</div>}
+    </div>
+  )
+}
 
 /** Resolve modeli_osnova by kod → use existing id-based fetcher. */
 async function fetchModelDetailByKod(kod: string): Promise<ModelDetail | null> {
@@ -277,6 +344,55 @@ function Section({ label, hint, children, action }: {
   )
 }
 
+/**
+ * Numeric input that reads/writes a string value (DB column is text but the
+ * field is conceptually numeric, e.g. `srok_proizvodstva` — text in БД,
+ * "дни" по смыслу). Visual parity with `NumberField` — same suffix slot, same
+ * styling. Browser blocks non-numeric input via `type="number"`.
+ */
+function NumericStringField({
+  label, value, onChange, suffix, readonly, level,
+  min = 0, step = "any",
+}: {
+  label: string
+  value?: string | null
+  onChange?: (v: string) => void
+  suffix?: string
+  readonly?: boolean
+  level?: FieldLevelKind
+  min?: number | string
+  step?: number | string
+}) {
+  return (
+    <FieldWrap label={label} level={level}>
+      {readonly ? (
+        <div className="px-2.5 py-1.5 text-sm text-stone-900 tabular-nums">
+          {value ? (
+            <>{value}{suffix && <span className="text-stone-400 ml-1">{suffix}</span>}</>
+          ) : (
+            <span className="text-stone-400 italic">не задано</span>
+          )}
+        </div>
+      ) : (
+        <div className="relative">
+          <input
+            type="number"
+            inputMode="numeric"
+            min={min}
+            step={step}
+            value={value ?? ""}
+            onChange={(e) => onChange?.(e.target.value)}
+            className="w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md bg-white outline-none focus:border-stone-900 focus:ring-1 focus:ring-stone-900 tabular-nums pr-10"
+          />
+          {suffix && (
+            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-stone-400">{suffix}</span>
+          )}
+        </div>
+      )}
+    </FieldWrap>
+  )
+}
+
 function SidebarBlock({ title, subtitle, badge, action, children }: {
   title: string
   subtitle?: string
@@ -387,6 +503,11 @@ function TabDescription({
   const statusyQ = useQuery({
     queryKey: ["catalog", "statusy"],
     queryFn: fetchStatusy,
+    staleTime: 5 * 60 * 1000,
+  })
+  const tagsQ = useQuery({
+    queryKey: ["catalog", "tags"],
+    queryFn: fetchAllTags,
     staleTime: 5 * 60 * 1000,
   })
 
@@ -501,150 +622,91 @@ function TabDescription({
             level={lvl("composition")}
             full
           />
-          <TextField
-            label="Срок производства"
-            value={view.srok_proizvodstva ?? ""}
-            onChange={(v) => set("srok_proizvodstva", v)}
-            readonly={!editing}
-            level={lvl("srok_proizvodstva")}
-          />
-          <NumberField
-            label="Кратность короба"
-            value={view.kratnost_koroba ?? null}
-            onChange={(v) => set("kratnost_koroba", v)}
-            readonly={!editing}
-            level={lvl("kratnost_koroba")}
-          />
-          <NumberField
-            label="Вес"
-            value={view.ves_kg ?? null}
-            onChange={(v) => set("ves_kg", v)}
-            suffix="кг"
-            readonly={!editing}
-            level={lvl("ves_kg")}
-          />
-          <NumberField
-            label="Длина"
-            value={view.dlina_cm ?? null}
-            onChange={(v) => set("dlina_cm", v)}
-            suffix="см"
-            readonly={!editing}
-            level={lvl("dlina_cm")}
-          />
-          <NumberField
-            label="Ширина"
-            value={view.shirina_cm ?? null}
-            onChange={(v) => set("shirina_cm", v)}
-            suffix="см"
-            readonly={!editing}
-            level={lvl("shirina_cm")}
-          />
-          <NumberField
-            label="Высота"
-            value={view.vysota_cm ?? null}
-            onChange={(v) => set("vysota_cm", v)}
-            suffix="см"
-            readonly={!editing}
-            level={lvl("vysota_cm")}
-          />
+          <FieldWithHint hint="Срок производства в днях.">
+            <NumericStringField
+              label="Срок производства"
+              value={view.srok_proizvodstva ?? ""}
+              onChange={(v) => set("srok_proizvodstva", v)}
+              suffix="дни"
+              min={0}
+              step={1}
+              readonly={!editing}
+              level={lvl("srok_proizvodstva")}
+            />
+          </FieldWithHint>
+          <FieldWithHint hint="Кратность короба (шт).">
+            <NumberField
+              label="Кратность короба"
+              value={view.kratnost_koroba ?? null}
+              onChange={(v) => set("kratnost_koroba", v)}
+              suffix="шт"
+              min={0}
+              step={1}
+              readonly={!editing}
+              level={lvl("kratnost_koroba")}
+            />
+          </FieldWithHint>
+          <FieldWithHint hint="Вес одного товара (кг).">
+            <NumberField
+              label="Вес"
+              value={view.ves_kg ?? null}
+              onChange={(v) => set("ves_kg", v)}
+              suffix="кг"
+              min={0}
+              step={0.01}
+              readonly={!editing}
+              level={lvl("ves_kg")}
+            />
+          </FieldWithHint>
+          <FieldWithHint hint="Размер короба (см).">
+            <NumberField
+              label="Длина"
+              value={view.dlina_cm ?? null}
+              onChange={(v) => set("dlina_cm", v)}
+              suffix="см"
+              min={0}
+              step={0.01}
+              readonly={!editing}
+              level={lvl("dlina_cm")}
+            />
+          </FieldWithHint>
+          <FieldWithHint hint="Размер короба (см).">
+            <NumberField
+              label="Ширина"
+              value={view.shirina_cm ?? null}
+              onChange={(v) => set("shirina_cm", v)}
+              suffix="см"
+              min={0}
+              step={0.01}
+              readonly={!editing}
+              level={lvl("shirina_cm")}
+            />
+          </FieldWithHint>
+          <FieldWithHint hint="Размер короба (см).">
+            <NumberField
+              label="Высота"
+              value={view.vysota_cm ?? null}
+              onChange={(v) => set("vysota_cm", v)}
+              suffix="см"
+              min={0}
+              step={0.01}
+              readonly={!editing}
+              level={lvl("vysota_cm")}
+            />
+          </FieldWithHint>
         </div>
       </Section>
 
       <Section label="Атрибуты-отношения">
         <div className="grid grid-cols-2 gap-x-4 gap-y-4">
-          <StringSelectField
-            label="Для какой груди"
-            value={view.dlya_kakoy_grudi ?? ""}
-            options={ALL_ATTRIBUTES.dlya_kakoy_grudi?.options ?? []}
-            onChange={(v) => set("dlya_kakoy_grudi", v)}
-            readonly={!editing}
-            level={lvl("dlya_kakoy_grudi")}
-          />
-          <StringSelectField
-            label="Степень поддержки"
-            value={view.stepen_podderzhki ?? ""}
-            options={ALL_ATTRIBUTES.stepen_podderzhki?.options ?? []}
-            onChange={(v) => set("stepen_podderzhki", v)}
-            readonly={!editing}
-            level={lvl("stepen_podderzhki")}
-          />
-          <StringSelectField
-            label="Форма чашки"
-            value={view.forma_chashki ?? ""}
-            options={ALL_ATTRIBUTES.forma_chashki?.options ?? []}
-            onChange={(v) => set("forma_chashki", v)}
-            readonly={!editing}
-            level={lvl("forma_chashki")}
-          />
-          <StringSelectField
-            label="Регулировка"
-            value={view.regulirovka ?? ""}
-            options={ALL_ATTRIBUTES.regulirovka?.options ?? []}
-            onChange={(v) => set("regulirovka", v)}
-            readonly={!editing}
-            level={lvl("regulirovka")}
-          />
-          <StringSelectField
-            label="Застёжка"
-            value={view.zastezhka ?? ""}
-            options={ALL_ATTRIBUTES.zastezhka?.options ?? []}
-            onChange={(v) => set("zastezhka", v)}
-            readonly={!editing}
-            level={lvl("zastezhka")}
-          />
-          <StringSelectField
-            label="Посадка трусов"
-            value={view.posadka_trusov ?? ""}
-            options={ALL_ATTRIBUTES.posadka_trusov?.options ?? []}
-            onChange={(v) => set("posadka_trusov", v)}
-            readonly={!editing}
-            level={lvl("posadka_trusov")}
-          />
-          <StringSelectField
-            label="Вид трусов"
-            value={view.vid_trusov ?? ""}
-            options={ALL_ATTRIBUTES.vid_trusov?.options ?? []}
-            onChange={(v) => set("vid_trusov", v)}
-            readonly={!editing}
-            level={lvl("vid_trusov")}
-          />
-          <MultiSelectField
-            label="Назначение"
-            value={view.naznachenie
-              ? String(view.naznachenie).split(",").map((s) => s.trim()).filter(Boolean)
-              : []}
-            options={ALL_ATTRIBUTES.naznachenie?.options ?? []}
-            onChange={(v) => set("naznachenie", v.join(", "))}
-            readonly={!editing}
-            level={lvl("naznachenie")}
-          />
-          <MultiSelectField
-            label="Стиль"
-            value={view.stil
-              ? String(view.stil).split(",").map((s) => s.trim()).filter(Boolean)
-              : []}
-            options={["Базовый", "Минимализм", "Элегантный", "Спорт", "Премиум", "Romance"]}
-            onChange={(v) => set("stil", v.join(", "))}
-            readonly={!editing}
-            level={lvl("stil")}
-          />
-          <MultiSelectField
-            label="По настроению"
-            value={view.po_nastroeniyu
-              ? String(view.po_nastroeniyu).split(",").map((s) => s.trim()).filter(Boolean)
-              : []}
-            options={["Уютный", "Лёгкий", "Чувственный", "Энергия", "Спокойствие"]}
-            onChange={(v) => set("po_nastroeniyu", v.join(", "))}
-            readonly={!editing}
-            level={lvl("po_nastroeniyu")}
-          />
-          <TextField
+          <TagsCombobox
             label="Теги"
             value={view.tegi ?? ""}
             onChange={(v) => set("tegi", v)}
+            options={tagsQ.data ?? []}
             readonly={!editing}
             full
-            hint="Через запятую"
+            hint="Выбери существующий тег или введи новый + Enter"
             level={lvl("tegi")}
           />
         </div>
@@ -1005,7 +1067,12 @@ function TabContent({ m, draft, setDraft, editing, modelOsnovaId }: TabContentPr
       <Section label="Ссылки на материалы" hint="Notion-карточка, продуктовая стратегия, фото-папка">
         <div className="space-y-3">
           {/* notion_link */}
-          <FieldWrap label="Notion · карточка модели" level="model" full>
+          <FieldWrapWithHint
+            label="Notion · карточка модели"
+            hint="Ссылка на страницу в Notion. Скопируй из адресной строки."
+            level="model"
+            full
+          >
             {!editing ? (
               view.notion_link ? (
                 <a
@@ -1030,14 +1097,15 @@ function TabContent({ m, draft, setDraft, editing, modelOsnovaId }: TabContentPr
                 className="w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md bg-white outline-none focus:border-stone-900 focus:ring-1 focus:ring-stone-900"
               />
             )}
-          </FieldWrap>
+          </FieldWrapWithHint>
 
           {/* notion_strategy_link */}
-          <FieldWrap
+          <FieldWrapWithHint
             label="Notion · продуктовая стратегия"
+            hint="Ссылка на стратегию модели."
             level="model"
             full
-            hint="Стратегия позиционирования, конкуренты, гипотезы"
+            bottomHint="Стратегия позиционирования, конкуренты, гипотезы"
           >
             {!editing ? (
               view.notion_strategy_link ? (
@@ -1063,14 +1131,15 @@ function TabContent({ m, draft, setDraft, editing, modelOsnovaId }: TabContentPr
                 className="w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md bg-white outline-none focus:border-stone-900 focus:ring-1 focus:ring-stone-900"
               />
             )}
-          </FieldWrap>
+          </FieldWrapWithHint>
 
           {/* yandex_disk_link */}
-          <FieldWrap
+          <FieldWrapWithHint
             label="Яндекс.Диск · фотоконтент"
+            hint="Ссылка на папку модели на Яндекс.Диске."
             level="model"
             full
-            hint="Папка с фотографиями товара для сайта и МП"
+            bottomHint="Папка с фотографиями товара для сайта и МП"
           >
             {!editing ? (
               view.yandex_disk_link ? (
@@ -1096,7 +1165,7 @@ function TabContent({ m, draft, setDraft, editing, modelOsnovaId }: TabContentPr
                 className="w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md bg-white outline-none focus:border-stone-900 focus:ring-1 focus:ring-stone-900"
               />
             )}
-          </FieldWrap>
+          </FieldWrapWithHint>
         </div>
       </Section>
 
@@ -1232,32 +1301,126 @@ function TabContent({ m, draft, setDraft, editing, modelOsnovaId }: TabContentPr
       </Section>
 
       {pickingSert && (
-        <RefModal
-          title="Привязать сертификат"
-          fields={[
-            {
-              key: "sertifikat_id",
-              label: "Сертификат",
-              type: "select",
-              required: true,
-              options: availableSerts.map((s) => ({
-                value: s.id,
-                label: `${s.nazvanie}${s.nomer ? " · № " + s.nomer : ""}`,
-              })),
-              full: true,
-            },
-          ]}
-          onSave={async (vals) => {
-            const id = Number(vals.sertifikat_id)
-            if (!Number.isFinite(id)) return
-            await linkMut.mutateAsync(id)
-            setPickingSert(false)
-          }}
-          onCancel={() => setPickingSert(false)}
-          saveLabel="Привязать"
-        />
+        sertifikatyQ.isLoading || availableSerts.length === 0 ? (
+          <SertPickerEmptyModal
+            loading={sertifikatyQ.isLoading}
+            onCancel={() => setPickingSert(false)}
+          />
+        ) : (
+          <RefModal
+            title="Привязать сертификат"
+            fields={[
+              {
+                key: "sertifikat_id",
+                label: "Сертификат",
+                type: "select",
+                required: true,
+                options: availableSerts.map((s) => ({
+                  value: s.id,
+                  label: `${s.nazvanie}${s.nomer ? " · № " + s.nomer : ""}`,
+                })),
+                full: true,
+              },
+            ]}
+            onSave={async (vals) => {
+              const id = Number(vals.sertifikat_id)
+              if (!Number.isFinite(id)) return
+              await linkMut.mutateAsync(id)
+              setPickingSert(false)
+            }}
+            onCancel={() => setPickingSert(false)}
+            saveLabel="Привязать"
+          />
+        )
       )}
     </>
+  )
+}
+
+// ─── Empty/loading cert-picker modal (W1.7) ────────────────────────────────
+//
+// RefModal не поддерживает кастомный footer / disabled submit без значения,
+// поэтому при пустом списке (нет ни одного сертификата в БД или все уже
+// привязаны) показываем отдельную лёгкую модалку: сообщение + ссылка на
+// справочник сертификатов + disabled-кнопка «Привязать».
+function SertPickerEmptyModal({
+  loading, onCancel,
+}: {
+  loading: boolean
+  onCancel: () => void
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCancel()
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [onCancel])
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-stone-900/40 flex items-center justify-center p-4"
+      onClick={onCancel}
+    >
+      <div
+        className="w-full max-w-lg bg-white rounded-xl shadow-2xl overflow-hidden border border-stone-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-3 border-b border-stone-200">
+          <h2
+            className="cat-font-serif text-xl text-stone-900 italic"
+            style={{ fontFamily: "'Instrument Serif', ui-serif, Georgia, serif" }}
+          >
+            Привязать сертификат
+          </h2>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="p-1 hover:bg-stone-100 rounded"
+            aria-label="Close"
+          >
+            <X className="w-4 h-4 text-stone-500" />
+          </button>
+        </div>
+        <div className="px-5 py-6 space-y-3">
+          <div>
+            <label className="block text-[11px] uppercase tracking-wider text-stone-500 mb-1">
+              Сертификат
+            </label>
+            <div className="w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md bg-stone-50 text-stone-400 italic">
+              {loading ? "Загрузка…" : "Нет доступных сертификатов"}
+            </div>
+          </div>
+          {!loading && (
+            <Link
+              to="/catalog/sertifikaty"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-sm text-stone-700 hover:text-stone-900 underline underline-offset-2"
+            >
+              Создать сертификат
+              <ExternalLink className="w-3 h-3" />
+            </Link>
+          )}
+        </div>
+        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-stone-200 bg-stone-50">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-3 py-1.5 text-sm text-stone-700 hover:bg-stone-100 rounded-md"
+          >
+            Отмена
+          </button>
+          <button
+            type="button"
+            disabled
+            className="px-3 py-1.5 text-sm text-white bg-stone-900 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Привязать
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 

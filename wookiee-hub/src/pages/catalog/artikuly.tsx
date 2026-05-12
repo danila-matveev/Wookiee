@@ -10,7 +10,24 @@ import { ColorSwatch } from "@/components/catalog/ui/color-swatch"
 import { ColumnsManager, type ColumnDef } from "@/components/catalog/ui/columns-manager"
 import { BulkActionsBar } from "@/components/catalog/ui/bulk-actions-bar"
 import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
+import { useResizableColumns } from "@/hooks/use-resizable-columns"
 import { useSearchParams } from "react-router-dom"
+
+// Default per-column widths (px) for the standalone Артикулы page (W1.5).
+// Keys must match ARTIKULY_COLUMNS[i].key.
+const ARTIKULY_DEFAULT_WIDTHS: Record<string, number> = {
+  artikul: 160,
+  model: 140,
+  cvet: 180,
+  status: 140,
+  wb_nom: 130,
+  ozon_art: 140,
+  created: 110,
+  updated: 110,
+  kategoriya: 130,
+  kollekciya: 140,
+  fabrika: 140,
+}
 
 // 11 columns; all default-visible per Final Report MINOR fix.
 const ARTIKULY_COLUMNS: ColumnDef[] = [
@@ -96,6 +113,12 @@ export function ArtikulyPage() {
   const [columns, setColumns] = useState<string[]>(DEFAULT_COLUMNS)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [, setSearchParams] = useSearchParams()
+  // W1.5 — drag-resize колонок + persist через ui_preferences. Регистрируем все
+  // возможные колонки (visibility управляется ColumnsManager-ом отдельно).
+  const { widths: colWidths, bindResizer } = useResizableColumns(
+    "artikuly",
+    ARTIKULY_COLUMNS.map((c) => ({ id: c.key, defaultWidth: ARTIKULY_DEFAULT_WIDTHS[c.key] ?? 140 })),
+  )
 
   // Все статусы tip='artikul' — для chips и bulk popover
   const artikulStatuses = useMemo(
@@ -240,10 +263,16 @@ export function ArtikulyPage() {
       {/* Table */}
       <div className="flex-1 overflow-auto px-6 pb-3">
         <div className="bg-white rounded-lg border border-stone-200 overflow-hidden">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
+            <colgroup>
+              <col style={{ width: 40 }} />
+              {columns.map((key) => (
+                <col key={key} style={{ width: `${colWidths[key] ?? ARTIKULY_DEFAULT_WIDTHS[key] ?? 140}px` }} />
+              ))}
+            </colgroup>
             <thead className="bg-stone-50/80 border-b border-stone-200 sticky top-0 z-10">
               <tr className="text-left text-[11px] uppercase tracking-wider text-stone-500">
-                <th className="w-10 px-3 py-2.5">
+                <th className="px-3 py-2.5">
                   <input
                     type="checkbox"
                     className="rounded border-stone-300"
@@ -256,8 +285,9 @@ export function ArtikulyPage() {
                 {columns.map((key) => {
                   const col = ARTIKULY_COLUMNS.find((c) => c.key === key)
                   return (
-                    <th key={key} className="px-3 py-2.5 font-medium whitespace-nowrap">
+                    <th key={key} className="relative px-3 py-2.5 font-medium whitespace-nowrap">
                       {col?.label}
+                      <span {...bindResizer(key)} />
                     </th>
                   )
                 })}
