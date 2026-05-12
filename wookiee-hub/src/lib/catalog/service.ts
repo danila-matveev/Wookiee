@@ -1618,6 +1618,42 @@ export async function deleteCvet(id: number): Promise<void> {
   if (error) throw new Error(error.message)
 }
 
+// ─── W9.12: cvet_kategoriya (colour → category m2m) ──────────────────────
+
+/**
+ * Return the list of kategoriya_id values mapped to a colour.
+ * Empty array = colour applies to ALL categories (legacy fallback).
+ */
+export async function fetchKategoriiForCvet(cvetId: number): Promise<number[]> {
+  const { data, error } = await supabase
+    .from("cvet_kategoriya")
+    .select("kategoriya_id")
+    .eq("cvet_id", cvetId)
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((r) => (r as { kategoriya_id: number }).kategoriya_id)
+}
+
+/**
+ * Replace the full set of categories for a colour (delete-then-insert).
+ * Pass an empty array to clear all mappings (colour becomes universal again).
+ */
+export async function setKategoriiForCvet(
+  cvetId: number,
+  kategoriyaIds: number[],
+): Promise<void> {
+  const { error: delErr } = await supabase
+    .from("cvet_kategoriya")
+    .delete()
+    .eq("cvet_id", cvetId)
+  if (delErr) throw new Error(delErr.message)
+
+  if (kategoriyaIds.length === 0) return
+
+  const rows = kategoriyaIds.map((kid) => ({ cvet_id: cvetId, kategoriya_id: kid }))
+  const { error: insErr } = await supabase.from("cvet_kategoriya").insert(rows)
+  if (insErr) throw new Error(insErr.message)
+}
+
 // ─── Modeli operations (create / update / duplicate / archive cascade) ────
 
 export interface ModelOsnovaPayload {

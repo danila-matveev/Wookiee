@@ -54,7 +54,6 @@ import {
   type Atribut,
   fetchAuditFor,
   fetchBrendy,
-  fetchCvetaWithUsage,
   fetchFabriki,
   fetchImportery,
   fetchKategorii,
@@ -97,6 +96,7 @@ import {
   Tooltip,
 } from "@/components/catalog/ui"
 import { computeCompleteness, relativeDate, swatchColor } from "@/lib/catalog/color-utils"
+import { useAvailableColors } from "@/hooks/use-available-colors"
 
 // ─── Local helpers ─────────────────────────────────────────────────────────
 
@@ -963,6 +963,7 @@ function TabArticles({ m, hexByCvet, openColor }: TabContentProps) {
       {addOpen && (
         <AddArtikulModal
           modelKod={m.kod}
+          kategoriyaId={m.kategoriya_id ?? null}
           variations={m.modeli}
           onClose={() => setAddOpen(false)}
         />
@@ -1042,10 +1043,13 @@ function TabArticles({ m, hexByCvet, openColor }: TabContentProps) {
 // — это поведение сервиса, не UI. См. `insertArtikul` в service.ts.
 function AddArtikulModal({
   modelKod,
+  kategoriyaId,
   variations,
   onClose,
 }: {
   modelKod: string
+  /** W9.12 — filter colour palette by model category. */
+  kategoriyaId: number | null
   variations: ModelVariation[]
   onClose: () => void
 }) {
@@ -1056,11 +1060,10 @@ function AddArtikulModal({
   const [selectedCvety, setSelectedCvety] = useState<Set<number>>(new Set())
   const [error, setError] = useState<string | null>(null)
 
-  const cvetaQ = useQuery({
-    queryKey: ["catalog", "cveta-with-usage"],
-    queryFn: fetchCvetaWithUsage,
-    staleTime: 5 * 60 * 1000,
-  })
+  // W9.12 — palette filtered by category. Legacy colours (no category tags)
+  // remain visible everywhere.
+  const { colors: categoryColors, isLoading: colorsLoading } =
+    useAvailableColors(kategoriyaId)
 
   // Already-attached cveta ids — для исключения из выбора (нельзя создать
   // дубликат `${kod}/${color_code}` — артикул должен быть уникальным).
@@ -1070,11 +1073,10 @@ function AddArtikulModal({
     return new Set(v.artikuly.map((a) => a.cvet_id).filter((id): id is number => id != null))
   }, [variationId, variations])
 
-  // Available colours — exclude already attached.
+  // Available colours — category-filtered, minus already attached.
   const availableCveta: CvetRow[] = useMemo(() => {
-    const rows = cvetaQ.data ?? []
-    return rows.filter((c) => !attachedCvetIds.has(c.id))
-  }, [cvetaQ.data, attachedCvetIds])
+    return categoryColors.filter((c) => !attachedCvetIds.has(c.id))
+  }, [categoryColors, attachedCvetIds])
 
   // Reset selection when variation changes (different attached set).
   useEffect(() => {
@@ -1205,11 +1207,13 @@ function AddArtikulModal({
               </div>
             </div>
 
-            {cvetaQ.isLoading ? (
+            {colorsLoading ? (
               <div className="text-sm text-stone-400 italic py-6 text-center">Загрузка цветов…</div>
             ) : availableCveta.length === 0 ? (
               <div className="text-sm text-stone-400 italic py-6 text-center">
-                Все доступные цвета уже привязаны к этой вариации
+                {categoryColors.length === 0
+                  ? "Для этой категории нет цветов в палитре. Привяжите цвета к категории в справочнике."
+                  : "Все доступные цвета уже привязаны к этой вариации"}
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-1.5 max-h-[40vh] overflow-y-auto pr-1">

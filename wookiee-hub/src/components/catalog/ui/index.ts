@@ -13,6 +13,9 @@ export { CompletenessRing } from "./completeness-ring"
 
 export { ColorSwatch } from "./color-swatch"
 
+export { ColorPicker, useAvailableColors } from "./color-picker"
+export type { ColorPickerProps } from "./color-picker"
+
 export {
   FieldWrap,
   TextField,
