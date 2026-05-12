@@ -20,7 +20,16 @@ interface SearchQueryDetailPanelProps {
 
 const fmt = (n: number) => n.toLocaleString('ru-RU')
 const pct = (num: number, denom: number) => (denom > 0 ? `${((num / denom) * 100).toFixed(1)}%` : '—')
-const lCls = "block text-[11px] uppercase tracking-wider text-muted-foreground font-medium mb-1"
+const fmtWeek = (iso: string) => {
+  // Robust DD.MM formatter that doesn't depend on Intl locale data in jsdom.
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso)
+  if (m) return `${m[3]}.${m[2]}`
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  const dd = String(d.getDate()).padStart(2, '0')
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  return `${dd}.${mm}`
+}
 
 export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose, mode = 'drawer' }: SearchQueryDetailPanelProps) {
   const { data: items = [], isLoading: itemsLoading } = useSearchQueries()
@@ -35,14 +44,15 @@ export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose, m
 
   const { data: weekly = [], isLoading: weeklyLoading, error: weeklyError } = useSearchQueryWeekly(substituteId)
 
-  const [showAll, setShowAll] = useState(false)
+  const [weeklyMode, setWeeklyMode] = useState<'period' | 'all'>('period')
   const rangeWeeks = useMemo(
     () => weekly.filter((w) => w.week_start >= dateFrom && w.week_start <= dateTo),
     [weekly, dateFrom, dateTo],
   )
-  const sliced = showAll ? weekly : rangeWeeks
+  const sliced = weeklyMode === 'all' ? weekly : rangeWeeks
   const total    = useMemo(() => aggregate(rangeWeeks), [rangeWeeks])
   const allTotal = useMemo(() => aggregate(weekly), [weekly])
+  const isBrand = item?.group_kind === 'brand'
 
   const body = (
     itemsLoading ? (
@@ -113,22 +123,41 @@ export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose, m
           </div>
         </div>
 
-        <div className="border-t border-border pt-3">
+        <div className="border-t border-stone-200 pt-3" data-testid="weekly-block">
           <div className="flex items-center justify-between mb-2">
-            <span className={lCls + ' mb-0'}>{showAll ? 'Все недели' : 'За период'}</span>
-            {weekly.length > 0 && (
+            <span className="text-[11px] uppercase tracking-wider text-stone-400">По неделям</span>
+            <div className="inline-flex items-center gap-1" role="tablist" aria-label="Период недельной статистики">
               <button
                 type="button"
-                onClick={() => setShowAll((s) => !s)}
-                className="text-[11px] text-muted-foreground hover:text-foreground underline"
+                role="tab"
+                aria-selected={weeklyMode === 'period'}
+                onClick={() => setWeeklyMode('period')}
+                className={
+                  'px-2 py-0.5 rounded-md text-[11px] transition-colors ' +
+                  (weeklyMode === 'period'
+                    ? 'bg-stone-100 text-stone-900 font-medium'
+                    : 'text-stone-500 hover:bg-stone-50 hover:text-stone-700')
+                }
               >
-                {showAll ? `За период (${rangeWeeks.length})` : `Все ${weekly.length}`}
+                За период {rangeWeeks.length > 0 && <span className="text-stone-400">({rangeWeeks.length})</span>}
               </button>
-            )}
+              <button
+                type="button"
+                role="tab"
+                aria-selected={weeklyMode === 'all'}
+                onClick={() => setWeeklyMode('all')}
+                className={
+                  'px-2 py-0.5 rounded-md text-[11px] transition-colors ' +
+                  (weeklyMode === 'all'
+                    ? 'bg-stone-100 text-stone-900 font-medium'
+                    : 'text-stone-500 hover:bg-stone-50 hover:text-stone-700')
+                }
+              >
+                Все {weekly.length > 0 && <span className="text-stone-400">({weekly.length})</span>}
+              </button>
+            </div>
           </div>
-          {!isSubstitute ? (
-            <EmptyState title="По неделям" description="Недельная статистика для брендовых запросов появится в Phase 2." />
-          ) : weeklyLoading ? (
+          {weeklyLoading ? (
             <div className="text-sm text-muted-foreground">Загрузка…</div>
           ) : weeklyError ? (
             <>
@@ -136,29 +165,39 @@ export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose, m
               <EmptyState title="Ошибка загрузки" description="Не удалось загрузить недельную статистику." />
             </>
           ) : sliced.length === 0 ? (
-            <EmptyState title="По неделям" description="Нет данных за выбранный период." />
+            <div className="py-6 flex flex-col items-center gap-2">
+              <p className="text-xs text-stone-400 italic">
+                {isBrand
+                  ? 'Метрики появятся после Phase 2B'
+                  : !isSubstitute
+                    ? 'Метрики появятся после Phase 2B'
+                    : weeklyMode === 'period'
+                      ? 'Нет данных за этот период'
+                      : 'Нет данных'}
+              </p>
+            </div>
           ) : (
             <div className="overflow-y-auto max-h-[280px]">
               <table className="w-full text-xs" aria-label="Недельная статистика">
-                <thead className="sticky top-0 bg-muted/95 backdrop-blur-sm">
-                  <tr className="border-b border-border">
-                    <th className="px-1 py-1 text-left  text-[10px] uppercase text-muted-foreground font-medium">Нед</th>
-                    <th className="px-1 py-1 text-right text-[10px] uppercase text-muted-foreground font-medium">Част.</th>
-                    <th className="px-1 py-1 text-right text-[10px] uppercase text-muted-foreground font-medium">Перех.</th>
-                    <th className="px-1 py-1 text-right text-[10px] uppercase text-muted-foreground font-medium">Корз.</th>
-                    <th className="px-1 py-1 text-right text-[10px] uppercase text-muted-foreground font-medium">Зак.</th>
-                    <th className="px-1 py-1 text-right text-[10px] uppercase text-muted-foreground font-medium">CRV</th>
+                <thead className="sticky top-0 bg-stone-50/90 backdrop-blur-sm">
+                  <tr className="border-b border-stone-200">
+                    <th className="px-1 py-1 text-left  text-[10px] uppercase text-stone-400 font-medium">Нед</th>
+                    <th className="px-1 py-1 text-right text-[10px] uppercase text-stone-400 font-medium">Част.</th>
+                    <th className="px-1 py-1 text-right text-[10px] uppercase text-stone-400 font-medium">Перех.</th>
+                    <th className="px-1 py-1 text-right text-[10px] uppercase text-stone-400 font-medium">Корз.</th>
+                    <th className="px-1 py-1 text-right text-[10px] uppercase text-stone-400 font-medium">Зак.</th>
+                    <th className="px-1 py-1 text-right text-[10px] uppercase text-stone-400 font-medium">CRV</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border/50">
+                <tbody className="divide-y divide-stone-50">
                   {sliced.map((w) => (
-                    <tr key={w.week_start} className="hover:bg-muted/40">
-                      <td className="px-1 py-1 tabular-nums text-muted-foreground">{w.week_start}</td>
-                      <td className="px-1 py-1 text-right tabular-nums text-foreground/80">{fmt(w.frequency)}</td>
-                      <td className="px-1 py-1 text-right tabular-nums text-foreground/80">{fmt(w.transitions)}</td>
-                      <td className="px-1 py-1 text-right tabular-nums text-foreground/80">{fmt(w.additions)}</td>
-                      <td className="px-1 py-1 text-right tabular-nums text-foreground font-medium">{fmt(w.orders)}</td>
-                      <td className="px-1 py-1 text-right tabular-nums text-muted-foreground">{pct(w.orders, w.transitions)}</td>
+                    <tr key={w.week_start} className="hover:bg-stone-50/60">
+                      <td className="px-1 py-1 tabular-nums text-stone-500">{fmtWeek(w.week_start)}</td>
+                      <td className="px-1 py-1 text-right tabular-nums text-stone-600">{fmt(w.frequency)}</td>
+                      <td className="px-1 py-1 text-right tabular-nums text-stone-500">{fmt(w.transitions)}</td>
+                      <td className="px-1 py-1 text-right tabular-nums text-stone-500">{fmt(w.additions)}</td>
+                      <td className="px-1 py-1 text-right tabular-nums text-stone-900 font-medium">{fmt(w.orders)}</td>
+                      <td className="px-1 py-1 text-right tabular-nums text-stone-400">{pct(w.orders, w.transitions)}</td>
                     </tr>
                   ))}
                 </tbody>

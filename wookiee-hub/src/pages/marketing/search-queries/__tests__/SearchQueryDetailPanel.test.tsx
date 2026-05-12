@@ -39,6 +39,23 @@ const ROWS_FIXTURE: SearchQueryRow[] = [
     created_at: '2026-05-01T00:00:00Z',
     updated_at: '2026-05-01T00:00:00Z',
   },
+  {
+    unified_id: 'B202',
+    source_id: 202,
+    source_table: 'branded_queries',
+    group_kind: 'brand',
+    query_text: 'wooki',
+    artikul_id: null,
+    nomenklatura_wb: null,
+    ww_code: null,
+    campaign_name: null,
+    purpose: null,
+    model_hint: null,
+    creator_ref: null,
+    status: 'active',
+    created_at: '2026-05-01T00:00:00Z',
+    updated_at: '2026-05-01T00:00:00Z',
+  },
 ]
 
 function wrapper({ children }: { children: React.ReactNode }) {
@@ -183,5 +200,78 @@ describe('SearchQueryDetailPanel — funnel block', () => {
     // CRs avoid div-by-zero → render "—"
     const dashes = f.getAllByText('—')
     expect(dashes.length).toBe(3) // 3 CR rows when denominators are 0
+  })
+})
+
+describe('SearchQueryDetailPanel — weekly stats toggle', () => {
+  beforeEach(() => {
+    mutateMock.mockClear()
+    weeklyFixture = []
+  })
+
+  it('shows brand empty state "Метрики появятся после Phase 2B" when row is a brand', () => {
+    weeklyFixture = []
+    render(
+      <SearchQueryDetailPanel
+        unifiedId="B202"
+        dateFrom="2026-04-01"
+        dateTo="2026-05-12"
+        onClose={() => {}}
+        mode="inline"
+      />,
+      { wrapper },
+    )
+    const weekly = screen.getByTestId('weekly-block')
+    expect(within(weekly).getByText('Метрики появятся после Phase 2B')).toBeInTheDocument()
+  })
+
+  it('renders period/all toggle and switches view when clicking "Все"', async () => {
+    const user = userEvent.setup()
+    weeklyFixture = [
+      // In-range week (period)
+      {
+        search_query_id: 101,
+        week_start: '2026-04-21',
+        frequency: 1000,
+        transitions: 100,
+        additions: 20,
+        orders: 5,
+      },
+      // Out-of-range week (only visible in "all")
+      {
+        search_query_id: 101,
+        week_start: '2025-12-01',
+        frequency: 2000,
+        transitions: 200,
+        additions: 40,
+        orders: 10,
+      },
+    ]
+    render(
+      <SearchQueryDetailPanel
+        unifiedId="S101"
+        dateFrom="2026-04-01"
+        dateTo="2026-05-12"
+        onClose={() => {}}
+        mode="inline"
+      />,
+      { wrapper },
+    )
+    const weekly = screen.getByTestId('weekly-block')
+    const w = within(weekly)
+
+    // Period (default): only in-range row visible → 1 data row + header
+    expect(w.getByText('21.04')).toBeInTheDocument()
+    expect(w.queryByText('01.12')).toBeNull()
+
+    // Switch to "Все"
+    await user.click(w.getByRole('tab', { name: /Все/ }))
+    expect(w.getByText('21.04')).toBeInTheDocument()
+    expect(w.getByText('01.12')).toBeInTheDocument()
+
+    // Switch back to "За период"
+    await user.click(w.getByRole('tab', { name: /За период/ }))
+    expect(w.getByText('21.04')).toBeInTheDocument()
+    expect(w.queryByText('01.12')).toBeNull()
   })
 })
