@@ -68,20 +68,44 @@ export async function fetchImportery() {
   }[]
 }
 
-export async function fetchRazmery() {
+export interface Razmer {
+  id: number
+  nazvanie: string
+  poryadok: number
+  ru: string | null
+  eu: string | null
+  china: string | null
+}
+
+export async function fetchRazmery(): Promise<Razmer[]> {
   const { data, error } = await supabase
     .from("razmery")
     .select("id, nazvanie, poryadok, ru, eu, china")
     .order("poryadok")
   if (error) throw error
-  return data as {
-    id: number
-    nazvanie: string
-    poryadok: number
-    ru: string | null
-    eu: string | null
-    china: string | null
-  }[]
+  return (data ?? []) as Razmer[]
+}
+
+// ─── W2.1: размерная линейка модели через junction `modeli_osnova_razmery` ──
+// Заменяет хардкод `SIZES_LINEUP = [XS,S,M,L,XL,XXL]` в model-card.tsx.
+// Возвращает razmery, привязанные к данной модели, в порядке `poryadok`.
+
+interface ModelSizeRow {
+  poryadok: number
+  razmery: Razmer | Razmer[] | null
+}
+
+export async function fetchSizesForModel(modelOsnovaId: number): Promise<Razmer[]> {
+  const { data, error } = await supabase
+    .from("modeli_osnova_razmery")
+    .select("poryadok, razmery(id, nazvanie, poryadok, ru, eu, china)")
+    .eq("model_osnova_id", modelOsnovaId)
+    .order("poryadok")
+  if (error) throw error
+  const rows = (data ?? []) as ModelSizeRow[]
+  return rows
+    .map((r) => (Array.isArray(r.razmery) ? r.razmery[0] : r.razmery))
+    .filter((r): r is Razmer => r !== null && r !== undefined)
 }
 
 export async function fetchStatusy() {
