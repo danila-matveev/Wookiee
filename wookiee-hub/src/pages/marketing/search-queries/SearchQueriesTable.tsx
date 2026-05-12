@@ -15,11 +15,11 @@ import { formatDateTime } from "@/lib/format"
 const FIRST = '2025-07-28'
 const LAST  = new Date().toISOString().slice(0, 10)
 
-const GROUPS: { id: SearchQueryGroup; icon: string; label: string }[] = [
-  { id: 'brand',       icon: '🎯', label: 'Брендовые' },
-  { id: 'external',    icon: '🎥', label: 'Внешний трафик' },
-  { id: 'cr_general',  icon: '📦', label: 'Общие конкуренты' },
-  { id: 'cr_personal', icon: '👤', label: 'Личные конкуренты' },
+const GROUPS: { id: SearchQueryGroup; label: string; icon: string }[] = [
+  { id: 'brand',       label: 'Брендированные запросы', icon: '🔤' },
+  { id: 'external',    label: 'Артикулы (внешний лид)', icon: '📦' },
+  { id: 'cr_general',  label: 'Креаторы общие',         icon: '👥' },
+  { id: 'cr_personal', label: 'Креаторы личные',        icon: '👤' },
 ]
 
 const TH  = "px-2 py-2 text-left  text-[10px] uppercase tracking-wider text-muted-foreground font-medium select-none whitespace-nowrap"
