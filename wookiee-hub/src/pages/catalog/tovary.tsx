@@ -263,6 +263,7 @@ function renderChannelStatusCell(t: TovarRow, ctx: CellContext): React.ReactNode
       channel={ch}
       options={options}
       onChange={onChange}
+      resolveStatus={ctx.resolveStatus}
     />
   )
 }
