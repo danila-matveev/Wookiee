@@ -120,17 +120,10 @@ interface InlineStatusCellProps {
   options: StatusOption[]
   /** Применить новый статус (через service). */
   onChange: (statusId: number) => Promise<void>
-  /**
-   * W9.2 — резолвер id→{nazvanie,color} из живых `statusy` БД.
-   * Нужен, потому что `<StatusBadge statusId={…}>` использует
-   * хардкод CATALOG_STATUSES (id 1-7) и возвращает `null` для
-   * любых остальных id, отчего status-колонки выглядели пустыми.
-   */
-  resolveStatus: (statusId: number) => { nazvanie: string; color: string | null } | null
 }
 
 function InlineStatusCell({
-  currentStatusId, channel, options, onChange, resolveStatus,
+  currentStatusId, channel, options, onChange,
 }: InlineStatusCellProps) {
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -159,11 +152,8 @@ function InlineStatusCell({
     }
   }, [onChange, saving])
 
-  // W9.2 — рендер бейджа: сначала пытаемся резолвить через живой справочник
-  // statusy (любой id из БД), при отсутствии — fallback на нумерованный значок,
-  // чтобы колонка всё равно содержала видимый контент.
-  const resolved = currentStatusId != null ? resolveStatus(currentStatusId) : null
-
+  // W9.17 — StatusBadge сам резолвит id через `useStatusyMap` (любой id из БД)
+  // и сам рисует `#N` fallback + `—` для пустого значения.
   return (
     <div className="relative inline-block" ref={ref} onClick={(e) => e.stopPropagation()}>
       <button
@@ -172,18 +162,7 @@ function InlineStatusCell({
         className="hover:ring-1 hover:ring-stone-400 rounded-md transition-all"
         title={`Статус ${channel.toUpperCase()} — кликните чтобы изменить`}
       >
-        {currentStatusId != null && resolved ? (
-          <StatusBadge
-            status={{ nazvanie: resolved.nazvanie, color: resolved.color ?? "gray" }}
-            compact
-          />
-        ) : currentStatusId != null ? (
-          <span className="px-1.5 py-px text-[11px] rounded-md ring-1 ring-inset bg-stone-100 text-stone-600 ring-stone-500/20 font-mono">
-            #{currentStatusId}
-          </span>
-        ) : (
-          <span className="text-[11px] text-stone-400 italic px-1.5 py-px">—</span>
-        )}
+        <StatusBadge statusId={currentStatusId} compact placeholder="dash" />
       </button>
       {open && (
         <div className="absolute top-full left-0 mt-1 w-56 bg-white border border-stone-200 rounded-lg shadow-lg z-30">
@@ -226,8 +205,6 @@ interface CellContext {
     sayt: StatusOption[]
     lamoda: StatusOption[]
   }
-  /** W9.2 — резолв любого статус-id через live `statusy`. */
-  resolveStatus: (statusId: number) => { nazvanie: string; color: string | null } | null
   onUpdateStatus: (
     barkod: string, statusId: number, channel: TovarChannel,
   ) => Promise<void>
@@ -254,7 +231,6 @@ function renderChannelStatusCell(t: TovarRow, ctx: CellContext): React.ReactNode
       channel={ch}
       options={options}
       onChange={onChange}
-      resolveStatus={ctx.resolveStatus}
     />
   )
 }
@@ -311,7 +287,6 @@ function renderCell(
           channel="wb"
           options={ctx.statusOptions.product}
           onChange={onUpdate("wb")}
-          resolveStatus={ctx.resolveStatus}
         />
       )
     case "status_ozon":
@@ -321,7 +296,6 @@ function renderCell(
           channel="ozon"
           options={ctx.statusOptions.product}
           onChange={onUpdate("ozon")}
-          resolveStatus={ctx.resolveStatus}
         />
       )
     case "status_sayt":
@@ -331,7 +305,6 @@ function renderCell(
           channel="sayt"
           options={ctx.statusOptions.sayt}
           onChange={onUpdate("sayt")}
-          resolveStatus={ctx.resolveStatus}
         />
       )
     case "status_lamoda":
@@ -341,7 +314,6 @@ function renderCell(
           channel="lamoda"
           options={ctx.statusOptions.lamoda}
           onChange={onUpdate("lamoda")}
-          resolveStatus={ctx.resolveStatus}
         />
       )
     case "barkod_gs1":
@@ -819,19 +791,9 @@ export function TovaryPage() {
     return ids
   }, [statusyData])
 
-  // W9.2 — резолвер id→{nazvanie,color} по всем статусам из БД,
-  // вне зависимости от tip (product/sayt/lamoda/artikul/model/…).
-  const statusById = useMemo(() => {
-    const m = new Map<number, { nazvanie: string; color: string | null }>()
-    for (const s of statusyData ?? []) {
-      m.set(s.id, { nazvanie: s.nazvanie, color: s.color })
-    }
-    return m
-  }, [statusyData])
-  const resolveStatus = useCallback(
-    (id: number) => statusById.get(id) ?? null,
-    [statusById],
-  )
+  // W9.17 — `statusById`/`resolveStatus` removed: <StatusBadge statusId={…}>
+  // now resolves live through `useStatusyMap()` (shared React Query cache
+  // ["statusy"]), so cells don't need to thread a resolver through props.
 
   // W9.9 — pre-launch статусы: SKU с таким статусом по каналу считаем «ещё не
   // в продаже» и отфильтровываем при выборе конкретного канала.
@@ -959,8 +921,8 @@ export function TovaryPage() {
   )
 
   const cellCtx: CellContext = useMemo(
-    () => ({ statusOptions, resolveStatus, onUpdateStatus, selectedChannel }),
-    [statusOptions, resolveStatus, onUpdateStatus, selectedChannel],
+    () => ({ statusOptions, onUpdateStatus, selectedChannel }),
+    [statusOptions, onUpdateStatus, selectedChannel],
   )
 
   // Список ключей колонок, фактически отрисованных в таблице (учитывает фильтр канала).

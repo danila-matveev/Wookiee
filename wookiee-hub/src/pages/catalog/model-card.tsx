@@ -1009,7 +1009,7 @@ function TabArticles({ m, hexByCvet, openColor }: TabContentProps) {
                     )}
                   </button>
                 </td>
-                <td className="px-3 py-2"><StatusBadge statusId={a.status_id ?? 0} compact /></td>
+                <td className="px-3 py-2"><StatusBadge statusId={a.status_id} compact /></td>
                 <td className="px-3 py-2 font-mono text-[11px] text-stone-500 tabular-nums">
                   <CellText title={a.nomenklatura_wb != null ? String(a.nomenklatura_wb) : ""}>{a.nomenklatura_wb ?? "—"}</CellText>
                 </td>
@@ -2779,7 +2779,7 @@ function Header({
           >
             {m.kod}
           </h1>
-          <StatusBadge statusId={m.status_id ?? 0} />
+          <StatusBadge statusId={m.status_id} />
           <span className="text-sm text-stone-400">·</span>
           <span className="text-sm text-stone-500 truncate">
             {m.nazvanie_etiketka || m.nazvanie_sayt || "без названия"}

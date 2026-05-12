@@ -876,7 +876,7 @@ function ArtikulyTable({ onRegisterExport }: { onRegisterExport?: (fn: (() => vo
                     <CellText className="text-stone-500 text-xs" title={a.cvet_nazvanie ?? ""}>{a.cvet_nazvanie}</CellText>
                   </div>
                 </td>
-                <td className="px-3 py-2.5"><StatusBadge statusId={a.status_id ?? 0} compact /></td>
+                <td className="px-3 py-2.5"><StatusBadge statusId={a.status_id} compact /></td>
                 <td className="px-3 py-2.5 font-mono text-[11px] text-stone-500 tabular-nums"><CellText title={a.nomenklatura_wb != null ? String(a.nomenklatura_wb) : ""}>{a.nomenklatura_wb ?? "—"}</CellText></td>
                 <td className="px-3 py-2.5 font-mono text-[11px] text-stone-500"><CellText title={a.artikul_ozon ?? ""}>{a.artikul_ozon ?? "—"}</CellText></td>
                 <td className="px-3 py-2.5 text-right tabular-nums text-stone-700">{a.tovary_cnt}</td>
@@ -1060,10 +1060,10 @@ function TovaryTable({ onRegisterExport }: { onRegisterExport?: (fn: (() => void
                   <div className="flex items-center gap-1.5 min-w-0"><ColorSwatch colorCode={t.cvet_color_code} size={14} /><CellText className="font-mono text-xs" title={t.cvet_color_code ?? ""}>{t.cvet_color_code ?? "—"}</CellText></div>
                 </td>
                 <td className="px-3 py-2.5 font-mono text-xs"><CellText title={t.razmer ?? ""}>{t.razmer ?? "—"}</CellText></td>
-                <td className="px-3 py-2.5 border-l border-stone-100"><StatusBadge statusId={t.status_id ?? 0} compact /></td>
-                <td className="px-3 py-2.5"><StatusBadge statusId={t.status_ozon_id ?? 0} compact /></td>
-                <td className="px-3 py-2.5"><StatusBadge statusId={t.status_sayt_id ?? 0} compact /></td>
-                <td className="px-3 py-2.5"><StatusBadge statusId={t.status_lamoda_id ?? 0} compact /></td>
+                <td className="px-3 py-2.5 border-l border-stone-100"><StatusBadge statusId={t.status_id} compact /></td>
+                <td className="px-3 py-2.5"><StatusBadge statusId={t.status_ozon_id} compact /></td>
+                <td className="px-3 py-2.5"><StatusBadge statusId={t.status_sayt_id} compact /></td>
+                <td className="px-3 py-2.5"><StatusBadge statusId={t.status_lamoda_id} compact /></td>
               </tr>
             ))}
           </tbody>
