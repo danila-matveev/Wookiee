@@ -17,6 +17,7 @@ RUN pip install -r /app/requirements.txt
 COPY services/telemost_recorder_api/ /app/services/telemost_recorder_api/
 COPY shared/ /app/shared/
 COPY scripts/telemost_setup_webhook.py /app/scripts/
+COPY scripts/telemost_recover_meeting.py /app/scripts/
 
 EXPOSE 8006
 
