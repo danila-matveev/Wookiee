@@ -4,6 +4,7 @@ import { Search, X, Plus, Loader2 } from "lucide-react"
 import {
   fetchTovaryRegistry, fetchStatusy, fetchSkleykiWb, fetchSkleykiOzon,
   bulkUpdateTovaryStatus, bulkLinkTovaryToSkleyka,
+  getUiPref, setUiPref,
   type TovarRow, type TovarChannel, type SkleykaRow,
 } from "@/lib/catalog/service"
 import { supabase } from "@/lib/supabase"
@@ -11,8 +12,12 @@ import { StatusBadge } from "@/components/catalog/ui/status-badge"
 import { ColorSwatch } from "@/components/catalog/ui/color-swatch"
 import { ColumnsManager, type ColumnDef } from "@/components/catalog/ui/columns-manager"
 import { BulkActionsBar } from "@/components/catalog/ui/bulk-actions-bar"
+import { SortableHeader } from "@/components/catalog/ui/sortable-header"
+import { Pagination } from "@/components/catalog/ui/pagination"
 import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
 import { useResizableColumns } from "@/hooks/use-resizable-columns"
+import { useTableSort, type SortState } from "@/hooks/use-table-sort"
+import { usePagination } from "@/hooks/use-pagination"
 import { downloadCsv } from "@/lib/catalog/csv-export"
 
 // W1.5 — Default per-column widths (px) for the SKU registry (Товары) page.
@@ -63,6 +68,39 @@ const DEFAULT_COLUMNS = TOVARY_COLUMNS.filter((c) => c.default).map((c) => c.key
 type StatusGroupFilter = "all" | "active" | "archive" | "no-status"
 type ChannelFilter = "all" | "wb" | "ozon" | "sayt" | "lamoda"
 type GroupBy = "none" | "model" | "color" | "size" | "collection" | "channel"
+
+// W8.1 — keys must match TOVARY_COLUMNS[i].key for sortable columns.
+type TovarSortKey =
+  | "barkod" | "artikul" | "model" | "cvet" | "razmer" | "wb_nom" | "ozon_art"
+  | "status_wb" | "status_ozon" | "status_sayt" | "status_lamoda"
+  | "barkod_gs1" | "barkod_gs2" | "barkod_perehod"
+  | "cena_wb" | "cena_ozon" | "created"
+const TOVARY_SORTABLE: ReadonlySet<string> = new Set<TovarSortKey>([
+  "barkod", "artikul", "model", "cvet", "razmer", "wb_nom", "ozon_art",
+  "status_wb", "status_ozon", "status_sayt", "status_lamoda",
+  "barkod_gs1", "barkod_gs2", "barkod_perehod", "created",
+])
+function getTovarSortValue(t: TovarRow, col: TovarSortKey): unknown {
+  switch (col) {
+    case "barkod": return t.barkod
+    case "artikul": return t.artikul ?? ""
+    case "model": return t.model_osnova_kod ?? ""
+    case "cvet": return t.cvet_color_code ?? ""
+    case "razmer": return t.razmer ?? ""
+    case "wb_nom": return t.nomenklatura_wb ?? null
+    case "ozon_art": return t.artikul_ozon ?? ""
+    case "status_wb": return t.status_id ?? null
+    case "status_ozon": return t.status_ozon_id ?? null
+    case "status_sayt": return t.status_sayt_id ?? null
+    case "status_lamoda": return t.status_lamoda_id ?? null
+    case "barkod_gs1": return t.barkod_gs1 ?? ""
+    case "barkod_gs2": return t.barkod_gs2 ?? ""
+    case "barkod_perehod": return t.barkod_perehod ?? ""
+    case "cena_wb": return ""
+    case "cena_ozon": return ""
+    case "created": return t.created_at ?? ""
+  }
+}
 
 // ─── Status badge popover ──────────────────────────────────────────────────
 
@@ -576,6 +614,24 @@ export function TovaryPage() {
     TOVARY_COLUMNS.map((c) => ({ id: c.key, defaultWidth: TOVARY_DEFAULT_WIDTHS[c.key] ?? 130 })),
   )
 
+  // W8.1 — sort + ui_preferences persist (scope: "tovary", key: "sort").
+  const { sort, toggleSort, setSortState, sortRows } = useTableSort<TovarSortKey>()
+  const sortLoadedRef = useRef(false)
+  useEffect(() => {
+    if (sortLoadedRef.current) return
+    sortLoadedRef.current = true
+    getUiPref<SortState<TovarSortKey>>("tovary", "sort").then((v) => {
+      if (v && v.column != null && v.direction != null) setSortState(v)
+    }).catch(() => { /* ignore */ })
+  }, [setSortState])
+  useEffect(() => {
+    if (!sortLoadedRef.current) return
+    setUiPref("tovary", "sort", sort).catch(() => { /* non-fatal */ })
+  }, [sort])
+
+  // W8.2 — pagination.
+  const { page, setPage, pageSize, setPageSize, paginate, resetPage } = usePagination(50)
+
   const statusOptions = useMemo(() => {
     const all = statusyData ?? []
     const map = (tip: string): StatusOption[] =>
@@ -626,13 +682,26 @@ export function TovaryPage() {
     return res
   }, [data, channelFilter, statusGroup, archiveStatusIds, search])
 
-  const groups = useMemo(() => groupRows(filtered, groupBy), [filtered, groupBy])
-
-  const VISIBLE_PER_GROUP = groupBy === "none" ? 200 : 999
-  const visibleByGroup = useMemo(
-    () => groups.map((g) => ({ ...g, visibleItems: g.items.slice(0, VISIBLE_PER_GROUP) })),
-    [groups, VISIBLE_PER_GROUP],
+  // W8.1 — sort after filter, before group.
+  const sortedFiltered = useMemo<TovarRow[]>(
+    () => sortRows(
+      filtered as unknown as Record<string, unknown>[],
+      (row, col) => getTovarSortValue(row as unknown as TovarRow, col),
+    ) as unknown as TovarRow[],
+    [filtered, sortRows],
   )
+  const groups = useMemo(() => groupRows(sortedFiltered, groupBy), [sortedFiltered, groupBy])
+
+  // W8.2 — pagination kicks in only when groupBy === "none"; when grouped, show
+  // every item per group (cap removed — pagination across groups is non-obvious).
+  useEffect(() => { resetPage() }, [search, statusGroup, channelFilter, groupBy, sort.column, sort.direction, resetPage])
+  const paginated = useMemo(() => paginate(sortedFiltered), [paginate, sortedFiltered])
+  const visibleByGroup = useMemo(() => {
+    if (groupBy === "none") {
+      return [{ key: "_all", label: "", items: sortedFiltered, visibleItems: paginated.slice }]
+    }
+    return groups.map((g) => ({ ...g, visibleItems: g.items }))
+  }, [groupBy, groups, sortedFiltered, paginated.slice])
 
   const flatVisibleBarkods = useMemo(
     () => visibleByGroup.flatMap((g) => g.visibleItems.map((t) => t.barkod)),
@@ -749,7 +818,6 @@ export function TovaryPage() {
     return <div className="px-6 py-8 text-sm text-red-500">Ошибка загрузки SKU</div>
   }
 
-  const totalShown = visibleByGroup.reduce((s, g) => s + g.visibleItems.length, 0)
   const totalFiltered = filtered.length
 
   return (
@@ -872,8 +940,24 @@ export function TovaryPage() {
                 </th>
                 {columns.map((key) => {
                   const col = TOVARY_COLUMNS.find((c) => c.key === key)
+                  const baseCls = "relative px-3 py-2.5 font-medium whitespace-nowrap"
+                  if (TOVARY_SORTABLE.has(key)) {
+                    const sortKey = key as TovarSortKey
+                    return (
+                      <SortableHeader
+                        key={key}
+                        active={sort.column === sortKey}
+                        direction={sort.column === sortKey ? sort.direction : null}
+                        onClick={() => toggleSort(sortKey)}
+                        className={baseCls}
+                      >
+                        {col?.label}
+                        <span {...bindResizer(key)} />
+                      </SortableHeader>
+                    )
+                  }
                   return (
-                    <th key={key} className="relative px-3 py-2.5 font-medium whitespace-nowrap">
+                    <th key={key} className={baseCls}>
                       {col?.label}
                       <span {...bindResizer(key)} />
                     </th>
@@ -922,9 +1006,18 @@ export function TovaryPage() {
               ))}
             </tbody>
           </table>
-          {totalFiltered > totalShown && (
+          {groupBy === "none" ? (
+            <Pagination
+              page={paginated.page}
+              totalPages={paginated.totalPages}
+              total={paginated.total}
+              pageSize={paginated.pageSize}
+              onPage={setPage}
+              onPageSize={(s) => { setPageSize(s); resetPage() }}
+            />
+          ) : (
             <div className="px-3 py-2 text-xs text-stone-400 border-t border-stone-100">
-              Показаны первые {totalShown} из {totalFiltered}.
+              Всего: {totalFiltered}. Пагинация недоступна с группировкой — выключите группировку для постраничного просмотра.
             </div>
           )}
         </div>

@@ -3,13 +3,17 @@ import { useSearchParams } from "react-router-dom"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { AlertCircle, Archive, Building2, ChevronDown, ChevronRight, Copy, Download, Edit3, Info, MoreHorizontal, Plus, Search } from "lucide-react"
 import { archiveModel, bulkUpdateModelStatus, duplicateModel, fetchArtikulyRegistry, fetchBrendy, fetchKategorii, fetchKollekcii, fetchMatrixList, fetchStatusy, fetchTovaryRegistry, getUiPref, setUiPref } from "@/lib/catalog/service"
-import type { Brend, MatrixRow } from "@/lib/catalog/service"
+import type { ArtikulRow, Brend, MatrixRow, TovarRow } from "@/lib/catalog/service"
 import { StatusBadge, CATALOG_STATUSES } from "@/components/catalog/ui/status-badge"
 import { CompletenessRing } from "@/components/catalog/ui/completeness-ring"
 import { Tooltip } from "@/components/catalog/ui/tooltip"
 import { NewModelModal } from "@/components/catalog/ui/new-model-modal"
+import { SortableHeader } from "@/components/catalog/ui/sortable-header"
+import { Pagination } from "@/components/catalog/ui/pagination"
 import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
 import { useResizableColumns, type ResizerBindings } from "@/hooks/use-resizable-columns"
+import { useTableSort, type SortState } from "@/hooks/use-table-sort"
+import { usePagination } from "@/hooks/use-pagination"
 import { downloadCsv } from "@/lib/catalog/csv-export"
 // Standard razmer chip-pill ladder used in the table.
 const RAZMER_LADDER = ["XS", "S", "M", "L", "XL", "XXL"] as const
@@ -65,9 +69,22 @@ const GROUP_BY_OPTIONS: { value: GroupBy; label: string }[] = [
   { value: "status", label: "По статусу" },
 ]
 // W3.2 — добавлена колонка «Бренд» между «Название» и «Категория».
-const MODEL_COLUMNS = [
-  ["Название"], ["Бренд"], ["Категория"], ["Коллекция"], ["Фабрика"], ["Статус"], ["Размеры"], ["Цвета"], ["Заполн."],
-  ["Цв / Арт / SKU", "text-right"], ["Обновлено"],
+// W8.1 — третий слот = sort key (или null, если колонку не сортируем).
+type ModeliOsnovaSortKey =
+  | "nazvanie" | "brand" | "kategoriya" | "kollekciya" | "fabrika"
+  | "status" | "completeness" | "cv_art_sku" | "obnovleno"
+const MODEL_COLUMNS: readonly (readonly [string, string?, ModeliOsnovaSortKey?])[] = [
+  ["Название", undefined, "nazvanie"],
+  ["Бренд", undefined, "brand"],
+  ["Категория", undefined, "kategoriya"],
+  ["Коллекция", undefined, "kollekciya"],
+  ["Фабрика", undefined, "fabrika"],
+  ["Статус", undefined, "status"],
+  ["Размеры"],
+  ["Цвета"],
+  ["Заполн.", undefined, "completeness"],
+  ["Цв / Арт / SKU", "text-right", "cv_art_sku"],
+  ["Обновлено", undefined, "obnovleno"],
 ] as const
 // W7.3 — Колонки для CSV-экспорта матрицы.  Метки берём из MODEL_COLUMNS,
 // плюс две вспомогательные (kod / artikul_modeli) для машинной идентификации.
@@ -133,6 +150,18 @@ function modelMatches(row: MatrixRow, query: string) {
     (v.artikul_modeli ?? "").toLowerCase().includes(query)
   )
 }
+// W8.3 — собирает текст tooltip-а для CompletenessRing.
+// Показывает топ-5 незаполненных полей с их «весом» (pp от общего completeness)
+// + счётчик «и ещё N», если полей больше пяти.
+function buildCompletenessTooltip(row: MatrixRow): string {
+  const pct = Math.round(row.completeness * 100)
+  if (row.missing_fields.length === 0) return `Заполнено полностью (${pct}%)`
+  const top = row.missing_fields.slice(0, 5)
+  const tail = row.missing_fields.length - top.length
+  const lines = top.map((f) => `${f.label} (${f.weight}%)`).join(" · ")
+  const moreSuffix = tail > 0 ? ` · и ещё ${tail}` : ""
+  return `Заполненность ${pct}%. Не заполнено: ${lines}${moreSuffix}`
+}
 function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, onOpen, onRegisterExport }: { rows: MatrixRow[]; brendy: Brend[]; kategorii: { id: number; nazvanie: string }[]; kollekcii: { id: number; nazvanie: string }[]; modelStatuses: StatusOption[]; onOpen: (kod: string) => void; onRegisterExport?: (fn: (() => void) | null) => void }) {
   const queryClient = useQueryClient()
   const { widths: colWidths, bindResizer } = useResizableColumns("matrix.modeli", [...MODEL_COLUMN_IDS])
@@ -149,6 +178,11 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
   const [openMenuKod, setOpenMenuKod] = useState<string | null>(null)
   const [bulkStatusOpen, setBulkStatusOpen] = useState(false)
   const groupByLoadedRef = useRef(false)
+  // W8.1 — sort state + persist via ui_preferences.
+  const { sort, toggleSort, setSortState, sortRows } = useTableSort<ModeliOsnovaSortKey>()
+  const sortLoadedRef = useRef(false)
+  // W8.2 — pagination state.
+  const { page, setPage, pageSize, setPageSize, paginate, resetPage } = usePagination(50)
   // Load groupBy preference once
   useEffect(() => {
     if (groupByLoadedRef.current) return
@@ -159,6 +193,19 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
   useEffect(() => {
     if (groupByLoadedRef.current) setUiPref("matrix", "groupBy", groupBy).catch(() => { /* non-fatal */ })
   }, [groupBy])
+  // W8.1 — hydrate sort from ui_preferences (key: "sort:matrix:modeli").
+  useEffect(() => {
+    if (sortLoadedRef.current) return
+    sortLoadedRef.current = true
+    getUiPref<SortState<ModeliOsnovaSortKey>>("matrix.modeli", "sort").then((v) => {
+      if (v && v.column != null && v.direction != null) setSortState(v)
+    }).catch(() => { /* ignore */ })
+  }, [setSortState])
+  // Persist sort changes after initial hydration.
+  useEffect(() => {
+    if (!sortLoadedRef.current) return
+    setUiPref("matrix.modeli", "sort", sort).catch(() => { /* non-fatal */ })
+  }, [sort])
   // Close more-menu / bulk-status dropdown when clicking elsewhere
   useEffect(() => {
     if (!openMenuKod && !bulkStatusOpen) return
@@ -193,17 +240,48 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
     if (incompleteOnly) res = res.filter((r) => r.completeness < 0.5)
     return search.trim() ? res.filter((r) => modelMatches(r, search.trim().toLowerCase())) : res
   }, [rows, selectedBrandIds, selectedStatusIds, selectedCategoryIds, selectedCollectionNames, incompleteOnly, search])
-  // Group filtered rows
+  // W8.1 — apply sort AFTER filters.  Computed value resolver for keys that
+  // aren't 1-to-1 with MatrixRow fields.
+  const sortedFiltered = useMemo<MatrixRow[]>(() => {
+    return sortRows(filtered as unknown as Record<string, unknown>[], (row, col) => {
+      const r = row as unknown as MatrixRow
+      switch (col) {
+        case "nazvanie": return r.nazvanie_sayt ?? r.kod
+        case "brand": return r.brand ?? ""
+        case "kategoriya": return r.kategoriya ?? ""
+        case "kollekciya": return r.kollekciya ?? ""
+        case "fabrika": return r.fabrika ?? ""
+        case "status": return r.status_id != null ? (statusNameById.get(r.status_id) ?? "") : ""
+        case "completeness": return r.completeness
+        case "cv_art_sku": return r.tovary_cnt
+        case "obnovleno": return r.updated_at ?? ""
+        default: return ""
+      }
+    }) as unknown as MatrixRow[]
+  }, [filtered, sortRows, statusNameById])
+  // Group filtered+sorted rows.  When groupBy === "none" we use the flat
+  // sorted list directly so pagination below can slice it.
   const grouped = useMemo(() => {
-    if (groupBy === "none") return [{ key: "_all", label: "", items: filtered }]
+    if (groupBy === "none") return [{ key: "_all", label: "", items: sortedFiltered }]
     const map = new Map<string, MatrixRow[]>()
-    for (const r of filtered) {
+    for (const r of sortedFiltered) {
       const k = getGroupKey(r, groupBy, statusNameById)
       if (!map.has(k)) map.set(k, [])
       map.get(k)!.push(r)
     }
     return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b, "ru")).map(([key, items]) => ({ key, label: key, items }))
-  }, [filtered, groupBy, statusNameById])
+  }, [sortedFiltered, groupBy, statusNameById])
+  // W8.2 — Reset to page 1 whenever filters / sort / grouping change.
+  useEffect(() => {
+    resetPage()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, selectedBrandIds, selectedCategoryIds, selectedCollectionNames, selectedStatusIds, incompleteOnly, groupBy, sort.column, sort.direction])
+  // Pagination only kicks in when groupBy === "none" (otherwise we render full
+  // groups — pagination across groups is non-obvious UX).
+  const paginated = useMemo(() => paginate(sortedFiltered), [paginate, sortedFiltered])
+  const pagedGrouped = groupBy === "none"
+    ? [{ key: "_all", label: "", items: paginated.slice }]
+    : grouped
   const toggleExpand = useCallback((id: number) => setExpandedRows((prev) => toggleSet(prev, id)), [])
   const toggleSelect = useCallback((kod: string) => setSelectedKods((prev) => toggleSet(prev, kod)), [])
   const toggleSelectAllVisible = useCallback(() => {
@@ -328,10 +406,25 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
               <tr className="text-left text-[11px] uppercase tracking-wider text-stone-500">
                 <th className="px-2 py-2.5" />
                 <th className="px-3 py-2.5"><input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAllVisible} style={{ accentColor: "#1C1917" }} className="rounded border-stone-300" aria-label="Выбрать все" /></th>
-                {MODEL_COLUMNS.map(([label, cls], idx) => {
+                {MODEL_COLUMNS.map(([label, cls, sortKey], idx) => {
                   const colId = MODEL_COLUMN_IDS[idx].id
+                  const baseCls = `relative px-3 py-2.5 font-medium ${cls ?? ""}`
+                  if (sortKey) {
+                    return (
+                      <SortableHeader
+                        key={label}
+                        active={sort.column === sortKey}
+                        direction={sort.column === sortKey ? sort.direction : null}
+                        onClick={() => toggleSort(sortKey)}
+                        className={baseCls}
+                      >
+                        {label}
+                        <span {...bindResizer(colId)} />
+                      </SortableHeader>
+                    )
+                  }
                   return (
-                    <th key={label} className={`relative px-3 py-2.5 font-medium ${cls ?? ""}`}>
+                    <th key={label} className={baseCls}>
                       {label}
                       <span {...bindResizer(colId)} />
                     </th>
@@ -341,7 +434,7 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
               </tr>
             </thead>
             <tbody>
-              {grouped.map((group) => (
+              {pagedGrouped.map((group) => (
                 <Fragment key={`group-${group.key}`}>
                   {groupBy !== "none" && (
                     <tr className="bg-stone-100/60 border-b border-stone-200">
@@ -383,8 +476,14 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
                           <td className="px-3 py-3"><StatusBadge status={m.status_id != null ? statusById.get(m.status_id) ?? null : null} /></td>
                           <td className="px-3 py-3"><div className="flex items-center gap-0.5">{RAZMER_LADDER.map((sz) => <span key={sz} className={`text-[10px] px-1 py-0.5 rounded ${variantSizes.has(sz) ? "bg-stone-900 text-white" : "bg-stone-50 text-stone-300 ring-1 ring-inset ring-stone-200"}`}>{sz}</span>)}</div></td>
                           <td className="px-3 py-3"><ColorChips modelKod={m.kod} count={m.cveta_cnt} /></td>
-                          <td className="px-3 py-3"><CompletenessRing value={m.completeness} size={16} hideLabel /></td>
-                          <td className="px-3 py-3 text-right tabular-nums text-stone-600"><span className="text-stone-900 font-medium">{m.cveta_cnt}</span><span className="text-stone-300 mx-1">/</span><span>{m.artikuly_cnt}</span><span className="text-stone-300 mx-1">/</span><span>{m.tovary_cnt}</span></td>
+                          <td className="px-3 py-3"><Tooltip text={buildCompletenessTooltip(m)}><CompletenessRing value={m.completeness} size={16} hideLabel /></Tooltip></td>
+                          <td className="px-3 py-3 text-right tabular-nums text-stone-600">
+                            <Tooltip text={`Цвета (привязанные к артикулам): ${m.cveta_cnt} · Артикулы: ${m.artikuly_cnt} · SKU: ${m.tovary_cnt}`}>
+                              <span>
+                                <span className="text-stone-900 font-medium">{m.cveta_cnt}</span><span className="text-stone-300 mx-1">/</span><span>{m.artikuly_cnt}</span><span className="text-stone-300 mx-1">/</span><span>{m.tovary_cnt}</span>
+                              </span>
+                            </Tooltip>
+                          </td>
                           <td className="px-3 py-3 text-stone-500 text-xs">{relativeDate(m.updated_at)}</td>
                           <td className="px-2 py-3 relative">
                             <button className="p-1 hover:bg-stone-100 rounded opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => { e.stopPropagation(); setOpenMenuKod((cur) => (cur === m.kod ? null : m.kod)) }} aria-label="Действия">
@@ -424,6 +523,16 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
               ))}
             </tbody>
           </table>
+          {groupBy === "none" && (
+            <Pagination
+              page={paginated.page}
+              totalPages={paginated.totalPages}
+              total={paginated.total}
+              pageSize={paginated.pageSize}
+              onPage={setPage}
+              onPageSize={(s) => { setPageSize(s); resetPage() }}
+            />
+          )}
         </div>
         <div className="mt-3 text-xs text-stone-500 flex items-center gap-2"><Info className="w-3.5 h-3.5 shrink-0" /><span>Стрелка ▶ раскрывает вариации. Клик по коду — карточка модели.</span></div>
       </div>
@@ -489,15 +598,52 @@ function ColorChips({ modelKod, count }: { modelKod: string; count: number }) {
   )
 }
 // ─── Artikuly registry tab ─────────────────────────────────────────────────
+type MatrixArtikulSortKey =
+  | "artikul" | "model" | "variation" | "cvet" | "status" | "wb_nom" | "ozon" | "sku"
 function ArtikulyTable({ onRegisterExport }: { onRegisterExport?: (fn: (() => void) | null) => void }) {
   const { data, isLoading } = useQuery({ queryKey: ["artikuly-registry"], queryFn: fetchArtikulyRegistry, staleTime: 5 * 60 * 1000 })
   const { widths: artWidths, bindResizer: bindArt } = useResizableColumns("matrix.artikuly", [...MATRIX_ARTIKULY_COLS])
   const [search, setSearch] = useState("")
+  // W8.1 — sort state + ui_preferences persist.
+  const { sort, toggleSort, setSortState, sortRows } = useTableSort<MatrixArtikulSortKey>()
+  const sortLoadedRef = useRef(false)
+  useEffect(() => {
+    if (sortLoadedRef.current) return
+    sortLoadedRef.current = true
+    getUiPref<SortState<MatrixArtikulSortKey>>("matrix.artikuly", "sort").then((v) => {
+      if (v && v.column != null && v.direction != null) setSortState(v)
+    }).catch(() => { /* ignore */ })
+  }, [setSortState])
+  useEffect(() => {
+    if (!sortLoadedRef.current) return
+    setUiPref("matrix.artikuly", "sort", sort).catch(() => { /* non-fatal */ })
+  }, [sort])
+  // W8.2 — pagination.
+  const { page, setPage, pageSize, setPageSize, paginate, resetPage } = usePagination(50)
   const filtered = useMemo(() => {
     if (!data) return []
     const q = search.trim().toLowerCase()
     return q ? data.filter((a) => a.artikul.toLowerCase().includes(q) || (a.model_osnova_kod ?? "").toLowerCase().includes(q) || (a.cvet_color_code ?? "").toLowerCase().includes(q)) : data
   }, [data, search])
+  const sortedFiltered = useMemo(() => sortRows(
+    filtered as unknown as Record<string, unknown>[],
+    (row, col) => {
+      const a = row as unknown as ArtikulRow
+      switch (col) {
+        case "artikul": return a.artikul
+        case "model": return a.model_osnova_kod ?? ""
+        case "variation": return a.model_kod ?? ""
+        case "cvet": return a.cvet_color_code ?? ""
+        case "status": return a.status_id ?? null
+        case "wb_nom": return a.nomenklatura_wb ?? null
+        case "ozon": return a.artikul_ozon ?? ""
+        case "sku": return a.tovary_cnt
+        default: return ""
+      }
+    },
+  ) as unknown as ArtikulRow[], [filtered, sortRows])
+  useEffect(() => { resetPage() }, [search, sort.column, sort.direction, resetPage])
+  const paginated = useMemo(() => paginate(sortedFiltered), [paginate, sortedFiltered])
   // W7.3 — header-export: текущий filtered (search учитывается).
   useEffect(() => {
     if (!onRegisterExport) return
@@ -542,9 +688,18 @@ function ArtikulyTable({ onRegisterExport }: { onRegisterExport?: (fn: (() => vo
               <col key={c.id} style={{ width: `${artWidths[c.id] ?? c.defaultWidth}px` }} />
             ))}
           </colgroup>
-          <RegistryHead labels={["Артикул", "Модель", "Вариация", "Цвет", "Статус", "WB номенкл.", "OZON", "SKU"]} rightLabel="SKU" columnIds={MATRIX_ARTIKULY_COLS.map((c) => c.id)} bindResizer={bindArt} />
+          <RegistryHead
+            labels={["Артикул", "Модель", "Вариация", "Цвет", "Статус", "WB номенкл.", "OZON", "SKU"]}
+            rightLabel="SKU"
+            columnIds={MATRIX_ARTIKULY_COLS.map((c) => c.id)}
+            bindResizer={bindArt}
+            sortKeys={["artikul", "model", "variation", "cvet", "status", "wb_nom", "ozon", "sku"]}
+            sortColumn={sort.column}
+            sortDirection={sort.direction}
+            onSort={(k) => toggleSort(k as MatrixArtikulSortKey)}
+          />
           <tbody>
-            {filtered.slice(0, 100).map((a) => (
+            {paginated.slice.map((a) => (
               <tr key={a.id} className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60">
                 <td className="px-3 py-2.5 font-mono text-xs text-stone-900">{a.artikul}</td>
                 <td className="px-3 py-2.5 font-medium text-stone-900 font-mono text-xs">{a.model_osnova_kod ?? "—"}</td>
@@ -558,7 +713,14 @@ function ArtikulyTable({ onRegisterExport }: { onRegisterExport?: (fn: (() => vo
             ))}
           </tbody>
         </table>
-        {filtered.length > 100 && <div className="px-3 py-2 text-xs text-stone-400 border-t border-stone-100">Показаны первые 100 из {filtered.length}.</div>}
+        <Pagination
+          page={paginated.page}
+          totalPages={paginated.totalPages}
+          total={paginated.total}
+          pageSize={paginated.pageSize}
+          onPage={setPage}
+          onPageSize={(s) => { setPageSize(s); resetPage() }}
+        />
       </div>
     </div>
   )
@@ -567,15 +729,31 @@ function ArtikulyTable({ onRegisterExport }: { onRegisterExport?: (fn: (() => vo
 const CHANNELS = [
   { id: "all", label: "Все" }, { id: "wb", label: "WB" }, { id: "ozon", label: "Ozon" }, { id: "sayt", label: "Сайт" }, { id: "lamoda", label: "Lamoda" },
 ] as const
+type MatrixTovarSortKey =
+  | "barkod" | "model" | "variation" | "cvet" | "razmer" | "wb" | "ozon" | "sayt" | "lamoda"
 function TovaryTable({ onRegisterExport }: { onRegisterExport?: (fn: (() => void) | null) => void }) {
   const { data, isLoading } = useQuery({ queryKey: ["tovary-registry"], queryFn: fetchTovaryRegistry, staleTime: 5 * 60 * 1000 })
   const { widths: tovWidths, bindResizer: bindTov } = useResizableColumns("matrix.tovary", [...MATRIX_TOVARY_COLS])
   const [search, setSearch] = useState("")
   const [channelFilter, setChannelFilter] = useState<(typeof CHANNELS)[number]["id"]>("all")
   const [statusFilter, setStatusFilter] = useState<"all" | number>("all")
-  const [visibleCount, setVisibleCount] = useState(100)
   const productStatuses = CATALOG_STATUSES.filter((s) => s.tip === "product")
-  const resetVisible = () => setVisibleCount(100)
+  // W8.1 — sort state + ui_preferences persist.
+  const { sort, toggleSort, setSortState, sortRows } = useTableSort<MatrixTovarSortKey>()
+  const sortLoadedRef = useRef(false)
+  useEffect(() => {
+    if (sortLoadedRef.current) return
+    sortLoadedRef.current = true
+    getUiPref<SortState<MatrixTovarSortKey>>("matrix.tovary", "sort").then((v) => {
+      if (v && v.column != null && v.direction != null) setSortState(v)
+    }).catch(() => { /* ignore */ })
+  }, [setSortState])
+  useEffect(() => {
+    if (!sortLoadedRef.current) return
+    setUiPref("matrix.tovary", "sort", sort).catch(() => { /* non-fatal */ })
+  }, [sort])
+  // W8.2 — pagination.
+  const { page, setPage, pageSize, setPageSize, paginate, resetPage } = usePagination(50)
   const filtered = useMemo(() => {
     if (!data) return []
     let res = data
@@ -587,6 +765,28 @@ function TovaryTable({ onRegisterExport }: { onRegisterExport?: (fn: (() => void
     const q = search.trim().toLowerCase()
     return q ? res.filter((t) => t.barkod.includes(q) || (t.model_osnova_kod ?? "").toLowerCase().includes(q) || (t.artikul ?? "").toLowerCase().includes(q)) : res
   }, [data, channelFilter, statusFilter, search])
+  const sortedFiltered = useMemo(() => sortRows(
+    filtered as unknown as Record<string, unknown>[],
+    (row, col) => {
+      const t = row as unknown as TovarRow
+      switch (col) {
+        case "barkod": return t.barkod
+        case "model": return t.model_osnova_kod ?? ""
+        case "variation": return t.model_kod ?? ""
+        case "cvet": return t.cvet_color_code ?? ""
+        case "razmer": return t.razmer ?? ""
+        case "wb": return t.status_id ?? null
+        case "ozon": return t.status_ozon_id ?? null
+        case "sayt": return t.status_sayt_id ?? null
+        case "lamoda": return t.status_lamoda_id ?? null
+        default: return ""
+      }
+    },
+  ) as unknown as TovarRow[], [filtered, sortRows])
+  useEffect(() => {
+    resetPage()
+  }, [channelFilter, statusFilter, search, sort.column, sort.direction, resetPage])
+  const paginated = useMemo(() => paginate(sortedFiltered), [paginate, sortedFiltered])
   // W7.3 — header-export: текущий filtered (channel + status + search учтены).
   useEffect(() => {
     if (!onRegisterExport) return
@@ -625,15 +825,15 @@ function TovaryTable({ onRegisterExport }: { onRegisterExport?: (fn: (() => void
     <div className="px-6 py-4 max-w-[1600px] mx-auto">
       {/* Channel tabs */}
       <div className="flex items-center gap-1 mb-3">
-        {CHANNELS.map((c) => <button key={c.id} onClick={() => { setChannelFilter(c.id); resetVisible() }} className={`px-3 py-1.5 text-xs rounded-md transition-colors ${channelFilter === c.id ? "bg-stone-900 text-white" : "text-stone-600 hover:bg-stone-100"}`}>{c.label}</button>)}
+        {CHANNELS.map((c) => <button key={c.id} onClick={() => setChannelFilter(c.id)} className={`px-3 py-1.5 text-xs rounded-md transition-colors ${channelFilter === c.id ? "bg-stone-900 text-white" : "text-stone-600 hover:bg-stone-100"}`}>{c.label}</button>)}
         <div className="h-4 w-px bg-stone-200 mx-1" />
-        <select value={statusFilter === "all" ? "all" : String(statusFilter)} onChange={(e) => { setStatusFilter(e.target.value === "all" ? "all" : Number(e.target.value)); resetVisible() }} className="px-2.5 py-1 text-xs border border-stone-200 rounded-md bg-white outline-none">
+        <select value={statusFilter === "all" ? "all" : String(statusFilter)} onChange={(e) => setStatusFilter(e.target.value === "all" ? "all" : Number(e.target.value))} className="px-2.5 py-1 text-xs border border-stone-200 rounded-md bg-white outline-none">
           <option value="all">Все статусы</option>
           {productStatuses.map((s) => <option key={s.id} value={s.id}>{s.nazvanie}</option>)}
         </select>
       </div>
       {/* Search + count */}
-      <RegistryTop search={search} setSearch={(v) => { setSearch(v); resetVisible() }} placeholder="Баркод, модель, артикул…" count={filtered.length} total={data?.length ?? 0} />
+      <RegistryTop search={search} setSearch={setSearch} placeholder="Баркод, модель, артикул…" count={filtered.length} total={data?.length ?? 0} />
       <div className="bg-white rounded-lg border border-stone-200 overflow-x-auto">
         <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
           <colgroup>
@@ -641,9 +841,18 @@ function TovaryTable({ onRegisterExport }: { onRegisterExport?: (fn: (() => void
               <col key={c.id} style={{ width: `${tovWidths[c.id] ?? c.defaultWidth}px` }} />
             ))}
           </colgroup>
-          <RegistryHead labels={["Баркод", "Модель", "Вариация", "Цвет", "Размер", "WB", "OZON", "Сайт", "Lamoda"]} borderedLabel="WB" columnIds={MATRIX_TOVARY_COLS.map((c) => c.id)} bindResizer={bindTov} />
+          <RegistryHead
+            labels={["Баркод", "Модель", "Вариация", "Цвет", "Размер", "WB", "OZON", "Сайт", "Lamoda"]}
+            borderedLabel="WB"
+            columnIds={MATRIX_TOVARY_COLS.map((c) => c.id)}
+            bindResizer={bindTov}
+            sortKeys={["barkod", "model", "variation", "cvet", "razmer", "wb", "ozon", "sayt", "lamoda"]}
+            sortColumn={sort.column}
+            sortDirection={sort.direction}
+            onSort={(k) => toggleSort(k as MatrixTovarSortKey)}
+          />
           <tbody>
-            {filtered.slice(0, visibleCount).map((t) => (
+            {paginated.slice.map((t) => (
               <tr key={t.id} className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60">
                 <td className="px-3 py-2.5 font-mono text-xs text-stone-700">{t.barkod}</td>
                 <td className="px-3 py-2.5 font-medium text-stone-900 font-mono text-xs">{t.model_osnova_kod ?? "—"}</td>
@@ -658,12 +867,14 @@ function TovaryTable({ onRegisterExport }: { onRegisterExport?: (fn: (() => void
             ))}
           </tbody>
         </table>
-        {filtered.length > visibleCount && (
-          <div className="px-3 py-3 border-t border-stone-100 flex items-center justify-between">
-            <span className="text-xs text-stone-400">Показано {visibleCount} из {filtered.length}</span>
-            <button onClick={() => setVisibleCount((v) => v + 100)} className="text-xs text-stone-700 hover:text-stone-900 px-3 py-1 hover:bg-stone-100 rounded-md transition-colors">Показать ещё 100</button>
-          </div>
-        )}
+        <Pagination
+          page={paginated.page}
+          totalPages={paginated.totalPages}
+          total={paginated.total}
+          pageSize={paginated.pageSize}
+          onPage={setPage}
+          onPageSize={(s) => { setPageSize(s); resetPage() }}
+        />
       </div>
     </div>
   )
@@ -676,14 +887,44 @@ function RegistryTop({ search, setSearch, placeholder, count, total }: { search:
     </div>
   )
 }
-function RegistryHead({ labels, rightLabel, borderedLabel, columnIds, bindResizer }: { labels: string[]; rightLabel?: string; borderedLabel?: string; columnIds?: readonly string[]; bindResizer?: (id: string) => ResizerBindings }) {
+function RegistryHead({
+  labels, rightLabel, borderedLabel, columnIds, bindResizer,
+  sortKeys, sortColumn, sortDirection, onSort,
+}: {
+  labels: string[]
+  rightLabel?: string
+  borderedLabel?: string
+  columnIds?: readonly string[]
+  bindResizer?: (id: string) => ResizerBindings
+  /** Same length as labels; null means «not sortable». */
+  sortKeys?: readonly (string | null)[]
+  sortColumn?: string | null
+  sortDirection?: "asc" | "desc" | null
+  onSort?: (key: string) => void
+}) {
   return (
     <thead className="bg-stone-50/80 border-b border-stone-200">
       <tr className="text-left text-[11px] uppercase tracking-wider text-stone-500">
         {labels.map((label, idx) => {
           const colId = columnIds?.[idx]
+          const sortKey = sortKeys?.[idx] ?? null
+          const baseCls = `relative px-3 py-2.5 font-medium ${label === rightLabel ? "text-right" : ""} ${label === borderedLabel ? "border-l border-stone-200" : ""}`
+          if (sortKey && onSort) {
+            return (
+              <SortableHeader
+                key={label}
+                active={sortColumn === sortKey}
+                direction={sortColumn === sortKey ? (sortDirection ?? null) : null}
+                onClick={() => onSort(sortKey)}
+                className={baseCls}
+              >
+                {label}
+                {colId && bindResizer && <span {...bindResizer(colId)} />}
+              </SortableHeader>
+            )
+          }
           return (
-            <th key={label} className={`relative px-3 py-2.5 font-medium ${label === rightLabel ? "text-right" : ""} ${label === borderedLabel ? "border-l border-stone-200" : ""}`}>
+            <th key={label} className={baseCls}>
               {label}
               {colId && bindResizer && <span {...bindResizer(colId)} />}
             </th>

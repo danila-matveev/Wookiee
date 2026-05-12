@@ -47,3 +47,7 @@ export type {
 export { AssetUploader } from "./asset-uploader"
 
 export { AttributeControl } from "./attribute-control"
+
+// W8.1 + W8.2 — sortable header + paginator.
+export { SortableHeader } from "./sortable-header"
+export { Pagination } from "./pagination"
