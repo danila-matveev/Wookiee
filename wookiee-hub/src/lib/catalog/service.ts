@@ -1896,10 +1896,12 @@ export async function bulkUpdateArtikulStatus(artikulIds: number[], statusId: nu
  *   ozon   → status_ozon_id
  *   sayt   → status_sayt_id
  *   lamoda → status_lamoda_id
+ *
+ * Pass `statusId = null` to clear the status (sets the field to NULL).
  */
 export async function bulkUpdateTovaryStatus(
   barkods: string[],
-  statusId: number,
+  statusId: number | null,
   channel: TovarChannel,
 ): Promise<void> {
   if (barkods.length === 0) return

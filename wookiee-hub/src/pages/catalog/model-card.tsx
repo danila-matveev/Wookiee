@@ -14,6 +14,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react"
@@ -29,6 +30,7 @@ import {
   HelpCircle,
   Info,
   Link2,
+  Loader2,
   Plus,
   Save,
   Trash2,
@@ -46,6 +48,7 @@ import {
   archiveModel,
   bulkAddSizeToArtikuly,
   bulkCreateArtikuly,
+  bulkUpdateTovaryStatus,
   duplicateModel,
   fetchAllTags,
   fetchAttributesForCategory,
@@ -72,6 +75,7 @@ import {
   type ModelVariation,
   type Razmer,
   type Sertifikat,
+  type TovarChannel,
   type Upakovka,
 } from "@/lib/catalog/service"
 import {
@@ -1281,6 +1285,128 @@ function AddArtikulModal({
 
 // ─── Tab 4: SKU ────────────────────────────────────────────────────────────
 
+// W4.5 — inline-edit статусов SKU.
+// Дизайн-выборы (см. PLAN.md row W4.5):
+//   * popover — не зависим от @base-ui/@radix: ручная absolute-разметка с
+//     click-outside listener (как в `pages/catalog/tovary.tsx::InlineStatusCell`
+//     и `matrix.tsx::BulkBar`). Лёгкая, без новых импортов.
+//   * options — все `statusy` где `tip='product'` (одинаковый набор для всех
+//     четырёх каналов wb/ozon/sayt/lamoda). Это согласовано в PLAN W4.5
+//     ("dropdown статусов (только tip='product')"). Канал-специфичные
+//     tip-ы ('sayt'/'lamoda') здесь намеренно не используются — спецификация
+//     просит единый набор product-статусов для inline-edit.
+//   * clear (NULL) — отдельный пункт «—» в начале списка; сетит поле в NULL
+//     через `bulkUpdateTovaryStatus(..., null, channel)`.
+//   * Стратегия обновления: pessimistic — ждём ответ Supabase, затем
+//     invalidate `["catalog", "model", kod]`. Без оптимистики:
+//       (a) `kod` не доступен внутри TabSKU без прокидывания пропса;
+//       (b) network к Supabase локальный, latency низкий — UX страдает мало.
+//     Если задержка станет заметной — добавим `onMutate` с
+//     `queryClient.setQueryData` поверх `ModelDetail`.
+
+interface StatusOption {
+  id: number
+  nazvanie: string
+  color: string | null
+}
+
+interface InlineStatusCellProps {
+  currentStatusId: number | null
+  channel: TovarChannel
+  options: StatusOption[]
+  onChange: (statusId: number | null) => Promise<void>
+}
+
+function InlineStatusCell({
+  currentStatusId, channel, options, onChange,
+}: InlineStatusCellProps) {
+  const [open, setOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener("mousedown", onDoc)
+    return () => document.removeEventListener("mousedown", onDoc)
+  }, [open])
+
+  const onSelect = useCallback(async (id: number | null) => {
+    if (saving) return
+    setSaving(true)
+    try {
+      await onChange(id)
+      setOpen(false)
+    } catch (err) {
+      // eslint-disable-next-line no-alert
+      alert(`Не удалось обновить статус: ${(err as Error).message}`)
+    } finally {
+      setSaving(false)
+    }
+  }, [onChange, saving])
+
+  const current = currentStatusId != null
+    ? options.find((s) => s.id === currentStatusId) ?? null
+    : null
+
+  return (
+    <div className="relative inline-block" ref={ref} onClick={(e) => e.stopPropagation()}>
+      <button
+        type="button"
+        onClick={() => setOpen((p) => !p)}
+        className="hover:ring-1 hover:ring-stone-400 rounded-md transition-all"
+        title={`Статус ${channel.toUpperCase()} — кликните чтобы изменить`}
+      >
+        {current
+          ? <StatusBadge status={{ nazvanie: current.nazvanie, color: current.color ?? "gray" }} compact />
+          : <span className="text-[11px] text-stone-400 italic px-1.5 py-px">—</span>}
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 w-56 bg-white border border-stone-200 rounded-lg shadow-lg z-30">
+          <div className="p-2 border-b border-stone-100 flex items-center justify-between">
+            <div className="text-[10px] uppercase tracking-wider text-stone-400">
+              Канал {channel.toUpperCase()}
+            </div>
+            {saving && <Loader2 className="w-3 h-3 text-stone-400 animate-spin" />}
+          </div>
+          <div className="p-1 max-h-72 overflow-y-auto">
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => onSelect(null)}
+              className="w-full flex items-center gap-2 px-2 py-1.5 hover:bg-stone-50 rounded text-left text-[11px] text-stone-500 italic disabled:opacity-50"
+            >
+              — (без статуса)
+              {currentStatusId == null && (
+                <span className="ml-auto text-[10px] text-emerald-600 not-italic">текущий</span>
+              )}
+            </button>
+            {options.length === 0 && (
+              <div className="px-2 py-3 text-xs text-stone-400 italic">Нет статусов</div>
+            )}
+            {options.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                disabled={saving}
+                onClick={() => onSelect(s.id)}
+                className="w-full flex items-center gap-2 px-2 py-1.5 hover:bg-stone-50 rounded text-left disabled:opacity-50"
+              >
+                <StatusBadge status={{ nazvanie: s.nazvanie, color: s.color ?? "gray" }} compact />
+                {s.id === currentStatusId && (
+                  <span className="ml-auto text-[10px] text-emerald-600">текущий</span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function TabSKU({ m, hexByCvet }: TabContentProps) {
   const queryClient = useQueryClient()
   const [addSkuOpen, setAddSkuOpen] = useState(false)
@@ -1355,6 +1481,43 @@ function TabSKU({ m, hexByCvet }: TabContentProps) {
     label: r.nazvanie ?? `#${r.id}`,
   }))
 
+  const statusyQ = useQuery({
+    queryKey: ["catalog", "statusy"],
+    queryFn: fetchStatusy,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  // W4.5 — единый набор product-статусов для всех 4 каналов (см. шапку файла).
+  const productStatusOptions: StatusOption[] = useMemo(
+    () => (statusyQ.data ?? [])
+      .filter((s) => s.tip === "product")
+      .map((s) => ({ id: s.id, nazvanie: s.nazvanie, color: s.color })),
+    [statusyQ.data],
+  )
+
+  const updateStatusMut = useMutation({
+    mutationFn: async ({ barkod, statusId, channel }: {
+      barkod: string; statusId: number | null; channel: TovarChannel
+    }) => {
+      await bulkUpdateTovaryStatus([barkod], statusId, channel)
+    },
+    onSuccess: () => {
+      // Перечитываем модель — карточка пересоберёт TabSKU с новыми статусами.
+      void queryClient.invalidateQueries({
+        queryKey: ["catalog", "model"],
+        exact: false,
+      })
+    },
+  })
+
+  const onChangeStatus = useCallback(
+    (barkod: string, channel: TovarChannel) =>
+      async (statusId: number | null) => {
+        await updateStatusMut.mutateAsync({ barkod, statusId, channel })
+      },
+    [updateStatusMut],
+  )
+
   return (
     <>
     <div className="bg-white rounded-lg border border-stone-200 overflow-hidden">
@@ -1362,7 +1525,7 @@ function TabSKU({ m, hexByCvet }: TabContentProps) {
         <div>
           <div className="font-medium text-stone-900">SKU модели</div>
           <div className="text-xs text-stone-500">
-            {allSku.length} SKU · inline-edit статусов — Wave 3+ (TODO)
+            {allSku.length} SKU · клик по статусу — изменить
           </div>
         </div>
         <div className="flex items-center gap-1.5">
@@ -1427,11 +1590,37 @@ function TabSKU({ m, hexByCvet }: TabContentProps) {
                   </td>
                   <td className="px-3 py-2 font-mono text-xs">{t.razmer_nazvanie ?? "—"}</td>
                   <td className="px-3 py-2 border-l border-stone-100">
-                    <StatusBadge statusId={t.status_id ?? 0} compact />
+                    <InlineStatusCell
+                      currentStatusId={t.status_id ?? null}
+                      channel="wb"
+                      options={productStatusOptions}
+                      onChange={onChangeStatus(t.barkod, "wb")}
+                    />
                   </td>
-                  <td className="px-3 py-2"><StatusBadge statusId={t.status_ozon_id ?? 0} compact /></td>
-                  <td className="px-3 py-2"><StatusBadge statusId={t.status_sayt_id ?? 0} compact /></td>
-                  <td className="px-3 py-2"><StatusBadge statusId={t.status_lamoda_id ?? 0} compact /></td>
+                  <td className="px-3 py-2">
+                    <InlineStatusCell
+                      currentStatusId={t.status_ozon_id ?? null}
+                      channel="ozon"
+                      options={productStatusOptions}
+                      onChange={onChangeStatus(t.barkod, "ozon")}
+                    />
+                  </td>
+                  <td className="px-3 py-2">
+                    <InlineStatusCell
+                      currentStatusId={t.status_sayt_id ?? null}
+                      channel="sayt"
+                      options={productStatusOptions}
+                      onChange={onChangeStatus(t.barkod, "sayt")}
+                    />
+                  </td>
+                  <td className="px-3 py-2">
+                    <InlineStatusCell
+                      currentStatusId={t.status_lamoda_id ?? null}
+                      channel="lamoda"
+                      options={productStatusOptions}
+                      onChange={onChangeStatus(t.barkod, "lamoda")}
+                    />
+                  </td>
                 </tr>
               )
             })}
