@@ -2501,3 +2501,127 @@ export async function searchGlobal(query: string): Promise<GlobalSearchResult> {
     skus: (tovaryRes.data ?? []) as SearchHitTovar[],
   }
 }
+
+// ─── Catalog assets storage (W5.1) ─────────────────────────────────────────
+//
+// Bucket: catalog-assets (private, max 10MB, image/* + application/pdf)
+// Path conventions (callers should use the makeStoragePath* helpers):
+//   models/{modeli_osnova_id}/header.{ext}
+//   colors/{cvet_id}/sample.{ext}
+//   sertifikaty/{sertifikat_id}/{slug}.pdf
+//
+// All access goes through signed URLs with 1h TTL — DB columns store the
+// bucket-relative path, not the full URL, so the URL is freshly signed on read.
+
+export const CATALOG_ASSETS_BUCKET = "catalog-assets"
+export const SIGNED_URL_TTL_SECONDS = 3600
+export const ALLOWED_IMAGE_MIME = [
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+  "image/webp",
+  "image/gif",
+] as const
+export const ALLOWED_PDF_MIME = ["application/pdf"] as const
+export const MAX_ASSET_SIZE_BYTES = 10 * 1024 * 1024
+
+function extFromMime(mime: string): string {
+  if (mime === "image/jpeg" || mime === "image/jpg") return "jpg"
+  if (mime === "image/png") return "png"
+  if (mime === "image/webp") return "webp"
+  if (mime === "image/gif") return "gif"
+  if (mime === "application/pdf") return "pdf"
+  return "bin"
+}
+
+function slugify(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60) || "file"
+}
+
+export function makeStoragePathForModelHeader(modelOsnovaId: number, mime: string): string {
+  return `models/${modelOsnovaId}/header.${extFromMime(mime)}`
+}
+
+export function makeStoragePathForColorSample(cvetId: number, mime: string): string {
+  return `colors/${cvetId}/sample.${extFromMime(mime)}`
+}
+
+export function makeStoragePathForSertifikat(sertifikatId: number, originalName: string): string {
+  const base = originalName.replace(/\.[^.]+$/, "")
+  return `sertifikaty/${sertifikatId}/${slugify(base)}.pdf`
+}
+
+/**
+ * Upload a File/Blob to the catalog-assets bucket at the given path.
+ * `upsert: true` so re-uploading to the same path replaces silently — handy
+ * for the "replace image" flow.
+ *
+ * Caller is responsible for validating size/mime *before* calling (the bucket
+ * rejects oversized/wrong-mime, but we want a friendly error message).
+ */
+export async function uploadCatalogAsset(
+  path: string,
+  file: File | Blob,
+  options?: { contentType?: string },
+): Promise<void> {
+  const contentType = options?.contentType ?? (file instanceof File ? file.type : undefined)
+  const { error } = await supabase.storage
+    .from(CATALOG_ASSETS_BUCKET)
+    .upload(path, file, {
+      upsert: true,
+      contentType,
+      cacheControl: "3600",
+    })
+  if (error) throw new Error(error.message)
+}
+
+/**
+ * Generate a signed URL for a catalog asset. Returns null for null/empty paths
+ * so callers can pass DB values directly.
+ */
+export async function getCatalogAssetSignedUrl(
+  path: string | null | undefined,
+  ttlSeconds: number = SIGNED_URL_TTL_SECONDS,
+): Promise<string | null> {
+  if (!path) return null
+  const { data, error } = await supabase.storage
+    .from(CATALOG_ASSETS_BUCKET)
+    .createSignedUrl(path, ttlSeconds)
+  if (error) throw new Error(error.message)
+  return data?.signedUrl ?? null
+}
+
+export async function deleteCatalogAsset(path: string): Promise<void> {
+  if (!path) return
+  const { error } = await supabase.storage
+    .from(CATALOG_ASSETS_BUCKET)
+    .remove([path])
+  if (error) throw new Error(error.message)
+}
+
+/** Validate a file is within bucket limits before we hit the network. */
+export function validateCatalogAsset(
+  file: File,
+  kind: "image" | "pdf" | "image-or-pdf",
+): { ok: true } | { ok: false; reason: string } {
+  if (file.size > MAX_ASSET_SIZE_BYTES) {
+    return { ok: false, reason: `Файл больше 10 МБ (${(file.size / 1024 / 1024).toFixed(1)} МБ)` }
+  }
+  const mime = file.type || "application/octet-stream"
+  const okImage = (ALLOWED_IMAGE_MIME as readonly string[]).includes(mime)
+  const okPdf = (ALLOWED_PDF_MIME as readonly string[]).includes(mime)
+  if (kind === "image" && !okImage) {
+    return { ok: false, reason: `Тип ${mime} не поддерживается. Разрешены PNG/JPG/WebP/GIF.` }
+  }
+  if (kind === "pdf" && !okPdf) {
+    return { ok: false, reason: `Тип ${mime} не поддерживается. Разрешён только PDF.` }
+  }
+  if (kind === "image-or-pdf" && !okImage && !okPdf) {
+    return { ok: false, reason: `Тип ${mime} не поддерживается. Разрешены изображения и PDF.` }
+  }
+  return { ok: true }
+}
