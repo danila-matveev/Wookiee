@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from services.telemost_recorder_api import internal_routes
 from services.telemost_recorder_api.config import LOG_LEVEL
 from services.telemost_recorder_api.db import close_pool, get_pool
 from services.telemost_recorder_api.routes import health, telegram
@@ -60,4 +61,5 @@ def create_app() -> FastAPI:
     )
     app.include_router(health.router)
     app.include_router(telegram.router)
+    app.include_router(internal_routes.router)
     return app
