@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react"
-import { Drawer } from "@/components/crm/ui/Drawer"
 import { Badge } from "@/components/crm/ui/Badge"
 import { EmptyState } from "@/components/crm/ui/EmptyState"
+import { InlinePanel } from "@/components/marketing/InlinePanel"
 import { StatusEditor } from "@/components/marketing/StatusEditor"
 import { useSearchQueries, useSearchQueryWeekly, useUpdateSearchQueryStatus } from "@/hooks/marketing/use-search-queries"
-import { parseUnifiedId } from "@/lib/marketing-helpers"
+import { formatWeekShort, parseUnifiedId } from "@/lib/marketing-helpers"
 import type { SearchQueryRow, SearchQueryWeeklyStat } from "@/types/marketing"
 
 interface SearchQueryDetailPanelProps {
@@ -17,6 +17,20 @@ interface SearchQueryDetailPanelProps {
 const fmt = (n: number) => n.toLocaleString('ru-RU')
 const pct = (num: number, denom: number) => (denom > 0 ? `${((num / denom) * 100).toFixed(1)}%` : '—')
 const lCls = "block text-[11px] uppercase tracking-wider text-muted-foreground font-medium mb-1"
+
+/**
+ * Build the "art" string for the panel header row 2 — best-effort label
+ * (e.g. "Wendy/dark_beige") composed from whatever model/nomenklatura/ww we have.
+ * Returns null if nothing useful is available.
+ */
+function deriveArtLabel(item: SearchQueryRow): string | null {
+  if (item.model_hint && item.ww_code) return `${item.model_hint} · ${item.ww_code}`
+  if (item.model_hint && item.nomenklatura_wb) return `${item.model_hint} · NM ${item.nomenklatura_wb}`
+  if (item.model_hint) return item.model_hint
+  if (item.ww_code) return item.ww_code
+  if (item.nomenklatura_wb) return `NM ${item.nomenklatura_wb}`
+  return null
+}
 
 export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose }: SearchQueryDetailPanelProps) {
   const { data: items = [], isLoading: itemsLoading } = useSearchQueries()
@@ -40,57 +54,80 @@ export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose }:
   const total    = useMemo(() => aggregate(rangeWeeks), [rangeWeeks])
   const allTotal = useMemo(() => aggregate(weekly), [weekly])
 
+  const artLabel = item ? deriveArtLabel(item) : null
+
+  // Header — spec wookiee_marketing_v4.jsx SQPanel lines 388-402:
+  //  row 1: query mono + StatusEditor inline
+  //  row 2: art (if any)
+  //  row 3: channel pill + campaign pill (if any)
+  const titleNode = item ? (
+    <div className="min-w-0">
+      <div className="flex items-center gap-2 mb-1 flex-wrap">
+        <span className="font-mono text-sm text-foreground font-medium break-all">{item.query_text}</span>
+        <StatusEditor
+          status={item.status}
+          onChange={(s) => updateStatus.mutate({ unifiedId: item.unified_id, status: s })}
+          disabled={updateStatus.isPending}
+        />
+      </div>
+      {artLabel && (
+        <div className="text-xs text-muted-foreground mb-1 truncate">{artLabel}</div>
+      )}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {item.purpose && <Badge tone="secondary">{item.purpose}</Badge>}
+        {item.campaign_name && <Badge tone="info">{item.campaign_name}</Badge>}
+      </div>
+      {updateStatus.isError && (
+        <div className="text-xs text-danger mt-1">Не удалось сохранить статус</div>
+      )}
+    </div>
+  ) : (
+    <div className="text-sm font-medium text-foreground">Запрос</div>
+  )
+
   return (
-    <Drawer open={true} onClose={onClose} title={item?.query_text ?? 'Запрос'}>
+    <InlinePanel title={titleNode} onClose={onClose} width={420}>
       {itemsLoading ? (
         <div className="text-sm text-muted-foreground p-4">Загрузка…</div>
       ) : !item ? (
-        <EmptyState title="Запрос не найден" description="Возможно, он удалён или ID неверен." />
+        <div className="p-4">
+          <EmptyState title="Запрос не найден" description="Возможно, он удалён или ID неверен." />
+        </div>
       ) : (
-        <div className="flex flex-col gap-4">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <StatusEditor
-              status={item.status}
-              onChange={(s) => updateStatus.mutate({ unifiedId: item.unified_id, status: s })}
-              disabled={updateStatus.isPending}
-            />
-            {updateStatus.isError && (
-              <span className="text-xs text-danger">Не удалось сохранить статус</span>
-            )}
-            {item.purpose && <Badge tone="secondary">{item.purpose}</Badge>}
-            {item.campaign_name && <Badge tone="info">{item.campaign_name}</Badge>}
-          </div>
-
+        <div className="flex flex-col">
           {(item.nomenklatura_wb || item.ww_code || item.artikul_id != null || item.model_hint) && (
-            <div className="bg-muted/30 rounded-md border border-border px-3 py-2 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
-              {item.nomenklatura_wb && (
-                <>
-                  <span className="text-muted-foreground">Номенклатура</span>
-                  <span className="font-mono text-foreground/80 text-right">{item.nomenklatura_wb}</span>
-                </>
-              )}
-              {item.ww_code && (
-                <>
-                  <span className="text-muted-foreground">WW-код</span>
-                  <span className="font-mono text-foreground/80 text-right">{item.ww_code}</span>
-                </>
-              )}
-              {item.artikul_id != null && (
-                <>
-                  <span className="text-muted-foreground">Артикул ID</span>
-                  <span className="text-foreground/80 text-right">{item.artikul_id}</span>
-                </>
-              )}
-              {item.model_hint && (
-                <>
-                  <span className="text-muted-foreground">Модель</span>
-                  <span className="text-foreground/80 text-right">{item.model_hint}</span>
-                </>
-              )}
+            <div className="px-5 py-3 border-b border-border bg-muted/30">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
+                {item.nomenklatura_wb && (
+                  <>
+                    <span className="text-muted-foreground">Номенклатура</span>
+                    <span className="font-mono text-foreground/80 text-right">{item.nomenklatura_wb}</span>
+                  </>
+                )}
+                {item.ww_code && (
+                  <>
+                    <span className="text-muted-foreground">WW-код</span>
+                    <span className="font-mono text-foreground/80 text-right">{item.ww_code}</span>
+                  </>
+                )}
+                {item.artikul_id != null && (
+                  <>
+                    <span className="text-muted-foreground">Артикул ID</span>
+                    <span className="text-foreground/80 text-right">{item.artikul_id}</span>
+                  </>
+                )}
+                {item.model_hint && (
+                  <>
+                    <span className="text-muted-foreground">Модель</span>
+                    <span className="text-foreground/80 text-right">{item.model_hint}</span>
+                  </>
+                )}
+              </div>
             </div>
           )}
 
-          <div className="border-t border-border pt-3">
+          {/* Воронка за выбранный период */}
+          <div className="px-5 py-4 border-b border-border">
             <span className={lCls}>За выбранный период</span>
             <div className="space-y-2">
               <Row label="Частота"  value={fmt(total.f)} />
@@ -109,7 +146,8 @@ export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose }:
             </div>
           </div>
 
-          <div className="border-t border-border pt-3">
+          {/* Weekly table */}
+          <div className="px-5 py-4">
             <div className="flex items-center justify-between mb-2">
               <span className={lCls + ' mb-0'}>{showAll ? 'Все недели' : 'За период'}</span>
               {weekly.length > 0 && (
@@ -123,7 +161,10 @@ export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose }:
               )}
             </div>
             {!isSubstitute ? (
-              <EmptyState title="По неделям" description="Недельная статистика для брендовых запросов появится в Phase 2." />
+              <EmptyState
+                title="По неделям"
+                description="Брендовые запросы не имеют недельной статистики в источнике (search_query_stats_weekly содержит только substitute_articles)."
+              />
             ) : weeklyLoading ? (
               <div className="text-sm text-muted-foreground">Загрузка…</div>
             ) : weeklyError ? (
@@ -149,7 +190,7 @@ export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose }:
                   <tbody className="divide-y divide-border/50">
                     {sliced.map((w) => (
                       <tr key={w.week_start} className="hover:bg-muted/40">
-                        <td className="px-1 py-1 tabular-nums text-muted-foreground">{w.week_start}</td>
+                        <td className="px-1 py-1 tabular-nums text-muted-foreground">{formatWeekShort(w.week_start)}</td>
                         <td className="px-1 py-1 text-right tabular-nums text-foreground/80">{fmt(w.frequency)}</td>
                         <td className="px-1 py-1 text-right tabular-nums text-foreground/80">{fmt(w.transitions)}</td>
                         <td className="px-1 py-1 text-right tabular-nums text-foreground/80">{fmt(w.additions)}</td>
@@ -164,7 +205,7 @@ export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose }:
           </div>
         </div>
       )}
-    </Drawer>
+    </InlinePanel>
   )
 }
 

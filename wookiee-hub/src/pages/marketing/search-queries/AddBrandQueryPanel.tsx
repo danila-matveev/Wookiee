@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { Drawer } from '@/components/crm/ui/Drawer'
 import { Button } from '@/components/crm/ui/Button'
 import { Input } from '@/components/crm/ui/Input'
+import { InlinePanel } from '@/components/marketing/InlinePanel'
 import { useCreateBrandQuery } from '@/hooks/marketing/use-search-queries'
 
 interface AddBrandQueryPanelProps {
@@ -46,10 +46,10 @@ export function AddBrandQueryPanel({ onClose }: AddBrandQueryPanelProps) {
   }
 
   return (
-    <Drawer
-      open={true}
+    <InlinePanel
+      title={<div className="text-sm font-medium text-foreground">Новый брендированный запрос</div>}
       onClose={onClose}
-      title="Новый брендированный запрос"
+      width={420}
       footer={
         <>
           <Button variant="ghost" type="button" onClick={onClose} disabled={create.isPending}>
@@ -67,7 +67,7 @@ export function AddBrandQueryPanel({ onClose }: AddBrandQueryPanelProps) {
         </>
       }
     >
-      <form id="add-brand-query-form" onSubmit={handleSubmit} className="flex flex-col gap-5">
+      <form id="add-brand-query-form" onSubmit={handleSubmit} className="px-5 py-4 flex flex-col gap-5">
         <div className="flex flex-col gap-1.5">
           <label htmlFor="bq-query" className="text-sm font-medium text-fg">
             Поисковый запрос <span className="text-danger">*</span>
@@ -114,6 +114,6 @@ export function AddBrandQueryPanel({ onClose }: AddBrandQueryPanelProps) {
           <p className="text-sm text-danger">{error}</p>
         )}
       </form>
-    </Drawer>
+    </InlinePanel>
   )
 }

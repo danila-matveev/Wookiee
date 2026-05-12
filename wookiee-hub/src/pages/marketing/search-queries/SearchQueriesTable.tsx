@@ -9,17 +9,18 @@ import { SectionHeader } from "@/components/marketing/SectionHeader"
 import { DateRange } from "@/components/marketing/DateRange"
 import { UpdateBar } from "@/components/marketing/UpdateBar"
 import type { SearchQueryGroup, SearchQueryRow, SearchQueryStatsAgg } from "@/types/marketing"
-import { SearchQueryDetailPanel } from "./SearchQueryDetailPanel"
 import { formatDateTime } from "@/lib/format"
 
 const FIRST = '2025-07-28'
 const LAST  = new Date().toISOString().slice(0, 10)
 
+// Spec: wookiee_marketing_v4.jsx GROUPS, lines 75-81.
+// Labels match spec exactly. Icons per task instructions (🎯/📦/🎥/🤝).
 const GROUPS: { id: SearchQueryGroup; icon: string; label: string }[] = [
-  { id: 'brand',       icon: '🎯', label: 'Брендовые' },
-  { id: 'external',    icon: '🎥', label: 'Внешний трафик' },
-  { id: 'cr_general',  icon: '📦', label: 'Общие конкуренты' },
-  { id: 'cr_personal', icon: '👤', label: 'Личные конкуренты' },
+  { id: 'brand',       icon: '🎯', label: 'Брендированные запросы' },
+  { id: 'external',    icon: '📦', label: 'Артикулы (внешний лид)' },
+  { id: 'cr_general',  icon: '🎥', label: 'Креаторы общие' },
+  { id: 'cr_personal', icon: '🤝', label: 'Креаторы личные' },
 ]
 
 const TH  = "px-2 py-2 text-left  text-[10px] uppercase tracking-wider text-muted-foreground font-medium select-none whitespace-nowrap"
@@ -35,7 +36,11 @@ const ZERO_STATS: SearchQueryStatsAgg = {
   orders: 0,
 }
 
-export function SearchQueriesTable() {
+interface SearchQueriesTableProps {
+  selectedId?: string | null
+}
+
+export function SearchQueriesTable({ selectedId }: SearchQueriesTableProps = {}) {
   const [params, setParams] = useSearchParams()
   const search   = params.get('q')       ?? ''
   const modelF   = params.get('model')   ?? 'all'
@@ -66,6 +71,18 @@ export function SearchQueriesTable() {
     () => Array.from(new Set(items.map((i) => i.purpose).filter((c): c is string => !!c))).sort(),
     [items],
   )
+
+  // Per-pill counts (model/channel) — matches spec lines 562-567.
+  const modelCounts = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const it of items) if (it.model_hint) m.set(it.model_hint, (m.get(it.model_hint) ?? 0) + 1)
+    return m
+  }, [items])
+  const channelCounts = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const it of items) if (it.purpose) m.set(it.purpose, (m.get(it.purpose) ?? 0) + 1)
+    return m
+  }, [items])
 
   const filtered = useMemo(() => {
     let list: SearchQueryRow[] = items
@@ -105,7 +122,7 @@ export function SearchQueriesTable() {
 
   return (
     <QueryStatusBoundary isLoading={lq || ls} error={eq ?? es}>
-      <div className="flex flex-col h-full">
+      <div className="flex flex-col h-full min-h-0">
         <UpdateBar
           lastUpdate={lastSync?.finished_at ? formatDateTime(lastSync.finished_at) : undefined}
           weeksCovered={lastSync?.weeks_covered ?? undefined}
@@ -123,6 +140,9 @@ export function SearchQueriesTable() {
                 className={`px-2.5 py-1 rounded-full text-[12px] font-medium transition-colors ${modelF === m ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}
               >
                 {m === 'all' ? 'Все' : m}
+                {m !== 'all' && (
+                  <span className="ml-1 text-[10px] opacity-60 tabular-nums">{modelCounts.get(m) ?? 0}</span>
+                )}
               </button>
             ))}
           </div>
@@ -136,6 +156,9 @@ export function SearchQueriesTable() {
                 className={`px-2.5 py-1 rounded-full text-[12px] font-medium transition-colors ${channelF === c ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}
               >
                 {c === 'all' ? 'Все' : c}
+                {c !== 'all' && (
+                  <span className="ml-1 text-[10px] opacity-60 tabular-nums">{channelCounts.get(c) ?? 0}</span>
+                )}
               </button>
             ))}
           </div>
@@ -157,7 +180,7 @@ export function SearchQueriesTable() {
           <span className="text-[10px] text-muted-foreground ml-auto tabular-nums">{filtered.length} записей</span>
         </div>
 
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto min-h-0">
           <div className="overflow-x-auto">
             <table className="min-w-[1100px] table-fixed tabular-nums w-full">
               <colgroup>
@@ -202,6 +225,7 @@ export function SearchQueriesTable() {
                       onToggle={() => toggle(g.id)}
                       statsMap={statsMap}
                       onOpen={(unifiedId) => setQ('open', unifiedId)}
+                      selectedId={selectedId ?? null}
                     />
                   )
                 })}
@@ -221,17 +245,6 @@ export function SearchQueriesTable() {
             </table>
           </div>
         </div>
-        {(() => {
-          const openParam = params.get('open')
-          return openParam
-            ? <SearchQueryDetailPanel
-                unifiedId={openParam}
-                dateFrom={dateFrom}
-                dateTo={dateTo}
-                onClose={() => setQ('open', null)}
-              />
-            : null
-        })()}
       </div>
     </QueryStatusBoundary>
   )
@@ -245,9 +258,10 @@ interface SectionGroupProps {
   onToggle: () => void
   statsMap: Map<string, SearchQueryStatsAgg>
   onOpen: (unifiedId: string) => void
+  selectedId: string | null
 }
 
-function SectionGroup({ icon, label, rows, collapsed, onToggle, statsMap, onOpen }: SectionGroupProps) {
+function SectionGroup({ icon, label, rows, collapsed, onToggle, statsMap, onOpen, selectedId }: SectionGroupProps) {
   return (
     <>
       <SectionHeader icon={icon} label={label} count={rows.length} collapsed={collapsed} onToggle={onToggle} colSpan={11} />
@@ -258,12 +272,13 @@ function SectionGroup({ icon, label, rows, collapsed, onToggle, statsMap, onOpen
       )}
       {!collapsed && rows.map((it) => {
         const s = statsMap.get(it.unified_id) ?? ZERO_STATS
+        const isSel = selectedId === it.unified_id
         return (
           <tr key={it.unified_id}
               tabIndex={0}
               onClick={() => onOpen(it.unified_id)}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(it.unified_id) } }}
-              className="cursor-pointer transition-colors border-b border-border/50 hover:bg-muted/50 focus:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset">
+              className={`cursor-pointer transition-colors border-b border-border/50 ${isSel ? 'bg-muted/70' : 'hover:bg-muted/50'} focus:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset`}>
             <td className="px-2 py-2"><span className="font-mono text-xs text-foreground">{it.query_text}</span></td>
             <td className="px-2 py-2 text-xs text-muted-foreground truncate">{it.ww_code ?? it.nomenklatura_wb ?? ''}</td>
             <td className="px-2 py-2">
