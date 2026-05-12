@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from "react"
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react"
 import { Edit3 } from "lucide-react"
 import { InlinePanel } from "@/components/marketing/InlinePanel"
 import { SelectMenu } from "@/components/marketing/SelectMenu"
@@ -74,13 +74,24 @@ export function PromoPanel({ mode, promoId, onClose, onModeChange }: PromoPanelP
   const { data: weekly = [], isLoading: lw } = usePromoStatsForCode(isAdd ? null : promoId)
   const { data: breakdown = [], isLoading: lb } = usePromoProductBreakdown(isAdd ? null : promoId)
 
-  const [form, setForm] = useState<FormState>(() =>
-    isAdd ? emptyForm() : promo ? formFromPromo(promo) : emptyForm(),
-  )
+  const [form, setForm] = useState<FormState>(emptyForm)
   const [error, setError] = useState<string | null>(null)
 
+  // Sync form state when promo data arrives, the row identity changes, or the mode flips.
+  // Without this, useState's once-only initializer leaves the form empty if `promo` is still
+  // loading at mount time (mode='view' → 'edit' from URL, or first paint before query resolves).
+  useEffect(() => {
+    if (isAdd) {
+      setForm(emptyForm())
+      return
+    }
+    if (promo) setForm(formFromPromo(promo))
+  }, [isAdd, mode, promo?.id, promo?.updated_at])
+
+  // crm.promo_codes.channel stores the human-readable label (e.g. "Блогер"), not the slug —
+  // so the picker must round-trip on label, otherwise existing rows render as "unknown channel".
   const channelOptions = useMemo(
-    () => channels.map((c) => ({ value: c.slug, label: c.label })),
+    () => channels.map((c) => ({ value: c.label, label: c.label })),
     [channels],
   )
 
