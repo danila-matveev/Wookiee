@@ -24,6 +24,8 @@ export {
 } from "./fields"
 export type { FieldLevel } from "./fields"
 
+export { TagsCombobox } from "./tags-combobox"
+
 export { ColumnsManager } from "./columns-manager"
 export type { ColumnDef } from "./columns-manager"
 

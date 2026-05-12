@@ -44,6 +44,7 @@ import {
 import {
   archiveModel,
   duplicateModel,
+  fetchAllTags,
   fetchFabriki,
   fetchKategorii,
   fetchKollekcii,
@@ -68,6 +69,7 @@ import {
   SelectField,
   StatusBadge,
   StringSelectField,
+  TagsCombobox,
   TextField,
   TextareaField,
   Tooltip,
@@ -387,6 +389,11 @@ function TabDescription({
     queryFn: fetchStatusy,
     staleTime: 5 * 60 * 1000,
   })
+  const tagsQ = useQuery({
+    queryKey: ["catalog", "tags"],
+    queryFn: fetchAllTags,
+    staleTime: 5 * 60 * 1000,
+  })
 
   const set = (k: keyof ModelDraft, v: unknown) => {
     if (!draft) return
@@ -550,13 +557,14 @@ function TabDescription({
 
       <Section label="Атрибуты-отношения">
         <div className="grid grid-cols-2 gap-x-4 gap-y-4">
-          <TextField
+          <TagsCombobox
             label="Теги"
             value={view.tegi ?? ""}
             onChange={(v) => set("tegi", v)}
+            options={tagsQ.data ?? []}
             readonly={!editing}
             full
-            hint="Через запятую"
+            hint="Выбери существующий тег или введи новый + Enter"
             level={lvl("tegi")}
           />
         </div>
