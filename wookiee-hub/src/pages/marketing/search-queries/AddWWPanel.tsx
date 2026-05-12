@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Drawer } from '@/components/crm/ui/Drawer'
+import { InlinePanel } from '@/components/marketing/InlinePanel'
 import { SelectMenu } from '@/components/marketing/SelectMenu'
 import {
   useCreateSubstituteArticle,
@@ -99,8 +99,12 @@ export function AddWWPanel({ onClose }: AddWWPanelProps) {
   }
 
   return (
-    <Drawer open={true} onClose={onClose} title="Новый WW-код">
-      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+    <InlinePanel
+      title={<div className="text-sm font-medium text-foreground">Новый WW-код</div>}
+      onClose={onClose}
+      width={420}
+    >
+      <form onSubmit={handleSubmit} className="px-5 py-4 flex flex-col gap-3">
         <SelectMenu
           label="Модель"
           value={modelId != null ? String(modelId) : ''}
@@ -191,7 +195,7 @@ export function AddWWPanel({ onClose }: AddWWPanelProps) {
 
         {error && <p className="text-sm text-danger">{error}</p>}
       </form>
-    </Drawer>
+    </InlinePanel>
   )
 }
 

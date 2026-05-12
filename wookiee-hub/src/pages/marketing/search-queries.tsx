@@ -14,15 +14,7 @@ const LAST = new Date().toISOString().slice(0, 10)
  * Spec wookiee_marketing_v4.jsx (line 552) предлагает одну кнопку «+ Добавить WW-код»,
  * но у нас два потока: брендовый запрос и WW-код. Сохраняем dropdown с двумя пунктами.
  */
-function AddMenu() {
-  const [, setParams] = useSearchParams()
-
-  const openBrand = () =>
-    setParams((p) => { p.set('add', 'brand'); return p })
-
-  const openWW = () =>
-    setParams((p) => { p.set('add', 'ww'); return p })
-
+function AddMenu({ onAddBrand, onAddWW }: { onAddBrand: () => void; onAddWW: () => void }) {
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
@@ -39,13 +31,13 @@ function AddMenu() {
           className="z-50 bg-popover border border-border rounded-lg shadow-md py-1 min-w-[200px]"
         >
           <DropdownMenu.Item
-            onSelect={openBrand}
+            onSelect={onAddBrand}
             className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted cursor-pointer outline-none data-[highlighted]:bg-muted"
           >
             Брендированный запрос
           </DropdownMenu.Item>
           <DropdownMenu.Item
-            onSelect={openWW}
+            onSelect={onAddWW}
             className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted cursor-pointer outline-none data-[highlighted]:bg-muted"
           >
             WW-код
@@ -63,23 +55,43 @@ export function SearchQueriesPage() {
   const dateFrom  = params.get('from') ?? '2026-03-30'
   const dateTo    = params.get('to')   ?? LAST
 
-  const closeAdd = () =>
-    setParams((p) => { p.delete('add'); return p })
+  // setParams helpers — mirror promo-codes.tsx (lines 78-101).
+  // Opening any panel kind clears the other URL params so only one panel is ever active.
+  const openAddBrand = () => {
+    setParams((p) => {
+      p.set('add', 'brand')
+      p.delete('open')
+      return p
+    })
+  }
+  const openAddWW = () => {
+    setParams((p) => {
+      p.set('add', 'ww')
+      p.delete('open')
+      return p
+    })
+  }
+  const closePanel = () => {
+    setParams((p) => {
+      p.delete('add')
+      p.delete('open')
+      return p
+    })
+  }
 
-  const closeOpen = () =>
-    setParams((p) => { p.delete('open'); return p })
-
-  // Detail panel and AddBrandQueryPanel render in the right rail (split-pane);
-  // AddWWPanel still uses its own modal Drawer, so it does NOT take rail space.
-  const railContent = openParam ? (
+  // Spec line 650: ONE panel slot for both Add and Detail modes.
+  // Priority: explicit add= wins over open= (so adding while a row is selected hides the detail).
+  const panel = addParam === 'brand' ? (
+    <AddBrandQueryPanel onClose={closePanel} />
+  ) : addParam === 'ww' ? (
+    <AddWWPanel onClose={closePanel} />
+  ) : openParam ? (
     <SearchQueryDetailPanel
       unifiedId={openParam}
       dateFrom={dateFrom}
       dateTo={dateTo}
-      onClose={closeOpen}
+      onClose={closePanel}
     />
-  ) : addParam === 'brand' ? (
-    <AddBrandQueryPanel onClose={closeAdd} />
   ) : null
 
   return (
@@ -88,16 +100,15 @@ export function SearchQueriesPage() {
         <PageHeader
           title="Поисковые запросы"
           sub="Брендовые, артикулы и подменные WW-коды"
-          actions={<AddMenu />}
+          actions={<AddMenu onAddBrand={openAddBrand} onAddWW={openAddWW} />}
         />
       </div>
       <div className="flex flex-1 overflow-hidden min-h-0">
         <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
           <SearchQueriesTable selectedId={openParam} />
         </div>
-        {railContent}
+        {panel}
       </div>
-      {addParam === 'ww' && <AddWWPanel onClose={closeAdd} />}
     </div>
   )
 }
