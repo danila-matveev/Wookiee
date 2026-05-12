@@ -1,21 +1,28 @@
 from __future__ import annotations
 
-"""Sync WB search query analytics -> new Google Sheet.
+"""Sync WB search query analytics -> Google Sheet + Supabase.
 
-Replicates GAS logic: for each search word (brand, artikul, WW-code),
-find how many times it was searched, how many card opens, cart adds, and orders.
+For each tracked search word (brand, artikul, WW-code), aggregates how many
+times it was searched, how many card opens, cart adds, and orders.
 
-Two sub-reports:
-1. Search words aggregation (by keyword) -> "Аналитика по запросам"
-2. Per-artikul breakdown -> "Аналитика по запросам (поартикульно)"
+Outputs (v2.0.0):
+- Google Sheets `Аналитика по запросам` — недельный агрегат (4 col/неделя).
+- Supabase `marketing.search_queries_weekly` — то же, плюс полная история.
+- Supabase `marketing.search_query_product_breakdown` — детализация по
+  (неделя × слово × nm_id) для drill-down в UI.
+
+The legacy per-artikul Sheets tab `Аналитика по запросам (поартикульно)` is
+no longer maintained — детализация живёт в Supabase с историей по всем неделям.
 """
 
 import logging
 import time
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 import gspread.exceptions
 import httpx
+
+from .search_queries.db_io import write_product_breakdown, write_weekly
 
 from shared.clients.sheets_client import (
     get_client,
@@ -33,7 +40,6 @@ logger = logging.getLogger(__name__)
 
 # --- Constants ---
 SHEET_NAME = "Аналитика по запросам"
-SHEET_NAME_ARTIKUL = "Аналитика по запросам (поартикульно)"
 SHEET_NAME_NMIDS = "nmIds"
 
 WB_SEARCH_API = (
@@ -57,25 +63,28 @@ RATE_LIMIT_ERROR_PAUSE = 60  # Seconds on 429
 GS_MAX_COLS = 18278
 
 
-def sync(start_date: str | None = None, end_date: str | None = None) -> int:
-    """Run search query analytics for both sheets.
+def sync(
+    start_date: str | None = None,
+    end_date: str | None = None,
+    write_to_db: bool = True,
+) -> int:
+    """Run search query analytics: Sheets aggregate + Supabase (weekly + per-article).
 
     Args:
         start_date: Start date DD.MM.YYYY (if None, auto last week).
         end_date: End date DD.MM.YYYY (if None, auto last week).
+        write_to_db: If False, write to Google Sheets only.
 
-    Returns total rows written.
+    Returns total rows written to Sheets (DB rows logged separately).
     """
     logger.info("=== sync_search_queries: start ===")
 
     gc = get_client(GOOGLE_SA_FILE)
     spreadsheet = gc.open_by_key(get_active_spreadsheet_id())
 
-    total = 0
-    total += _sync_search_words(spreadsheet, start_date, end_date)
-    total += _sync_artikul(spreadsheet, start_date, end_date)
+    total = _sync_search_words(spreadsheet, start_date, end_date, write_to_db)
 
-    logger.info("=== sync_search_queries: done (%d total) ===", total)
+    logger.info("=== sync_search_queries: done (%d sheet rows) ===", total)
     return total
 
 
@@ -84,8 +93,13 @@ def sync(start_date: str | None = None, end_date: str | None = None) -> int:
 # ============================================================================
 
 
-def _sync_search_words(spreadsheet, start_date: str | None, end_date: str | None) -> int:
-    """Aggregate search analytics by keyword -> 'Аналитика по запросам'."""
+def _sync_search_words(
+    spreadsheet,
+    start_date: str | None,
+    end_date: str | None,
+    write_to_db: bool = True,
+) -> int:
+    """Aggregate search analytics by keyword -> 'Аналитика по запросам' + Supabase."""
     ws = get_or_create_worksheet(spreadsheet, get_sheet_name(SHEET_NAME))
 
     # Resolve dates
@@ -127,6 +141,7 @@ def _sync_search_words(spreadsheet, start_date: str | None, end_date: str | None
 
     # Analyze each cabinet — abort entirely if any batch fails
     combined: dict[str, dict] = {}
+    breakdown_all: list[dict] = []
     first_cabinet = True
 
     for cabinet in ALL_CABINETS:
@@ -144,7 +159,7 @@ def _sync_search_words(spreadsheet, start_date: str | None, end_date: str | None
 
         limit = SEARCH_LIMIT.get(cabinet.name, 30)
         try:
-            results = _analyze_cabinet(
+            results, cabinet_breakdown = _analyze_cabinet(
                 cabinet.wb_api_key,
                 cabinet.name,
                 api_start,
@@ -173,6 +188,8 @@ def _sync_search_words(spreadsheet, start_date: str | None, end_date: str | None
             combined[word]["openCard"] += data["openCard"]
             combined[word]["addToCart"] += data["addToCart"]
             combined[word]["orders"] += data["orders"]
+
+        breakdown_all.extend(cabinet_breakdown)
 
     # Preflight: check column limit
     row1 = ws.row_values(1) if ws.row_count >= 1 else []
@@ -222,139 +239,21 @@ def _sync_search_words(spreadsheet, start_date: str | None, end_date: str | None
         start_col,
         start_col + 3,
     )
-    return len(data_rows)
 
-
-# ============================================================================
-# Report 2: Per-artikul breakdown
-# ============================================================================
-
-
-def _sync_artikul(spreadsheet, start_date: str | None, end_date: str | None) -> int:
-    """Per-artikul breakdown -> 'Аналитика по запросам (поартикульно)'."""
-    ws = get_or_create_worksheet(
-        spreadsheet, get_sheet_name(SHEET_NAME_ARTIKUL)
-    )
-
-    # Resolve dates from A2/B2
-    a2 = ""
-    b2 = ""
-    try:
-        a2 = ws.acell("A2").value or ""
-        b2 = ws.acell("B2").value or ""
-    except gspread.exceptions.GSpreadException as e:
-        logger.warning("Could not read dates from artikul sheet: %s", e)
-
-    if start_date:
-        display_start = start_date
-    elif a2:
-        display_start = a2.strip()
-    else:
-        display_start, _ = _auto_last_week()
-
-    if end_date:
-        display_end = end_date
-    elif b2:
-        display_end = b2.strip()
-    else:
-        _, display_end = _auto_last_week()
-
-    api_start = _dd_mm_to_api(display_start)
-    api_end = _dd_mm_to_api(display_end)
-
-    if not api_start or not api_end:
-        logger.error("Could not resolve dates for artikul analytics")
-        return 0
-
-    logger.info("Artikul analytics period: %s - %s", display_start, display_end)
-
-    # Load search words from main sheet to filter results
-    ws_main = get_or_create_worksheet(spreadsheet, get_sheet_name(SHEET_NAME))
-    col_a = ws_main.col_values(1)
-    search_words_lower: set[str] = set()
-    for val in col_a[2:]:  # Skip rows 1-2
-        word = str(val).strip()
-        if word:
-            search_words_lower.add(word.lower())
-
-    logger.info("Artikul filter: %d search words loaded", len(search_words_lower))
-
-    # Fetch from both cabinets — abort entirely before clearing if any batch fails
-    ws_nmids = get_or_create_worksheet(
-        spreadsheet, get_sheet_name(SHEET_NAME_NMIDS)
-    )
-    cabinet_nmids = _load_nmids_by_cabinet(ws_nmids)
-
-    all_results: list[list] = []
-    first_cabinet = True
-
-    for cabinet in ALL_CABINETS:
-        display_name = CABINET_DISPLAY.get(cabinet.name, cabinet.name)
-        nmids = cabinet_nmids.get(display_name, [])
-        if not nmids:
-            continue
-
-        if not first_cabinet:
-            time.sleep(1)
-        first_cabinet = False
-
-        limit = SEARCH_LIMIT.get(cabinet.name, 30)
-        chunks = _chunk_list(nmids, NMID_BATCH_SIZE)
-
-        for chunk_idx, chunk in enumerate(chunks):
-            if chunk_idx > 0:
-                logger.info("Rate limit pause %ds...", RATE_LIMIT_PAUSE)
-                time.sleep(RATE_LIMIT_PAUSE)
-
-            items = _fetch_search_data(
-                cabinet.wb_api_key, cabinet.name, api_start, api_end, limit, chunk
+    # DB persistence — single source of truth for history & UI drill-down.
+    if write_to_db:
+        try:
+            week_start = date.fromisoformat(api_start)
+            weekly_rows = write_weekly(week_start, combined)
+            breakdown_rows = write_product_breakdown(week_start, breakdown_all)
+            logger.info(
+                "DB: wrote %d weekly + %d product_breakdown for week %s",
+                weekly_rows, breakdown_rows, week_start,
             )
+        except (ValueError, KeyError) as e:
+            logger.exception("DB write failed for week starting %s: %s", api_start, e)
 
-            if items is None:
-                logger.error(
-                    "[%s] Aborting write — batch %d failed",
-                    cabinet.name,
-                    chunk_idx + 1,
-                )
-                return 0
-
-            for item in items:
-                text = item.get("text", "")
-                # Only keep items matching our tracked search words
-                if not any(sw in text.lower() for sw in search_words_lower):
-                    continue
-
-                open_card = item.get("openCard", 0)
-                add_to_cart = item.get("addToCart", 0)
-                orders = item.get("orders", 0)
-                open_to_cart = add_to_cart / open_card if open_card > 0 else 0
-                cart_to_order = orders / add_to_cart if add_to_cart > 0 else 0
-
-                all_results.append([
-                    text,
-                    item.get("nmId", 0),
-                    open_card,
-                    add_to_cart,
-                    round(open_to_cart, 4),
-                    orders,
-                    round(cart_to_order, 4),
-                    display_start,
-                    display_end,
-                    cabinet.name,
-                ])
-
-    if not all_results:
-        logger.warning("No artikul analytics data")
-        return 0
-
-    # Clear old data only after successful fetch
-    last_row = ws.row_count
-    if last_row >= 4:
-        ws.batch_clear([f"A4:M{last_row}"])
-
-    write_range(ws, start_row=4, start_col=1, data=all_results)
-    logger.info("Artikul analytics: wrote %d rows", len(all_results))
-    return len(all_results)
+    return len(data_rows)
 
 
 # ============================================================================
@@ -371,8 +270,15 @@ def _analyze_cabinet(
     nmids: list[int],
     search_words: list[str],
     podmen_mapping: dict,
-) -> dict[str, dict]:
+) -> tuple[dict[str, dict], list[dict]]:
     """Fetch search data for a cabinet in batches and aggregate by search words.
+
+    Returns (aggregated, breakdown):
+      aggregated — {search_word: {frequency, openCard, addToCart, orders}}
+                   Keyword-level rollup (same semantics as before).
+      breakdown  — list of {search_word, nm_id, openCard, addToCart, orders}
+                   Per (word × nm_id) items — only for our own articles
+                   (transitions counted by _should_count_transitions).
 
     Raises RuntimeError if any batch returns an API error (None).
     """
@@ -385,6 +291,7 @@ def _analyze_cabinet(
 
     chunks = _chunk_list(nmids, NMID_BATCH_SIZE)
     aggregated: dict[str, dict] = {}
+    breakdown: list[dict] = []
     successful = 0
 
     for chunk_idx, chunk in enumerate(chunks):
@@ -438,18 +345,33 @@ def _analyze_cabinet(
                 # Transitions (openCard), addToCart, orders — only count for own articles
                 nm_id = item.get("nmId", 0)
                 if _should_count_transitions(word, nm_id, podmen_mapping):
-                    aggregated[word]["openCard"] += item.get("openCard", 0)
-                    aggregated[word]["addToCart"] += item.get("addToCart", 0)
-                    aggregated[word]["orders"] += item.get("orders", 0)
+                    open_card = item.get("openCard", 0)
+                    add_to_cart = item.get("addToCart", 0)
+                    orders = item.get("orders", 0)
+
+                    aggregated[word]["openCard"] += open_card
+                    aggregated[word]["addToCart"] += add_to_cart
+                    aggregated[word]["orders"] += orders
+
+                    # Per-article breakdown row (only "our" articles count).
+                    if nm_id and (open_card or add_to_cart or orders):
+                        breakdown.append({
+                            "search_word": word,
+                            "nm_id": nm_id,
+                            "openCard": open_card,
+                            "addToCart": add_to_cart,
+                            "orders": orders,
+                        })
 
     logger.info(
-        "[%s] Done: %d/%d batches successful, %d words matched",
+        "[%s] Done: %d/%d batches successful, %d words matched, %d breakdown rows",
         cabinet_name,
         successful,
         len(chunks),
         len(aggregated),
+        len(breakdown),
     )
-    return aggregated
+    return aggregated, breakdown
 
 
 # ============================================================================
