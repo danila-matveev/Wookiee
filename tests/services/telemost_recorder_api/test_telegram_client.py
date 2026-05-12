@@ -72,6 +72,45 @@ async def test_tg_send_message_chunks_long_text():
 
 
 @pytest.mark.asyncio
+async def test_tg_send_message_omits_parse_mode_when_none():
+    """parse_mode=None must NOT be sent in payload (Telegram rejects null parse_mode)."""
+    sent = []
+
+    async def fake_call(method, **payload):
+        sent.append(payload)
+        return {"message_id": len(sent)}
+
+    with patch(
+        "services.telemost_recorder_api.telegram_client.tg_call",
+        AsyncMock(side_effect=fake_call),
+    ):
+        await tg_send_message(chat_id=999, text="plain", parse_mode=None)
+
+    assert len(sent) == 1
+    assert "parse_mode" not in sent[0]
+
+
+@pytest.mark.asyncio
+async def test_tg_send_message_chunked_omits_parse_mode_when_none():
+    """Same parse_mode=None guard for the chunked branch."""
+    sent = []
+
+    async def fake_call(method, **payload):
+        sent.append(payload)
+        return {"message_id": len(sent)}
+
+    with patch(
+        "services.telemost_recorder_api.telegram_client.tg_call",
+        AsyncMock(side_effect=fake_call),
+    ):
+        await tg_send_message(chat_id=999, text="x" * 5000, parse_mode=None)
+
+    assert len(sent) == 2
+    assert "parse_mode" not in sent[0]
+    assert "parse_mode" not in sent[1]
+
+
+@pytest.mark.asyncio
 async def test_tg_send_message_passes_reply_markup():
     sent = []
 

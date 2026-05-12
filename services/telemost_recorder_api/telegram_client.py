@@ -50,9 +50,10 @@ async def tg_send_message(
         payload: dict[str, Any] = {
             "chat_id": chat_id,
             "text": text,
-            "parse_mode": parse_mode,
             "disable_web_page_preview": disable_web_page_preview,
         }
+        if parse_mode is not None:
+            payload["parse_mode"] = parse_mode
         if reply_markup is not None:
             payload["reply_markup"] = reply_markup
         await tg_call("sendMessage", **payload)
@@ -65,9 +66,10 @@ async def tg_send_message(
         payload = {
             "chat_id": chat_id,
             "text": prefixed,
-            "parse_mode": parse_mode,
             "disable_web_page_preview": disable_web_page_preview,
         }
+        if parse_mode is not None:
+            payload["parse_mode"] = parse_mode
         if idx == total and reply_markup is not None:
             payload["reply_markup"] = reply_markup
         await tg_call("sendMessage", **payload)
