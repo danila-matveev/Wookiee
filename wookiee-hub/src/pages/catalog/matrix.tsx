@@ -8,6 +8,7 @@ import { StatusBadge, CATALOG_STATUSES } from "@/components/catalog/ui/status-ba
 import { CompletenessRing } from "@/components/catalog/ui/completeness-ring"
 import { Tooltip } from "@/components/catalog/ui/tooltip"
 import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
+import { useResizableColumns, type ResizerBindings } from "@/hooks/use-resizable-columns"
 // Standard razmer chip-pill ladder used in the table.
 const RAZMER_LADDER = ["XS", "S", "M", "L", "XL", "XXL"] as const
 // ─── Shared helpers ────────────────────────────────────────────────────────
@@ -64,6 +65,19 @@ const MODEL_COLUMNS = [
   ["Название"], ["Категория"], ["Коллекция"], ["Фабрика"], ["Статус"], ["Размеры"], ["Цвета"], ["Заполн."],
   ["Цв / Арт / SKU", "text-right"], ["Обновлено"],
 ] as const
+// Column IDs + default widths for useResizableColumns (W1.5). Order must match MODEL_COLUMNS.
+const MODEL_COLUMN_IDS = [
+  { id: "nazvanie", defaultWidth: 240 },
+  { id: "kategoriya", defaultWidth: 140 },
+  { id: "kollekciya", defaultWidth: 160 },
+  { id: "fabrika", defaultWidth: 140 },
+  { id: "status", defaultWidth: 140 },
+  { id: "razmery", defaultWidth: 170 },
+  { id: "cveta", defaultWidth: 170 },
+  { id: "zapoln", defaultWidth: 80 },
+  { id: "cv_art_sku", defaultWidth: 130 },
+  { id: "obnovleno", defaultWidth: 110 },
+] as const
 function getGroupKey(row: MatrixRow, groupBy: GroupBy, statusNameById: Map<number, string>): string {
   switch (groupBy) {
     case "kategoriya": return row.kategoriya ?? "Без категории"
@@ -83,6 +97,7 @@ function modelMatches(row: MatrixRow, query: string) {
 }
 function ModeliOsnovaTable({ rows, kategorii, kollekcii, modelStatuses, onOpen }: { rows: MatrixRow[]; kategorii: { id: number; nazvanie: string }[]; kollekcii: { id: number; nazvanie: string }[]; modelStatuses: StatusOption[]; onOpen: (kod: string) => void }) {
   const queryClient = useQueryClient()
+  const { widths: colWidths, bindResizer } = useResizableColumns("matrix.modeli", [...MODEL_COLUMN_IDS])
   const [search, setSearch] = useState("")
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<Set<number>>(new Set())
   const [selectedCollectionNames, setSelectedCollectionNames] = useState<Set<string>>(new Set())
@@ -225,13 +240,29 @@ function ModeliOsnovaTable({ rows, kategorii, kollekcii, modelStatuses, onOpen }
         <FilterChips title="Статусы:" items={modelStatuses.map((s) => ({ key: String(s.id), value: s.id, label: s.nazvanie, count: statusCounts.get(s.id) ?? 0 }))} selected={selectedStatusIds} onChange={setSelectedStatusIds} className="mb-3" />
         {/* Table */}
         <div className="bg-white rounded-lg border border-stone-200 overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
+            <colgroup>
+              <col style={{ width: 32 }} />
+              <col style={{ width: 40 }} />
+              {MODEL_COLUMN_IDS.map((c) => (
+                <col key={c.id} style={{ width: `${colWidths[c.id] ?? c.defaultWidth}px` }} />
+              ))}
+              <col style={{ width: 40 }} />
+            </colgroup>
             <thead className="bg-stone-50/80 border-b border-stone-200">
               <tr className="text-left text-[11px] uppercase tracking-wider text-stone-500">
-                <th className="w-8 px-2 py-2.5" />
-                <th className="w-10 px-3 py-2.5"><input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAllVisible} style={{ accentColor: "#1C1917" }} className="rounded border-stone-300" aria-label="Выбрать все" /></th>
-                {MODEL_COLUMNS.map(([label, cls]) => <th key={label} className={`px-3 py-2.5 font-medium ${cls ?? ""}`}>{label}</th>)}
-                <th className="w-10 px-2 py-2.5" />
+                <th className="px-2 py-2.5" />
+                <th className="px-3 py-2.5"><input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAllVisible} style={{ accentColor: "#1C1917" }} className="rounded border-stone-300" aria-label="Выбрать все" /></th>
+                {MODEL_COLUMNS.map(([label, cls], idx) => {
+                  const colId = MODEL_COLUMN_IDS[idx].id
+                  return (
+                    <th key={label} className={`relative px-3 py-2.5 font-medium ${cls ?? ""}`}>
+                      {label}
+                      <span {...bindResizer(colId)} />
+                    </th>
+                  )
+                })}
+                <th className="px-2 py-2.5" />
               </tr>
             </thead>
             <tbody>
@@ -381,6 +412,7 @@ function ColorChips({ modelKod, count }: { modelKod: string; count: number }) {
 // ─── Artikuly registry tab ─────────────────────────────────────────────────
 function ArtikulyTable() {
   const { data, isLoading } = useQuery({ queryKey: ["artikuly-registry"], queryFn: fetchArtikulyRegistry, staleTime: 5 * 60 * 1000 })
+  const { widths: artWidths, bindResizer: bindArt } = useResizableColumns("matrix.artikuly", [...MATRIX_ARTIKULY_COLS])
   const [search, setSearch] = useState("")
   const filtered = useMemo(() => {
     if (!data) return []
@@ -392,8 +424,13 @@ function ArtikulyTable() {
     <div className="px-6 py-4 max-w-[1600px] mx-auto">
       <RegistryTop search={search} setSearch={setSearch} placeholder="Артикул, модель, цвет…" count={filtered.length} total={data?.length ?? 0} />
       <div className="bg-white rounded-lg border border-stone-200 overflow-x-auto">
-        <table className="w-full text-sm">
-          <RegistryHead labels={["Артикул", "Модель", "Вариация", "Цвет", "Статус", "WB номенкл.", "OZON", "SKU"]} rightLabel="SKU" />
+        <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
+          <colgroup>
+            {MATRIX_ARTIKULY_COLS.map((c) => (
+              <col key={c.id} style={{ width: `${artWidths[c.id] ?? c.defaultWidth}px` }} />
+            ))}
+          </colgroup>
+          <RegistryHead labels={["Артикул", "Модель", "Вариация", "Цвет", "Статус", "WB номенкл.", "OZON", "SKU"]} rightLabel="SKU" columnIds={MATRIX_ARTIKULY_COLS.map((c) => c.id)} bindResizer={bindArt} />
           <tbody>
             {filtered.slice(0, 100).map((a) => (
               <tr key={a.id} className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60">
@@ -420,6 +457,7 @@ const CHANNELS = [
 ] as const
 function TovaryTable() {
   const { data, isLoading } = useQuery({ queryKey: ["tovary-registry"], queryFn: fetchTovaryRegistry, staleTime: 5 * 60 * 1000 })
+  const { widths: tovWidths, bindResizer: bindTov } = useResizableColumns("matrix.tovary", [...MATRIX_TOVARY_COLS])
   const [search, setSearch] = useState("")
   const [channelFilter, setChannelFilter] = useState<(typeof CHANNELS)[number]["id"]>("all")
   const [statusFilter, setStatusFilter] = useState<"all" | number>("all")
@@ -452,8 +490,13 @@ function TovaryTable() {
       {/* Search + count */}
       <RegistryTop search={search} setSearch={(v) => { setSearch(v); resetVisible() }} placeholder="Баркод, модель, артикул…" count={filtered.length} total={data?.length ?? 0} />
       <div className="bg-white rounded-lg border border-stone-200 overflow-x-auto">
-        <table className="w-full text-sm">
-          <RegistryHead labels={["Баркод", "Модель", "Вариация", "Цвет", "Размер", "WB", "OZON", "Сайт", "Lamoda"]} borderedLabel="WB" />
+        <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
+          <colgroup>
+            {MATRIX_TOVARY_COLS.map((c) => (
+              <col key={c.id} style={{ width: `${tovWidths[c.id] ?? c.defaultWidth}px` }} />
+            ))}
+          </colgroup>
+          <RegistryHead labels={["Баркод", "Модель", "Вариация", "Цвет", "Размер", "WB", "OZON", "Сайт", "Lamoda"]} borderedLabel="WB" columnIds={MATRIX_TOVARY_COLS.map((c) => c.id)} bindResizer={bindTov} />
           <tbody>
             {filtered.slice(0, visibleCount).map((t) => (
               <tr key={t.id} className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60">
@@ -488,17 +531,45 @@ function RegistryTop({ search, setSearch, placeholder, count, total }: { search:
     </div>
   )
 }
-function RegistryHead({ labels, rightLabel, borderedLabel }: { labels: string[]; rightLabel?: string; borderedLabel?: string }) {
+function RegistryHead({ labels, rightLabel, borderedLabel, columnIds, bindResizer }: { labels: string[]; rightLabel?: string; borderedLabel?: string; columnIds?: readonly string[]; bindResizer?: (id: string) => ResizerBindings }) {
   return (
     <thead className="bg-stone-50/80 border-b border-stone-200">
       <tr className="text-left text-[11px] uppercase tracking-wider text-stone-500">
-        {labels.map((label) => (
-          <th key={label} className={`px-3 py-2.5 font-medium ${label === rightLabel ? "text-right" : ""} ${label === borderedLabel ? "border-l border-stone-200" : ""}`}>{label}</th>
-        ))}
+        {labels.map((label, idx) => {
+          const colId = columnIds?.[idx]
+          return (
+            <th key={label} className={`relative px-3 py-2.5 font-medium ${label === rightLabel ? "text-right" : ""} ${label === borderedLabel ? "border-l border-stone-200" : ""}`}>
+              {label}
+              {colId && bindResizer && <span {...bindResizer(colId)} />}
+            </th>
+          )
+        })}
       </tr>
     </thead>
   )
 }
+// Column IDs + default widths for the inline registry tables (matrix tabs Artikuly/Tovary).
+const MATRIX_ARTIKULY_COLS = [
+  { id: "artikul", defaultWidth: 130 },
+  { id: "model", defaultWidth: 110 },
+  { id: "variation", defaultWidth: 130 },
+  { id: "cvet", defaultWidth: 180 },
+  { id: "status", defaultWidth: 130 },
+  { id: "wb_nom", defaultWidth: 120 },
+  { id: "ozon", defaultWidth: 120 },
+  { id: "sku", defaultWidth: 70 },
+] as const
+const MATRIX_TOVARY_COLS = [
+  { id: "barkod", defaultWidth: 140 },
+  { id: "model", defaultWidth: 110 },
+  { id: "variation", defaultWidth: 130 },
+  { id: "cvet", defaultWidth: 140 },
+  { id: "razmer", defaultWidth: 70 },
+  { id: "wb", defaultWidth: 110 },
+  { id: "ozon", defaultWidth: 110 },
+  { id: "sayt", defaultWidth: 110 },
+  { id: "lamoda", defaultWidth: 110 },
+] as const
 // ─── Main MatrixPage ───────────────────────────────────────────────────────
 export function MatrixPage() {
   const [searchParams, setSearchParams] = useSearchParams()
