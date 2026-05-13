@@ -142,7 +142,7 @@ async def _ensure_telegram_webhook() -> None:
             "setWebhook",
             url=target,
             secret_token=TELEMOST_WEBHOOK_SECRET,
-            allowed_updates=["message", "edited_message", "chat_member"],
+            allowed_updates=["message", "edited_message", "chat_member", "callback_query"],
         )
         logger.info("Telegram webhook registered: %s", target)
     except (TelegramAPIError, httpx.HTTPError) as e:

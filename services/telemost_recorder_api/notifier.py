@@ -37,6 +37,11 @@ _DECISION_LIMIT = 12
 _TASK_LIMIT = 20
 _ERROR_PREVIEW_LEN = 500
 _ID_PREFIX_LEN = 8
+# Send transcript as a separate file only for substantial meetings.
+# Short conversations (a few paragraphs) already fit in the summary message,
+# and a 1.8 KB attached file feels like noise. Users still have the
+# "Транскрипт" button to pull it on demand.
+_TRANSCRIPT_FILE_MIN_PARAGRAPHS = 15
 
 
 def _md_escape(s: str) -> str:
@@ -58,16 +63,40 @@ def _fmt_duration(seconds: int | None) -> str:
     return f"{m // 60} ч {m % 60} мин"
 
 
+def _resolve_title(meeting: dict[str, Any]) -> str:
+    """Pick the best available title in priority order.
+
+    1. summary.title — LLM-generated from meeting content. Most descriptive,
+       reflects what was actually discussed.
+    2. meeting.title — set by Bitrix calendar enrichment. Reliable for events
+       in the Bitrix calendar with the meeting URL in LOCATION, but falls
+       through to a time-proximity match (e.g. "Dayli") that may not be
+       what the user actually recorded.
+    3. Fallback to "Встреча".
+    """
+    summary = meeting.get("summary") or {}
+    llm_title = (summary.get("title") or "").strip()
+    if llm_title:
+        return llm_title
+    bitrix_title = (meeting.get("title") or "").strip()
+    if bitrix_title:
+        return bitrix_title
+    return "Встреча"
+
+
 def _header(meeting: dict[str, Any]) -> str:
-    """Build the `📝 *Title* (date · duration)` header — skip parts that are empty."""
-    raw_title = meeting.get("title")
-    title = _md_escape(raw_title) if raw_title else "Встреча"
+    """Build the `📝 *Title* (date · duration · N уч.)` header — skip parts that are empty."""
+    title = _md_escape(_resolve_title(meeting))
     parts: list[str] = []
     if meeting.get("started_at"):
         parts.append(meeting["started_at"].strftime("%d.%m %H:%M"))
     duration_secs = meeting.get("duration_seconds")
     if duration_secs:
         parts.append(_fmt_duration(duration_secs))
+    summary = meeting.get("summary") or {}
+    participants = summary.get("participants") or []
+    if participants:
+        parts.append(f"{len(participants)} уч.")
     suffix = f" ({' · '.join(parts)})" if parts else ""
     return f"*{title}*{suffix}"
 
@@ -231,7 +260,11 @@ async def notify_meeting_result(meeting_id: UUID) -> None:
         return
 
     paragraphs = meeting.get("processed_paragraphs") or []
-    if paragraphs and not is_empty:
+    if (
+        paragraphs
+        and not is_empty
+        and len(paragraphs) >= _TRANSCRIPT_FILE_MIN_PARAGRAPHS
+    ):
         transcript = build_transcript_text(paragraphs)
         filename = f"transcript_{str(meeting_id)[:_ID_PREFIX_LEN]}.txt"
         try:

@@ -184,7 +184,12 @@ def _combined_tags(meeting: dict[str, Any]) -> list[str]:
 
 
 def _page_title(meeting: dict[str, Any]) -> str:
-    title = (meeting.get("title") or "").strip()
+    # Prefer LLM-generated summary.title (reflects content); fall through to
+    # Bitrix-enriched meeting.title (can be a generic "Dayli" from
+    # time-proximity match); fall back to "Встреча".
+    summary = meeting.get("summary") or {}
+    llm_title = (summary.get("title") or "").strip()
+    title = llm_title or (meeting.get("title") or "").strip()
     started_at = meeting.get("started_at")
     when = started_at.strftime("%d.%m %H:%M") if started_at else ""
     if title:
