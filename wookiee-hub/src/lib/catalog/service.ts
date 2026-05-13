@@ -2690,6 +2690,107 @@ export async function bulkAddSizeToArtikuly(
   return (data ?? []) as InsertedTovar[]
 }
 
+/**
+ * W10.9 + W10.37 — Bulk create SKU rows for arbitrary (artikul_id, razmer_id)
+ * combinations.
+ *
+ * Used by the "create artikuly + sizes together" flow in `AddArtikulModal`:
+ * after `bulkCreateArtikuly` returns N new artikul IDs, the caller forms the
+ * full cross-product `N × M` (где M = выбранные размеры) и передаёт его сюда
+ * одним батчем.
+ *
+ * Контракт:
+ *   - принимает массив `{ artikulId, razmerId }` пар;
+ *   - **сам пропускает дубли** (probes `(artikul_id, razmer_id)` в одном SELECT
+ *     и не вставляет уже существующие комбинации — никаких 23505 от UNIQUE
+ *     constraint, идемпотентно при повторном вызове);
+ *   - генерит уникальные EAN-13 barkod-плейсхолдеры (как `insertTovar`);
+ *   - применяет дефолтные статусы (`TOVAR_DEFAULT_STATUS_ID = 12 ('План')`);
+ *   - один multi-row INSERT для всего батча.
+ *
+ * Возвращает только реально вставленные строки (может быть короче входа,
+ * если часть комбинаций уже существовала).
+ */
+export interface TovarCreateInput {
+  artikulId: number
+  razmerId: number
+}
+
+export async function bulkInsertTovary(
+  inputs: TovarCreateInput[],
+): Promise<InsertedTovar[]> {
+  if (inputs.length === 0) return []
+
+  // Deduplicate within the input list itself (caller may pass the cross-product
+  // with accidental repeats; the DB UNIQUE would catch it, но дешевле здесь).
+  const seen = new Set<string>()
+  const deduped: TovarCreateInput[] = []
+  for (const inp of inputs) {
+    const key = `${inp.artikulId}:${inp.razmerId}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    deduped.push(inp)
+  }
+
+  // Probe existing combinations to skip.
+  const artikulIds = Array.from(new Set(deduped.map((x) => x.artikulId)))
+  const razmerIds = Array.from(new Set(deduped.map((x) => x.razmerId)))
+  const { data: existing, error: existingErr } = await supabase
+    .from("tovary")
+    .select("artikul_id, razmer_id")
+    .in("artikul_id", artikulIds)
+    .in("razmer_id", razmerIds)
+  if (existingErr) throw new Error(existingErr.message)
+  const existingKeys = new Set(
+    ((existing ?? []) as { artikul_id: number; razmer_id: number }[]).map(
+      (r) => `${r.artikul_id}:${r.razmer_id}`,
+    ),
+  )
+  const toCreate = deduped.filter(
+    (x) => !existingKeys.has(`${x.artikulId}:${x.razmerId}`),
+  )
+  if (toCreate.length === 0) return []
+
+  // Pre-generate barkods (uniqueness guarded vs DB + within this batch).
+  const rows: Array<{
+    barkod: string
+    artikul_id: number
+    razmer_id: number
+    status_id: number
+    status_ozon_id: number
+    status_sayt_id: number
+    status_lamoda_id: number | null
+  }> = []
+  const localBarkods = new Set<string>()
+  for (const inp of toCreate) {
+    let barkod: string
+    while (true) {
+      const candidate = await generateUniqueBarkod()
+      if (!localBarkods.has(candidate)) {
+        barkod = candidate
+        localBarkods.add(candidate)
+        break
+      }
+    }
+    rows.push({
+      barkod,
+      artikul_id: inp.artikulId,
+      razmer_id: inp.razmerId,
+      status_id: TOVAR_DEFAULT_STATUS_ID,
+      status_ozon_id: TOVAR_DEFAULT_STATUS_ID,
+      status_sayt_id: TOVAR_DEFAULT_STATUS_ID,
+      status_lamoda_id: TOVAR_DEFAULT_LAMODA_STATUS_ID,
+    })
+  }
+
+  const { data, error } = await supabase
+    .from("tovary")
+    .insert(rows)
+    .select("id, barkod, artikul_id, razmer_id")
+  if (error) throw new Error(error.message)
+  return (data ?? []) as InsertedTovar[]
+}
+
 // ─── Tovary by artikul (W8.4 drill-down) ───────────────────────────────────
 //
 // Возвращает SKU одного артикула — для overlay-карточки в /catalog/artikuly.

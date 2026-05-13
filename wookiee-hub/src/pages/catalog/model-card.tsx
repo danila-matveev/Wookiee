@@ -47,6 +47,7 @@ import {
   type AuditEntry,
   bulkAddSizeToArtikuly,
   bulkCreateArtikuly,
+  bulkInsertTovary,
   bulkUpdateTovaryStatus,
   duplicateModel,
   fetchAllTags,
@@ -1395,9 +1396,44 @@ function AddArtikulModal({
     return () => window.removeEventListener("keydown", onKey)
   }, [onClose])
 
+  // W10.9 + W10.37 — bulk-create артикулов И SKU за один submit.
+  //
+  // Шаги:
+  //   1. `bulkCreateArtikuly(variationId, entries)` — создаёт N артикулов.
+  //   2. Для каждого нового артикула × каждый выбранный размер собирается
+  //      cross-product → `bulkInsertTovary(payload)` за один батч. SKU
+  //      создаются с дефолтным статусом «План» во всех 3-х каналах.
+  // Если шаг 1 успешен, а шаг 2 падает — артикулы останутся (без SKU),
+  // пользователь увидит ошибку и сможет добавить SKU вручную через TabSKU.
+  // Это компромисс: rollback артикулов потребовал бы транзакции на сервере,
+  // которой у Supabase REST нет.
+  // Дубликаты `(artikul_id, razmer_id)` тихо пропускаются `bulkInsertTovary`
+  // (UNIQUE constraint на уровне DB + явный probe в самом сервисе).
   const createMut = useMutation({
-    mutationFn: (entries: { cvetId: number; customArtikul?: string }[]) =>
-      bulkCreateArtikuly(variationId, entries),
+    mutationFn: async (
+      entries: { cvetId: number; customArtikul?: string }[],
+    ) => {
+      const created = await bulkCreateArtikuly(variationId, entries)
+      // Resolve razmer ids from selected names. Размеры, которых нет в
+      // справочнике, тихо пропускаются — это data-quality (razmery_modeli
+      // содержит размер, отсутствующий в таблице `razmery`). Лучше дать
+      // создать N×M-1, чем падать.
+      const razmerIds: number[] = []
+      for (const name of selectedRazmery) {
+        const id = razmeryIdByName.get(name)
+        if (id != null) razmerIds.push(id)
+      }
+      if (created.length > 0 && razmerIds.length > 0) {
+        const payload: { artikulId: number; razmerId: number }[] = []
+        for (const a of created) {
+          for (const rid of razmerIds) {
+            payload.push({ artikulId: a.id, razmerId: rid })
+          }
+        }
+        await bulkInsertTovary(payload)
+      }
+      return created
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["catalog", "model", modelKod] })
       queryClient.invalidateQueries({ queryKey: ["catalog", "matrix-list"] })
