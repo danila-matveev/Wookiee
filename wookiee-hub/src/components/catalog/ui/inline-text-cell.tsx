@@ -138,14 +138,21 @@ export function InlineTextCell({
         disabled={disabled}
         title={hint ?? "Кликните, чтобы изменить"}
         className={
-          "text-left w-full min-w-0 rounded px-1 -mx-1 py-0.5 " +
+          "block text-left w-full min-w-0 rounded px-1 -mx-1 py-0.5 overflow-hidden " +
           "hover:bg-stone-100 hover:ring-1 hover:ring-stone-300 " +
           "disabled:hover:bg-transparent disabled:hover:ring-0 disabled:cursor-default " +
           "transition-colors"
         }
       >
         {display != null ? (
-          <span className={className} title={title}>{display}</span>
+          // W10.3 — ellipsis на длинных значениях в read-mode.  `title` + текст
+          // прозрачно отдаём дальше — браузер сам покажет полную строку при hover.
+          <span
+            className={`block overflow-hidden text-ellipsis whitespace-nowrap ${className}`}
+            title={title ?? (typeof display === "string" || typeof display === "number" ? String(display) : undefined)}
+          >
+            {display}
+          </span>
         ) : (
           <span className="text-stone-400 italic text-xs">{placeholder}</span>
         )}
