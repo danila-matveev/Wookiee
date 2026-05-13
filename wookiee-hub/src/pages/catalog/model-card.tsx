@@ -57,7 +57,7 @@ import {
   linkAtributToKategoriya,
   type Atribut,
   type AtributPayload,
-  fetchAuditFor,
+  fetchAuditForModel,
   fetchBrendy,
   fetchFabriki,
   fetchImportery,
@@ -2964,10 +2964,29 @@ function TabSkleyki({ m }: { m: ModelDetail }) {
     </Section>
   )
 }
+// W10.12: список table_name'ов, по которым показываем чипы-фильтры.
+// "model" объединяет `modeli_osnova` + `modeli` (это единая бизнес-сущность).
+type HistoryFilter = "all" | "model" | "artikuly" | "tovary"
+
+// Стабильная ссылка на пустой массив — чтобы useMemo, зависящий от data ?? [],
+// не пересоздавался на каждом рендере во время loading-стейта.
+const EMPTY_AUDIT_ROWS: AuditRowExt[] = []
 
 function TabHistory({ m }: { m: ModelDetail }) {
-  // Параллельно: история по `modeli_osnova` + по каждой вариации `modeli`.
+  // W10.12: расширили скоп — кроме `modeli_osnova` и `modeli` подтягиваем
+  // ещё и `artikuly` + `tovary`, чтобы вся история по модели лежала в одном
+  // месте.
   const variationIds = useMemo(() => m.modeli.map((v) => v.id), [m.modeli])
+  const artikulIds = useMemo(
+    () => m.modeli.flatMap((v) => v.artikuly.map((a) => a.id)),
+    [m.modeli],
+  )
+  const tovarIds = useMemo(
+    () => m.modeli.flatMap((v) => v.artikuly.flatMap((a) => a.tovary.map((t) => t.id))),
+    [m.modeli],
+  )
+
+  // Карты для человекочитаемых лейблов (избегаем N+1 запросов в render-цикле).
   const variationLabelById = useMemo(() => {
     const map = new Map<number, string>()
     for (const v of m.modeli) {
@@ -2976,29 +2995,105 @@ function TabHistory({ m }: { m: ModelDetail }) {
     return map
   }, [m.modeli])
 
-  const auditQ = useQuery<AuditRowExt[]>({
-    queryKey: ["catalog", "audit", m.id, variationIds],
-    queryFn: async () => {
-      const [osnovaRows, ...variationRows] = await Promise.all([
-        fetchAuditFor("modeli_osnova", m.id),
-        ...variationIds.map((vid) => fetchAuditFor("modeli", vid)),
-      ])
-      const out: AuditRowExt[] = []
-      for (const row of osnovaRows) {
-        out.push({ ...row, source_label: "Модель" })
+  const artikulLabelById = useMemo(() => {
+    const map = new Map<number, string>()
+    for (const v of m.modeli) {
+      for (const a of v.artikuly) {
+        map.set(a.id, a.artikul)
       }
-      variationRows.forEach((rows, idx) => {
-        const vid = variationIds[idx]
-        const label = variationLabelById.get(vid) ?? String(vid)
-        for (const row of rows) {
-          out.push({ ...row, source_label: `Вариация (${label})` })
+    }
+    return map
+  }, [m.modeli])
+
+  const tovarLabelById = useMemo(() => {
+    const map = new Map<number, string>()
+    for (const v of m.modeli) {
+      for (const a of v.artikuly) {
+        for (const t of a.tovary) {
+          // Подпись для SKU: артикул + размер (если есть).
+          const sizePart = t.razmer_nazvanie ? `/${t.razmer_nazvanie}` : ""
+          map.set(t.id, `${a.artikul}${sizePart}`)
         }
+      }
+    }
+    return map
+  }, [m.modeli])
+
+  const sourceLabelFor = useCallback(
+    (row: AuditEntry): string => {
+      const rowIdNum = Number(row.row_id)
+      switch (row.table_name) {
+        case "modeli_osnova":
+          return "Модель"
+        case "modeli": {
+          const lbl = variationLabelById.get(rowIdNum)
+          return lbl ? `Вариация (${lbl})` : "Вариация"
+        }
+        case "artikuly": {
+          const lbl = artikulLabelById.get(rowIdNum)
+          return lbl ? `Артикул ${lbl}` : `Артикул #${row.row_id}`
+        }
+        case "tovary": {
+          const lbl = tovarLabelById.get(rowIdNum)
+          return lbl ? `SKU ${lbl}` : `SKU #${row.row_id}`
+        }
+        default:
+          return tableLabel(row.table_name)
+      }
+    },
+    [variationLabelById, artikulLabelById, tovarLabelById],
+  )
+
+  const auditQ = useQuery<AuditRowExt[]>({
+    queryKey: [
+      "catalog",
+      "audit",
+      "model-scope",
+      m.id,
+      // queryKey должен включать дочерние id, чтобы инвалидация после
+      // создания/удаления артикула/SKU подхватила свежие данные.
+      variationIds,
+      artikulIds,
+      tovarIds,
+    ],
+    queryFn: async () => {
+      const rows = await fetchAuditForModel({
+        modelId: m.id,
+        variationIds,
+        artikulIds,
+        tovarIds,
       })
-      out.sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
-      return out
+      return rows.map((r) => ({ ...r, source_label: sourceLabelFor(r) }))
     },
     staleTime: 30 * 1000,
   })
+
+  // W10.12: фильтр по типу сущности. Default "all" — единая timeline.
+  const [filter, setFilter] = useState<HistoryFilter>("all")
+
+  // ВНИМАНИЕ: все useMemo/useCallback должны быть до первого early-return,
+  // иначе нарушится Rules of Hooks при переходе loading → ready.
+  const allRows = auditQ.data ?? EMPTY_AUDIT_ROWS
+
+  const counts = useMemo(() => {
+    const c = { all: allRows.length, model: 0, artikuly: 0, tovary: 0 }
+    for (const r of allRows) {
+      if (r.table_name === "modeli_osnova" || r.table_name === "modeli") c.model++
+      else if (r.table_name === "artikuly") c.artikuly++
+      else if (r.table_name === "tovary") c.tovary++
+    }
+    return c
+  }, [allRows])
+
+  const rows = useMemo(() => {
+    if (filter === "all") return allRows
+    if (filter === "model") {
+      return allRows.filter(
+        (r) => r.table_name === "modeli_osnova" || r.table_name === "modeli",
+      )
+    }
+    return allRows.filter((r) => r.table_name === filter)
+  }, [allRows, filter])
 
   if (auditQ.isLoading) {
     return (
@@ -3021,13 +3116,44 @@ function TabHistory({ m }: { m: ModelDetail }) {
     )
   }
 
-  const rows = auditQ.data ?? []
+  const filterChips: Array<{ id: HistoryFilter; label: string; count: number }> = [
+    { id: "all", label: "Все", count: counts.all },
+    { id: "model", label: "Модель", count: counts.model },
+    { id: "artikuly", label: "Артикулы", count: counts.artikuly },
+    { id: "tovary", label: "SKU", count: counts.tovary },
+  ]
 
-  if (rows.length === 0) {
+  const filterBar = (
+    <div className="flex items-center gap-1 flex-wrap">
+      {filterChips.map((chip) => {
+        const active = filter === chip.id
+        return (
+          <button
+            key={chip.id}
+            type="button"
+            onClick={() => setFilter(chip.id)}
+            className={
+              "px-2 py-1 rounded-md border text-xs font-medium transition " +
+              (active
+                ? "bg-stone-900 text-white border-stone-900"
+                : "bg-white text-stone-700 border-stone-300 hover:border-stone-500")
+            }
+          >
+            {chip.label}
+            <span className={"ml-1 " + (active ? "text-stone-300" : "text-stone-400")}>
+              {chip.count}
+            </span>
+          </button>
+        )
+      })}
+    </div>
+  )
+
+  if (allRows.length === 0) {
     return (
       <Section
         label="История изменений"
-        hint="Все изменения модели и её вариаций. Журнал ведётся автоматически."
+        hint="Все изменения модели, артикулов и SKU. Журнал ведётся автоматически."
       >
         <div className="text-sm text-stone-400 italic py-6 text-center">
           Изменений пока нет.
@@ -3039,94 +3165,103 @@ function TabHistory({ m }: { m: ModelDetail }) {
   return (
     <Section
       label="История изменений"
-      hint="Все изменения модели и её вариаций. Журнал ведётся автоматически."
+      hint="Все изменения модели, артикулов и SKU. Журнал ведётся автоматически."
+      action={filterBar}
     >
-      <div className="space-y-2">
-        {rows.map((r) => (
-          <div
-            key={r.id}
-            className="border border-stone-200 rounded-md p-3 bg-stone-50"
-          >
-            <div className="flex items-center gap-2 flex-wrap text-xs">
-              <span
-                className={
-                  "px-1.5 py-0.5 rounded border font-medium uppercase tracking-wider " +
-                  actionBadgeClass(r.action)
-                }
+      {rows.length === 0 ? (
+        <div className="text-sm text-stone-400 italic py-4 text-center">
+          В этой группе изменений пока нет.
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {rows.map((r) => {
+            return (
+              <div
+                key={r.id}
+                className="border border-stone-200 rounded-md p-3 bg-stone-50"
               >
-                {r.action}
-              </span>
-              <span className="font-medium text-stone-800">
-                {tableLabel(r.table_name)}
-              </span>
-              <span className="text-stone-400">·</span>
-              <span className="text-stone-600">{r.source_label}</span>
-              <span className="text-stone-400">·</span>
-              <span className="text-stone-500 tabular-nums">
-                {formatAuditDate(r.created_at)}
-              </span>
-              <span className="text-stone-400">·</span>
-              <span
-                className="text-stone-500 font-mono"
-                title={r.user_id ?? "service_role / system"}
-              >
-                {shortUser(r.user_id)}
-              </span>
-            </div>
-
-            {r.action === "INSERT" && (
-              <div className="mt-2 text-xs text-stone-600">
-                Запись создана (id={r.row_id}).
-              </div>
-            )}
-
-            {r.action === "DELETE" && r.before && (
-              <div className="mt-2 text-xs text-stone-600">
-                <div className="text-stone-500 mb-1">
-                  Удалено. Снимок до удаления:
+                <div className="flex items-center gap-2 flex-wrap text-xs">
+                  <span
+                    className={
+                      "px-1.5 py-0.5 rounded border font-medium uppercase tracking-wider " +
+                      actionBadgeClass(r.action)
+                    }
+                  >
+                    {r.action}
+                  </span>
+                  <span className="font-medium text-stone-800">
+                    {tableLabel(r.table_name)}
+                  </span>
+                  <span className="text-stone-400">·</span>
+                  <span className="text-stone-600">{r.source_label}</span>
+                  <span className="text-stone-400">·</span>
+                  <span className="text-stone-500 tabular-nums">
+                    {formatAuditDate(r.created_at)}
+                  </span>
+                  <span className="text-stone-400">·</span>
+                  <span
+                    className="text-stone-500 font-mono"
+                    title={r.user_id ?? "service_role / system"}
+                  >
+                    {shortUser(r.user_id)}
+                  </span>
                 </div>
-                <div className="grid grid-cols-1 gap-0.5 font-mono text-[11px] text-stone-700">
-                  {Object.entries(r.before)
-                    .slice(0, 8)
-                    .map(([k, v]) => (
-                      <div key={k} className="truncate">
-                        <span className="text-stone-500">{k}:</span>{" "}
-                        {formatAuditValue(v)}
+
+                {r.action === "INSERT" && (
+                  <div className="mt-2 text-xs text-stone-600">
+                    Запись создана (id={r.row_id}).
+                  </div>
+                )}
+
+                {r.action === "DELETE" && r.before && (
+                  <div className="mt-2 text-xs text-stone-600">
+                    <div className="text-stone-500 mb-1">
+                      Удалено. Снимок до удаления:
+                    </div>
+                    <div className="grid grid-cols-1 gap-0.5 font-mono text-[11px] text-stone-700">
+                      {Object.entries(r.before)
+                        .slice(0, 8)
+                        .map(([k, v]) => (
+                          <div key={k} className="truncate">
+                            <span className="text-stone-500">{k}:</span>{" "}
+                            {formatAuditValue(v)}
+                          </div>
+                        ))}
+                      {Object.keys(r.before).length > 8 && (
+                        <div className="text-stone-400">
+                          … ещё {Object.keys(r.before).length - 8} полей
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {r.action === "UPDATE" && r.changed && (
+                  <div className="mt-2 space-y-1 font-mono text-[11px]">
+                    {Object.entries(r.changed).map(([key, diff]) => (
+                      <div key={key} className="flex flex-wrap gap-1 items-baseline">
+                        <span className="text-stone-700 font-medium">{key}:</span>
+                        <span className="text-red-600 line-through">
+                          {formatAuditValue(diff.from)}
+                        </span>
+                        <span className="text-stone-400">→</span>
+                        <span className="text-emerald-700">
+                          {formatAuditValue(diff.to)}
+                        </span>
                       </div>
                     ))}
-                  {Object.keys(r.before).length > 8 && (
-                    <div className="text-stone-400">
-                      … ещё {Object.keys(r.before).length - 8} полей
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {r.action === "UPDATE" && r.changed && (
-              <div className="mt-2 space-y-1 font-mono text-[11px]">
-                {Object.entries(r.changed).map(([key, diff]) => (
-                  <div key={key} className="flex flex-wrap gap-1 items-baseline">
-                    <span className="text-stone-700 font-medium">{key}:</span>
-                    <span className="text-red-600 line-through">
-                      {formatAuditValue(diff.from)}
-                    </span>
-                    <span className="text-stone-400">→</span>
-                    <span className="text-emerald-700">
-                      {formatAuditValue(diff.to)}
-                    </span>
-                  </div>
-                ))}
-                {Object.keys(r.changed).length === 0 && (
-                  <div className="text-stone-400 italic">
-                    {actionLabel(r.action)} (без полевых изменений)
+                    {Object.keys(r.changed).length === 0 && (
+                      <div className="text-stone-400 italic">
+                        {actionLabel(r.action)} (без полевых изменений)
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
-            )}
-          </div>
-        ))}
-      </div>
+            )
+          })}
+        </div>
+      )}
     </Section>
   )
 }

@@ -3622,6 +3622,89 @@ export async function fetchSkleykaHistory(
   return (data ?? []) as AuditEntry[]
 }
 
+// ─── W10.12: Audit-log для всей карточки модели ─────────────────────────────
+//
+// Возвращает объединённую историю по модели (modeli_osnova + все её modeli/
+// artikuly/tovary). Используется в `TabHistory` карточки модели — раньше
+// показывали только `modeli_osnova` + `modeli`, теперь ещё и `artikuly`/`tovary`.
+//
+// Внутри — 3 параллельных запроса (по table_name) с .in(row_id, [...]) и общим
+// limit на каждом, затем merge + сортировка DESC. Limit на каждый источник
+// одинаковый, чтобы не пропустить свежие изменения SKU при активной модели.
+
+export interface AuditForModelInput {
+  modelId: number
+  variationIds: number[]
+  artikulIds: number[]
+  tovarIds: number[]
+  /** Лимит на каждый из 3 SELECT-ов (default 500). */
+  limit?: number
+}
+
+export async function fetchAuditForModel(
+  input: AuditForModelInput,
+): Promise<AuditEntry[]> {
+  const { modelId, variationIds, artikulIds, tovarIds } = input
+  const limit = input.limit ?? 500
+
+  const tasks: Promise<AuditEntry[]>[] = []
+
+  // 1) modeli_osnova + modeli (по id модели + id вариаций)
+  const modelRowIds = [String(modelId), ...variationIds.map(String)]
+  tasks.push(
+    (async () => {
+      const { data, error } = await supabase
+        .from("audit_log")
+        .select("*")
+        .in("table_name", ["modeli_osnova", "modeli"])
+        .in("row_id", modelRowIds)
+        .order("created_at", { ascending: false })
+        .limit(limit)
+      if (error) throw new Error(error.message)
+      return (data ?? []) as AuditEntry[]
+    })(),
+  )
+
+  // 2) artikuly
+  if (artikulIds.length > 0) {
+    tasks.push(
+      (async () => {
+        const { data, error } = await supabase
+          .from("audit_log")
+          .select("*")
+          .eq("table_name", "artikuly")
+          .in("row_id", artikulIds.map(String))
+          .order("created_at", { ascending: false })
+          .limit(limit)
+        if (error) throw new Error(error.message)
+        return (data ?? []) as AuditEntry[]
+      })(),
+    )
+  }
+
+  // 3) tovary
+  if (tovarIds.length > 0) {
+    tasks.push(
+      (async () => {
+        const { data, error } = await supabase
+          .from("audit_log")
+          .select("*")
+          .eq("table_name", "tovary")
+          .in("row_id", tovarIds.map(String))
+          .order("created_at", { ascending: false })
+          .limit(limit)
+        if (error) throw new Error(error.message)
+        return (data ?? []) as AuditEntry[]
+      })(),
+    )
+  }
+
+  const buckets = await Promise.all(tasks)
+  const merged = buckets.flat()
+  merged.sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
+  return merged.slice(0, limit)
+}
+
 // ─── W10.6: ArtikulDetail — карточка артикула ───────────────────────────────
 //
 // Используется в ArtikulDrawer (`pages/catalog/artikul-card.tsx`). Возвращает
