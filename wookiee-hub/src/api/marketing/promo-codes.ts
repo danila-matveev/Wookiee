@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import type { PromoCodeRow, PromoStatWeekly } from '@/types/marketing'
+import type { PromoCodeRow, PromoProductBreakdownRow, PromoStatWeekly } from '@/types/marketing'
 import { numToNumber } from '@/lib/marketing-helpers'
 
 export interface PromoCreate {
@@ -51,6 +51,28 @@ export async function fetchPromoStatsWeekly(): Promise<PromoStatWeekly[]> {
   }))
 }
 
+export interface UpdatePromoCodeInput {
+  id: number
+  code?: string
+  channel?: string | null
+  discount_pct?: number | null
+  valid_from?: string | null
+  valid_until?: string | null
+}
+
+export async function updatePromoCode(input: UpdatePromoCodeInput): Promise<void> {
+  const { id, ...rest } = input
+  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  if (rest.code !== undefined)         patch.code = rest.code
+  if (rest.channel !== undefined)      patch.channel = rest.channel
+  if (rest.discount_pct !== undefined) patch.discount_pct = rest.discount_pct
+  if (rest.valid_from !== undefined)   patch.valid_from = rest.valid_from
+  if (rest.valid_until !== undefined)  patch.valid_until = rest.valid_until
+
+  const { error } = await supabase.schema('crm').from('promo_codes').update(patch).eq('id', id)
+  if (error) throw new Error(error.message)
+}
+
 export async function fetchPromoStatsForCode(promoCodeId: number): Promise<PromoStatWeekly[]> {
   const { data, error } = await supabase.schema('marketing').from('promo_stats_weekly')
     .select('*').eq('promo_code_id', promoCodeId).order('week_start', { ascending: true })
@@ -64,5 +86,20 @@ export async function fetchPromoStatsForCode(promoCodeId: number): Promise<Promo
     returns_count: numToNumber(r.returns_count as never),
     avg_discount_pct: numToNumber(r.avg_discount_pct as never),
     avg_check: numToNumber(r.avg_check as never),
+  }))
+}
+
+export async function fetchPromoProductBreakdown(promoCodeId: number): Promise<PromoProductBreakdownRow[]> {
+  const { data, error } = await supabase.schema('marketing').from('promo_product_breakdown')
+    .select('*').eq('promo_code_id', promoCodeId).order('week_start', { ascending: true })
+  if (error) throw error
+  return ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+    promo_code_id: r.promo_code_id as number,
+    week_start: r.week_start as string,
+    artikul_id: r.artikul_id == null ? null : (r.artikul_id as number),
+    sku_label: r.sku_label as string,
+    model_code: r.model_code == null ? null : (r.model_code as string),
+    qty: numToNumber(r.qty as never),
+    amount_rub: numToNumber(r.amount_rub as never),
   }))
 }

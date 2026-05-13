@@ -1,85 +1,70 @@
 import { useState } from 'react'
+import { X } from 'lucide-react'
 import { Drawer } from '@/components/crm/ui/Drawer'
-import { Button } from '@/components/crm/ui/Button'
-import { Input } from '@/components/crm/ui/Input'
+import { Button } from '@/components/marketing/Button'
+import { Input } from '@/components/marketing/Input'
 import { SelectMenu } from '@/components/marketing/SelectMenu'
 import { useCreateSubstituteArticle } from '@/hooks/marketing/use-search-queries'
 import { useModeli, useArtikulyForModel } from '@/hooks/marketing/use-artikuly'
 import { useChannels } from '@/hooks/marketing/use-channels'
 
+const CAMPAIGN_SUGGESTIONS = [
+  'WENDY_креаторы',
+  'AUDREY_креатор',
+  'VUKI_креаторы',
+  'MOON_креаторы',
+  'RUBY_креаторы',
+  'Яндекс промост',
+]
+
 interface AddWWPanelProps {
   onClose: () => void
+  /** 'inline' renders bare content for split-pane host; 'drawer' (default) wraps in Drawer. */
+  mode?: 'drawer' | 'inline'
 }
 
-export function AddWWPanel({ onClose }: AddWWPanelProps) {
-  const create = useCreateSubstituteArticle()
+export function AddWWPanel({ onClose, mode = 'drawer' }: AddWWPanelProps) {
+  const { data: modeli = [] } = useModeli()
+  const { data: channels = [] } = useChannels()
+  const createMut = useCreateSubstituteArticle()
 
-  const [modelId, setModelId] = useState<string>('')
-  const [artikulId, setArtikulId] = useState<string>('')
-  const [code, setCode] = useState('')
-  const [purpose, setPurpose] = useState('')
-  const [campaignName, setCampaignName] = useState('')
+  const [modelId, setModelId] = useState<number | null>(null)
+  const [color, setColor] = useState('')
+  const [size, setSize] = useState('')
+  const [ww, setWw] = useState('')
+  const [channel, setChannel] = useState('')
+  const [campaign, setCampaign] = useState('')
   const [error, setError] = useState<string | null>(null)
 
-  const modeliQ = useModeli()
-  const selectedModelId = modelId ? Number(modelId) : null
-  const artikulyQ = useArtikulyForModel(selectedModelId)
-  const channelsQ = useChannels()
+  const { data: artikuly = [] } = useArtikulyForModel(modelId)
 
-  const modelOptions = (modeliQ.data ?? []).map((m) => ({
-    value: String(m.id),
-    label: m.nazvanie + (m.kod ? ` (${m.kod})` : ''),
-  }))
+  // Distinct colors derived from artikuly rows for the selected model.
+  const availableColors = [...new Set(artikuly.map((a) => a.color).filter((c): c is string => Boolean(c)))]
 
-  const artikulOptions = (artikulyQ.data ?? []).map((a) => ({
-    value: String(a.id),
-    label: `${a.artikul} • ${a.color_label ?? '—'} • WB ${a.nomenklatura_wb ?? '—'}`,
-  }))
+  // Sizes for the chosen color (distinct, in DB order).
+  const availableSizes = [
+    ...new Set(
+      artikuly
+        .filter((a) => a.color === color)
+        .map((a) => a.size)
+        .filter((s): s is string => Boolean(s)),
+    ),
+  ]
 
-  const channelOptions = (channelsQ.data ?? []).map((c) => ({
-    value: c.slug,
-    label: c.label,
-  }))
+  const matchedArtikul = artikuly.find((a) => a.color === color && a.size === size)
 
-  const handleModelChange = (v: string) => {
-    setModelId(v)
-    setArtikulId('') // reset artikul when model changes
-  }
+  const canSubmit = Boolean(matchedArtikul && ww.trim() && channel.trim())
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = async () => {
     setError(null)
-
-    if (!modelId) {
-      setError('Выберите модель')
-      return
-    }
-    if (!artikulId) {
-      setError('Выберите артикул')
-      return
-    }
-    if (!code.trim()) {
-      setError('Код обязателен')
-      return
-    }
-    if (!purpose) {
-      setError('Выберите канал')
-      return
-    }
-
-    // Find nomenklatura_wb from selected artikul
-    const artikulRow = artikulyQ.data?.find((a) => String(a.id) === artikulId)
-    const nomenklatura_wb = artikulRow?.nomenklatura_wb != null
-      ? String(artikulRow.nomenklatura_wb)
-      : null
-
+    if (!matchedArtikul) return
     try {
-      await create.mutateAsync({
-        code: code.trim(),
-        artikul_id: Number(artikulId),
-        purpose,
-        nomenklatura_wb,
-        campaign_name: campaignName.trim() || null,
+      await createMut.mutateAsync({
+        code: ww.trim().toUpperCase(),
+        artikul_id: matchedArtikul.id,
+        purpose: channel,
+        campaign_name: campaign || null,
+        nomenklatura_wb: matchedArtikul.nm_id != null ? String(matchedArtikul.nm_id) : null,
       })
       onClose()
     } catch (err) {
@@ -93,111 +78,114 @@ export function AddWWPanel({ onClose }: AddWWPanelProps) {
     }
   }
 
-  return (
-    <Drawer
-      open={true}
-      onClose={onClose}
-      title="Новый WW-код"
-      footer={
-        <>
-          <Button variant="ghost" type="button" onClick={onClose} disabled={create.isPending}>
-            Отмена
-          </Button>
-          <Button
-            variant="primary"
-            type="submit"
-            form="add-ww-form"
-            loading={create.isPending}
-            disabled={create.isPending}
+  const body = (
+    <div className="space-y-3">
+      <SelectMenu
+        label="Модель"
+        value={modelId?.toString() ?? ''}
+        placeholder="Выбрать модель…"
+        options={modeli.map((m) => ({ value: m.id.toString(), label: m.kod ?? m.nazvanie }))}
+        onChange={(v) => {
+          setModelId(v ? Number(v) : null)
+          setColor('')
+          setSize('')
+        }}
+      />
+      {modelId !== null && (
+        <SelectMenu
+          label="Цвет"
+          value={color}
+          placeholder="Выбрать цвет…"
+          options={availableColors.map((c) => ({ value: c, label: c }))}
+          onChange={(v) => {
+            setColor(v)
+            setSize('')
+          }}
+        />
+      )}
+      {color && (
+        <SelectMenu
+          label="Размер"
+          value={size}
+          placeholder="Выбрать размер…"
+          options={availableSizes.map((s) => ({ value: s, label: s }))}
+          onChange={setSize}
+        />
+      )}
+      {matchedArtikul && (
+        <div className="bg-stone-50 rounded-md border border-stone-100 px-3 py-2">
+          <div className="text-[10px] uppercase text-stone-400">Привязан</div>
+          <div className="text-sm text-stone-900 mt-0.5">{matchedArtikul.artikul}</div>
+          {matchedArtikul.nm_id != null && (
+            <div className="text-[11px] font-mono text-stone-500">NM: {matchedArtikul.nm_id}</div>
+          )}
+        </div>
+      )}
+      {!matchedArtikul && modelId !== null && color && size && (
+        <div className="bg-amber-50 rounded-md border border-amber-200 px-3 py-2 text-[11px] text-amber-700">
+          SKU не найден
+        </div>
+      )}
+      <div>
+        <label className="block text-[11px] uppercase tracking-wider text-stone-400 font-medium mb-1">
+          WW-код
+        </label>
+        <Input
+          className="font-mono uppercase"
+          value={ww}
+          placeholder="WW..."
+          onChange={(e) => setWw(e.target.value)}
+        />
+      </div>
+      <SelectMenu
+        label="Канал"
+        value={channel}
+        placeholder="Выбрать канал…"
+        options={channels.map((c) => ({ value: c.slug, label: c.label }))}
+        onChange={setChannel}
+        allowAdd
+      />
+      <SelectMenu
+        label="Кампания / блогер"
+        value={campaign}
+        placeholder="Опционально…"
+        options={CAMPAIGN_SUGGESTIONS}
+        onChange={setCampaign}
+        allowAdd
+      />
+      {error && <p className="text-sm text-danger">{error}</p>}
+      <Button
+        disabled={!canSubmit || createMut.isPending}
+        onClick={handleSubmit}
+        className="w-full"
+      >
+        {createMut.isPending ? 'Создаю…' : 'Добавить'}
+      </Button>
+    </div>
+  )
+
+  if (mode === 'inline') {
+    return (
+      <div className="flex flex-col h-full">
+        <header className="px-5 py-4 border-b border-stone-200 flex items-center justify-between shrink-0">
+          <div className="text-sm font-medium text-stone-900">Новый WW-код</div>
+          <button
+            type="button"
+            aria-label="Закрыть"
+            onClick={onClose}
+            className="p-1.5 rounded-md text-stone-400 hover:bg-stone-100 cursor-pointer"
           >
-            Создать
-          </Button>
-        </>
-      }
-    >
-      <form id="add-ww-form" onSubmit={handleSubmit} className="flex flex-col gap-5">
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-fg">
-            Модель <span className="text-danger">*</span>
-          </label>
-          <SelectMenu
-            value={modelId}
-            options={modelOptions}
-            onChange={handleModelChange}
-            placeholder={modeliQ.isLoading ? 'Загрузка…' : 'Выбрать модель…'}
-            disabled={modeliQ.isLoading}
-            emptyHint="Модели не найдены"
-          />
-        </div>
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </header>
+        <div className="flex-1 overflow-y-auto px-5 py-4">{body}</div>
+      </div>
+    )
+  }
 
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-fg">
-            Артикул <span className="text-danger">*</span>
-          </label>
-          <SelectMenu
-            value={artikulId}
-            options={artikulOptions}
-            onChange={setArtikulId}
-            placeholder={
-              !modelId
-                ? 'Сначала выберите модель'
-                : artikulyQ.isLoading
-                ? 'Загрузка…'
-                : 'Выбрать артикул…'
-            }
-            disabled={!modelId || artikulyQ.isLoading}
-            emptyHint="Артикулы не найдены (нет nomenklatura_wb)"
-          />
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="ww-code" className="text-sm font-medium text-fg">
-            Код <span className="text-danger">*</span>
-          </label>
-          <Input
-            id="ww-code"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            placeholder="WW123456 или 246928570"
-            autoFocus
-            autoComplete="off"
-          />
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-fg">
-            Канал <span className="text-danger">*</span>
-          </label>
-          <SelectMenu
-            value={purpose}
-            options={channelOptions}
-            onChange={setPurpose}
-            placeholder={channelsQ.isLoading ? 'Загрузка…' : 'Выбрать канал…'}
-            disabled={channelsQ.isLoading}
-            emptyHint="Каналы не найдены"
-          />
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="ww-campaign" className="text-sm font-medium text-fg">
-            Кампания / название
-          </label>
-          <Input
-            id="ww-campaign"
-            value={campaignName}
-            onChange={(e) => setCampaignName(e.target.value)}
-            placeholder="Название кампании (опционально)"
-            autoComplete="off"
-          />
-          <p className="text-xs text-muted-foreground">
-            Для именного креатора: <code className="font-mono bg-muted px-1 rounded">креатор_&lt;Имя&gt;</code> (creator_ref заполнится автоматически)
-          </p>
-        </div>
-
-        {error && (
-          <p className="text-sm text-danger">{error}</p>
-        )}
-      </form>
+  return (
+    <Drawer open={true} onClose={onClose} title="Новый WW-код">
+      {body}
     </Drawer>
   )
 }

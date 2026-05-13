@@ -1,44 +1,56 @@
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
+import { useState, useRef, useEffect } from "react"
 import { Check, ChevronDown } from "lucide-react"
-import { Badge } from "@/components/crm/ui/Badge"
+import { Badge } from "./Badge"
+import { STATUS_LABELS, STATUS_COLORS, type StatusUI } from "@/types/marketing"
 
-const STATUSES = {
-  active:   { label: "Используется", tone: "success"   as const },
-  paused:   { label: "На паузе",     tone: "info"       as const },
-  archived: { label: "Архив",        tone: "secondary"  as const },
+interface StatusEditorProps {
+  status: StatusUI
+  onChange: (next: StatusUI) => void
 }
-type Status = keyof typeof STATUSES
 
-export function StatusEditor({ status, onChange, disabled }: { status: Status; onChange: (s: Status) => void; disabled?: boolean }) {
-  const cur = STATUSES[status]
+export function StatusEditor({ status, onChange }: StatusEditorProps) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [open])
+
+  const keys: StatusUI[] = ["active", "free", "archive"]
+
   return (
-    <DropdownMenu.Root>
-      <DropdownMenu.Trigger asChild disabled={disabled}>
-        <button
-          type="button"
-          aria-label={`Текущий статус: ${cur.label}. Нажмите чтобы изменить.`}
-          className="group flex items-center gap-1.5 px-2 py-1 rounded-md border border-transparent hover:border-border transition-colors disabled:opacity-50"
-        >
-          <Badge tone={cur.tone}>{cur.label}</Badge>
-          <ChevronDown className="w-3 h-3 text-muted-foreground/50 group-hover:text-muted-foreground" aria-hidden />
-        </button>
-      </DropdownMenu.Trigger>
-      <DropdownMenu.Portal>
-        <DropdownMenu.Content className="z-50 bg-popover border border-border rounded-lg shadow-md py-1 min-w-[150px]">
-          {(Object.keys(STATUSES) as Status[]).map((k) => {
-            const s = STATUSES[k]
-            return (
-              <DropdownMenu.Item key={k}
-                onSelect={() => onChange(k)}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-muted cursor-pointer outline-none data-[highlighted]:bg-muted"
-              >
-                <Badge tone={s.tone}>{s.label}</Badge>
-                {k === status && <Check className="w-3 h-3 text-[color:var(--wk-green)] ml-auto" aria-hidden />}
-              </DropdownMenu.Item>
-            )
-          })}
-        </DropdownMenu.Content>
-      </DropdownMenu.Portal>
-    </DropdownMenu.Root>
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="group flex items-center gap-1.5 px-2 py-1 rounded-md border border-transparent hover:border-stone-200 transition-colors"
+      >
+        <Badge color={STATUS_COLORS[status]} label={STATUS_LABELS[status]} />
+        <ChevronDown className="w-3 h-3 text-stone-300 group-hover:text-stone-500" />
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 z-30 bg-white border border-stone-200 rounded-lg shadow-sm py-1 min-w-[150px]">
+          {keys.map((k) => (
+            <button
+              key={k}
+              onClick={() => {
+                onChange(k)
+                setOpen(false)
+              }}
+              className={`w-full flex items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-stone-50 transition-colors ${
+                k === status ? "bg-stone-50" : ""
+              }`}
+            >
+              <Badge color={STATUS_COLORS[k]} label={STATUS_LABELS[k]} compact />
+              {k === status && <Check className="w-3 h-3 text-emerald-600 ml-auto" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }

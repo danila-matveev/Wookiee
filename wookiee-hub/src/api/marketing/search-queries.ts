@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase'
-import type { SearchQueryRow, SearchQueryStatsAgg, SearchQueryWeeklyStat, SearchQueryStatus } from '@/types/marketing'
-import { parseUnifiedId } from '@/lib/marketing-helpers'
+import type { SearchQueryRow, SearchQueryStatsAgg, SearchQueryWeeklyStat } from '@/types/marketing'
+import { STATUS_UI_TO_DB, type StatusUI } from '@/types/marketing'
 
 export interface SubstituteArticleCreate {
   code: string
@@ -72,12 +72,16 @@ export async function fetchSearchQueryWeekly(substituteArticleId: number): Promi
   return (data ?? []) as SearchQueryWeeklyStat[]
 }
 
-export async function updateSearchQueryStatus(unifiedId: string, status: SearchQueryStatus): Promise<void> {
-  const { source, id } = parseUnifiedId(unifiedId)
+export async function updateSearchQueryStatus(
+  source: 'branded_queries' | 'substitute_articles',
+  id: number,
+  statusUI: StatusUI,
+): Promise<void> {
+  const statusDB = STATUS_UI_TO_DB[statusUI]
   // source tables (branded_queries, substitute_articles) live in the crm schema
   const { error } = await supabase
     .schema('crm').from(source)
-    .update({ status, updated_at: new Date().toISOString() })
+    .update({ status: statusDB, updated_at: new Date().toISOString() })
     .eq('id', id)
-  if (error) throw error
+  if (error) throw new Error(error.message)
 }

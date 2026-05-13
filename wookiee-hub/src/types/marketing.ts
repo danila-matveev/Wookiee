@@ -64,6 +64,24 @@ export interface PromoStatWeekly {
   avg_check: number
 }
 
+export interface PromoProductBreakdownRow {
+  promo_code_id: number
+  week_start: string
+  artikul_id: number | null
+  sku_label: string
+  model_code: string | null
+  qty: number
+  amount_rub: number
+}
+
+/** Aggregated breakdown (sum qty/amount across weeks per sku). */
+export interface PromoProductBreakdownAgg {
+  sku_label: string
+  model_code: string | null
+  qty: number
+  amount_rub: number
+}
+
 export interface MarketingChannel {
   id: number
   slug: string
@@ -82,4 +100,33 @@ export interface SyncLogEntry {
   weeks_covered: string | null
   error_message: string | null
   triggered_by: string | null
+}
+
+// v4 fidelity status mapping (design 2026-05-12)
+// DB stores active|paused|archived; UI shows active|free|archive
+export type StatusUI = 'active' | 'free' | 'archive'
+export type StatusDB = 'active' | 'paused' | 'archived'
+
+export const STATUS_UI_TO_DB: Record<StatusUI, StatusDB> = {
+  active: 'active',
+  free: 'paused',
+  archive: 'archived',
+}
+
+export const STATUS_DB_TO_UI: Record<StatusDB, StatusUI> = {
+  active: 'active',
+  paused: 'free',
+  archived: 'archive',
+}
+
+export const STATUS_LABELS: Record<StatusUI, string> = {
+  active: 'Используется',
+  free: 'Свободен',
+  archive: 'Архив',
+}
+
+export const STATUS_COLORS: Record<StatusUI, 'green' | 'blue' | 'gray'> = {
+  active: 'green',
+  free: 'blue',
+  archive: 'gray',
 }

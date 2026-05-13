@@ -1,15 +1,37 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createPromoCode, fetchPromoCodes, fetchPromoStatsWeekly, type PromoCreate } from '@/api/marketing/promo-codes'
-import type { PromoCodeRow } from '@/types/marketing'
+import {
+  createPromoCode,
+  fetchPromoCodes,
+  fetchPromoProductBreakdown,
+  fetchPromoStatsWeekly,
+  updatePromoCode,
+  type PromoCreate,
+  type UpdatePromoCodeInput,
+} from '@/api/marketing/promo-codes'
+import type { PromoCodeRow, PromoProductBreakdownRow } from '@/types/marketing'
 
 export const promoCodesKeys = {
-  all:    ['marketing', 'promo-codes'] as const,
-  list:   () => [...promoCodesKeys.all, 'list'] as const,
-  stats:  () => [...promoCodesKeys.all, 'stats'] as const,
+  all:        ['marketing', 'promo-codes'] as const,
+  list:       () => [...promoCodesKeys.all, 'list'] as const,
+  stats:      () => [...promoCodesKeys.all, 'stats'] as const,
+  breakdown:  (id: number) => [...promoCodesKeys.all, 'breakdown', id] as const,
 }
 
 export function usePromoCodes()       { return useQuery({ queryKey: promoCodesKeys.list(),  queryFn: fetchPromoCodes,       staleTime: 5 * 60_000 }) }
 export function usePromoStatsWeekly() { return useQuery({ queryKey: promoCodesKeys.stats(), queryFn: fetchPromoStatsWeekly, staleTime: 60_000 }) }
+
+/**
+ * Понедельная разбивка использования промокода по артикулам.
+ * Возвращает все строки (по неделям × sku) — агрегацию делает консьюмер.
+ */
+export function usePromoProductBreakdown(promoId: number | null) {
+  return useQuery<PromoProductBreakdownRow[]>({
+    queryKey: promoId ? promoCodesKeys.breakdown(promoId) : ['marketing', 'promo-codes', 'breakdown', 'disabled'],
+    queryFn:  () => fetchPromoProductBreakdown(promoId as number),
+    enabled:  !!promoId && promoId > 0,
+    staleTime: 60_000,
+  })
+}
 
 export function useCreatePromoCode() {
   const qc = useQueryClient()
@@ -39,5 +61,15 @@ export function useCreatePromoCode() {
       if (ctx?.prev) qc.setQueryData(promoCodesKeys.list(), ctx.prev)
     },
     onSettled: () => qc.invalidateQueries({ queryKey: promoCodesKeys.list() }),
+  })
+}
+
+export function useUpdatePromoCode() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: UpdatePromoCodeInput) => updatePromoCode(input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: promoCodesKeys.list() })
+    },
   })
 }

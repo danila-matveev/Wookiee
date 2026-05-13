@@ -2,25 +2,56 @@ import { useMemo, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { Search } from "lucide-react"
 import { useSearchQueries, useSearchQueryStats } from "@/hooks/marketing/use-search-queries"
+import { useChannelLabelLookup } from "@/hooks/marketing/use-channels"
 import { useLastSync } from "@/hooks/marketing/use-sync-log"
+import { useGroupByPref } from "@/hooks/marketing/use-group-by-pref"
 import { QueryStatusBoundary } from "@/components/crm/ui/QueryStatusBoundary"
 import { Badge } from "@/components/crm/ui/Badge"
 import { SectionHeader } from "@/components/marketing/SectionHeader"
+import { GroupBySelector } from "@/components/marketing/GroupBySelector"
 import { DateRange } from "@/components/marketing/DateRange"
 import { UpdateBar } from "@/components/marketing/UpdateBar"
-import type { SearchQueryGroup, SearchQueryRow, SearchQueryStatsAgg } from "@/types/marketing"
-import { SearchQueryDetailPanel } from "./SearchQueryDetailPanel"
+import type { SearchQueryRow, SearchQueryStatsAgg } from "@/types/marketing"
 import { formatDateTime } from "@/lib/format"
 
 const FIRST = '2025-07-28'
 const LAST  = new Date().toISOString().slice(0, 10)
 
-const GROUPS: { id: SearchQueryGroup; icon: string; label: string }[] = [
-  { id: 'brand',       icon: '🎯', label: 'Брендовые' },
-  { id: 'external',    icon: '🎥', label: 'Внешний трафик' },
-  { id: 'cr_general',  icon: '📦', label: 'Общие конкуренты' },
-  { id: 'cr_personal', icon: '👤', label: 'Личные конкуренты' },
-]
+type SqGroupBy = "direction" | "entity_type" | "none"
+
+const SQ_GROUP_BY_OPTIONS = [
+  { value: "direction" as const,   label: "По направлению" },
+  { value: "entity_type" as const, label: "По типу сущности" },
+  { value: "none" as const,        label: "Без группировки" },
+] as const
+
+const GROUP_LABELS_DIRECTION: Record<string, { icon: string; label: string }> = {
+  brand:       { icon: "🔤", label: "Брендированные запросы" },
+  external:    { icon: "📦", label: "Артикулы (внешний лид)" },
+  cr_general:  { icon: "👥", label: "Креаторы общие" },
+  cr_personal: { icon: "👤", label: "Креаторы личные" },
+}
+
+const GROUP_LABELS_ENTITY: Record<string, { icon: string; label: string }> = {
+  brand:        { icon: "🔤", label: "Брендированные запросы" },
+  nomenclature: { icon: "🏷️", label: "Номенклатуры" },
+  ww_code:      { icon: "🔗", label: "Подменные артикулы" },
+  other:        { icon: "❔", label: "Прочее" },
+}
+
+function getGroupKey(row: SearchQueryRow, mode: SqGroupBy): string {
+  if (mode === "direction") return row.group_kind ?? "external"
+  if (mode === "entity_type") {
+    // entity_type is added by view v2 (Phase 2B). Until then derive from row shape.
+    const entityType = (row as unknown as { entity_type?: string }).entity_type
+    if (entityType) return entityType
+    if (row.group_kind === "brand") return "brand"
+    if (row.ww_code) return "ww_code"
+    if (row.nomenklatura_wb) return "nomenclature"
+    return "other"
+  }
+  return "_all"
+}
 
 const TH  = "px-2 py-2 text-left  text-[10px] uppercase tracking-wider text-muted-foreground font-medium select-none whitespace-nowrap"
 const THR = "px-2 py-2 text-right text-[10px] uppercase tracking-wider text-muted-foreground font-medium select-none whitespace-nowrap"
@@ -46,9 +77,12 @@ export function SearchQueriesTable() {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const toggle = (g: string) => setCollapsed((c) => ({ ...c, [g]: !c[g] }))
 
+  const { value: groupBy, setValue: setGroupBy } = useGroupByPref<SqGroupBy>('marketing.search-queries', 'direction')
+
   const { data: items = [], isLoading: lq, error: eq } = useSearchQueries()
   const { data: statsRows = [], isLoading: ls, error: es } = useSearchQueryStats(dateFrom, dateTo)
   const { data: lastSync } = useLastSync('search_queries_sync')
+  const channelLabel = useChannelLabelLookup()
 
   const statsMap = useMemo(() => {
     const m = new Map<string, SearchQueryStatsAgg>()
@@ -63,8 +97,9 @@ export function SearchQueriesTable() {
     [items],
   )
   const uniqueChannels = useMemo(
-    () => Array.from(new Set(items.map((i) => i.purpose).filter((c): c is string => !!c))).sort(),
-    [items],
+    () => Array.from(new Set(items.map((i) => i.purpose).filter((c): c is string => !!c)))
+      .sort((a, b) => channelLabel(a).localeCompare(channelLabel(b), 'ru')),
+    [items, channelLabel],
   )
 
   const filtered = useMemo(() => {
@@ -85,15 +120,29 @@ export function SearchQueriesTable() {
   }, [items, modelF, channelF, search])
 
   const grouped = useMemo(() => {
-    const result: Record<SearchQueryGroup, SearchQueryRow[]> = {
-      brand: [], external: [], cr_general: [], cr_personal: [],
+    const sortByOrders = (rows: SearchQueryRow[]) =>
+      rows.sort((a, b) => (statsMap.get(b.unified_id)?.orders ?? 0) - (statsMap.get(a.unified_id)?.orders ?? 0))
+
+    if (groupBy === 'none') {
+      return [{ key: '_all', icon: '', label: '', items: sortByOrders([...filtered]) }]
     }
-    for (const it of filtered) result[it.group_kind].push(it)
-    for (const g of Object.keys(result) as SearchQueryGroup[]) {
-      result[g].sort((a, b) => (statsMap.get(b.unified_id)?.orders ?? 0) - (statsMap.get(a.unified_id)?.orders ?? 0))
+
+    const map = new Map<string, SearchQueryRow[]>()
+    for (const r of filtered) {
+      const k = getGroupKey(r, groupBy)
+      if (!map.has(k)) map.set(k, [])
+      map.get(k)!.push(r)
     }
-    return result
-  }, [filtered, statsMap])
+    for (const arr of map.values()) sortByOrders(arr)
+
+    const labelMap = groupBy === 'direction' ? GROUP_LABELS_DIRECTION : GROUP_LABELS_ENTITY
+    return Array.from(map.entries())
+      .sort(([a], [b]) => a.localeCompare(b, 'ru'))
+      .map(([key, items]) => {
+        const meta = labelMap[key] ?? { icon: '', label: key }
+        return { key, icon: meta.icon, label: meta.label, items }
+      })
+  }, [filtered, statsMap, groupBy])
 
   const totals = useMemo(() => filtered.reduce(
     (acc, it) => {
@@ -135,7 +184,7 @@ export function SearchQueriesTable() {
                 onClick={() => setQ('channel', c === 'all' ? null : c)}
                 className={`px-2.5 py-1 rounded-full text-[12px] font-medium transition-colors ${channelF === c ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}
               >
-                {c === 'all' ? 'Все' : c}
+                {c === 'all' ? 'Все' : channelLabel(c)}
               </button>
             ))}
           </div>
@@ -154,6 +203,7 @@ export function SearchQueriesTable() {
           </div>
           <DateRange from={dateFrom} to={dateTo} min={FIRST} max={LAST}
             onChange={(f, t) => setParams((p) => { p.set('from', f); p.set('to', t); return p })} />
+          <GroupBySelector value={groupBy} options={SQ_GROUP_BY_OPTIONS} onChange={setGroupBy} />
           <span className="text-[10px] text-muted-foreground ml-auto tabular-nums">{filtered.length} записей</span>
         </div>
 
@@ -189,19 +239,20 @@ export function SearchQueriesTable() {
                 </tr>
               </thead>
               <tbody>
-                {GROUPS.map((g) => {
-                  const rows = grouped[g.id]
-                  const isCol = !!collapsed[g.id]
+                {grouped.map((g) => {
+                  const isCol = !!collapsed[g.key]
                   return (
                     <SectionGroup
-                      key={g.id}
+                      key={g.key}
                       icon={g.icon}
                       label={g.label}
-                      rows={rows}
+                      rows={g.items}
                       collapsed={isCol}
-                      onToggle={() => toggle(g.id)}
+                      onToggle={() => toggle(g.key)}
                       statsMap={statsMap}
+                      channelLabel={channelLabel}
                       onOpen={(unifiedId) => setQ('open', unifiedId)}
+                      hideHeader={groupBy === 'none'}
                     />
                   )
                 })}
@@ -221,17 +272,6 @@ export function SearchQueriesTable() {
             </table>
           </div>
         </div>
-        {(() => {
-          const openParam = params.get('open')
-          return openParam
-            ? <SearchQueryDetailPanel
-                unifiedId={openParam}
-                dateFrom={dateFrom}
-                dateTo={dateTo}
-                onClose={() => setQ('open', null)}
-              />
-            : null
-        })()}
       </div>
     </QueryStatusBoundary>
   )
@@ -244,19 +284,24 @@ interface SectionGroupProps {
   collapsed: boolean
   onToggle: () => void
   statsMap: Map<string, SearchQueryStatsAgg>
+  channelLabel: (slug: string | null | undefined) => string
   onOpen: (unifiedId: string) => void
+  hideHeader?: boolean
 }
 
-function SectionGroup({ icon, label, rows, collapsed, onToggle, statsMap, onOpen }: SectionGroupProps) {
+function SectionGroup({ icon, label, rows, collapsed, onToggle, statsMap, channelLabel, onOpen, hideHeader }: SectionGroupProps) {
+  const showRows = hideHeader || !collapsed
   return (
     <>
-      <SectionHeader icon={icon} label={label} count={rows.length} collapsed={collapsed} onToggle={onToggle} colSpan={11} />
-      {!collapsed && rows.length === 0 && (
+      {!hideHeader && (
+        <SectionHeader icon={icon} label={label} count={rows.length} collapsed={collapsed} onToggle={onToggle} colSpan={11} />
+      )}
+      {showRows && rows.length === 0 && (
         <tr>
-          <td colSpan={11} className="px-3 py-6 text-center text-[11px] text-muted-foreground">Нет данных в этой группе</td>
+          <td colSpan={11} className="px-3 py-6 text-center text-[11px] text-muted-foreground">Нет данных</td>
         </tr>
       )}
-      {!collapsed && rows.map((it) => {
+      {showRows && rows.map((it) => {
         const s = statsMap.get(it.unified_id) ?? ZERO_STATS
         return (
           <tr key={it.unified_id}
@@ -268,7 +313,7 @@ function SectionGroup({ icon, label, rows, collapsed, onToggle, statsMap, onOpen
             <td className="px-2 py-2 text-xs text-muted-foreground truncate">{it.ww_code ?? it.nomenklatura_wb ?? ''}</td>
             <td className="px-2 py-2">
               {it.purpose
-                ? <Badge tone="secondary">{it.purpose}</Badge>
+                ? <Badge tone="secondary">{channelLabel(it.purpose)}</Badge>
                 : <span className="text-muted-foreground/60 text-xs">—</span>}
             </td>
             <td className="px-2 py-2 text-xs text-muted-foreground truncate">{it.campaign_name ?? ''}</td>
