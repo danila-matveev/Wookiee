@@ -32,6 +32,7 @@ import {
   SkeletonTable,
   type RefFieldDef,
 } from "./_shared"
+import { ReferenceDrawer } from "@/pages/catalog/reference-card"
 
 /**
  * Валидация `kod`: lowercase, начинается с латинской буквы, далее буквы /
@@ -253,29 +254,46 @@ export function BrendyPage() {
           columns={columns}
           data={filtered}
           emptyText="Брендов пока нет — нажмите «Добавить»"
+          onRowClick={(r) => setEditing(r)}
         />
       )}
 
-      {(creating || editing) && (
+      {creating && (
         <RefModal
-          title={editing ? "Редактировать бренд" : "Новый бренд"}
+          title="Новый бренд"
           fields={fields}
-          initial={
-            editing
-              ? {
-                  kod: editing.kod,
-                  nazvanie: editing.nazvanie,
-                  opisanie: editing.opisanie ?? "",
-                  logo_url: editing.logo_url ?? "",
-                  status_id: editing.status_id ?? "",
-                }
-              : undefined
-          }
           onSave={handleSave}
-          onCancel={() => {
-            setEditing(null)
-            setCreating(false)
+          onCancel={() => setCreating(false)}
+        />
+      )}
+
+      {editing && (
+        <ReferenceDrawer
+          kind="Бренд"
+          title={editing.nazvanie}
+          fields={fields}
+          initial={{
+            kod: editing.kod,
+            nazvanie: editing.nazvanie,
+            opisanie: editing.opisanie ?? "",
+            logo_url: editing.logo_url ?? "",
+            status_id: editing.status_id ?? "",
           }}
+          onSave={async (vals) => {
+            await handleSave(vals)
+          }}
+          onClose={() => setEditing(null)}
+          linkedSections={[
+            {
+              kind: "models",
+              title: "Модели бренда",
+              refColumn: "brand_id",
+              refId: editing.id,
+              readOnly: true,
+              hint:
+                "brand_id у модели — обязательная связь. Переносить модель между брендами нужно через карточку модели.",
+            },
+          ]}
         />
       )}
 

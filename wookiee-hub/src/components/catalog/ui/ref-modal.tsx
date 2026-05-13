@@ -157,7 +157,7 @@ interface FieldInputProps {
   onChange: (v: unknown) => void
 }
 
-function FieldInput({ field, value, onChange }: FieldInputProps) {
+export function FieldInput({ field, value, onChange }: FieldInputProps) {
   const labelEl = (
     <label className="block text-[11px] uppercase tracking-wider text-stone-500 mb-1">
       {field.label}

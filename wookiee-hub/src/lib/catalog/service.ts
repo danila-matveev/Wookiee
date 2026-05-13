@@ -3999,3 +3999,135 @@ export async function fetchTovarDetail(id: number): Promise<TovarDetail | null> 
     created_at: t.created_at,
   }
 }
+
+// ─── W10.14 + W10.15 + W10.35 — Reference drawer linked-models ──────────────
+//
+// Все справочники (бренды/коллекции/категории/типы/фабрики) показывают список
+// привязанных моделей через колонки на `modeli_osnova`. Универсальный fetcher
+// принимает имя FK-колонки и значение.
+//
+// Также для kategorii — отдельная секция с атрибутами через junction
+// `kategoriya_atributy` (linkAtributToKategoriya уже существует выше;
+// добавляем unlink + поиск кандидатов для add-picker).
+
+export type ModelRefColumn =
+  | "brand_id"
+  | "kategoriya_id"
+  | "kollekciya_id"
+  | "fabrika_id"
+  | "tip_kollekcii_id"
+
+export interface ModelMini {
+  id: number
+  kod: string
+  nazvanie: string | null
+}
+
+export async function fetchModeliByRef(
+  column: ModelRefColumn,
+  refId: number,
+): Promise<ModelMini[]> {
+  const { data, error } = await supabase
+    .from("modeli_osnova")
+    .select("id, kod, nazvanie_etiketka")
+    .eq(column, refId)
+    .order("kod")
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((r: any) => ({
+    id: r.id as number,
+    kod: String(r.kod ?? ""),
+    nazvanie: (r.nazvanie_etiketka ?? null) as string | null,
+  }))
+}
+
+export async function fetchModeliWithoutRef(
+  column: ModelRefColumn,
+  search: string,
+  limit = 30,
+): Promise<ModelMini[]> {
+  let q = supabase
+    .from("modeli_osnova")
+    .select("id, kod, nazvanie_etiketka")
+    .is(column, null)
+    .order("kod")
+    .limit(limit)
+  const term = search.trim()
+  if (term) {
+    q = q.or(`kod.ilike.%${term}%,nazvanie_etiketka.ilike.%${term}%`)
+  }
+  const { data, error } = await q
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((r: any) => ({
+    id: r.id as number,
+    kod: String(r.kod ?? ""),
+    nazvanie: (r.nazvanie_etiketka ?? null) as string | null,
+  }))
+}
+
+export async function setModelRef(
+  modelId: number,
+  column: ModelRefColumn,
+  refId: number | null,
+): Promise<void> {
+  const patch: Record<string, number | null> = { [column]: refId }
+  const { error } = await supabase
+    .from("modeli_osnova")
+    .update(patch)
+    .eq("id", modelId)
+  if (error) throw new Error(error.message)
+}
+
+// ─── Атрибуты ↔ Категории: unlink + picker для секции «Атрибуты» в kategorii drawer
+
+export async function unlinkAtributFromKategoriya(
+  atributId: number,
+  kategoriyaId: number,
+): Promise<void> {
+  const { error } = await supabase
+    .from("kategoriya_atributy")
+    .delete()
+    .eq("atribut_id", atributId)
+    .eq("kategoriya_id", kategoriyaId)
+  if (error) throw new Error(error.message)
+}
+
+export async function fetchAtributyNotLinkedToKategoriya(
+  kategoriyaId: number,
+  search: string,
+  limit = 30,
+): Promise<Atribut[]> {
+  // Сначала — все id уже привязанных. Если их немного — отдельный запрос.
+  const { data: linked, error: linkedErr } = await supabase
+    .from("kategoriya_atributy")
+    .select("atribut_id")
+    .eq("kategoriya_id", kategoriyaId)
+    .not("atribut_id", "is", null)
+  if (linkedErr) throw new Error(linkedErr.message)
+  const linkedIds = (linked ?? [])
+    .map((r: any) => r.atribut_id as number)
+    .filter((x): x is number => x != null)
+
+  let q = supabase
+    .from("atributy")
+    .select("id, key, label, type, options, default_value, helper_text")
+    .order("label")
+    .limit(limit)
+  if (linkedIds.length > 0) {
+    q = q.not("id", "in", `(${linkedIds.join(",")})`)
+  }
+  const term = search.trim()
+  if (term) {
+    q = q.or(`label.ilike.%${term}%,key.ilike.%${term}%`)
+  }
+  const { data, error } = await q
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((a: any) => ({
+    id: a.id as number,
+    key: a.key as string,
+    label: a.label as string,
+    type: a.type as AtributType,
+    options: Array.isArray(a.options) ? (a.options as string[]) : [],
+    default_value: (a.default_value ?? null) as string | null,
+    helper_text: (a.helper_text ?? null) as string | null,
+  }))
+}
