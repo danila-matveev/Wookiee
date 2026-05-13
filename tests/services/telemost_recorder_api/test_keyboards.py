@@ -16,12 +16,13 @@ def test_list_row_button_contains_callback():
     assert btn["callback_data"] == "meet:abcdef12:show"
 
 
-def test_meeting_actions_has_3_buttons():
+def test_meeting_actions_has_all_buttons():
     kb = meeting_actions(short_id="abcdef12")
     flat = [b for row in kb["inline_keyboard"] for b in row]
     cbs = [b["callback_data"] for b in flat]
     assert "meet:abcdef12:transcript" in cbs
     assert "meet:abcdef12:summary" in cbs
+    assert "meet:abcdef12:notion" in cbs
     assert "meet:abcdef12:delete" in cbs
 
 

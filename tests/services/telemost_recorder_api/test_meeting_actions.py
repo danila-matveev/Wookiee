@@ -160,6 +160,67 @@ async def test_meet_confirm_delete_actually_deletes():
 
 
 @pytest.mark.asyncio
+async def test_meet_notion_export_sends_page_url():
+    mid = uuid4()
+    meeting = {
+        "id": mid, "title": "T", "status": "done", "started_at": None,
+        "duration_seconds": 0, "summary": {}, "tags": [],
+        "processed_paragraphs": [],
+    }
+    sent = []
+
+    async def fake_send(chat_id, text, *, reply_markup=None, **kw):
+        sent.append({"text": text, "parse_mode": kw.get("parse_mode", "Markdown")})
+
+    with patch(
+        "services.telemost_recorder_api.handlers.meeting_actions.load_meeting_by_short_id",
+        AsyncMock(return_value=meeting),
+    ), patch(
+        "services.telemost_recorder_api.handlers.meeting_actions.tg_send_message",
+        AsyncMock(side_effect=fake_send),
+    ), patch(
+        "services.telemost_recorder_api.handlers.meeting_actions.export_meeting_to_notion",
+        AsyncMock(return_value=("p_123", "https://www.notion.so/page-abc")),
+    ):
+        await handle_meet(chat_id=1, user_id=111, short_id=str(mid)[:8], action="notion")
+
+    assert len(sent) == 1
+    assert "https://www.notion.so/page-abc" in sent[0]["text"]
+    # URL must not be parsed as Markdown (underscores in slugs break parse)
+    assert sent[0]["parse_mode"] is None
+
+
+@pytest.mark.asyncio
+async def test_meet_notion_export_handles_error():
+    from services.telemost_recorder_api.notion_export import NotionExportError
+    mid = uuid4()
+    meeting = {
+        "id": mid, "title": "T", "status": "done", "started_at": None,
+        "duration_seconds": 0, "summary": {}, "tags": [],
+        "processed_paragraphs": [],
+    }
+    sent = []
+
+    async def fake_send(chat_id, text, *, reply_markup=None, **_):
+        sent.append(text)
+
+    with patch(
+        "services.telemost_recorder_api.handlers.meeting_actions.load_meeting_by_short_id",
+        AsyncMock(return_value=meeting),
+    ), patch(
+        "services.telemost_recorder_api.handlers.meeting_actions.tg_send_message",
+        AsyncMock(side_effect=fake_send),
+    ), patch(
+        "services.telemost_recorder_api.handlers.meeting_actions.export_meeting_to_notion",
+        AsyncMock(side_effect=NotionExportError("boom")),
+    ):
+        await handle_meet(chat_id=1, user_id=111, short_id=str(mid)[:8], action="notion")
+
+    assert len(sent) == 1
+    assert "не получилось" in sent[0].lower() or "notion" in sent[0].lower()
+
+
+@pytest.mark.asyncio
 async def test_meet_unknown_action_returns_silently():
     mid = uuid4()
     meeting = {"id": mid, "title": "T", "status": "done", "started_at": None,

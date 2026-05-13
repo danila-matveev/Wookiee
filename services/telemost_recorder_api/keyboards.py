@@ -45,6 +45,7 @@ def meeting_actions(short_id: str) -> dict:
                 {"text": "📄 Транскрипт", "callback_data": f"meet:{short_id}:transcript"},
                 {"text": "🧾 Сводка", "callback_data": f"meet:{short_id}:summary"},
             ],
+            [{"text": "📤 Выгрузить в Notion", "callback_data": f"meet:{short_id}:notion"}],
             [{"text": "🗑 Удалить", "callback_data": f"meet:{short_id}:delete"}],
         ]
     }

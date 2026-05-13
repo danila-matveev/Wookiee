@@ -34,8 +34,38 @@ def test_format_summary_message_normal():
     assert "Полина" in msg
     assert "Релиз" in msg
     assert "Релизим в пятницу" in msg
-    assert "Иван — Подготовить чейнджлог" in msg
+    # Assignee bold + dash + task
+    assert "*Иван* — Подготовить чейнджлог" in msg
     assert "разработка" in msg
+
+
+def test_format_summary_message_renders_task_context_and_conditions():
+    """Развёрнутые задачи (context, conditions) — главная фича промт-апгрейда v2."""
+    meeting = {
+        "id": _MEETING_ID,
+        "title": "Продакт",
+        "started_at": datetime(2026, 5, 12, 10, 0, tzinfo=timezone.utc),
+        "duration_seconds": 7200,
+        "summary": {
+            "participants": ["Данила", "Алина"],
+            "topics": [],
+            "decisions": [],
+            "tasks": [{
+                "assignee": "Алина",
+                "what": "Переписать карточку Wendy с акцентом на гипоаллергенность ткани",
+                "when": "до 20.05",
+                "context": "Текущая версия не упоминает сертификаты, целевая аудитория задаёт вопросы",
+                "conditions": "Только если новые фото со съёмки придут до 18.05",
+            }],
+        },
+        "tags": [],
+    }
+    msg = format_summary_message(meeting)
+    assert "*Алина* — Переписать карточку Wendy" in msg
+    assert "Зачем:" in msg
+    assert "не упоминает сертификаты" in msg
+    assert "Условия:" in msg
+    assert "новые фото" in msg
 
 
 def test_format_summary_message_empty():

@@ -22,6 +22,10 @@ from services.telemost_recorder_api.meetings_repo import (
     load_meeting_by_short_id,
 )
 from services.telemost_recorder_api.notifier import _md_escape, format_summary_message
+from services.telemost_recorder_api.notion_export import (
+    NotionExportError,
+    export_meeting_to_notion,
+)
 from services.telemost_recorder_api.telegram_client import (
     tg_send_document,
     tg_send_message,
@@ -47,6 +51,8 @@ async def handle_meet(
         await tg_send_message(chat_id, format_summary_message(meeting))
     elif action == "transcript":
         await _send_transcript(chat_id, meeting)
+    elif action == "notion":
+        await _export_to_notion(chat_id, meeting)
     elif action == "delete":
         await _ask_delete_confirm(chat_id, meeting, short_id)
     elif action == "confirm_delete":
@@ -83,6 +89,28 @@ async def _ask_delete_confirm(chat_id: int, meeting: dict[str, Any], short_id: s
         f"🗑 Точно удалить встречу *{title}*?\n\nЭто действие необратимо.",
         reply_markup=confirm_delete(short_id),
     )
+
+
+async def _export_to_notion(chat_id: int, meeting: dict[str, Any]) -> None:
+    try:
+        _page_id, page_url = await export_meeting_to_notion(meeting["id"])
+    except NotionExportError as e:
+        logger.warning("Notion export failed for %s: %s", meeting["id"], e)
+        await tg_send_message(
+            chat_id,
+            "❌ Не получилось выгрузить в Notion. "
+            "Проверь NOTION_TOKEN/NOTION_MEETINGS_DB_ID в .env.",
+            parse_mode=None,
+        )
+        return
+    if page_url:
+        await tg_send_message(
+            chat_id,
+            f"📤 Выгрузил в Notion:\n{page_url}",
+            parse_mode=None,
+        )
+    else:
+        await tg_send_message(chat_id, "📤 Выгрузил в Notion.", parse_mode=None)
 
 
 async def _do_delete(chat_id: int, meeting: dict[str, Any], user_id: int) -> None:

@@ -139,6 +139,82 @@ async def test_enrich_meeting_resolves_attendees_to_telegram_ids():
 
 
 @pytest.mark.asyncio
+async def test_find_event_falls_back_to_closest_meeting_when_url_absent():
+    """Bitrix-встречи с видеосвязью имеют LOCATION='calendar_XXX_YYY' вместо URL.
+
+    В этом случае URL не находится, но есть встреча близко по времени с
+    несколькими участниками — её и берём для обогащения title+invitees.
+    """
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    soon = now.strftime("%d.%m.%Y %H:%M:%S")
+    far = (now.replace(year=now.year + 1)).strftime("%d.%m.%Y %H:%M:%S")
+    fake_resp = httpx.Response(
+        200,
+        json={
+            "result": [
+                {
+                    "ID": "111",
+                    "NAME": "Дневная няня",  # single-attendee personal block — must skip
+                    "LOCATION": "",
+                    "DATE_FROM": soon,
+                    "ATTENDEES_CODES": ["U1"],
+                    "IS_MEETING": False,
+                },
+                {
+                    "ID": "222",
+                    "NAME": "Обсуждаем роли",  # Bitrix-видеосвязь, no URL in LOCATION
+                    "LOCATION": "calendar_357_22673",
+                    "DATE_FROM": soon,
+                    "ATTENDEES_CODES": ["U1", "U11"],
+                    "IS_MEETING": True,
+                },
+                {
+                    "ID": "333",
+                    "NAME": "Далеко не та",
+                    "LOCATION": "",
+                    "DATE_FROM": far,
+                    "ATTENDEES_CODES": ["U1", "U2"],
+                    "IS_MEETING": True,
+                },
+            ]
+        },
+    )
+    with patch("httpx.AsyncClient.get", AsyncMock(return_value=fake_resp)):
+        ev = await find_event_by_url(
+            bitrix_user_id="1",
+            meeting_url="https://telemost.360.yandex.ru/j/whatever",
+        )
+    assert ev is not None
+    assert ev["title"] == "Обсуждаем роли"
+    assert ev["source_event_id"] == "222"
+
+
+@pytest.mark.asyncio
+async def test_find_event_no_fallback_if_only_personal_blocks():
+    """Если в окне только single-attendee блоки (няня/обед) — fallback не сработает."""
+    from datetime import datetime, timezone
+    soon = datetime.now(timezone.utc).strftime("%d.%m.%Y %H:%M:%S")
+    fake_resp = httpx.Response(
+        200,
+        json={
+            "result": [
+                {"ID": "1", "NAME": "Ночная няня", "DATE_FROM": soon,
+                 "ATTENDEES_CODES": ["U1"], "IS_MEETING": False},
+                {"ID": "2", "NAME": "Обед", "DATE_FROM": soon,
+                 "ATTENDEES_CODES": ["U1"], "IS_MEETING": False},
+            ]
+        },
+    )
+    with patch("httpx.AsyncClient.get", AsyncMock(return_value=fake_resp)):
+        ev = await find_event_by_url(
+            bitrix_user_id="1",
+            meeting_url="https://telemost.yandex.ru/j/none",
+        )
+    assert ev is None
+
+
+@pytest.mark.asyncio
 async def test_enrich_meeting_no_event_returns_false():
     with patch(
         "services.telemost_recorder_api.bitrix_calendar.find_event_by_url",

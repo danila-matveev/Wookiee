@@ -29,9 +29,9 @@ logger = logging.getLogger(__name__)
 
 _MD_SPECIAL = ("\\", "_", "*", "[", "]", "`")
 
-_TOPIC_LIMIT = 8
-_DECISION_LIMIT = 6
-_TASK_LIMIT = 8
+_TOPIC_LIMIT = 15
+_DECISION_LIMIT = 12
+_TASK_LIMIT = 20
 _ERROR_PREVIEW_LEN = 500
 _ID_PREFIX_LEN = 8
 
@@ -107,7 +107,13 @@ def format_summary_message(meeting: dict[str, Any]) -> str:
             assignee = _md_escape(t.get("assignee") or "—")
             when = f" ({_md_escape(t['when'])})" if t.get("when") else ""
             what = _md_escape(t.get("what", "?"))
-            lines.append(f"• {assignee} — {what}{when}")
+            lines.append(f"• *{assignee}* — {what}{when}")
+            context = t.get("context")
+            if context:
+                lines.append(f"   _Зачем:_ {_md_escape(context)}")
+            conditions = t.get("conditions")
+            if conditions:
+                lines.append(f"   _Условия:_ {_md_escape(conditions)}")
 
     tags = meeting.get("tags") or []
     if tags:
