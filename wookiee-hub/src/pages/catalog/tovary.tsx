@@ -1206,6 +1206,18 @@ export function TovaryPage() {
     return colWidths[key] ?? TOVARY_DEFAULT_WIDTHS[key] ?? 130
   }, [colWidths, selectedChannel])
 
+  // W10.2 + W10.28 — динамический min-width таблицы = 40px checkbox + сумма ширин
+  // видимых колонок. Пересчитывается при hide/show через ColumnsManager и при
+  // ресайзе. Используется как `style.minWidth` на `<table>` чтобы получить
+  // горизонтальный скролл при недостатке viewport-а.
+  const tableMinWidth = useMemo(() => {
+    return effectiveColumns.reduce((acc, key) => acc + widthForColumn(key), 40)
+  }, [effectiveColumns, widthForColumn])
+
+  // W10.28 — ключ для force-rerender таблицы при изменении набора видимых колонок.
+  // Без него col widths из colgroup-а могут «зависнуть» в DOM после hide.
+  const tableKey = useMemo(() => effectiveColumns.join("|"), [effectiveColumns])
+
   // W7.3 — CSV-экспорт выбранных SKU.  `selected` = Set<barkod>; берём строки
   // из data (не filtered — selection переживает фильтры/группы) и проецируем
   // в плоскую запись с человекочитаемыми колонками.
@@ -1416,9 +1428,11 @@ export function TovaryPage() {
       {/* Table */}
       <div className="flex-1 overflow-auto px-6 pb-3">
         <div className="bg-white rounded-lg border border-stone-200 overflow-x-auto">
-          {/* W10.2 — min-w даёт горизонтальный скролл при недостатке viewport-а.
-              Значение = checkbox(40) + сумма default-ширин ~23 колонок ≈ 2400px. */}
-          <table className="w-full text-sm min-w-[2400px]" style={{ tableLayout: "fixed" }}>
+          <table
+            key={tableKey}
+            className="w-full text-sm"
+            style={{ tableLayout: "fixed", minWidth: `${tableMinWidth}px` }}
+          >
             <colgroup>
               <col style={{ width: 40 }} />
               {effectiveColumns.map((key) => (

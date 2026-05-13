@@ -632,6 +632,21 @@ export function ArtikulyPage() {
     ARTIKULY_COLUMNS.map((c) => ({ id: c.key, defaultWidth: ARTIKULY_DEFAULT_WIDTHS[c.key] ?? 140 })),
   )
 
+  // W10.2 + W10.28 — динамический min-width таблицы = 40px checkbox + сумма ширин
+  // видимых колонок. Пересчитывается при hide/show через ColumnsManager и при
+  // ресайзе. Используется как `min-w-[NNNN]px` на `<table>` чтобы получить
+  // горизонтальный скролл при недостатке viewport-а.
+  const tableMinWidth = useMemo(() => {
+    return columns.reduce(
+      (acc, key) => acc + (colWidths[key] ?? ARTIKULY_DEFAULT_WIDTHS[key] ?? 140),
+      40, // checkbox col
+    )
+  }, [columns, colWidths])
+
+  // W10.28 — ключ для force-rerender таблицы при изменении набора видимых колонок.
+  // Без него col widths из colgroup-а могут «зависнуть» в DOM после hide.
+  const tableKey = useMemo(() => columns.join("|"), [columns])
+
   // W8.1 — sort + ui_preferences persist (scope: "artikuly", key: "sort").
   const { sort, toggleSort, setSortState, sortRows } = useTableSort<ArtikulSortKey>()
   const sortLoadedRef = useRef(false)
@@ -967,9 +982,11 @@ export function ArtikulyPage() {
       {/* Table */}
       <div className="flex-1 overflow-auto px-6 pb-3">
         <div className="bg-white rounded-lg border border-stone-200 overflow-x-auto">
-          {/* W10.2 — min-w даёт горизонтальный скролл при недостатке viewport-а.
-              Значение = checkbox(40) + сумма default-ширин 17 колонок ≈ 1900px. */}
-          <table className="w-full text-sm min-w-[1900px]" style={{ tableLayout: "fixed" }}>
+          <table
+            key={tableKey}
+            className="w-full text-sm"
+            style={{ tableLayout: "fixed", minWidth: `${tableMinWidth}px` }}
+          >
             <colgroup>
               <col style={{ width: 40 }} />
               {columns.map((key) => (
