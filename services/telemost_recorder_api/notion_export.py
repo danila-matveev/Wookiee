@@ -13,6 +13,7 @@ Re-export updates the existing page instead of creating a duplicate.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from typing import Any
@@ -28,6 +29,8 @@ logger = logging.getLogger(__name__)
 _NOTION_API_BASE = "https://api.notion.com/v1"
 _NOTION_VERSION = "2022-06-28"
 _HTTP_TIMEOUT = 30.0
+_NOTION_RETRIES = 4
+_NOTION_BACKOFF_BASE = 1.5
 
 # Hard limits enforced by Notion API.
 _RICH_TEXT_LIMIT = 1900  # < 2000 to leave headroom
@@ -269,18 +272,40 @@ def _page_properties(meeting: dict[str, Any]) -> dict:
 async def _notion_request(
     method: str, endpoint: str, token: str, payload: dict | None = None,
 ) -> dict:
+    """Call Notion API with retry on 429/5xx. Respects Retry-After header on 429."""
     headers = {
         "Authorization": f"Bearer {token}",
         "Notion-Version": _NOTION_VERSION,
         "Content-Type": "application/json",
     }
     url = f"{_NOTION_API_BASE}/{endpoint}"
-    async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
-        resp = await client.request(method, url, headers=headers, json=payload)
-        if resp.status_code >= 400:
-            logger.error("Notion API %s %s: %s", method, endpoint, resp.text[:500])
-            raise NotionExportError(f"Notion API {resp.status_code}: {resp.text[:200]}")
-        return resp.json()
+    last_error: str | None = None
+    for attempt in range(_NOTION_RETRIES):
+        try:
+            async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
+                resp = await client.request(method, url, headers=headers, json=payload)
+        except httpx.HTTPError as e:
+            last_error = f"network: {e}"
+            logger.warning(
+                "Notion %s %s network error attempt %d/%d: %s",
+                method, endpoint, attempt + 1, _NOTION_RETRIES, e,
+            )
+            await asyncio.sleep(_NOTION_BACKOFF_BASE * (2 ** attempt))
+            continue
+        if resp.status_code < 400:
+            return resp.json()
+        if resp.status_code == 429 or resp.status_code >= 500:
+            retry_after = float(resp.headers.get("Retry-After", _NOTION_BACKOFF_BASE * (2 ** attempt)))
+            last_error = f"{resp.status_code}: {resp.text[:200]}"
+            logger.warning(
+                "Notion %s %s -> %s, retrying in %.1fs (attempt %d/%d)",
+                method, endpoint, resp.status_code, retry_after, attempt + 1, _NOTION_RETRIES,
+            )
+            await asyncio.sleep(retry_after)
+            continue
+        logger.error("Notion API %s %s: %s", method, endpoint, resp.text[:500])
+        raise NotionExportError(f"Notion API {resp.status_code}: {resp.text[:200]}")
+    raise NotionExportError(f"Notion API unavailable after retries: {last_error}")
 
 
 async def _append_blocks_paginated(page_id: str, token: str, blocks: list[dict]) -> None:

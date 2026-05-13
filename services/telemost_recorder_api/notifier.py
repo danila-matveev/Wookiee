@@ -182,8 +182,14 @@ async def notify_meeting_result(meeting_id: UUID) -> None:
                 f"❌ Запись {str(meeting_id)[:_ID_PREFIX_LEN]} завершилась ошибкой:\n\n{err[:_ERROR_PREVIEW_LEN]}",
                 parse_mode=None,
             )
-        except TelegramAPIError:
-            logger.exception("Failed to notify failure for %s", meeting_id)
+        except TelegramAPIError as e:
+            if e.error_code in (400, 403):
+                logger.warning(
+                    "Cannot notify failure for %s — user unreachable (%s)",
+                    meeting_id, e,
+                )
+            else:
+                logger.exception("Failed to notify failure for %s", meeting_id)
         return
 
     summary = meeting.get("summary") or {}
@@ -196,8 +202,14 @@ async def notify_meeting_result(meeting_id: UUID) -> None:
             summary_text,
             reply_markup=None if is_empty else meeting_actions(short_id),
         )
-    except TelegramAPIError:
-        logger.exception("Failed to send summary for %s", meeting_id)
+    except TelegramAPIError as e:
+        if e.error_code in (400, 403):
+            logger.warning(
+                "Cannot send summary for %s — user unreachable (%s)",
+                meeting_id, e,
+            )
+        else:
+            logger.exception("Failed to send summary for %s", meeting_id)
         return
 
     paragraphs = meeting.get("processed_paragraphs") or []
@@ -211,5 +223,11 @@ async def notify_meeting_result(meeting_id: UUID) -> None:
                 filename=filename,
                 caption=f"Полный transcript ({len(paragraphs)} параграфов)",
             )
-        except TelegramAPIError:
-            logger.exception("Failed to send transcript for %s", meeting_id)
+        except TelegramAPIError as e:
+            if e.error_code in (400, 403):
+                logger.warning(
+                    "Cannot send transcript for %s — user unreachable (%s)",
+                    meeting_id, e,
+                )
+            else:
+                logger.exception("Failed to send transcript for %s", meeting_id)

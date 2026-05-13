@@ -28,6 +28,10 @@ TELEMOST_BOT_TOKEN: str = _required("TELEMOST_BOT_TOKEN")
 TELEMOST_BOT_ID: int = int(_required("TELEMOST_BOT_ID"))
 TELEMOST_BOT_USERNAME: str = _required("TELEMOST_BOT_USERNAME")
 TELEMOST_WEBHOOK_SECRET: str = _required("TELEMOST_WEBHOOK_SECRET")
+# Public URL of the API used by Telegram to deliver webhook updates. If unset
+# (e.g. local dev / tests), startup skips automatic webhook registration and
+# the operator is expected to set it manually via Bot API.
+TELEMOST_PUBLIC_URL: str = os.getenv("TELEMOST_PUBLIC_URL", "").rstrip("/")
 
 # Supabase
 SUPABASE_URL: str = _required("SUPABASE_URL")

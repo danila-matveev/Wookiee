@@ -85,10 +85,15 @@ async def _finalize_recording(
         except Exception:  # noqa: BLE001
             logger.exception("Failed to parse raw_segments for %s", meeting_id)
 
-    has_audio = audio_path.exists()
+    has_audio = audio_path.exists() and audio_path.stat().st_size > 0
+    # `raw_segments=None` means the recorder reached audio but transcription
+    # crashed inside the container (or never ran). Treat that as a failure
+    # so the user sees a real error message, not a misleading "тишина".
+    transcription_lost = has_audio and raw_segments is None
     success = (
         not timed_out
         and exit_code == 0
+        and not transcription_lost
         and (raw_segments is not None or has_audio)
     )
 
@@ -134,6 +139,12 @@ async def _finalize_recording(
             if timed_out:
                 error_msg = (
                     f"recorder timeout after {RECORDING_HARD_LIMIT_HOURS}h; "
+                    f"logs tail: {logs[-_LOG_PREVIEW_LEN:]}"
+                )
+            elif transcription_lost:
+                error_msg = (
+                    f"recorder finished but transcript missing "
+                    f"(audio captured, transcription crashed inside container); "
                     f"logs tail: {logs[-_LOG_PREVIEW_LEN:]}"
                 )
             else:

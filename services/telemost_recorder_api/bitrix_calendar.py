@@ -6,6 +6,7 @@ generic "(без названия)" + Speaker 0/1/2).
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from datetime import datetime, timedelta, timezone
@@ -21,6 +22,8 @@ logger = logging.getLogger(__name__)
 
 _LOOKUP_WINDOW_HOURS = 4  # ±2 ч от now()
 _HTTP_TIMEOUT = 15.0
+_BITRIX_RETRIES = 3
+_BITRIX_BACKOFF_BASE = 1.0
 
 
 def _extract_attendee_ids(codes: list[Any] | None) -> list[int]:
@@ -115,18 +118,37 @@ async def find_event_by_url(
     base = BITRIX24_WEBHOOK_URL.rstrip("/")
     params = {"type": "user", "ownerId": bitrix_user_id, "from": frm, "to": to}
 
-    try:
-        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as c:
-            resp = await c.get(f"{base}/calendar.event.get.json", params=params)
-    except httpx.HTTPError as e:
-        logger.warning("Bitrix calendar.event.get HTTP error: %s", e)
-        return None
-
-    if not resp.is_success:
+    resp = None
+    for attempt in range(_BITRIX_RETRIES):
+        try:
+            async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as c:
+                resp = await c.get(f"{base}/calendar.event.get.json", params=params)
+        except httpx.HTTPError as e:
+            logger.warning(
+                "Bitrix calendar.event.get attempt %d/%d failed: %s",
+                attempt + 1, _BITRIX_RETRIES, e,
+            )
+            resp = None
+            if attempt < _BITRIX_RETRIES - 1:
+                await asyncio.sleep(_BITRIX_BACKOFF_BASE * (2 ** attempt))
+            continue
+        if resp.is_success:
+            break
+        # 4xx is unlikely to succeed on retry — bail out
+        if resp.status_code < 500 and resp.status_code != 429:
+            logger.warning(
+                "Bitrix calendar.event.get failed %d: %s",
+                resp.status_code, resp.text[:200],
+            )
+            return None
         logger.warning(
-            "Bitrix calendar.event.get failed %d: %s",
-            resp.status_code, resp.text[:200],
+            "Bitrix calendar.event.get %d on attempt %d/%d, retrying",
+            resp.status_code, attempt + 1, _BITRIX_RETRIES,
         )
+        if attempt < _BITRIX_RETRIES - 1:
+            await asyncio.sleep(_BITRIX_BACKOFF_BASE * (2 ** attempt))
+
+    if resp is None or not resp.is_success:
         return None
 
     try:

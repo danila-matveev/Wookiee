@@ -20,7 +20,16 @@ _CHUNK_SIZE = 4000  # 4096 - prefix headroom
 
 
 class TelegramAPIError(RuntimeError):
-    """Raised when Telegram API returns ok=false."""
+    """Raised when Telegram API returns ok=false.
+
+    `error_code` carries the Bot API error_code (e.g. 403 = bot blocked,
+    400 = chat not found) so callers can distinguish "user-caused, won't
+    fix itself" from "transient, retry might help".
+    """
+
+    def __init__(self, message: str, error_code: int | None = None) -> None:
+        super().__init__(message)
+        self.error_code = error_code
 
 
 async def tg_call(method: str, **payload: Any) -> dict:
@@ -30,7 +39,10 @@ async def tg_call(method: str, **payload: Any) -> dict:
         resp = await client.post(url, json=payload)
     body = resp.json()
     if not body.get("ok"):
-        raise TelegramAPIError(f"{method} failed: {body.get('description')}")
+        raise TelegramAPIError(
+            f"{method} failed: {body.get('description')}",
+            error_code=body.get("error_code"),
+        )
     return body["result"]
 
 

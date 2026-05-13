@@ -1,6 +1,7 @@
 """Gemini Flash postprocessing through OpenRouter (single-call or chunked for long meetings)."""
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -212,8 +213,16 @@ def _strip_markdown_codefence(text: str) -> str:
     return stripped
 
 
+_OPENROUTER_RETRIES = 3
+_OPENROUTER_BACKOFF_BASE = 2.0
+
+
 async def _call_openrouter(prompt: str, model: str, timeout_seconds: int) -> str:
-    """POST a single chat completion to OpenRouter and return the assistant content."""
+    """POST a single chat completion to OpenRouter and return the assistant content.
+
+    Retries on 429 / 5xx / network errors with exponential backoff so transient
+    rate-limit blips don't fail an entire meeting post-process.
+    """
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "HTTP-Referer": "https://wookiee.shop",
@@ -227,15 +236,39 @@ async def _call_openrouter(prompt: str, model: str, timeout_seconds: int) -> str
         "max_tokens": 16000,
         "response_format": {"type": "json_object"},
     }
-    async with httpx.AsyncClient(timeout=timeout_seconds) as client:
-        resp = await client.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers=headers,
-            json=body,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        return data["choices"][0]["message"]["content"]
+    last_error: Exception | None = None
+    for attempt in range(_OPENROUTER_RETRIES):
+        try:
+            async with httpx.AsyncClient(timeout=timeout_seconds) as client:
+                resp = await client.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers=headers,
+                    json=body,
+                )
+            if resp.status_code == 429 or resp.status_code >= 500:
+                last_error = httpx.HTTPStatusError(
+                    f"OpenRouter {resp.status_code}: {resp.text[:200]}",
+                    request=resp.request,
+                    response=resp,
+                )
+                logger.warning(
+                    "OpenRouter %s on attempt %d/%d, will retry",
+                    resp.status_code, attempt + 1, _OPENROUTER_RETRIES,
+                )
+            else:
+                resp.raise_for_status()
+                data = resp.json()
+                return data["choices"][0]["message"]["content"]
+        except httpx.HTTPError as e:
+            last_error = e
+            logger.warning(
+                "OpenRouter network error on attempt %d/%d: %s",
+                attempt + 1, _OPENROUTER_RETRIES, e,
+            )
+        if attempt < _OPENROUTER_RETRIES - 1:
+            await asyncio.sleep(_OPENROUTER_BACKOFF_BASE * (2 ** attempt))
+    assert last_error is not None
+    raise LLMPostprocessError(f"OpenRouter unavailable after retries: {last_error}")
 
 
 def _validate_shape(data: dict) -> None:
