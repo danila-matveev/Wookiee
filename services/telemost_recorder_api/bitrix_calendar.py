@@ -91,7 +91,8 @@ def _normalize_event(ev: dict) -> dict[str, Any]:
     return {
         "title": (ev.get("NAME") or "").strip() or None,
         "bitrix_attendee_ids": _extract_attendee_ids(ev.get("ATTENDEES_CODES")),
-        "scheduled_at": ev.get("DATE_FROM"),
+        # parse into datetime so asyncpg accepts it for timestamptz column
+        "scheduled_at": _parse_bitrix_date(ev.get("DATE_FROM")),
         "source_event_id": str(ev.get("ID")) if ev.get("ID") else None,
     }
 

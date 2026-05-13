@@ -239,14 +239,16 @@ async def detect_meeting_ended(page: Page) -> bool:
     except Exception:
         pass
 
-    # Explicit "meeting ended" overlays
+    # Explicit "meeting ended" overlays. Раньше сюда были добавлены
+    # "Чтобы пригласить других участников" / "To invite other participants",
+    # но эти строки реально живут в боковой подсказке share-кнопки Я.Телемоста
+    # — и срабатывают как ложный сигнал, выкидывая бота со встречи через
+    # ~90 секунд даже когда в звонке 5+ человек (см. кейс 13.05 Dayli).
     for selector in (
         "text=Встреча завершена",
         "text=Meeting ended",
         "text=Конференция завершена",
         "[data-testid='meeting-ended']",
-        "text=Чтобы пригласить других участников",  # bot is alone in the room
-        "text=To invite other participants",
     ):
         try:
             if await page.locator(selector).first.is_visible(timeout=200):
