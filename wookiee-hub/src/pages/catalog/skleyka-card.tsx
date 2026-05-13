@@ -533,18 +533,25 @@ export function SkleykaCard({ id, channel, onBack }: SkleykaCardProps) {
           {/* Sidebar (1/3) */}
           <div className="col-span-1 space-y-4">
             <SidebarBlock title="Правила склейки">
+              {/* W10.24 — обновлённый текст правил. */}
               <div className="space-y-2 text-sm">
                 <div className="flex items-start gap-2">
                   <Check className="w-3.5 h-3.5 mt-0.5 text-emerald-600 shrink-0" />
-                  <span className="text-stone-700">Один цвет, разные размеры</span>
+                  <span className="text-stone-700">До {MAX_SKU} SKU в одной склейке.</span>
                 </div>
                 <div className="flex items-start gap-2">
                   <Check className="w-3.5 h-3.5 mt-0.5 text-emerald-600 shrink-0" />
-                  <span className="text-stone-700">ИЛИ один размер, разные цвета</span>
+                  <span className="text-stone-700">Только Wildberries.</span>
                 </div>
                 <div className="flex items-start gap-2">
                   <Check className="w-3.5 h-3.5 mt-0.5 text-emerald-600 shrink-0" />
-                  <span className="text-stone-700">До {MAX_SKU} SKU в одной склейке</span>
+                  <span className="text-stone-700">
+                    Один артикул может находиться только в одной активной склейке.
+                  </span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <Check className="w-3.5 h-3.5 mt-0.5 text-emerald-600 shrink-0" />
+                  <span className="text-stone-700">Группируется по сезону.</span>
                 </div>
               </div>
             </SidebarBlock>
