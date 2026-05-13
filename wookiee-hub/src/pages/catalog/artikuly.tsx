@@ -1,6 +1,6 @@
 import { useMemo, useState, useCallback, useEffect, useRef } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Plus, Search, X, ChevronDown, Loader2, ExternalLink } from "lucide-react"
+import { Plus, Search, X, ChevronDown, Loader2, ExternalLink, Tag, Download } from "lucide-react"
 import {
   fetchArtikulyRegistry, fetchStatusy, bulkUpdateArtikulStatus,
   fetchRazmery, fetchTovaryByArtikul, insertTovar,
@@ -10,7 +10,8 @@ import {
 } from "@/lib/catalog/service"
 import { StatusBadge } from "@/components/catalog/ui/status-badge"
 import { ColorSwatch } from "@/components/catalog/ui/color-swatch"
-import { ColumnsManager } from "@/components/catalog/ui/columns-manager"
+import { ColumnsManager, type ColumnDef } from "@/components/catalog/ui/columns-manager"
+import { BulkActionsBar, type BulkAction } from "@/components/catalog/ui/bulk-actions-bar"
 import { SortableHeader } from "@/components/catalog/ui/sortable-header"
 import { Pagination } from "@/components/catalog/ui/pagination"
 import { EmptyState } from "@/components/catalog/ui/empty-state"
@@ -632,8 +633,6 @@ export function ArtikulyPage() {
   const columnConfig = useColumnConfig("artikuly", ARTIKULY_COLUMNS)
   const columns = columnConfig.visibleColumns
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [bulkStatusOpen, setBulkStatusOpen] = useState(false)
-  const bulkStatusRef = useRef<HTMLDivElement | null>(null)
   // W8.4 — drill-down overlay (клик по ячейке `artikul`).
   const [drillDown, setDrillDown] = useState<ArtikulRow | null>(null)
   // W10.6 — single-click на строку открывает полноценную карточку артикула.
@@ -812,7 +811,6 @@ export function ArtikulyPage() {
       await bulkUpdateArtikulStatus(selectedIds, statusId)
       await queryClient.invalidateQueries({ queryKey: ["artikuly-registry"] })
       setSelected(new Set())
-      setBulkStatusOpen(false)
     } catch (err) {
       toast.error(translateError(err))
     }
@@ -893,23 +891,36 @@ export function ArtikulyPage() {
     })
   }, [data, selected, statusNameById])
 
-  // Close popover on outside click / Escape.
-  useEffect(() => {
-    if (!bulkStatusOpen) return
-    function onDocDown(e: MouseEvent) {
-      if (!bulkStatusRef.current) return
-      if (!bulkStatusRef.current.contains(e.target as Node)) setBulkStatusOpen(false)
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setBulkStatusOpen(false)
-    }
-    document.addEventListener("mousedown", onDocDown)
-    document.addEventListener("keydown", onKey)
-    return () => {
-      document.removeEventListener("mousedown", onDocDown)
-      document.removeEventListener("keydown", onKey)
-    }
-  }, [bulkStatusOpen])
+  // W10.11/W10.33 — unified BulkActionsBar actions (status + export).
+  // Fabrika / delete будут добавлены в последующих коммитах.
+  const bulkActions = useMemo<BulkAction[]>(() => [
+    {
+      id: "status",
+      type: "dropdown",
+      label: "Изменить статус",
+      icon: <Tag className="w-3 h-3" />,
+      popoverTitle: "Статус артикула",
+      emptyText: "Нет статусов",
+      options: artikulStatuses.map((s) => ({
+        id: s.id,
+        label: (
+          <StatusBadge
+            status={{ nazvanie: s.nazvanie, color: s.color }}
+            compact
+            size="sm"
+          />
+        ),
+      })),
+      onSelect: (id) => { void handleBulkSetStatus(Number(id)) },
+    },
+    {
+      id: "export",
+      type: "button",
+      label: "Экспорт выбранных",
+      icon: <Download className="w-3 h-3" />,
+      onClick: handleBulkExport,
+    },
+  ], [artikulStatuses, handleBulkSetStatus, handleBulkExport])
 
   if (isLoading) {
     return <div className="px-6 py-8 text-sm text-stone-400">Загрузка артикулов…</div>
@@ -1131,65 +1142,12 @@ export function ArtikulyPage() {
         </div>
       </div>
 
-      {/* Bulk actions — кастомный бар, т.к. atomic BulkActionsBar не поддерживает
-          submenu/popover. Стилистика — copy от matrix.tsx BulkBar. */}
-      {selected.size > 0 && (
-        <div
-          className="border-t border-stone-200 bg-white px-6 py-3 flex items-center gap-3 shrink-0 shadow-[0_-4px_16px_-8px_rgba(0,0,0,0.08)]"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <span className="text-sm">
-            Выбрано: <span className="font-medium tabular-nums">{selected.size}</span>
-          </span>
-          <div className="h-5 w-px bg-stone-200" />
-          <div className="relative" ref={bulkStatusRef}>
-            <button
-              type="button"
-              onClick={() => setBulkStatusOpen((v) => !v)}
-              className="px-3 py-1 text-xs text-stone-700 hover:bg-stone-100 rounded-md flex items-center gap-1.5"
-            >
-              Изменить статус
-              <ChevronDown className="w-3 h-3" />
-            </button>
-            {bulkStatusOpen && (
-              <div className="absolute bottom-9 left-0 z-50 w-48 bg-white border border-stone-200 rounded-md shadow-lg py-1">
-                {artikulStatuses.length === 0 ? (
-                  <div className="px-3 py-2 text-xs text-stone-400 italic">Нет статусов</div>
-                ) : (
-                  artikulStatuses.map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => handleBulkSetStatus(s.id)}
-                      className="w-full text-left px-3 py-1.5 text-xs hover:bg-stone-50 flex items-center gap-2"
-                    >
-                      <StatusBadge
-                        status={{ nazvanie: s.nazvanie, color: s.color }}
-                        compact
-                        size="sm"
-                      />
-                    </button>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={handleBulkExport}
-            className="px-3 py-1 text-xs text-stone-700 hover:bg-stone-100 rounded-md"
-          >
-            Экспорт выбранных
-          </button>
-          <button
-            type="button"
-            onClick={() => { setSelected(new Set()); setBulkStatusOpen(false) }}
-            className="ml-auto px-3 py-1 text-xs text-stone-500 hover:bg-stone-100 rounded-md flex items-center gap-1.5"
-          >
-            <X className="w-3 h-3" /> Очистить
-          </button>
-        </div>
-      )}
+      {/* Bulk actions — единый BulkActionsBar (W10.33). */}
+      <BulkActionsBar
+        selectedCount={selected.size}
+        onClear={() => setSelected(new Set())}
+        actions={bulkActions}
+      />
 
       {/* W8.4 — drill-down overlay по клику на ячейку артикула. */}
       {drillDown && (
