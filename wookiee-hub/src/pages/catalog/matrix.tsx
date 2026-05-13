@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { AlertCircle, Archive, Building2, ChevronDown, ChevronRight, Copy, Download, Edit3, Info, MoreHorizontal, Plus, Search } from "lucide-react"
+import { AlertCircle, Archive, Building2, ChevronDown, ChevronRight, Copy, Download, Edit3, Info, MoreHorizontal, Package, Plus, Search } from "lucide-react"
 import { archiveModel, bulkUpdateModelStatus, duplicateModel, fetchArtikulyRegistry, fetchBrendy, fetchKategorii, fetchKollekcii, fetchMatrixList, fetchStatusy, fetchTovaryRegistry, getUiPref, setUiPref } from "@/lib/catalog/service"
 import type { ArtikulRow, Brend, MatrixRow, TovarRow } from "@/lib/catalog/service"
 import { StatusBadge, CATALOG_STATUSES } from "@/components/catalog/ui/status-badge"
@@ -21,6 +21,7 @@ import { useCollapsibleGroups } from "@/hooks/use-collapsible-groups"
 import { useColumnConfig } from "@/hooks/use-column-config"
 import { MATRIX_COLUMNS } from "@/lib/catalog/column-catalogs"
 import { ColumnsManager } from "@/components/catalog/ui/columns-manager"
+import { EmptyState } from "@/components/catalog/ui/empty-state"
 import { downloadCsv } from "@/lib/catalog/csv-export"
 import { translateError } from "@/lib/catalog/error-translator"
 import { toast } from "@/lib/catalog/toast"
@@ -553,6 +554,49 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
               </tr>
             </thead>
             <tbody>
+              {/* W9.19 — EmptyState когда таблица пустая.
+                  hasActiveFilters различает «совсем нет данных» vs «фильтры спрятали всё». */}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={14} className="px-0 py-0">
+                    {(() => {
+                      const hasActiveFilters =
+                        selectedBrandIds.size > 0 ||
+                        selectedCategoryIds.size > 0 ||
+                        selectedCollectionNames.size > 0 ||
+                        selectedSeasons.size > 0 ||
+                        selectedStatusIds.size > 0 ||
+                        incompleteOnly ||
+                        debouncedSearch.trim().length > 0
+                      const resetAll = () => {
+                        setSelectedBrandIds(new Set())
+                        setSelectedCategoryIds(new Set())
+                        setSelectedCollectionNames(new Set())
+                        setSelectedSeasons(new Set())
+                        setSelectedStatusIds(new Set())
+                        setIncompleteOnly(false)
+                        setSearch("")
+                      }
+                      return (
+                        <EmptyState
+                          icon={<Package className="w-12 h-12" />}
+                          title={hasActiveFilters ? "Ничего не найдено" : "Нет моделей"}
+                          description={
+                            hasActiveFilters
+                              ? "Попробуйте смягчить фильтры или очистить поиск."
+                              : "Создайте первую модель, чтобы начать наполнять каталог."
+                          }
+                          secondaryCta={
+                            hasActiveFilters
+                              ? { label: "Сбросить фильтры", onClick: resetAll }
+                              : undefined
+                          }
+                        />
+                      )
+                    })()}
+                  </td>
+                </tr>
+              )}
               {pagedGrouped.map((group) => {
                 const collapsed = groupBy !== "none" && isGroupCollapsed(group.key)
                 return (
@@ -865,6 +909,27 @@ function ArtikulyTable({ onRegisterExport }: { onRegisterExport?: (fn: (() => vo
             stickyFirst
           />
           <tbody>
+            {/* W9.19 — EmptyState для пустого реестра артикулов. */}
+            {filtered.length === 0 && (
+              <tr>
+                <td colSpan={MATRIX_ARTIKULY_COLS.length} className="px-0 py-0">
+                  <EmptyState
+                    icon={<Package className="w-12 h-12" />}
+                    title={debouncedSearch.trim().length > 0 ? "Ничего не найдено" : "Нет артикулов"}
+                    description={
+                      debouncedSearch.trim().length > 0
+                        ? "Попробуйте смягчить поиск."
+                        : "Артикулы создаются из карточки модели."
+                    }
+                    secondaryCta={
+                      debouncedSearch.trim().length > 0
+                        ? { label: "Сбросить поиск", onClick: () => setSearch("") }
+                        : undefined
+                    }
+                  />
+                </td>
+              </tr>
+            )}
             {paginated.slice.map((a) => (
               <tr key={a.id} className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60">
                 <td className="px-3 py-2.5 font-mono text-xs text-stone-900 cat-sticky-col"><CellText title={a.artikul}>{a.artikul}</CellText></td>
@@ -1052,6 +1117,42 @@ function TovaryTable({ onRegisterExport }: { onRegisterExport?: (fn: (() => void
             stickyFirst
           />
           <tbody>
+            {/* W9.19 — EmptyState для пустого реестра SKU. */}
+            {filtered.length === 0 && (
+              <tr>
+                <td colSpan={MATRIX_TOVARY_COLS.length} className="px-0 py-0">
+                  {(() => {
+                    const hasActive =
+                      channelFilter !== "all" ||
+                      statusFilter !== "all" ||
+                      debouncedSearch.trim().length > 0
+                    return (
+                      <EmptyState
+                        icon={<Package className="w-12 h-12" />}
+                        title={hasActive ? "Ничего не найдено" : "Нет SKU"}
+                        description={
+                          hasActive
+                            ? "Попробуйте смягчить фильтры или очистить поиск."
+                            : "SKU создаются автоматически из артикулов и размеров модели."
+                        }
+                        secondaryCta={
+                          hasActive
+                            ? {
+                                label: "Сбросить фильтры",
+                                onClick: () => {
+                                  setChannelFilter("all")
+                                  setStatusFilter("all")
+                                  setSearch("")
+                                },
+                              }
+                            : undefined
+                        }
+                      />
+                    )
+                  })()}
+                </td>
+              </tr>
+            )}
             {paginated.slice.map((t) => (
               <tr key={t.id} className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60">
                 <td className="px-3 py-2.5 font-mono text-xs text-stone-700 cat-sticky-col"><CellText title={t.barkod}>{t.barkod}</CellText></td>
