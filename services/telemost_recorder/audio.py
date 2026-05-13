@@ -1,6 +1,7 @@
 import logging
 import os
 import platform
+import shutil
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -9,6 +10,17 @@ from typing import Optional
 from services.telemost_recorder.config import AUDIO_BITRATE, MAX_RECORDING_MINUTES, TELEMOST_CAPTURE
 
 logger = logging.getLogger(__name__)
+
+# Threshold for free disk space before starting ffmpeg.
+# Opus @ 64 kbps ≈ 460 MB/h; 1 GB gives ~2h of headroom, which comfortably
+# covers MAX_RECORDING_MINUTES (default 240 → 4h, but most meetings <1h)
+# plus tmp/segment buffers. Below this we refuse to start rather than
+# fill the disk mid-recording and crash the host.
+_MIN_FREE_DISK_BYTES = 1 * 1024 * 1024 * 1024  # 1 GB
+
+
+class AudioCaptureError(RuntimeError):
+    """Raised when audio capture cannot start (e.g. low disk)."""
 
 
 def _pa_state(label: str) -> None:
@@ -46,9 +58,28 @@ class AudioCapture:
         return self.output_dir / "audio.opus"
 
     def start(self) -> bool:
-        """Start recording. Returns False if capture disabled or not on Linux."""
+        """Start recording. Returns False if capture disabled or not on Linux.
+
+        Raises:
+            AudioCaptureError: if free disk space in ``output_dir.parent``
+                is below the 1 GB safety threshold.
+        """
         if not TELEMOST_CAPTURE or platform.system() != "Linux":
             return False
+
+        # Disk safety check: refuse to start ffmpeg if there isn't enough
+        # headroom for a long meeting. Cheaper than discovering a full disk
+        # halfway through an hour-long recording.
+        disk_target = self.output_dir if self.output_dir.exists() else self.output_dir.parent
+        free = shutil.disk_usage(str(disk_target)).free
+        if free < _MIN_FREE_DISK_BYTES:
+            free_mb = free // (1024 * 1024)
+            msg = (
+                f"Not enough disk space at {disk_target}: "
+                f"{free_mb} MB free, need at least 1 GB"
+            )
+            logger.error(msg)
+            raise AudioCaptureError(msg)
 
         self._sink_name = f"telemost_{self.meeting_id[:8]}"
         result = subprocess.run(
