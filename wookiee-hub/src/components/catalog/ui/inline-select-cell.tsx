@@ -1,10 +1,11 @@
 // W9.10 — Inline-edit ячейка типа «select» (выбор из списка).
+// W10.7 — popover открывается по double-click + hover-индикатор (карандаш).
 //
 // Используется для редактирования razmer_id на /catalog/tovary
 // и других fields, где значение — id из справочника.
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { Loader2 } from "lucide-react"
+import { Loader2, Pencil } from "lucide-react"
 import { translateError } from "@/lib/catalog/error-translator"
 import { toast } from "@/lib/catalog/toast"
 
@@ -81,11 +82,11 @@ export function InlineSelectCell<TValue extends string | number = number>({
     <div className="relative inline-block min-w-0" ref={ref} onClick={(e) => e.stopPropagation()}>
       <button
         type="button"
-        onClick={() => !disabled && setOpen((p) => !p)}
+        onDoubleClick={() => !disabled && setOpen((p) => !p)}
         disabled={disabled}
-        title={hint ?? "Кликните, чтобы изменить"}
+        title={hint ?? "Двойной клик — редактировать"}
         className={
-          "text-left rounded px-1 -mx-1 py-0.5 " +
+          "group relative text-left rounded px-1 -mx-1 py-0.5 pr-5 " +
           "hover:bg-stone-100 hover:ring-1 hover:ring-stone-300 " +
           "disabled:hover:bg-transparent disabled:hover:ring-0 disabled:cursor-default " +
           "transition-colors flex items-center gap-1"
@@ -99,6 +100,12 @@ export function InlineSelectCell<TValue extends string | number = number>({
           )
         )}
         {saving && <Loader2 className="w-3 h-3 text-stone-400 animate-spin shrink-0" />}
+        {!disabled && !saving && (
+          <Pencil
+            aria-hidden="true"
+            className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 w-3 h-3 text-stone-400 opacity-0 group-hover:opacity-100 transition-opacity"
+          />
+        )}
       </button>
       {open && (
         <div className="absolute top-full left-0 mt-1 w-44 bg-white border border-stone-200 rounded-lg shadow-lg z-30">
