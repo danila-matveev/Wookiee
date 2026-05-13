@@ -1222,6 +1222,7 @@ function TabArticles({ m, hexByCvet, openColor }: TabContentProps) {
       {addOpen && (
         <AddArtikulModal
           modelKod={m.kod}
+          modelRazmery={parseRazmery(m.razmery_modeli)}
           kategoriyaId={m.kategoriya_id ?? null}
           variations={m.modeli}
           onClose={() => setAddOpen(false)}
@@ -1297,15 +1298,22 @@ function TabArticles({ m, hexByCvet, openColor }: TabContentProps) {
 // ещё НЕ привязаны к выбранной вариации (исключение дублей). Кнопка «Создать»
 // делает bulk-create через `bulkCreateArtikuly`.
 //
+// W10.9 — секция «Размеры» multi-select. Источник — `razmery_modeli` модели
+// (CSV), маппинг nazvanie → razmer_id берётся из глобального справочника
+// `razmery` через `fetchRazmery`. По умолчанию выбраны все размеры модели.
+//
 // artikul генерируется автоматически как `${modeli.kod}/${cveta.color_code}`
 // — это поведение сервиса, не UI. См. `insertArtikul` в service.ts.
 function AddArtikulModal({
   modelKod,
+  modelRazmery,
   kategoriyaId,
   variations,
   onClose,
 }: {
   modelKod: string
+  /** Размеры модели (parseRazmery(m.razmery_modeli)). Может быть пустым. */
+  modelRazmery: string[]
   /** W9.12 — filter colour palette by model category. */
   kategoriyaId: number | null
   variations: ModelVariation[]
@@ -1316,6 +1324,10 @@ function AddArtikulModal({
   // Default — first variation. Если их больше одной, юзер может переключиться.
   const [variationId, setVariationId] = useState<number>(variations[0]?.id ?? 0)
   const [selectedCvety, setSelectedCvety] = useState<Set<number>>(new Set())
+  // W10.9 — выбранные размеры модели. Default — ВСЕ размеры модели.
+  const [selectedRazmery, setSelectedRazmery] = useState<Set<string>>(
+    () => new Set(modelRazmery),
+  )
   // W9.11 — per-cvet custom artikul name. Empty/undefined ⇒ use generated.
   // Map keyed by cvet_id so values persist across select/deselect toggles
   // until variation switch (then we reset along with selection).
@@ -1326,6 +1338,20 @@ function AddArtikulModal({
   // remain visible everywhere.
   const { colors: categoryColors, isLoading: colorsLoading } =
     useAvailableColors(kategoriyaId)
+
+  // W10.9 — справочник `razmery` для маппинга nazvanie → id при создании SKU.
+  const razmeryQ = useQuery({
+    queryKey: ["catalog", "razmery"],
+    queryFn: fetchRazmery,
+    staleTime: 5 * 60 * 1000,
+  })
+  const razmeryIdByName = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const r of razmeryQ.data ?? []) {
+      if (r.nazvanie) m.set(r.nazvanie, r.id)
+    }
+    return m
+  }, [razmeryQ.data])
 
   // Already-attached cveta ids — для исключения из выбора (нельзя создать
   // дубликат `${kod}/${color_code}` — артикул должен быть уникальным).
@@ -1455,6 +1481,17 @@ function AddArtikulModal({
     () => availableCveta.filter((c) => selectedCvety.has(c.id)),
     [availableCveta, selectedCvety],
   )
+
+  // W10.9 — сколько выбранных размеров реально создадутся (есть в справочнике).
+  // Размер из `razmery_modeli`, отсутствующий в таблице `razmery` — data-quality
+  // issue: SKU для него создать нельзя. Считаем только resolvable.
+  const resolvedRazmerCount = useMemo(() => {
+    let n = 0
+    for (const r of selectedRazmery) {
+      if (razmeryIdByName.get(r) != null) n += 1
+    }
+    return n
+  }, [selectedRazmery, razmeryIdByName])
 
   const rowErrors = useMemo(() => {
     const errs: Record<number, string | null> = {}
@@ -1684,6 +1721,72 @@ function AddArtikulModal({
             </div>
           )}
 
+          {/* W10.9 — секция «Размеры». Multi-select из razmery_modeli модели. */}
+          {modelRazmery.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-[11px] uppercase tracking-wider text-stone-500">
+                  Размеры
+                </label>
+                <div className="flex items-center gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRazmery(new Set(modelRazmery))}
+                    disabled={selectedRazmery.size === modelRazmery.length}
+                    className="text-stone-600 hover:text-stone-900 underline underline-offset-2 disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed"
+                  >
+                    Все
+                  </button>
+                  <span className="text-stone-300">·</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRazmery(new Set())}
+                    disabled={selectedRazmery.size === 0}
+                    className="text-stone-600 hover:text-stone-900 underline underline-offset-2 disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed"
+                  >
+                    Очистить
+                  </button>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {modelRazmery.map((r) => {
+                  const checked = selectedRazmery.has(r)
+                  const knownId = razmeryIdByName.get(r) != null
+                  return (
+                    <label
+                      key={r}
+                      className={`flex items-center gap-1.5 px-2 py-1 text-xs rounded-md border cursor-pointer transition-colors ${
+                        checked
+                          ? "border-stone-900 bg-stone-50"
+                          : "border-stone-200 hover:border-stone-400"
+                      } ${!knownId ? "opacity-60" : ""}`}
+                      title={
+                        !knownId
+                          ? "Размер не найден в справочнике razmery — SKU не будет создан"
+                          : undefined
+                      }
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() =>
+                          setSelectedRazmery((prev) => {
+                            const next = new Set(prev)
+                            if (next.has(r)) next.delete(r)
+                            else next.add(r)
+                            return next
+                          })
+                        }
+                        className="shrink-0 accent-stone-900"
+                      />
+                      <span className="font-mono">{r}</span>
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           {error && (
             <div className="px-3 py-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded">
               {error}
@@ -1693,11 +1796,27 @@ function AddArtikulModal({
 
         <div className="px-5 py-3 border-t border-stone-200 flex items-center justify-between shrink-0 bg-stone-50/50">
           <div className="text-xs text-stone-500">
-            Выбрано: <span className="font-medium text-stone-700">{selectedCount}</span>
-            {selectedCount > 0 && (
-              <span className="ml-2">
-                · Артикулы будут созданы со статусом «Запуск»
-              </span>
+            {selectedCount === 0 ? (
+              <>Выбрано: <span className="font-medium text-stone-700">0</span></>
+            ) : (
+              <>
+                Будет создано:{" "}
+                <span className="font-medium text-stone-700">{selectedCount}</span>{" "}
+                {selectedCount === 1 ? "артикул" : "артикула"}
+                {resolvedRazmerCount > 0 && (
+                  <>
+                    {" × "}
+                    <span className="font-medium text-stone-700">{resolvedRazmerCount}</span>{" "}
+                    {resolvedRazmerCount === 1 ? "размер" : "размеров"}
+                    {" = "}
+                    <span className="font-medium text-stone-700">
+                      {selectedCount * resolvedRazmerCount}
+                    </span>{" "}
+                    SKU
+                  </>
+                )}
+                <span className="ml-2 text-stone-400">· статус «Запуск»</span>
+              </>
             )}
           </div>
           <div className="flex items-center gap-2">
