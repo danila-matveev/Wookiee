@@ -168,13 +168,16 @@ def test_combined_tags_works_without_title():
 
 def test_build_blocks_tags_section_uses_combined_tags():
     blocks = _build_blocks(_meeting())
-    # Найти раздел "Теги" и проверить что туда попали и название, и участники
-    tag_idx = next(
-        i for i, b in enumerate(blocks)
+    # Тэги-секция теперь — toggleable heading_2 с inline children.
+    tag_heading = next(
+        b for b in blocks
         if b["type"].startswith("heading_")
         and b[b["type"]]["rich_text"][0]["text"]["content"] == "Теги"
     )
-    tag_paragraph = blocks[tag_idx + 1]["paragraph"]["rich_text"][0]["text"]["content"]
+    htype = tag_heading["type"]
+    children = tag_heading[htype].get("children") or []
+    assert children, "Tags toggle must have an inline paragraph child"
+    tag_paragraph = children[0]["paragraph"]["rich_text"][0]["text"]["content"]
     assert "Daily standup" in tag_paragraph
     assert "Алина" in tag_paragraph
     assert "продукт" in tag_paragraph
@@ -199,9 +202,17 @@ def test_build_blocks_chunks_long_transcript():
         {"start_ms": 0, "speaker": "Данила", "text": long_text},
     ])
     blocks = _build_blocks(m)
+    # Transcript paragraphs now live as children of a toggleable heading_2.
+    def _walk(bs):
+        for b in bs:
+            yield b
+            btype = b.get("type", "")
+            inner = b.get(btype) or {}
+            for child in inner.get("children") or []:
+                yield from _walk([child])
     transcript_paragraphs = [
-        b for b in blocks
-        if b["type"] == "paragraph"
+        b for b in _walk(blocks)
+        if b.get("type") == "paragraph"
         and "А" in b["paragraph"]["rich_text"][0]["text"]["content"]
     ]
     # 5000-char "А" inside [00:00] Данила: ... → builds to >5000 chars,
