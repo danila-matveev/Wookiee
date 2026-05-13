@@ -87,3 +87,46 @@ Cherry-pick результаты (3 параллельных worktree-агент
 
 Wave E стартует.
 
+## 2026-05-14 02:00 — Wave E complete (3/3 пункта)
+
+Контекст: после 2 неудачных worktree-агентов (1-й крашнулся API-ошибкой
+до коммитов, 2-й определил неверный base и отказался стартовать) — Wave E
+сделана inline в main worktree.
+
+Commit `0bd5df9` — feat(w10.14+w10.15+w10.35): reference cards drawer.
+
+W10.14 + W10.15 + W10.35: 5 reference-страниц
+(brendy/kollekcii/kategorii/tipy-kollekciy/fabriki) — клик по строке
+открывает side-drawer `ReferenceDrawer` (новый файл
+`pages/catalog/reference-card.tsx`, ~620 строк) вместо RefModal.
+Стиль match с ArtikulDrawer — rounded-l-2xl + shadow-2xl + Esc-close.
+
+Drawer:
+- Вкладка «Описание» — inline-форма через переэкспортированный
+  `FieldInput` из ref-modal (поддерживает все 8 типов полей).
+- Вкладка «Привязанные» — секции `linked-models` через FK на
+  `modeli_osnova`:
+  - brendy → brand_id (read-only, NOT NULL FK — hint объясняет почему)
+  - kollekcii → kollekciya_id (add/remove)
+  - kategorii → kategoriya_id + ВТОРАЯ секция «Атрибуты категории»
+    через kategoriya_atributy junction (linkAtributToKategoriya
+    уже был; добавлен unlinkAtributFromKategoriya + picker)
+  - tipy-kollekciy → tip_kollekcii_id (add/remove)
+  - fabriki → fabrika_id (add/remove)
+
+RefModal остаётся для «Добавить новый». CatalogTable теперь поддерживает
+`onRowClick` (игнорирует клики по button/a/input/select, чтобы не
+конфликтовать с RowActions).
+
+Service helpers:
+- `fetchModeliByRef(column, refId)` — generic по 5 ref-колонкам
+- `fetchModeliWithoutRef(column, search, limit)` — picker кандидатов
+- `setModelRef(modelId, column, refId|null)` — generic mutation
+- `fetchAtributyNotLinkedToKategoriya(...)` + `unlinkAtributFromKategoriya`
+
+Проверки:
+- `tsc --noEmit -p tsconfig.temp.json` — clean
+- `vite build` — success, 3.73s
+
+Verifier pass стартует.
+
