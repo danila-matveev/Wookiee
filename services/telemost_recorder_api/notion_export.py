@@ -330,6 +330,58 @@ async def _delete_existing_children(page_id: str, token: str) -> None:
             break
 
 
+def _block_text(block: dict) -> str:
+    btype = block.get("type")
+    if btype != "paragraph":
+        return ""
+    rt = block.get("paragraph", {}).get("rich_text") or []
+    parts: list[str] = []
+    for piece in rt:
+        text = piece.get("text") or {}
+        content = text.get("content") or piece.get("plain_text") or ""
+        parts.append(content)
+    return "".join(parts)
+
+
+async def _delete_until_marker(page_id: str, marker_text: str, token: str) -> None:
+    """Delete every block from the top of the page up to and including
+    the one whose text matches marker_text.
+
+    Defensive: collect block ids into a buffer first. Only delete after
+    the marker is found, so a missing marker can't wipe freshly appended
+    content (e.g. if marker-append silently lost its block on Notion's side).
+    """
+    to_delete: list[str] = []
+    cursor: str | None = None
+    found = False
+    while True:
+        endpoint = f"blocks/{page_id}/children?page_size=100"
+        if cursor:
+            endpoint += f"&start_cursor={cursor}"
+        result = await _notion_request("GET", endpoint, token)
+        children = result.get("results", []) or []
+        for child in children:
+            to_delete.append(child["id"])
+            if _block_text(child) == marker_text:
+                found = True
+                break
+        if found:
+            break
+        if not result.get("has_more"):
+            break
+        cursor = result.get("next_cursor")
+
+    if not found:
+        logger.warning(
+            "Marker %r not found on page %s; skipping cleanup to avoid wiping content",
+            marker_text, page_id,
+        )
+        return
+
+    for block_id in to_delete:
+        await _notion_request("DELETE", f"blocks/{block_id}", token)
+
+
 async def export_meeting_to_notion(meeting_id: UUID) -> tuple[str, str]:
     """Create (or update if already exported) a Notion page for this meeting.
 
@@ -363,8 +415,20 @@ async def export_meeting_to_notion(meeting_id: UUID) -> tuple[str, str]:
         await _notion_request(
             "PATCH", f"pages/{existing_id}", token, {"properties": properties},
         )
-        await _delete_existing_children(existing_id, token)
+        marker_text = f"<<<wookiee-marker-{meeting_id}>>>"
+        marker_block = {
+            "object": "block",
+            "type": "paragraph",
+            "paragraph": {
+                "rich_text": [{"type": "text", "text": {"content": marker_text}}]
+            },
+        }
+        await _notion_request(
+            "PATCH", f"blocks/{existing_id}/children", token,
+            {"children": [marker_block]},
+        )
         await _append_blocks_paginated(existing_id, token, blocks)
+        await _delete_until_marker(existing_id, marker_text, token)
         page_url = meeting.get("notion_page_url") or ""
         return existing_id, page_url
 
