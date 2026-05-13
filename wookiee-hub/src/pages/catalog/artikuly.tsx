@@ -19,7 +19,7 @@ import { CellText } from "@/components/catalog/ui/cell-text"
 import { FilterBar } from "@/components/catalog/ui/filter-bar"
 import { InlineTextCell } from "@/components/catalog/ui/inline-text-cell"
 import { InlineColorCell } from "@/components/catalog/ui/inline-color-cell"
-import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
+import { relativeDate } from "@/lib/catalog/color-utils"
 import { useResizableColumns } from "@/hooks/use-resizable-columns"
 import { useTableSort, type SortState } from "@/hooks/use-table-sort"
 import { usePagination } from "@/hooks/use-pagination"
@@ -285,7 +285,9 @@ function ArtikulDrillDown({ row, statusyData, onClose }: ArtikulDrillDownProps) 
     )
   }
 
-  const swatch = row.cvet_hex ?? swatchColor(row.cvet_color_code ?? "")
+  // swatch — берём только реальный hex; компонент сам нарисует серый placeholder,
+  // если hex отсутствует или невалиден.
+  const swatchHex = row.cvet_hex
   const artikulStatus = row.status_id != null ? statusById.get(row.status_id) : null
 
   return (
@@ -318,7 +320,7 @@ function ArtikulDrillDown({ row, statusyData, onClose }: ArtikulDrillDownProps) 
               </div>
               <div className="mt-2 flex items-center gap-4 flex-wrap text-xs text-stone-600">
                 <div className="flex items-center gap-1.5">
-                  <ColorSwatch hex={swatch} size={14} />
+                  <ColorSwatch hex={swatchHex} size={14} />
                   <span className="font-mono">{row.cvet_color_code ?? "—"}</span>
                   {row.cvet_nazvanie && (
                     <span className="text-stone-500">· {row.cvet_nazvanie}</span>
@@ -523,7 +525,7 @@ function renderCell(key: string, a: ArtikulRow, ctx?: ArtikulCellCtx): React.Rea
       }
       return (
         <div className="flex items-center gap-1.5 min-w-0">
-          <ColorSwatch hex={a.cvet_hex ?? swatchColor(a.cvet_color_code ?? "")} size={14} />
+          <ColorSwatch hex={a.cvet_hex} size={14} />
           <CellText className="font-mono text-xs text-stone-700" title={a.cvet_color_code ?? ""}>{a.cvet_color_code ?? "—"}</CellText>
           {a.cvet_nazvanie && <CellText className="text-stone-500 text-xs" title={a.cvet_nazvanie}>{a.cvet_nazvanie}</CellText>}
         </div>

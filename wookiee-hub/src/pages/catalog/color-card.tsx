@@ -19,7 +19,7 @@ import { translateError } from "@/lib/catalog/error-translator"
 import { ColorSwatch } from "@/components/catalog/ui/color-swatch"
 import { StatusBadge } from "@/components/catalog/ui/status-badge"
 import {
-  resolveSwatch, isValidHex, findSimilarColors,
+  isValidHex, findSimilarColors, colorSwatchStyle,
 } from "@/lib/catalog/color-utils"
 import { CvetEditModal } from "./colors-edit"
 
@@ -212,7 +212,7 @@ function Header({
 }) {
   return (
     <div className="border-b border-stone-200 bg-white shrink-0 px-6 py-4 flex items-center gap-4">
-      <ColorSwatch hex={resolveSwatch(data.hex, data.color_code)} size={40} />
+      <ColorSwatch hex={data.hex} size={40} />
       <div className="flex-1">
         <div className="text-xs text-stone-400 mb-0.5">
           Цвет{familyName ? ` · семейство ${familyName}` : ""}
@@ -375,7 +375,10 @@ function Sidebar({
     },
   })
 
-  const previewHex = isValidHex(hex) ? hex : resolveSwatch(data.hex, data.color_code)
+  // Для preview-блока HEX — если пользователь ввёл валидный hex, показываем
+  // его (живое превью при редактировании); иначе фолбэк на сохранённый hex
+  // (может быть null — colorSwatchStyle нарисует placeholder).
+  const previewHex = isValidHex(hex) ? hex : data.hex
   const totalSku = data.artikuly.reduce((s, a) => s + a.tovary_cnt, 0)
 
   return (
@@ -389,7 +392,7 @@ function Sidebar({
         <div className="flex items-center gap-3">
           <div
             className="w-16 h-16 rounded-md ring-1 ring-stone-200 shrink-0"
-            style={{ background: previewHex }}
+            style={colorSwatchStyle(previewHex)}
           />
           <div className="flex-1">
             <div className="font-mono text-sm text-stone-900">{data.hex ?? "—"}</div>
@@ -470,7 +473,7 @@ function Sidebar({
                 className="flex flex-col items-center gap-1 p-2 rounded-md hover:bg-stone-50 transition-colors group"
                 title={`${c.color_code}${c.cvet ? ` · ${c.cvet}` : ""}`}
               >
-                <ColorSwatch hex={resolveSwatch(c.hex, c.color_code)} size={36} />
+                <ColorSwatch hex={c.hex} size={36} />
                 <div className="text-[10px] font-mono text-stone-600 group-hover:text-stone-900 truncate w-full text-center">
                   {c.color_code}
                 </div>

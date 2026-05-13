@@ -11,21 +11,18 @@ import { CompletenessRing } from "@/components/catalog/ui/completeness-ring"
 import { StatusBadge } from "@/components/catalog/ui/status-badge"
 import { BulkActionsBar } from "@/components/catalog/ui/bulk-actions-bar"
 import { CellText } from "@/components/catalog/ui/cell-text"
-import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
+import { colorSwatchStyle, relativeDate } from "@/lib/catalog/color-utils"
 import { translateError } from "@/lib/catalog/error-translator"
 import { toast } from "@/lib/catalog/toast"
 import { compareRazmer } from "@/lib/catalog/size-utils"
 
 const MAX_SKU = 30
 
-function ColorSwatch({ colorCode, size = 14 }: { colorCode: string | null; size?: number }) {
-  if (!colorCode) {
-    return <div className="rounded-full bg-stone-200" style={{ width: size, height: size }} />
-  }
+function ColorSwatch({ hex, size = 14 }: { hex: string | null | undefined; size?: number }) {
   return (
     <div
       className="rounded-full ring-1 ring-stone-200 shrink-0"
-      style={{ width: size, height: size, background: swatchColor(colorCode) }}
+      style={{ ...colorSwatchStyle(hex), width: size, height: size }}
     />
   )
 }
@@ -408,10 +405,15 @@ export function SkleykaCard({ id, channel, onBack }: SkleykaCardProps) {
                           </td>
                           <td className="px-3 py-2">
                             <div className="flex items-center gap-1.5 min-w-0">
-                              <ColorSwatch colorCode={t.cvet_color_code} size={14} />
-                              <CellText className="font-mono text-xs" title={t.cvet_color_code ?? ""}>
+                              <ColorSwatch hex={t.cvet_hex} size={14} />
+                              <CellText className="font-mono text-xs text-stone-600" title={t.cvet_color_code ?? ""}>
                                 {t.cvet_color_code ?? "—"}
                               </CellText>
+                              {t.cvet_nazvanie && (
+                                <CellText className="text-stone-500 text-xs" title={t.cvet_nazvanie}>
+                                  {t.cvet_nazvanie}
+                                </CellText>
+                              )}
                             </div>
                           </td>
                           <td className="px-3 py-2 font-mono text-xs">{t.razmer ?? "—"}</td>

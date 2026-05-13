@@ -100,7 +100,7 @@ import {
   TextareaField,
   Tooltip,
 } from "@/components/catalog/ui"
-import { computeCompleteness, relativeDate, swatchColor } from "@/lib/catalog/color-utils"
+import { colorSwatchStyle, computeCompleteness, relativeDate } from "@/lib/catalog/color-utils"
 import { useAvailableColors } from "@/hooks/use-available-colors"
 import { translateError } from "@/lib/catalog/error-translator"
 import { toast } from "@/lib/catalog/toast"
@@ -1242,7 +1242,6 @@ function TabArticles({ m, hexByCvet, openColor }: TabContentProps) {
         <tbody>
           {allArts.map((a) => {
             const hex = a.cvet_id != null ? hexByCvet.get(a.cvet_id) ?? null : null
-            const swatch = hex ?? (a.cvet_color_code ? swatchColor(a.cvet_color_code) : "#E7E5E4")
             return (
               <tr key={a.id} className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60">
                 <td className="px-3 py-2 font-mono text-xs text-stone-700"><CellText title={a.artikul}>{a.artikul}</CellText></td>
@@ -1256,7 +1255,7 @@ function TabArticles({ m, hexByCvet, openColor }: TabContentProps) {
                   >
                     <span
                       className="inline-block w-3.5 h-3.5 rounded ring-1 ring-stone-200 shrink-0"
-                      style={{ background: swatch }}
+                      style={{ ...colorSwatchStyle(hex) }}
                     />
                     <CellText className="font-mono text-xs text-stone-700" title={a.cvet_color_code ?? ""}>
                       {a.cvet_color_code ?? "—"}
@@ -1584,7 +1583,6 @@ function AddArtikulModal({
               <div className="grid grid-cols-2 gap-1.5 max-h-[28vh] overflow-y-auto pr-1">
                 {availableCveta.map((c) => {
                   const checked = selectedCvety.has(c.id)
-                  const hex = c.hex ?? swatchColor(c.color_code)
                   const previewArtikul = effectiveName(c)
                   return (
                     <label
@@ -1603,7 +1601,7 @@ function AddArtikulModal({
                       />
                       <span
                         className="inline-block w-4 h-4 rounded ring-1 ring-stone-200 shrink-0"
-                        style={{ background: hex }}
+                        style={colorSwatchStyle(c.hex)}
                       />
                       <span className="font-mono text-xs text-stone-700 shrink-0">{c.color_code}</span>
                       {c.cvet && (
@@ -1627,7 +1625,6 @@ function AddArtikulModal({
               </label>
               <div className="space-y-1.5 max-h-[32vh] overflow-y-auto pr-1">
                 {selectedCveta.map((c) => {
-                  const hex = c.hex ?? swatchColor(c.color_code)
                   const defaultName = buildDefaultName(c)
                   const raw = customNames[c.id]
                   const value = raw !== undefined ? raw : defaultName
@@ -1638,7 +1635,7 @@ function AddArtikulModal({
                       <div className="flex items-center gap-2">
                         <span
                           className="inline-block w-4 h-4 rounded ring-1 ring-stone-200 shrink-0"
-                          style={{ background: hex }}
+                          style={colorSwatchStyle(c.hex)}
                           aria-hidden="true"
                         />
                         <span className="font-mono text-xs text-stone-500 shrink-0 w-20 truncate">
@@ -2032,7 +2029,6 @@ function TabSKU({ m, hexByCvet }: TabContentProps) {
           <tbody>
             {allSku.slice(0, 100).map((t) => {
               const hex = t.cvet_id != null ? hexByCvet.get(t.cvet_id) ?? null : null
-              const swatch = hex ?? (t.cvet_color_code ? swatchColor(t.cvet_color_code) : "#E7E5E4")
               return (
                 <tr key={t.id} className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60">
                   <td className="px-3 py-2 font-mono text-xs text-stone-700"><CellText title={t.barkod}>{t.barkod}</CellText></td>
@@ -2041,7 +2037,7 @@ function TabSKU({ m, hexByCvet }: TabContentProps) {
                     <div className="flex items-center gap-1.5 min-w-0">
                       <span
                         className="inline-block w-3.5 h-3.5 rounded ring-1 ring-stone-200 shrink-0"
-                        style={{ background: swatch }}
+                        style={colorSwatchStyle(hex)}
                       />
                       <CellText className="font-mono text-xs" title={t.cvet_color_code ?? ""}>{t.cvet_color_code ?? "—"}</CellText>
                     </div>
@@ -2989,7 +2985,6 @@ function CardSidebar({
         <div className="flex flex-wrap gap-1.5">
           {cvetaList.slice(0, 24).map((c) => {
             const hex = c.cvetId != null ? hexByCvet.get(c.cvetId) ?? null : null
-            const swatch = hex ?? swatchColor(c.code)
             return (
               <Tooltip key={c.code} text={c.name ? `${c.name} (${c.code})` : c.code}>
                 <button
@@ -2999,7 +2994,7 @@ function CardSidebar({
                 >
                   <span
                     className="inline-block w-4 h-4 rounded ring-1 ring-stone-200 shrink-0"
-                    style={{ background: swatch }}
+                    style={colorSwatchStyle(hex)}
                   />
                   <span className="font-mono text-[10px] text-stone-700">{c.code}</span>
                 </button>
@@ -3190,17 +3185,16 @@ function Header({
     return () => { cancelled = true }
   }, [headerImagePath])
 
-  const swatch = firstCvet
+  const firstHex = firstCvet
     ? (firstCvet.id != null ? hexByCvet.get(firstCvet.id) ?? null : null)
-      ?? swatchColor(firstCvet.code)
-    : "#E7E5E4"
+    : null
 
   return (
     <div className="border-b border-stone-200 bg-white shrink-0 px-6 py-4 flex items-center gap-4">
       {/* Icon */}
       <div
         className="w-14 h-14 rounded-lg ring-1 ring-stone-200 shrink-0 overflow-hidden flex items-center justify-center bg-stone-50"
-        style={!headerSignedUrl ? { background: swatch } : undefined}
+        style={!headerSignedUrl ? colorSwatchStyle(firstHex) : undefined}
       >
         {headerSignedUrl ? (
           <img src={headerSignedUrl} alt="" className="w-full h-full object-cover" />

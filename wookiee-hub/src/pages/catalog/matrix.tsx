@@ -12,7 +12,7 @@ import { NewModelModal } from "@/components/catalog/ui/new-model-modal"
 import { SortableHeader } from "@/components/catalog/ui/sortable-header"
 import { Pagination } from "@/components/catalog/ui/pagination"
 import { FilterBar } from "@/components/catalog/ui/filter-bar"
-import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
+import { colorSwatchStyle, relativeDate } from "@/lib/catalog/color-utils"
 import { useResizableColumns, type ResizerBindings } from "@/hooks/use-resizable-columns"
 import { useTableSort, type SortState } from "@/hooks/use-table-sort"
 import { usePagination } from "@/hooks/use-pagination"
@@ -29,9 +29,15 @@ import { RAZMER_LADDER, razmerOrder } from "@/lib/catalog/size-utils"
 
 const RAZMER_DISPLAY_CHIPS = ["XS", "S", "M", "L", "XL", "XXL"] as const
 // ─── Shared helpers ────────────────────────────────────────────────────────
-function ColorSwatch({ colorCode, size = 16 }: { colorCode: string | null; size?: number }) {
-  if (!colorCode) return <div className="rounded-full bg-stone-200" style={{ width: size, height: size }} />
-  return <div className="rounded-full ring-1 ring-stone-200 shrink-0" style={{ width: size, height: size, background: swatchColor(colorCode) }} />
+function ColorSwatch({ hex, size = 16 }: { hex: string | null | undefined; size?: number }) {
+  // `colorSwatchStyle` нормализует hex (#RRGGBB/без #/rgb/rgba) и рендерит
+  // серую штриховку для null/пустого/невалидного значения вместо hash fallback.
+  return (
+    <div
+      className="rounded-full ring-1 ring-stone-200 shrink-0"
+      style={{ ...colorSwatchStyle(hex), width: size, height: size }}
+    />
+  )
 }
 function SearchBox({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
   return (
@@ -1014,16 +1020,16 @@ function BulkBar({
 }
 /**
  * ColorChips — placeholder swatches для матрицы. MatrixRow не несёт реальные
- * color codes (только cveta_cnt) — рендерим N стилизованных кружочков из
- * deterministic hash-based swatchColor(modelKod#i). При раскрытии в карточке
+ * color codes (только cveta_cnt) — рендерим N нейтральных placeholder-кружочков.
+ * При раскрытии в карточке
  * пользователь увидит реальные цвета.
  */
-function ColorChips({ modelKod, count }: { modelKod: string; count: number }) {
+function ColorChips({ count }: { modelKod: string; count: number }) {
   if (count === 0) return <span className="text-stone-300 text-xs">—</span>
   const visible = Math.min(count, 6)
   return (
     <div className="flex items-center gap-0.5">
-      {Array.from({ length: visible }).map((_, i) => <span key={i} className="rounded-full ring-1 ring-stone-200" style={{ width: 12, height: 12, background: swatchColor(`${modelKod}#${i}`) }} />)}
+      {Array.from({ length: visible }).map((_, i) => <span key={i} className="rounded-full ring-1 ring-stone-200" style={{ ...colorSwatchStyle(null), width: 12, height: 12 }} />)}
       {count > 6 && <span className="text-[10px] text-stone-400 ml-1 tabular-nums">+{count - 6}</span>}
     </div>
   )
@@ -1181,12 +1187,12 @@ function ArtikulyTable({ onRegisterExport }: { onRegisterExport?: (fn: (() => vo
                 <td className="px-3 py-2.5 font-mono text-xs text-stone-600"><CellText title={a.model_kod ?? ""}>{a.model_kod ?? "—"}</CellText></td>
                 <td className="px-3 py-2.5">
                   <div className="flex items-center gap-1.5 min-w-0">
-                    <ColorSwatch colorCode={a.cvet_color_code} size={14} />
+                    <ColorSwatch hex={a.cvet_hex} size={14} />
                     <CellText className="font-mono text-xs text-stone-700" title={a.cvet_color_code ?? ""}>{a.cvet_color_code ?? "—"}</CellText>
                     <CellText className="text-stone-500 text-xs" title={a.cvet_nazvanie ?? ""}>{a.cvet_nazvanie}</CellText>
                   </div>
                 </td>
-                <td className="px-3 py-2.5"><StatusBadge statusId={a.status_id} compact /></td>
+                <td className="px-3 py-2.5"><StatusBadge statusId={a.status_id ?? 0} compact /></td>
                 <td className="px-3 py-2.5 font-mono text-[11px] text-stone-500 tabular-nums"><CellText title={a.nomenklatura_wb != null ? String(a.nomenklatura_wb) : ""}>{a.nomenklatura_wb ?? "—"}</CellText></td>
                 <td className="px-3 py-2.5 font-mono text-[11px] text-stone-500"><CellText title={a.artikul_ozon ?? ""}>{a.artikul_ozon ?? "—"}</CellText></td>
                 <td className="px-3 py-2.5 text-right tabular-nums text-stone-700">{a.tovary_cnt}</td>
@@ -1404,13 +1410,17 @@ function TovaryTable({ onRegisterExport }: { onRegisterExport?: (fn: (() => void
                 <td className="px-3 py-2.5 font-medium text-stone-900 font-mono text-xs"><CellText title={t.model_osnova_kod ?? ""}>{t.model_osnova_kod ?? "—"}</CellText></td>
                 <td className="px-3 py-2.5 font-mono text-xs text-stone-600"><CellText title={t.model_kod ?? ""}>{t.model_kod ?? "—"}</CellText></td>
                 <td className="px-3 py-2.5">
-                  <div className="flex items-center gap-1.5 min-w-0"><ColorSwatch colorCode={t.cvet_color_code} size={14} /><CellText className="font-mono text-xs" title={t.cvet_color_code ?? ""}>{t.cvet_color_code ?? "—"}</CellText></div>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <ColorSwatch hex={t.cvet_hex} size={14} />
+                    <CellText className="font-mono text-xs text-stone-600" title={t.cvet_color_code ?? ""}>{t.cvet_color_code ?? "—"}</CellText>
+                    {t.cvet_ru && <CellText className="text-stone-500 text-xs" title={t.cvet_ru}>{t.cvet_ru}</CellText>}
+                  </div>
                 </td>
                 <td className="px-3 py-2.5 font-mono text-xs"><CellText title={t.razmer ?? ""}>{t.razmer ?? "—"}</CellText></td>
-                <td className="px-3 py-2.5 border-l border-stone-100"><StatusBadge statusId={t.status_id} compact /></td>
-                <td className="px-3 py-2.5"><StatusBadge statusId={t.status_ozon_id} compact /></td>
-                <td className="px-3 py-2.5"><StatusBadge statusId={t.status_sayt_id} compact /></td>
-                <td className="px-3 py-2.5"><StatusBadge statusId={t.status_lamoda_id} compact /></td>
+                <td className="px-3 py-2.5 border-l border-stone-100"><StatusBadge statusId={t.status_id ?? 0} compact /></td>
+                <td className="px-3 py-2.5"><StatusBadge statusId={t.status_ozon_id ?? 0} compact /></td>
+                <td className="px-3 py-2.5"><StatusBadge statusId={t.status_sayt_id ?? 0} compact /></td>
+                <td className="px-3 py-2.5"><StatusBadge statusId={t.status_lamoda_id ?? 0} compact /></td>
               </tr>
             ))}
           </tbody>

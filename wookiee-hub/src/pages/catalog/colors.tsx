@@ -188,7 +188,7 @@ function SwatchOrPhoto({ cvet }: { cvet: CvetRow }) {
       />
     )
   }
-  return <ColorSwatch hex={resolveSwatch(cvet.hex, cvet.color_code)} size={24} />
+  return <ColorSwatch hex={cvet.hex} size={24} />
 }
 
 // ─── Colors list ─────────────────────────────────────────────────────────
