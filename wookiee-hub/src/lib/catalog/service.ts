@@ -2361,6 +2361,38 @@ export async function bulkUpdateArtikulFabrika(
 }
 
 /**
+ * Bulk-delete артикулов. Каскадно удалит привязанные `tovary` (PostgreSQL
+ * cascading FK). Если FK без ON DELETE CASCADE — упадёт с ошибкой, UI
+ * покажет её в alert.
+ *
+ * UI должен показать window.confirm перед вызовом (BulkActionsBar
+ * type='confirm' делает это автоматически).
+ */
+export async function bulkDeleteArtikuly(artikulIds: number[]): Promise<void> {
+  if (artikulIds.length === 0) return
+  const { error } = await supabase
+    .from("artikuly")
+    .delete()
+    .in("id", artikulIds)
+  if (error) throw new Error(error.message)
+}
+
+/**
+ * Bulk-delete tovary (SKU) по списку barkod.
+ *
+ * Каскадно удалит junction-строки `tovary_skleyki_wb/ozon`.
+ * UI должен показать window.confirm перед вызовом.
+ */
+export async function bulkDeleteTovary(barkods: string[]): Promise<void> {
+  if (barkods.length === 0) return
+  const { error } = await supabase
+    .from("tovary")
+    .delete()
+    .in("barkod", barkods)
+  if (error) throw new Error(error.message)
+}
+
+/**
  * Bulk-update status of tovary rows (addressed by barkod) on a specific channel.
  * Channel determines which status field is updated:
  *   wb     → status_id

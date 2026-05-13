@@ -1,10 +1,10 @@
 import React, { useMemo, useState, useCallback, useRef, useEffect } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { Search, X, Plus, Loader2, ChevronDown, ChevronRight } from "lucide-react"
+import { Search, X, Plus, Loader2, ChevronDown, ChevronRight, Trash2, Download, Link2 } from "lucide-react"
 import {
   fetchTovaryRegistry, fetchStatusy, fetchSkleykiWb, fetchSkleykiOzon,
   fetchRazmery,
-  bulkUpdateTovaryStatus, bulkLinkTovaryToSkleyka,
+  bulkUpdateTovaryStatus, bulkLinkTovaryToSkleyka, bulkDeleteTovary,
   updateTovar, updateArtikul,
   getUiPref, setUiPref,
   type TovarRow, type TovarChannel, type SkleykaRow,
@@ -1309,6 +1309,20 @@ export function TovaryPage() {
     }
   }, [linkSkleykaChannel, queryClient, selected])
 
+  // W10.11 — bulk-delete SKU. Confirm рисуется BulkActionsBar-ом (type=confirm).
+  const handleBulkDelete = useCallback(async () => {
+    const barkods = Array.from(selected)
+    if (barkods.length === 0) return
+    try {
+      await bulkDeleteTovary(barkods)
+      await queryClient.invalidateQueries({ queryKey: ["tovary-registry"] })
+      setSelected(new Set())
+    } catch (err) {
+      // eslint-disable-next-line no-alert
+      alert(`Не удалось удалить SKU: ${(err as Error).message}`)
+    }
+  }, [queryClient, selected])
+
   if (isLoading) {
     return <div className="px-6 py-8 text-sm text-stone-400">Загрузка SKU…</div>
   }
@@ -1597,18 +1611,36 @@ export function TovaryPage() {
         actions={[
           {
             id: "link-wb",
+            type: "button",
             label: "Привязать к склейке (WB)",
+            icon: <Link2 className="w-3 h-3" />,
             onClick: () => setLinkSkleykaChannel("wb"),
           },
           {
             id: "link-ozon",
+            type: "button",
             label: "Привязать к склейке (OZON)",
+            icon: <Link2 className="w-3 h-3" />,
             onClick: () => setLinkSkleykaChannel("ozon"),
           },
           {
             id: "export",
+            type: "button",
             label: "Экспорт выбранных",
+            icon: <Download className="w-3 h-3" />,
             onClick: handleBulkExport,
+          },
+          {
+            id: "delete",
+            type: "confirm",
+            label: "Удалить",
+            icon: <Trash2 className="w-3 h-3" />,
+            destructive: true,
+            confirmText: (
+              `Удалить ${selected.size} SKU?\n\n` +
+              `Будут также удалены привязки к склейкам (cascade). Действие необратимо.`
+            ),
+            onClick: () => { void handleBulkDelete() },
           },
         ]}
       />

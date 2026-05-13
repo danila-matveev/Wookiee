@@ -1,9 +1,9 @@
 import { useMemo, useState, useCallback, useEffect, useRef } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Plus, Search, X, ChevronDown, Loader2, ExternalLink, Tag, Download, Factory } from "lucide-react"
+import { Plus, Search, X, ChevronDown, Loader2, ExternalLink, Tag, Download, Factory, Trash2 } from "lucide-react"
 import {
   fetchArtikulyRegistry, fetchStatusy, bulkUpdateArtikulStatus,
-  bulkUpdateArtikulFabrika, fetchFabriki,
+  bulkUpdateArtikulFabrika, bulkDeleteArtikuly, fetchFabriki,
   fetchRazmery, fetchTovaryByArtikul, insertTovar,
   updateArtikul,
   getUiPref, setUiPref,
@@ -885,6 +885,19 @@ export function ArtikulyPage() {
     }
   }, [selectedIds, selectedModelOsnovaIds, queryClient])
 
+  // W10.11 — bulk-delete артикулов. Confirm рисуется самим BulkActionsBar
+  // (type: "confirm"), здесь только выполнение и обновление кэша.
+  const handleBulkDelete = useCallback(async () => {
+    if (selectedIds.length === 0) return
+    try {
+      await bulkDeleteArtikuly(selectedIds)
+      await queryClient.invalidateQueries({ queryKey: ["artikuly-registry"] })
+      setSelected(new Set())
+    } catch (err) {
+      window.alert(`Не удалось удалить артикулы: ${(err as Error).message}`)
+    }
+  }, [selectedIds, queryClient])
+
   // W7.3 — CSV-экспорт выбранных артикулов.  Используем `selected` (Set<artikul>)
   // → filter из data → renderable rows (только колонки, помеченные как видимые).
   const statusNameById = useMemo(() => {
@@ -939,10 +952,12 @@ export function ArtikulyPage() {
   }, [data, selected, statusNameById])
 
   // W10.11/W10.33 — unified BulkActionsBar actions.
-  // Порядок: status (dropdown) → fabrika (dropdown) → export (button).
-  // Bulk-delete будет добавлен в следующем коммите.
+  // Порядок: status (dropdown) → fabrika (dropdown) → export (button) → delete (confirm).
   const bulkActions = useMemo<BulkAction[]>(() => {
     const fabrikiList = fabrikiData ?? []
+    const n = selected.size
+    // Plural artikul-ending: 1 → "", 2-4 → "а", 5+/0 → "ов".
+    const ending = n === 1 ? "" : (n >= 2 && n <= 4 ? "а" : "ов")
     return [
       {
         id: "status",
@@ -984,10 +999,22 @@ export function ArtikulyPage() {
         icon: <Download className="w-3 h-3" />,
         onClick: handleBulkExport,
       },
+      {
+        id: "delete",
+        type: "confirm",
+        label: "Удалить",
+        icon: <Trash2 className="w-3 h-3" />,
+        destructive: true,
+        confirmText: (
+          `Удалить ${n} артикул${ending}?\n\n` +
+          `Это также удалит все SKU этих артикулов (cascade). Действие необратимо.`
+        ),
+        onClick: () => { void handleBulkDelete() },
+      },
     ]
   }, [
-    artikulStatuses, fabrikiData, selectedModelOsnovaIds.length,
-    handleBulkSetStatus, handleBulkSetFabrika, handleBulkExport,
+    artikulStatuses, fabrikiData, selectedModelOsnovaIds.length, selected.size,
+    handleBulkSetStatus, handleBulkSetFabrika, handleBulkExport, handleBulkDelete,
   ])
 
   if (isLoading) {
