@@ -1,5 +1,6 @@
 export type SearchQueryGroup = 'brand' | 'external' | 'cr_general' | 'cr_personal'
 export type SearchQueryStatus = 'active' | 'paused' | 'archived'
+export type SearchQueryEntityType = 'brand' | 'nomenclature' | 'ww_code' | 'other'
 
 export interface SearchQueryRow {
   unified_id: string                      // 'B1' | 'S42'
@@ -14,6 +15,10 @@ export interface SearchQueryRow {
   purpose: string | null
   model_hint: string | null
   creator_ref: string | null              // Phase 1: always null. Phase 2 will populate.
+  // View v2 (2026-05-13) additive columns — optional for backward compat with v1.
+  channel_label?: string | null           // Resolved label from marketing.channels (e.g. «Креаторы» vs slug 'creators')
+  entity_type?: SearchQueryEntityType | null
+  sku_label?: string | null               // Human-readable artikul string (vs numeric artikul_id)
   status: SearchQueryStatus
   created_at: string
   updated_at: string | null
@@ -23,7 +28,7 @@ export interface SearchQueryStatsAgg {
   unified_id: string
   frequency: number
   transitions: number
-  cart_adds: number
+  additions: number
   orders: number
 }
 

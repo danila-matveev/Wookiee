@@ -3,17 +3,15 @@ import { useSearchParams } from "react-router-dom"
 import { Search } from "lucide-react"
 import { usePromoCodes, usePromoStatsWeekly } from "@/hooks/marketing/use-promo-codes"
 import { useChannelLabelLookup } from "@/hooks/marketing/use-channels"
-import { useLastSync } from "@/hooks/marketing/use-sync-log"
 import { useGroupByPref } from "@/hooks/marketing/use-group-by-pref"
 import { QueryStatusBoundary } from "@/components/crm/ui/QueryStatusBoundary"
-import { Badge } from "@/components/crm/ui/Badge"
+import { Badge } from "@/components/marketing/Badge"
 import { SectionHeader } from "@/components/marketing/SectionHeader"
 import { GroupBySelector } from "@/components/marketing/GroupBySelector"
 import { DateRange } from "@/components/marketing/DateRange"
 import { UpdateBar } from "@/components/marketing/UpdateBar"
 import { KpiCard } from "@/components/marketing/KpiCard"
 import type { PromoCodeRow } from "@/types/marketing"
-import { formatDateTime } from "@/lib/format"
 
 const FIRST = '2025-07-28'
 const LAST  = new Date().toISOString().slice(0, 10)
@@ -44,7 +42,6 @@ export function PromoCodesTable() {
 
   const { data: promos = [], isLoading: lp, error: ep } = usePromoCodes()
   const { data: weekly = [], isLoading: lw, error: ew } = usePromoStatsWeekly()
-  const { data: lastSync } = useLastSync('promo_codes_sync')
   const channelLabel = useChannelLabelLookup()
 
   const { value: groupBy, setValue: setGroupBy } = useGroupByPref<PromoGroupBy>('marketing.promo-codes', 'channel')
@@ -114,11 +111,7 @@ export function PromoCodesTable() {
         <KpiCard label="Ср. чек, ₽" value={totals.qty > 0 ? fmtR(Math.round(totals.sales / totals.qty)) : '—'} />
       </div>
 
-      <UpdateBar
-        lastUpdate={lastSync?.finished_at ? formatDateTime(lastSync.finished_at) : undefined}
-        weeksCovered={lastSync?.weeks_covered ?? undefined}
-        status={lastSync?.status === 'failed' ? 'failed' : lastSync?.status === 'success' ? 'success' : 'unknown'}
-      />
+      <UpdateBar job="promocodes" />
 
       <div className="px-6 py-2 border-b border-border flex items-center gap-3 bg-card flex-wrap">
         <div className="relative flex-1 max-w-xs">
@@ -207,7 +200,11 @@ function PromoSectionGroup({ label, rows, collapsed, hideHeader, onToggle, chann
         </tr>
       )}
       {showRows && rows.map((p) => {
-        const tone = p.status === 'expired' ? 'warning' : p.status === 'archived' ? 'secondary' : p.status === 'paused' ? 'info' : p.qty === 0 ? 'secondary' : 'success'
+        const color: 'amber' | 'gray' | 'blue' | 'green' =
+          p.status === 'expired'  ? 'amber' :
+          p.status === 'archived' ? 'gray'  :
+          p.status === 'paused'   ? 'blue'  :
+          p.qty === 0             ? 'gray'  : 'green'
         const lab  = p.status === 'expired' ? 'Истёк' : p.status === 'archived' ? 'Архив' : p.status === 'paused' ? 'На паузе' : p.qty === 0 ? 'Нет данных' : 'Активен'
         const avg  = p.qty > 0 ? Math.round(p.sales / p.qty) : 0
         return (
@@ -217,9 +214,9 @@ function PromoSectionGroup({ label, rows, collapsed, hideHeader, onToggle, chann
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(p.id) } }}
               className="cursor-pointer transition-colors hover:bg-muted/50 focus:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset">
             <td className="px-2 py-2.5"><span className="font-mono text-xs text-foreground">{p.code.length > 24 ? p.code.slice(0, 24) + '…' : p.code}</span></td>
-            <td className="px-2 py-2.5"><Badge tone="secondary">{channelLabel(p.channel)}</Badge></td>
+            <td className="px-2 py-2.5"><Badge color="gray" label={channelLabel(p.channel)} compact /></td>
             <td className="px-2 py-2.5 text-sm tabular-nums text-foreground/80">{p.discount_pct != null ? `${p.discount_pct}%` : '—'}</td>
-            <td className="px-2 py-2.5"><Badge tone={tone}>{lab}</Badge></td>
+            <td className="px-2 py-2.5"><Badge color={color} label={lab} compact /></td>
             <td className="px-2 py-2.5 text-right tabular-nums text-sm font-medium text-foreground">{p.qty > 0 ? fmt(p.qty) : <span className="text-muted-foreground/50">—</span>}</td>
             <td className="px-2 py-2.5 text-right tabular-nums text-sm text-foreground/80">{p.sales > 0 ? fmtR(p.sales) : <span className="text-muted-foreground/50">—</span>}</td>
             <td className="px-2 py-2.5 text-right tabular-nums text-sm text-muted-foreground">{avg > 0 ? fmtR(avg) : <span className="text-muted-foreground/50">—</span>}</td>

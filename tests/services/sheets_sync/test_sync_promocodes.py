@@ -222,6 +222,8 @@ def test_run_mode_specific_calls_fetch_for_each_cabinet():
                                      "start": "", "end": "", "note": ""}}), \
          patch("services.sheets_sync.sync.sync_promocodes.ensure_analytics_sheet",
                return_value=MagicMock()), \
+         patch("services.sheets_sync.sync.sync_promocodes.ensure_db_promos_in_sheets",
+               return_value=0), \
          patch("services.sheets_sync.sync.sync_promocodes._read_pivot_state",
                return_value=({}, {})), \
          patch("services.sheets_sync.sync.sync_promocodes.ensure_analytics_dict_rows",
@@ -267,6 +269,8 @@ def test_run_auto_adds_unknown_uuids_from_api():
                                           "start": "", "end": "", "note": ""}}), \
          patch("services.sheets_sync.sync.sync_promocodes.ensure_analytics_sheet",
                return_value=MagicMock()), \
+         patch("services.sheets_sync.sync.sync_promocodes.ensure_db_promos_in_sheets",
+               return_value=0), \
          patch("services.sheets_sync.sync.sync_promocodes._read_pivot_state",
                return_value=({}, {})), \
          patch("services.sheets_sync.sync.sync_promocodes.ensure_analytics_dict_rows",

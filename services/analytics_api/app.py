@@ -44,9 +44,13 @@ app.add_middleware(
         "http://localhost:5173",
         "http://localhost:5174",
     ],
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+from services.analytics_api.marketing import router as marketing_router  # noqa: E402
+
+app.include_router(marketing_router)
 
 logging.basicConfig(
     level=logging.INFO,

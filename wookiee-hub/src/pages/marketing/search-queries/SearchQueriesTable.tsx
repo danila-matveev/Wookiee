@@ -3,16 +3,14 @@ import { useSearchParams } from "react-router-dom"
 import { Search } from "lucide-react"
 import { useSearchQueries, useSearchQueryStats } from "@/hooks/marketing/use-search-queries"
 import { useChannelLabelLookup } from "@/hooks/marketing/use-channels"
-import { useLastSync } from "@/hooks/marketing/use-sync-log"
 import { useGroupByPref } from "@/hooks/marketing/use-group-by-pref"
 import { QueryStatusBoundary } from "@/components/crm/ui/QueryStatusBoundary"
-import { Badge } from "@/components/crm/ui/Badge"
+import { Badge } from "@/components/marketing/Badge"
 import { SectionHeader } from "@/components/marketing/SectionHeader"
 import { GroupBySelector } from "@/components/marketing/GroupBySelector"
 import { DateRange } from "@/components/marketing/DateRange"
 import { UpdateBar } from "@/components/marketing/UpdateBar"
 import type { SearchQueryRow, SearchQueryStatsAgg } from "@/types/marketing"
-import { formatDateTime } from "@/lib/format"
 
 const FIRST = '2025-07-28'
 const LAST  = new Date().toISOString().slice(0, 10)
@@ -62,7 +60,7 @@ const ZERO_STATS: SearchQueryStatsAgg = {
   unified_id: '',
   frequency: 0,
   transitions: 0,
-  cart_adds: 0,
+  additions: 0,
   orders: 0,
 }
 
@@ -81,7 +79,6 @@ export function SearchQueriesTable() {
 
   const { data: items = [], isLoading: lq, error: eq } = useSearchQueries()
   const { data: statsRows = [], isLoading: ls, error: es } = useSearchQueryStats(dateFrom, dateTo)
-  const { data: lastSync } = useLastSync('search_queries_sync')
   const channelLabel = useChannelLabelLookup()
 
   const statsMap = useMemo(() => {
@@ -147,7 +144,7 @@ export function SearchQueriesTable() {
   const totals = useMemo(() => filtered.reduce(
     (acc, it) => {
       const s = statsMap.get(it.unified_id) ?? ZERO_STATS
-      return { f: acc.f + s.frequency, t: acc.t + s.transitions, a: acc.a + s.cart_adds, o: acc.o + s.orders }
+      return { f: acc.f + s.frequency, t: acc.t + s.transitions, a: acc.a + s.additions, o: acc.o + s.orders }
     },
     { f: 0, t: 0, a: 0, o: 0 },
   ), [filtered, statsMap])
@@ -155,11 +152,7 @@ export function SearchQueriesTable() {
   return (
     <QueryStatusBoundary isLoading={lq || ls} error={eq ?? es}>
       <div className="flex flex-col h-full">
-        <UpdateBar
-          lastUpdate={lastSync?.finished_at ? formatDateTime(lastSync.finished_at) : undefined}
-          weeksCovered={lastSync?.weeks_covered ?? undefined}
-          status={lastSync?.status === 'failed' ? 'failed' : lastSync?.status === 'success' ? 'success' : 'unknown'}
-        />
+        <UpdateBar job="search-queries" />
 
         <div className="px-6 pt-3 pb-2 flex flex-col gap-2 border-b border-border bg-card">
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -313,15 +306,15 @@ function SectionGroup({ icon, label, rows, collapsed, onToggle, statsMap, channe
             <td className="px-2 py-2 text-xs text-muted-foreground truncate">{it.ww_code ?? it.nomenklatura_wb ?? ''}</td>
             <td className="px-2 py-2">
               {it.purpose
-                ? <Badge tone="secondary">{channelLabel(it.purpose)}</Badge>
-                : <span className="text-muted-foreground/60 text-xs">—</span>}
+                ? <Badge color="gray" label={channelLabel(it.purpose)} compact />
+                : <span className="text-stone-400 text-xs">—</span>}
             </td>
             <td className="px-2 py-2 text-xs text-muted-foreground truncate">{it.campaign_name ?? ''}</td>
             <td className="px-2 py-2 text-right tabular-nums text-sm text-foreground/80">{s.frequency > 0 ? fmt(s.frequency) : ''}</td>
             <td className="px-2 py-2 text-right tabular-nums text-sm text-foreground/80">{s.transitions > 0 ? fmt(s.transitions) : ''}</td>
-            <td className="px-2 py-2 text-right tabular-nums text-[11px] text-muted-foreground">{pct(s.cart_adds, s.transitions)}</td>
-            <td className="px-2 py-2 text-right tabular-nums text-sm text-foreground/80">{s.cart_adds > 0 ? fmt(s.cart_adds) : ''}</td>
-            <td className="px-2 py-2 text-right tabular-nums text-[11px] text-muted-foreground">{pct(s.orders, s.cart_adds)}</td>
+            <td className="px-2 py-2 text-right tabular-nums text-[11px] text-muted-foreground">{pct(s.additions, s.transitions)}</td>
+            <td className="px-2 py-2 text-right tabular-nums text-sm text-foreground/80">{s.additions > 0 ? fmt(s.additions) : ''}</td>
+            <td className="px-2 py-2 text-right tabular-nums text-[11px] text-muted-foreground">{pct(s.orders, s.additions)}</td>
             <td className="px-2 py-2 text-right tabular-nums text-sm text-foreground font-medium">{s.orders > 0 ? fmt(s.orders) : ''}</td>
             <td className="px-2 py-2 text-right tabular-nums text-[11px] font-medium text-foreground/80">{pct(s.orders, s.transitions)}</td>
           </tr>
