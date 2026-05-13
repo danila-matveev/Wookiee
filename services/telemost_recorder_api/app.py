@@ -32,6 +32,9 @@ from services.telemost_recorder_api.telegram_client import (
     init_client,
     tg_call,
 )
+from services.telemost_recorder_api.workers.cleanup_worker import (
+    run_forever as cleanup_loop,
+)
 from services.telemost_recorder_api.workers.postprocess_worker import (
     run_forever as postprocess_loop,
 )
@@ -109,11 +112,14 @@ async def _lifespan(app: FastAPI):
     postprocess_task = asyncio.create_task(
         _supervised("postprocess_worker", postprocess_loop), name="postprocess_worker"
     )
+    cleanup_task = asyncio.create_task(
+        _supervised("cleanup_worker", cleanup_loop), name="cleanup_worker"
+    )
     try:
         yield
     finally:
         logger.info("telemost-recorder-api shutting down")
-        for task in (recorder_task, postprocess_task):
+        for task in (recorder_task, postprocess_task, cleanup_task):
             task.cancel()
             try:
                 await task
