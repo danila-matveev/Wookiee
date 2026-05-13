@@ -1585,6 +1585,8 @@ export async function fetchTovaryRegistry(): Promise<TovarRow[]> {
 
 export interface SkleykaDetailSKU {
   tovar_id: number
+  /** W10.23 — нужен для группировки SKU по артикулу в карточке склейки. */
+  artikul_id: number | null
   barkod: string
   razmer: string | null
   artikul: string | null
@@ -1622,10 +1624,10 @@ export async function fetchSkleykaDetail(id: number, channel: 'wb' | 'ozon'): Pr
         tovar_id,
         tovary(
           id, barkod, razmer_id, status_id, status_ozon_id, status_sayt_id, status_lamoda_id,
-          sku_china_size, ozon_product_id, ozon_fbo_sku_id,
+          sku_china_size, ozon_product_id, ozon_fbo_sku_id, artikul_id,
           razmery(nazvanie),
           artikuly(
-            artikul, nomenklatura_wb, artikul_ozon,
+            id, artikul, nomenklatura_wb, artikul_ozon,
             cveta(color_code, cvet, hex),
             modeli(kod, modeli_osnova(kod))
           )
@@ -1656,6 +1658,7 @@ export async function fetchSkleykaDetail(id: number, channel: 'wb' | 'ozon'): Pr
       const a = t.artikuly ?? {}
       return {
         tovar_id: row.tovar_id,
+        artikul_id: t.artikul_id ?? a.id ?? null,
         barkod: t.barkod ?? '',
         razmer: t.razmery?.nazvanie ?? null,
         artikul: a.artikul ?? null,

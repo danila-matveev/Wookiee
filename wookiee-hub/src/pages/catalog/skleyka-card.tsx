@@ -6,6 +6,7 @@ import {
   bulkUnlinkTovaryFromSkleyka,
   deleteSkleyka,
   updateSkleyka,
+  type SkleykaDetailSKU,
 } from "@/lib/catalog/service"
 import { CompletenessRing } from "@/components/catalog/ui/completeness-ring"
 import { StatusBadge } from "@/components/catalog/ui/status-badge"
@@ -91,6 +92,30 @@ export function SkleykaCard({ id, channel, onBack }: SkleykaCardProps) {
       return compareRazmer(a.razmer ?? null, b.razmer ?? null)
     })
   }, [data])
+
+  // W10.23 — группировка SKU по `artikul_id`. Заголовок: «<артикул>/<цвет> · N SKU (S, M, L)».
+  // Внутри группы — те же поля, но размеры уже отсортированы через compareRazmer.
+  const artikulGroups = useMemo(() => {
+    const groups = new Map<string, { key: string; sortKey: string; sku: SkleykaDetailSKU[] }>()
+    for (const row of sortedTovary) {
+      // Если artikul_id отсутствует (теоретически у legacy-данных) — fallback
+      // на сам артикул-строку, чтобы такие SKU всё равно сгруппировались.
+      const key = row.artikul_id != null ? `id:${row.artikul_id}` : `art:${row.artikul ?? row.tovar_id}`
+      const sortKey = (row.artikul ?? "") + "|" + (row.cvet_color_code ?? "")
+      const bucket = groups.get(key)
+      if (bucket) {
+        bucket.sku.push(row)
+      } else {
+        groups.set(key, { key, sortKey, sku: [row] })
+      }
+    }
+    const arr = Array.from(groups.values())
+    arr.sort((a, b) => a.sortKey.localeCompare(b.sortKey, "ru", { numeric: true }))
+    for (const g of arr) {
+      g.sku.sort((a, b) => compareRazmer(a.razmer ?? null, b.razmer ?? null))
+    }
+    return arr
+  }, [sortedTovary])
 
   const allBarkods = useMemo(() => sortedTovary.map((t) => t.barkod), [sortedTovary])
   const allSelected = allBarkods.length > 0 && selected.size === allBarkods.length
@@ -338,112 +363,150 @@ export function SkleykaCard({ id, channel, onBack }: SkleykaCardProps) {
             {tab === "sku" && (
               <div className="bg-white rounded-lg border border-stone-200 overflow-hidden">
                 <div className="px-4 py-2.5 border-b border-stone-200 flex items-center justify-between">
-                  <div className="font-medium text-stone-900">SKU в склейке</div>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={toggleAll}
+                      className="rounded border-stone-300"
+                      style={{ accentColor: "#1C1917" }}
+                      aria-label="Выбрать все SKU"
+                    />
+                    <div className="font-medium text-stone-900">SKU в склейке</div>
+                  </div>
                   <div className="text-xs text-stone-500 tabular-nums">
                     {skuCount} {skuCount === 0 ? "(пусто)" : `из ${MAX_SKU}`}
                   </div>
                 </div>
-                {/* W10.27 — горизонтальный скролл + min-w для SKU-таблицы внутри склейки. */}
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm min-w-[900px]">
-                  <thead className="bg-stone-50/80 border-b border-stone-200">
-                    <tr className="text-left text-[11px] uppercase tracking-wider text-stone-500">
-                      <th className="px-3 py-2 w-8">
-                        <input
-                          type="checkbox"
-                          checked={allSelected}
-                          onChange={toggleAll}
-                          className="rounded border-stone-300 align-middle"
-                          style={{ accentColor: "#1C1917" }}
-                        />
-                      </th>
-                      <th className="px-3 py-2 font-medium">Баркод</th>
-                      <th className="px-3 py-2 font-medium">Артикул</th>
-                      <th className="px-3 py-2 font-medium">Модель</th>
-                      <th className="px-3 py-2 font-medium">Цвет</th>
-                      <th className="px-3 py-2 font-medium">Размер</th>
-                      <th className="px-3 py-2 font-medium">
-                        Статус {channel === "wb" ? "WB" : "OZON"}
-                      </th>
-                      <th className="w-10" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sortedTovary.map((t) => {
-                      const isSel = selected.has(t.barkod)
-                      const status = channel === "wb" ? t.status_id : t.status_ozon_id
+                {/* W10.23 — группировка SKU по артикулу. */}
+                {data.tovary.length === 0 ? (
+                  <div className="px-3 py-8 text-center text-sm text-stone-400 italic">
+                    В этой склейке нет SKU. Добавьте их из реестра /catalog/tovary.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-stone-200">
+                    {artikulGroups.map((group) => {
+                      const head = group.sku[0]
+                      const sizes = group.sku
+                        .map((s) => s.razmer ?? "—")
+                        .filter((s) => s !== "—")
+                      const sizesLabel = sizes.length > 0 ? sizes.join(", ") : "—"
+                      const colorLabel = head.cvet_color_code ?? head.cvet_nazvanie ?? "—"
+                      const artikulKod = head.artikul ?? "—"
                       return (
-                        <tr
-                          key={t.tovar_id}
-                          className={`border-b border-stone-100 last:border-0 group ${
-                            isSel ? "bg-stone-50" : "hover:bg-stone-50/60"
-                          }`}
-                        >
-                          <td className="px-3 py-2">
-                            <input
-                              type="checkbox"
-                              checked={isSel}
-                              onChange={() => toggleOne(t.barkod)}
-                              className="rounded border-stone-300"
-                              style={{ accentColor: "#1C1917" }}
-                            />
-                          </td>
-                          <td className="px-3 py-2">
-                            <CellText className="font-mono text-xs text-stone-700" title={t.barkod}>
-                              {t.barkod}
-                            </CellText>
-                          </td>
-                          <td className="px-3 py-2">
-                            <CellText className="font-mono text-xs text-stone-600" title={t.artikul ?? ""}>
-                              {t.artikul ?? "—"}
-                            </CellText>
-                          </td>
-                          <td className="px-3 py-2">
-                            <CellText className="font-mono text-xs font-medium" title={t.model_osnova_kod ?? ""}>
-                              {t.model_osnova_kod ?? "—"}
-                            </CellText>
-                          </td>
-                          <td className="px-3 py-2">
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              <ColorSwatch hex={t.cvet_hex} size={14} />
-                              <CellText className="font-mono text-xs text-stone-600" title={t.cvet_color_code ?? ""}>
-                                {t.cvet_color_code ?? "—"}
-                              </CellText>
-                              {t.cvet_nazvanie && (
-                                <CellText className="text-stone-500 text-xs" title={t.cvet_nazvanie}>
-                                  {t.cvet_nazvanie}
-                                </CellText>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-3 py-2 font-mono text-xs">{t.razmer ?? "—"}</td>
-                          <td className="px-3 py-2">
-                            <StatusBadge statusId={status ?? 0} compact />
-                          </td>
-                          <td className="px-3 py-2 opacity-0 group-hover:opacity-100">
-                            <button
-                              type="button"
-                              onClick={() => handleUnlinkOne(t.barkod)}
-                              disabled={busy}
-                              title="Отвязать SKU от склейки"
-                              className="p-1 hover:bg-red-50 rounded text-red-600 disabled:opacity-50"
+                        <div key={group.key}>
+                          {/* Group header */}
+                          <div className="px-4 py-2 bg-stone-50/70 border-b border-stone-200 flex items-center gap-2 text-xs">
+                            <ColorSwatch hex={head.cvet_hex} size={14} />
+                            <CellText
+                              className="font-mono font-medium text-stone-800"
+                              title={`${artikulKod} / ${colorLabel}`}
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </td>
-                        </tr>
+                              {artikulKod}/{colorLabel}
+                            </CellText>
+                            <span className="text-stone-400">·</span>
+                            <span className="tabular-nums text-stone-600">
+                              {group.sku.length} SKU
+                            </span>
+                            <span className="text-stone-400">·</span>
+                            <CellText
+                              className="text-stone-500 font-mono"
+                              title={sizesLabel}
+                            >
+                              ({sizesLabel})
+                            </CellText>
+                          </div>
+                          {/* W10.27 — горизонтальный скролл + min-w для SKU-таблицы внутри склейки. */}
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm min-w-[900px]">
+                              <thead className="bg-stone-50/40 border-b border-stone-100">
+                                <tr className="text-left text-[11px] uppercase tracking-wider text-stone-500">
+                                  <th className="px-3 py-1.5 w-8" />
+                                  <th className="px-3 py-1.5 font-medium">Баркод</th>
+                                  <th className="px-3 py-1.5 font-medium">Артикул</th>
+                                  <th className="px-3 py-1.5 font-medium">Модель</th>
+                                  <th className="px-3 py-1.5 font-medium">Цвет</th>
+                                  <th className="px-3 py-1.5 font-medium">Размер</th>
+                                  <th className="px-3 py-1.5 font-medium">
+                                    Статус {channel === "wb" ? "WB" : "OZON"}
+                                  </th>
+                                  <th className="w-10" />
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {group.sku.map((t) => {
+                                  const isSel = selected.has(t.barkod)
+                                  const status = channel === "wb" ? t.status_id : t.status_ozon_id
+                                  return (
+                                    <tr
+                                      key={t.tovar_id}
+                                      className={`border-b border-stone-100 last:border-0 group ${
+                                        isSel ? "bg-stone-50" : "hover:bg-stone-50/60"
+                                      }`}
+                                    >
+                                      <td className="px-3 py-2">
+                                        <input
+                                          type="checkbox"
+                                          checked={isSel}
+                                          onChange={() => toggleOne(t.barkod)}
+                                          className="rounded border-stone-300"
+                                          style={{ accentColor: "#1C1917" }}
+                                        />
+                                      </td>
+                                      <td className="px-3 py-2">
+                                        <CellText className="font-mono text-xs text-stone-700" title={t.barkod}>
+                                          {t.barkod}
+                                        </CellText>
+                                      </td>
+                                      <td className="px-3 py-2">
+                                        <CellText className="font-mono text-xs text-stone-600" title={t.artikul ?? ""}>
+                                          {t.artikul ?? "—"}
+                                        </CellText>
+                                      </td>
+                                      <td className="px-3 py-2">
+                                        <CellText className="font-mono text-xs font-medium" title={t.model_osnova_kod ?? ""}>
+                                          {t.model_osnova_kod ?? "—"}
+                                        </CellText>
+                                      </td>
+                                      <td className="px-3 py-2">
+                                        <div className="flex items-center gap-1.5 min-w-0">
+                                          <ColorSwatch hex={t.cvet_hex} size={14} />
+                                          <CellText className="font-mono text-xs text-stone-600" title={t.cvet_color_code ?? ""}>
+                                            {t.cvet_color_code ?? "—"}
+                                          </CellText>
+                                          {t.cvet_nazvanie && (
+                                            <CellText className="text-stone-500 text-xs" title={t.cvet_nazvanie}>
+                                              {t.cvet_nazvanie}
+                                            </CellText>
+                                          )}
+                                        </div>
+                                      </td>
+                                      <td className="px-3 py-2 font-mono text-xs">{t.razmer ?? "—"}</td>
+                                      <td className="px-3 py-2">
+                                        <StatusBadge statusId={status ?? 0} compact />
+                                      </td>
+                                      <td className="px-3 py-2 opacity-0 group-hover:opacity-100">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleUnlinkOne(t.barkod)}
+                                          disabled={busy}
+                                          title="Отвязать SKU от склейки"
+                                          className="p-1 hover:bg-red-50 rounded text-red-600 disabled:opacity-50"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  )
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
                       )
                     })}
-                    {data.tovary.length === 0 && (
-                      <tr>
-                        <td colSpan={8} className="px-3 py-8 text-center text-sm text-stone-400 italic">
-                          В этой склейке нет SKU. Добавьте их из реестра /catalog/tovary.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                  </table>
-                </div>
+                  </div>
+                )}
               </div>
             )}
 
