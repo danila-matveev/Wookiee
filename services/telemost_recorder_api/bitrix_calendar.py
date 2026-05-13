@@ -15,13 +15,15 @@ from uuid import UUID
 
 import httpx
 
-from services.telemost_recorder_api.config import BITRIX24_WEBHOOK_URL
+from services.telemost_recorder_api.config import (
+    BITRIX24_WEBHOOK_URL,
+    BITRIX_TIMEOUT_SECONDS,
+)
 from services.telemost_recorder_api.db import get_pool
 
 logger = logging.getLogger(__name__)
 
 _LOOKUP_WINDOW_HOURS = 4  # ±2 ч от now()
-_HTTP_TIMEOUT = 15.0
 _BITRIX_RETRIES = 3
 _BITRIX_BACKOFF_BASE = 1.0
 
@@ -121,7 +123,7 @@ async def find_event_by_url(
     resp = None
     for attempt in range(_BITRIX_RETRIES):
         try:
-            async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as c:
+            async with httpx.AsyncClient(timeout=BITRIX_TIMEOUT_SECONDS) as c:
                 resp = await c.get(f"{base}/calendar.event.get.json", params=params)
         except httpx.HTTPError as e:
             logger.warning(

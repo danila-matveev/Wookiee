@@ -62,6 +62,22 @@ LLM_POSTPROCESS_MODEL: str = os.getenv("LLM_POSTPROCESS_MODEL", "google/gemini-2
 LLM_POSTPROCESS_TIMEOUT_SECONDS: int = int(os.getenv("LLM_POSTPROCESS_TIMEOUT_SECONDS", "120"))
 LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 
+# HTTP timeouts for external services. Defaults are tuned per-API:
+# - Telegram: 60s — sendDocument с длинным transcript-файлом (до нескольких MB)
+#   и sendMessage с большой клавиатурой может занимать заметное время на стороне
+#   Bot API.
+# - Notion: 30s — обычный REST с пагинацией, иногда блочные PATCH-и медленные.
+# - Bitrix: 15s — calendar.event.get на коротком окне ±2ч, отвечает быстро,
+#   но REST вебхук Bitrix24 нестабилен под нагрузкой.
+# - Supabase Storage: 120s — заливка opus-аудио до сотен MB по медленному
+#   серверному каналу; 5s (httpx default) обрывал заливки длинных встреч.
+TELEGRAM_TIMEOUT_SECONDS: float = float(os.getenv("TELEGRAM_TIMEOUT_SECONDS", "60"))
+NOTION_TIMEOUT_SECONDS: float = float(os.getenv("NOTION_TIMEOUT_SECONDS", "30"))
+BITRIX_TIMEOUT_SECONDS: float = float(os.getenv("BITRIX_TIMEOUT_SECONDS", "15"))
+SUPABASE_STORAGE_TIMEOUT_SECONDS: float = float(
+    os.getenv("SUPABASE_STORAGE_TIMEOUT_SECONDS", "120")
+)
+
 # Paths
 DATA_DIR: Path = _PROJECT_ROOT / "data" / "telemost"
 # When the API runs inside a container that talks to the host docker.sock,

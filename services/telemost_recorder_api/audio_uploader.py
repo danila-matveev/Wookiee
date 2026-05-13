@@ -11,6 +11,7 @@ import httpx
 
 from services.telemost_recorder_api.config import (
     SUPABASE_SERVICE_KEY,
+    SUPABASE_STORAGE_TIMEOUT_SECONDS,
     SUPABASE_URL,
 )
 
@@ -35,7 +36,7 @@ async def upload_audio_to_storage(
     object_key = f"meetings/{meeting_id}/audio.opus"
     headers = {"Authorization": f"Bearer {SUPABASE_SERVICE_KEY}"}
 
-    async with httpx.AsyncClient(timeout=300) as client:
+    async with httpx.AsyncClient(timeout=SUPABASE_STORAGE_TIMEOUT_SECONDS) as client:
         with audio_path.open("rb") as f:
             upload_url = f"{SUPABASE_URL}/storage/v1/object/{_BUCKET}/{object_key}"
             resp = await client.post(

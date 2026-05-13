@@ -18,6 +18,7 @@ from fastapi import FastAPI
 from services.telemost_recorder_api import internal_routes
 from services.telemost_recorder_api.config import (
     LOG_LEVEL,
+    TELEGRAM_TIMEOUT_SECONDS,
     TELEMOST_PUBLIC_URL,
     TELEMOST_WEBHOOK_SECRET,
 )
@@ -92,7 +93,7 @@ async def _lifespan(app: FastAPI):
     # Initialise the singleton httpx.AsyncClient before anything that touches
     # the Telegram API (including the webhook re-registration below and the
     # workers spawned further down).
-    init_client(timeout=60.0)
+    init_client(timeout=TELEGRAM_TIMEOUT_SECONDS)
     await get_pool()
     if not await docker_ping():
         # Don't block startup — supervised worker logs will keep flagging,

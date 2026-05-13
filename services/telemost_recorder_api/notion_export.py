@@ -21,6 +21,7 @@ from uuid import UUID
 
 import httpx
 
+from services.telemost_recorder_api.config import NOTION_TIMEOUT_SECONDS
 from services.telemost_recorder_api.db import get_pool
 from services.telemost_recorder_api.meetings_repo import build_transcript_text
 
@@ -28,7 +29,6 @@ logger = logging.getLogger(__name__)
 
 _NOTION_API_BASE = "https://api.notion.com/v1"
 _NOTION_VERSION = "2022-06-28"
-_HTTP_TIMEOUT = 30.0
 _NOTION_RETRIES = 4
 _NOTION_BACKOFF_BASE = 1.5
 
@@ -282,7 +282,7 @@ async def _notion_request(
     last_error: str | None = None
     for attempt in range(_NOTION_RETRIES):
         try:
-            async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
+            async with httpx.AsyncClient(timeout=NOTION_TIMEOUT_SECONDS) as client:
                 resp = await client.request(method, url, headers=headers, json=payload)
         except httpx.HTTPError as e:
             last_error = f"network: {e}"

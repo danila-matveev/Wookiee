@@ -101,3 +101,38 @@ def test_optional_tunables_can_be_overridden():
         importlib.reload(config)
         assert config.MAX_PARALLEL_RECORDINGS == 3
         assert config.LOG_LEVEL == "DEBUG"
+
+
+def test_default_timeouts():
+    """Без env-override все 4 таймаута берут дефолты."""
+    with patch.dict(os.environ, _REQUIRED_ENV, clear=True):
+        import importlib
+
+        from services.telemost_recorder_api import config
+
+        importlib.reload(config)
+        assert config.TELEGRAM_TIMEOUT_SECONDS == 60.0
+        assert config.NOTION_TIMEOUT_SECONDS == 30.0
+        assert config.BITRIX_TIMEOUT_SECONDS == 15.0
+        assert config.SUPABASE_STORAGE_TIMEOUT_SECONDS == 120.0
+
+
+def test_timeout_overrides_via_env():
+    """Любой из 4 таймаутов конфигурируется через env-переменную."""
+    env = {
+        **_REQUIRED_ENV,
+        "TELEGRAM_TIMEOUT_SECONDS": "45",
+        "NOTION_TIMEOUT_SECONDS": "20",
+        "BITRIX_TIMEOUT_SECONDS": "10",
+        "SUPABASE_STORAGE_TIMEOUT_SECONDS": "240",
+    }
+    with patch.dict(os.environ, env, clear=True):
+        import importlib
+
+        from services.telemost_recorder_api import config
+
+        importlib.reload(config)
+        assert config.TELEGRAM_TIMEOUT_SECONDS == 45.0
+        assert config.NOTION_TIMEOUT_SECONDS == 20.0
+        assert config.BITRIX_TIMEOUT_SECONDS == 10.0
+        assert config.SUPABASE_STORAGE_TIMEOUT_SECONDS == 240.0
