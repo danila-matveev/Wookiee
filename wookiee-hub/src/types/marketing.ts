@@ -23,7 +23,7 @@ export interface SearchQueryStatsAgg {
   unified_id: string
   frequency: number
   transitions: number
-  cart_adds: number
+  additions: number
   orders: number
 }
 

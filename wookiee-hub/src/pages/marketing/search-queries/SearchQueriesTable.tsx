@@ -60,7 +60,7 @@ const ZERO_STATS: SearchQueryStatsAgg = {
   unified_id: '',
   frequency: 0,
   transitions: 0,
-  cart_adds: 0,
+  additions: 0,
   orders: 0,
 }
 
@@ -144,7 +144,7 @@ export function SearchQueriesTable() {
   const totals = useMemo(() => filtered.reduce(
     (acc, it) => {
       const s = statsMap.get(it.unified_id) ?? ZERO_STATS
-      return { f: acc.f + s.frequency, t: acc.t + s.transitions, a: acc.a + s.cart_adds, o: acc.o + s.orders }
+      return { f: acc.f + s.frequency, t: acc.t + s.transitions, a: acc.a + s.additions, o: acc.o + s.orders }
     },
     { f: 0, t: 0, a: 0, o: 0 },
   ), [filtered, statsMap])
@@ -312,9 +312,9 @@ function SectionGroup({ icon, label, rows, collapsed, onToggle, statsMap, channe
             <td className="px-2 py-2 text-xs text-muted-foreground truncate">{it.campaign_name ?? ''}</td>
             <td className="px-2 py-2 text-right tabular-nums text-sm text-foreground/80">{s.frequency > 0 ? fmt(s.frequency) : ''}</td>
             <td className="px-2 py-2 text-right tabular-nums text-sm text-foreground/80">{s.transitions > 0 ? fmt(s.transitions) : ''}</td>
-            <td className="px-2 py-2 text-right tabular-nums text-[11px] text-muted-foreground">{pct(s.cart_adds, s.transitions)}</td>
-            <td className="px-2 py-2 text-right tabular-nums text-sm text-foreground/80">{s.cart_adds > 0 ? fmt(s.cart_adds) : ''}</td>
-            <td className="px-2 py-2 text-right tabular-nums text-[11px] text-muted-foreground">{pct(s.orders, s.cart_adds)}</td>
+            <td className="px-2 py-2 text-right tabular-nums text-[11px] text-muted-foreground">{pct(s.additions, s.transitions)}</td>
+            <td className="px-2 py-2 text-right tabular-nums text-sm text-foreground/80">{s.additions > 0 ? fmt(s.additions) : ''}</td>
+            <td className="px-2 py-2 text-right tabular-nums text-[11px] text-muted-foreground">{pct(s.orders, s.additions)}</td>
             <td className="px-2 py-2 text-right tabular-nums text-sm text-foreground font-medium">{s.orders > 0 ? fmt(s.orders) : ''}</td>
             <td className="px-2 py-2 text-right tabular-nums text-[11px] font-medium text-foreground/80">{pct(s.orders, s.transitions)}</td>
           </tr>
