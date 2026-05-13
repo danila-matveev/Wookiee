@@ -27,6 +27,8 @@ from services.telemost_recorder_api.error_alerts import install_telegram_alerts
 from services.telemost_recorder_api.routes import health, telegram
 from services.telemost_recorder_api.telegram_client import (
     TelegramAPIError,
+    close_client,
+    init_client,
     tg_call,
 )
 from services.telemost_recorder_api.workers.postprocess_worker import (
@@ -87,6 +89,10 @@ async def _ensure_telegram_webhook() -> None:
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     logger.info("telemost-recorder-api starting up")
+    # Initialise the singleton httpx.AsyncClient before anything that touches
+    # the Telegram API (including the webhook re-registration below and the
+    # workers spawned further down).
+    init_client(timeout=60.0)
     await get_pool()
     if not await docker_ping():
         # Don't block startup — supervised worker logs will keep flagging,
@@ -113,6 +119,9 @@ async def _lifespan(app: FastAPI):
             except asyncio.CancelledError:
                 pass
         await close_pool()
+        # Close the Telegram client last so that any final shutdown calls
+        # from worker cancellation paths still have a live client.
+        await close_client()
 
 
 def create_app() -> FastAPI:

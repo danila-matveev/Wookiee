@@ -6,12 +6,86 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 
+from services.telemost_recorder_api import telegram_client
 from services.telemost_recorder_api.telegram_client import (
     TelegramAPIError,
     tg_call,
     tg_send_document,
     tg_send_message,
 )
+
+
+@pytest.fixture(autouse=True)
+def _ensure_singleton_client():
+    """Initialise the singleton before each test, clean up after.
+
+    Production code runs init_client() in the FastAPI lifespan startup; tests
+    don't go through that, so each test would otherwise hit
+    `RuntimeError: telegram_client not initialized`. Cleanup avoids state
+    leaking between tests (e.g. a test that patches httpx.AsyncClient must
+    not leave a dead singleton behind).
+    """
+    telegram_client.init_client()
+    yield
+    # close_client is async; run via the asyncio loop pytest-asyncio sets up.
+    import asyncio
+
+    asyncio.get_event_loop().run_until_complete(telegram_client.close_client())
+
+
+@pytest.fixture
+def _no_singleton():
+    """Inverse of the autouse fixture: ensure the singleton is absent.
+
+    Used by tests that exercise the uninitialised-state error path.
+    """
+    import asyncio
+
+    asyncio.get_event_loop().run_until_complete(telegram_client.close_client())
+    yield
+    # Don't re-init — the autouse fixture's teardown will run after this and
+    # call close_client() again (idempotent), which is fine.
+
+
+def test_get_client_raises_when_not_initialised(_no_singleton):
+    with pytest.raises(RuntimeError, match="not initialized"):
+        telegram_client.get_client()
+
+
+def test_init_client_is_idempotent():
+    # Autouse fixture already initialised once; call again and verify the
+    # singleton object identity is preserved (i.e. we didn't leak a client).
+    first = telegram_client.get_client()
+    telegram_client.init_client()
+    second = telegram_client.get_client()
+    assert first is second
+
+
+@pytest.mark.asyncio
+async def test_close_client_is_idempotent():
+    # Autouse fixture initialised the client; close it twice — second call
+    # must not raise.
+    await telegram_client.close_client()
+    await telegram_client.close_client()
+    # Re-init so the autouse teardown's close has something to close cleanly.
+    telegram_client.init_client()
+
+
+@pytest.mark.asyncio
+async def test_helpers_use_singleton_client():
+    """tg_call must hit the singleton's .post, not a fresh AsyncClient.
+
+    Regression guard for the original bug where each call spun up a new
+    AsyncClient (TLS handshake + TCP port per call). We verify by patching
+    .post on the singleton instance and confirming exactly one call lands.
+    """
+    singleton = telegram_client.get_client()
+    mock_resp = httpx.Response(200, json={"ok": True, "result": {"ok": 1}})
+    with patch.object(
+        singleton, "post", AsyncMock(return_value=mock_resp)
+    ) as mock_post:
+        await tg_call("getMe")
+    assert mock_post.call_count == 1
 
 
 @pytest.mark.asyncio

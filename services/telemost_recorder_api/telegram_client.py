@@ -3,6 +3,13 @@
 Raises ``TelegramAPIError`` on non-ok responses. Handles message chunking
 (4096 char limit -> 4000 to leave room for the (n/m) prefix) and multipart
 document upload.
+
+Uses a process-wide singleton ``httpx.AsyncClient`` to reuse keep-alive
+connections to api.telegram.org. Without the singleton each call opened a
+fresh TCP+TLS connection, which under bursty workloads (worker progress
+updates, multi-chunk replies) could exhaust local ephemeral ports and added
+~100ms TLS handshake to every call. The singleton is initialised in the
+FastAPI lifespan startup hook and closed on shutdown.
 """
 from __future__ import annotations
 
@@ -17,6 +24,40 @@ logger = logging.getLogger(__name__)
 
 _BASE_URL = f"https://api.telegram.org/bot{TELEMOST_BOT_TOKEN}"
 _CHUNK_SIZE = 4000  # 4096 - prefix headroom
+
+# Process-wide singleton. None before init_client(), httpx.AsyncClient after.
+_client: httpx.AsyncClient | None = None
+
+
+def init_client(timeout: float = 60.0) -> None:
+    """Create the singleton AsyncClient if it doesn't exist yet.
+
+    Idempotent: a second call with the singleton already alive is a no-op,
+    so a misconfigured lifespan can't accidentally leak a client.
+
+    The default timeout (60s) covers the slowest legitimate Bot API call
+    (sendDocument multipart upload of a 20-50 KB transcript file).
+    """
+    global _client
+    if _client is None:
+        _client = httpx.AsyncClient(timeout=timeout)
+
+
+async def close_client() -> None:
+    """Close the singleton AsyncClient if it exists. Idempotent."""
+    global _client
+    if _client is not None:
+        await _client.aclose()
+        _client = None
+
+
+def get_client() -> httpx.AsyncClient:
+    """Return the singleton AsyncClient. Caller must have called init_client()."""
+    if _client is None:
+        raise RuntimeError(
+            "telegram_client not initialized — call init_client() first"
+        )
+    return _client
 
 
 class TelegramAPIError(RuntimeError):
@@ -35,8 +76,8 @@ class TelegramAPIError(RuntimeError):
 async def tg_call(method: str, **payload: Any) -> dict:
     """POST a JSON Bot API method, return the ``result`` field. Raise on error."""
     url = f"{_BASE_URL}/{method}"
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(url, json=payload)
+    client = get_client()
+    resp = await client.post(url, json=payload)
     body = resp.json()
     if not body.get("ok"):
         raise TelegramAPIError(
@@ -113,8 +154,8 @@ async def tg_send_document(
     data: dict[str, Any] = {"chat_id": chat_id}
     if caption:
         data["caption"] = caption
-    async with httpx.AsyncClient(timeout=60) as client:
-        resp = await client.post(url, files=files, data=data)
+    client = get_client()
+    resp = await client.post(url, files=files, data=data)
     body = resp.json()
     if not body.get("ok"):
         raise TelegramAPIError(f"sendDocument failed: {body.get('description')}")
