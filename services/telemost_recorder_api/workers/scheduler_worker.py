@@ -72,6 +72,11 @@ def _parse_event_start(ev: dict[str, Any]) -> datetime | None:
     except ZoneInfoNotFoundError:
         logger.warning("Unknown TZ_FROM %r on Bitrix event %s, using UTC", tz_name, ev.get("ID"))
         tz = timezone.utc
+    # All-day events arrive as just `dd.mm.yyyy` (no time). They're never
+    # video calls and have no meaningful "start within the next 90 seconds"
+    # — skip silently instead of warning every tick.
+    if len(raw) <= 10:
+        return None
     try:
         naive = datetime.strptime(raw, "%d.%m.%Y %H:%M:%S")
     except ValueError:
