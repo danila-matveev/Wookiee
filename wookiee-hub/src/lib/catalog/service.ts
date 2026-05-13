@@ -2318,6 +2318,49 @@ export async function updateTovar(id: number, patch: TovarPatch): Promise<void> 
 }
 
 /**
+ * Bulk-смена фабрики у моделей, к которым относятся выбранные артикулы.
+ *
+ * ВАЖНО: `fabrika_id` хранится на `modeli_osnova`, а не на `artikuly`.
+ * Поэтому функция:
+ *   1) резолвит artikul.id → modeli.model_osnova_id (через FK `modeli`),
+ *   2) обновляет `modeli_osnova.fabrika_id` для всех уникальных
+ *      `model_osnova_id`, найденных среди выбранных артикулов.
+ *
+ * Side-effect: если у одной модели N артикулов и пользователь выбрал
+ * только часть — фабрика всё равно меняется на ВСЕЙ модели (так как поле
+ * живёт на ней).  UI должен предупреждать об этом перед вызовом.
+ *
+ * Категория аналогична фабрике (тоже на modeli_osnova), но из соображений
+ * безопасности bulk-смена категории на артикул-уровне НЕ реализована —
+ * категория сильнее влияет на структуру атрибутов модели и должна меняться
+ * прицельно на model-card.tsx.
+ */
+export async function bulkUpdateArtikulFabrika(
+  artikulIds: number[],
+  fabrikaId: number,
+): Promise<void> {
+  if (artikulIds.length === 0) return
+  // 1) artikuly.id → model_id → modeli.model_osnova_id
+  const { data: artRows, error: artErr } = await supabase
+    .from("artikuly")
+    .select("model_id, modeli(model_osnova_id)")
+    .in("id", artikulIds)
+  if (artErr) throw new Error(artErr.message)
+  const osnovaIds = new Set<number>()
+  for (const r of (artRows ?? []) as any[]) {
+    const oid = r.modeli?.model_osnova_id
+    if (typeof oid === "number") osnovaIds.add(oid)
+  }
+  if (osnovaIds.size === 0) return
+  // 2) bulk-update modeli_osnova.fabrika_id для уникальных моделей.
+  const { error } = await supabase
+    .from("modeli_osnova")
+    .update({ fabrika_id: fabrikaId })
+    .in("id", Array.from(osnovaIds))
+  if (error) throw new Error(error.message)
+}
+
+/**
  * Bulk-update status of tovary rows (addressed by barkod) on a specific channel.
  * Channel determines which status field is updated:
  *   wb     → status_id

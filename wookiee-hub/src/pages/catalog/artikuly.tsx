@@ -1,8 +1,9 @@
 import { useMemo, useState, useCallback, useEffect, useRef } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Plus, Search, X, ChevronDown, Loader2, ExternalLink, Tag, Download } from "lucide-react"
+import { Plus, Search, X, ChevronDown, Loader2, ExternalLink, Tag, Download, Factory } from "lucide-react"
 import {
   fetchArtikulyRegistry, fetchStatusy, bulkUpdateArtikulStatus,
+  bulkUpdateArtikulFabrika, fetchFabriki,
   fetchRazmery, fetchTovaryByArtikul, insertTovar,
   updateArtikul,
   getUiPref, setUiPref,
@@ -637,6 +638,13 @@ export function ArtikulyPage() {
   const [drillDown, setDrillDown] = useState<ArtikulRow | null>(null)
   // W10.6 — single-click на строку открывает полноценную карточку артикула.
   const [openArtikulId, setOpenArtikulId] = useState<number | null>(null)
+
+  // W10.11 — fabriki для bulk-fabrika dropdown.
+  const { data: fabrikiData } = useQuery({
+    queryKey: ["catalog", "fabriki"],
+    queryFn: fetchFabriki,
+    staleTime: 5 * 60 * 1000,
+  })
   // W1.5 — drag-resize колонок + persist через ui_preferences. Регистрируем все
   // возможные колонки (visibility управляется ColumnsManager-ом отдельно).
   const { widths: colWidths, bindResizer } = useResizableColumns(
@@ -805,6 +813,18 @@ export function ArtikulyPage() {
     return ids
   }, [data, selected])
 
+  // Resolve selected artikul rows → unique model_osnova_id (для bulk-fabrika,
+  // которая хранится на modeli_osnova). Если выбранные артикулы принадлежат
+  // N моделям, обновим fabrika_id у всех N моделей одним запросом.
+  const selectedModelOsnovaIds = useMemo<number[]>(() => {
+    if (!data || selected.size === 0) return []
+    const ids = new Set<number>()
+    for (const a of data) {
+      if (selected.has(a.artikul) && a.model_osnova_id != null) ids.add(a.model_osnova_id)
+    }
+    return Array.from(ids)
+  }, [data, selected])
+
   const handleBulkSetStatus = useCallback(async (statusId: number) => {
     if (selectedIds.length === 0) return
     try {
@@ -837,6 +857,33 @@ export function ArtikulyPage() {
     () => ({ onUpdate: onUpdateArtikul, onUpdateColor: onUpdateArtikulColor }),
     [onUpdateArtikul, onUpdateArtikulColor],
   )
+
+  // W10.11 — bulk-смена fabrika. Артикул напрямую не имеет fabrika_id —
+  // поле живёт на modeli_osnova. Поэтому функция обновляет модели, к которым
+  // относятся выбранные артикулы.  Это значит: если выбраны 3 артикула одной
+  // модели, изменение применится ко ВСЕМ артикулам этой модели.  В confirm-е
+  // подсказываем число затронутых моделей.
+  const handleBulkSetFabrika = useCallback(async (fabrikaId: number) => {
+    if (selectedModelOsnovaIds.length === 0) return
+    const modelsCount = selectedModelOsnovaIds.length
+    const msg = (
+      `Сменить фабрику для ${modelsCount} ` +
+      `модел${modelsCount === 1 ? "и" : "ей"}?\n\n` +
+      `Внимание: фабрика хранится на модели, поэтому изменение применится ` +
+      `ко всем артикулам этих моделей (не только выбранным).`
+    )
+    // eslint-disable-next-line no-alert
+    if (!window.confirm(msg)) return
+    try {
+      await bulkUpdateArtikulFabrika(selectedIds, fabrikaId)
+      await queryClient.invalidateQueries({ queryKey: ["artikuly-registry"] })
+      // Также инвалидируем matrix (modeli_osnova) — она может использоваться рядом.
+      await queryClient.invalidateQueries({ queryKey: ["matrix"] })
+      setSelected(new Set())
+    } catch (err) {
+      window.alert(`Не удалось сменить фабрику: ${(err as Error).message}`)
+    }
+  }, [selectedIds, selectedModelOsnovaIds, queryClient])
 
   // W7.3 — CSV-экспорт выбранных артикулов.  Используем `selected` (Set<artikul>)
   // → filter из data → renderable rows (только колонки, помеченные как видимые).
@@ -891,36 +938,57 @@ export function ArtikulyPage() {
     })
   }, [data, selected, statusNameById])
 
-  // W10.11/W10.33 — unified BulkActionsBar actions (status + export).
-  // Fabrika / delete будут добавлены в последующих коммитах.
-  const bulkActions = useMemo<BulkAction[]>(() => [
-    {
-      id: "status",
-      type: "dropdown",
-      label: "Изменить статус",
-      icon: <Tag className="w-3 h-3" />,
-      popoverTitle: "Статус артикула",
-      emptyText: "Нет статусов",
-      options: artikulStatuses.map((s) => ({
-        id: s.id,
-        label: (
-          <StatusBadge
-            status={{ nazvanie: s.nazvanie, color: s.color }}
-            compact
-            size="sm"
-          />
-        ),
-      })),
-      onSelect: (id) => { void handleBulkSetStatus(Number(id)) },
-    },
-    {
-      id: "export",
-      type: "button",
-      label: "Экспорт выбранных",
-      icon: <Download className="w-3 h-3" />,
-      onClick: handleBulkExport,
-    },
-  ], [artikulStatuses, handleBulkSetStatus, handleBulkExport])
+  // W10.11/W10.33 — unified BulkActionsBar actions.
+  // Порядок: status (dropdown) → fabrika (dropdown) → export (button).
+  // Bulk-delete будет добавлен в следующем коммите.
+  const bulkActions = useMemo<BulkAction[]>(() => {
+    const fabrikiList = fabrikiData ?? []
+    return [
+      {
+        id: "status",
+        type: "dropdown",
+        label: "Изменить статус",
+        icon: <Tag className="w-3 h-3" />,
+        popoverTitle: "Статус артикула",
+        emptyText: "Нет статусов",
+        options: artikulStatuses.map((s) => ({
+          id: s.id,
+          label: (
+            <StatusBadge
+              status={{ nazvanie: s.nazvanie, color: s.color }}
+              compact
+              size="sm"
+            />
+          ),
+        })),
+        onSelect: (id) => { void handleBulkSetStatus(Number(id)) },
+      },
+      {
+        id: "fabrika",
+        type: "dropdown",
+        label: "Сменить фабрику",
+        icon: <Factory className="w-3 h-3" />,
+        popoverTitle: "Производитель (модели)",
+        emptyText: "Нет фабрик в справочнике",
+        disabled: selectedModelOsnovaIds.length === 0,
+        options: fabrikiList.map((f) => ({
+          id: f.id,
+          label: <span className="text-xs text-stone-700">{f.nazvanie}</span>,
+        })),
+        onSelect: (id) => { void handleBulkSetFabrika(Number(id)) },
+      },
+      {
+        id: "export",
+        type: "button",
+        label: "Экспорт выбранных",
+        icon: <Download className="w-3 h-3" />,
+        onClick: handleBulkExport,
+      },
+    ]
+  }, [
+    artikulStatuses, fabrikiData, selectedModelOsnovaIds.length,
+    handleBulkSetStatus, handleBulkSetFabrika, handleBulkExport,
+  ])
 
   if (isLoading) {
     return <div className="px-6 py-8 text-sm text-stone-400">Загрузка артикулов…</div>
