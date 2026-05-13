@@ -3101,3 +3101,204 @@ export async function fetchAuditFor(
   if (error) throw new Error(error.message)
   return (data ?? []) as AuditEntry[]
 }
+
+// ─── W10.6: ArtikulDetail — карточка артикула ───────────────────────────────
+//
+// Используется в ArtikulDrawer (`pages/catalog/artikul-card.tsx`). Возвращает
+// один артикул + его модель/цвет + список SKU (tovary) для вкладки «SKU».
+// Аналог fetchModelDetail, но в скоупе одного артикула.
+
+export interface ArtikulDetail {
+  id: number
+  artikul: string
+  model_id: number | null
+  model_kod: string | null
+  model_osnova_id: number | null
+  model_osnova_kod: string | null
+  nazvanie_etiketka: string | null
+  cvet_id: number | null
+  cvet_color_code: string | null
+  cvet_nazvanie: string | null
+  cvet_hex: string | null
+  status_id: number | null
+  status_nazvanie: string | null
+  status_color: string | null
+  nomenklatura_wb: number | null
+  artikul_ozon: string | null
+  kategoriya: string | null
+  kategoriya_id: number | null
+  kollekciya: string | null
+  fabrika: string | null
+  created_at: string | null
+  updated_at: string | null
+  tovary: ArtTovar[]
+}
+
+export async function fetchArtikulDetail(id: number): Promise<ArtikulDetail | null> {
+  const { data, error } = await supabase
+    .from("artikuly")
+    .select(`
+      id, artikul, model_id, cvet_id, status_id, nomenklatura_wb, artikul_ozon,
+      created_at, updated_at,
+      cveta(id, color_code, cvet, hex),
+      statusy(nazvanie, color),
+      modeli(
+        id, kod, model_osnova_id,
+        modeli_osnova(
+          id, kod, nazvanie_etiketka, kategoriya_id,
+          kategorii(nazvanie),
+          kollekcii(nazvanie),
+          fabriki(nazvanie)
+        )
+      ),
+      tovary(
+        id, barkod, razmer_id, status_id, status_ozon_id, status_sayt_id,
+        status_lamoda_id, sku_china_size, ozon_product_id, ozon_fbo_sku_id,
+        lamoda_seller_sku,
+        razmery(nazvanie)
+      )
+    `)
+    .eq("id", id)
+    .single()
+  if (error) {
+    if (error.code === "PGRST116") return null
+    throw error
+  }
+
+  const raw = data as any
+  return {
+    id: raw.id,
+    artikul: raw.artikul,
+    model_id: raw.model_id,
+    model_kod: raw.modeli?.kod ?? null,
+    model_osnova_id: raw.modeli?.model_osnova_id ?? null,
+    model_osnova_kod: raw.modeli?.modeli_osnova?.kod ?? null,
+    nazvanie_etiketka: raw.modeli?.modeli_osnova?.nazvanie_etiketka ?? null,
+    cvet_id: raw.cvet_id,
+    cvet_color_code: raw.cveta?.color_code ?? null,
+    cvet_nazvanie: raw.cveta?.cvet ?? null,
+    cvet_hex: raw.cveta?.hex ?? null,
+    status_id: raw.status_id,
+    status_nazvanie: raw.statusy?.nazvanie ?? null,
+    status_color: raw.statusy?.color ?? null,
+    nomenklatura_wb: raw.nomenklatura_wb,
+    artikul_ozon: raw.artikul_ozon,
+    kategoriya: raw.modeli?.modeli_osnova?.kategorii?.nazvanie ?? null,
+    kategoriya_id: raw.modeli?.modeli_osnova?.kategoriya_id ?? null,
+    kollekciya: raw.modeli?.modeli_osnova?.kollekcii?.nazvanie ?? null,
+    fabrika: raw.modeli?.modeli_osnova?.fabriki?.nazvanie ?? null,
+    created_at: raw.created_at,
+    updated_at: raw.updated_at,
+    tovary: (raw.tovary ?? []).map((t: any) => ({
+      id: t.id,
+      barkod: t.barkod,
+      razmer_id: t.razmer_id,
+      razmer_nazvanie: t.razmery?.nazvanie ?? null,
+      status_id: t.status_id,
+      status_ozon_id: t.status_ozon_id,
+      status_sayt_id: t.status_sayt_id,
+      status_lamoda_id: t.status_lamoda_id,
+      sku_china_size: t.sku_china_size,
+      ozon_product_id: t.ozon_product_id,
+      ozon_fbo_sku_id: t.ozon_fbo_sku_id,
+      lamoda_seller_sku: t.lamoda_seller_sku,
+    } as ArtTovar)),
+  } as ArtikulDetail
+}
+
+// ─── W10.32: TovarDetail — карточка SKU ──────────────────────────────────────
+//
+// Используется в SkuDrawer (`pages/catalog/sku-card.tsx`). Возвращает один SKU
+// с raw-ссылкой на артикул/модель/цвет/размер. Статусы по 4 каналам — id-only,
+// имена резолвятся через fetchStatusy() на клиенте.
+
+export interface TovarDetail {
+  id: number
+  barkod: string
+  barkod_gs1: string | null
+  barkod_gs2: string | null
+  barkod_perehod: string | null
+  artikul_id: number | null
+  artikul: string | null
+  model_id: number | null
+  model_kod: string | null
+  model_osnova_id: number | null
+  model_osnova_kod: string | null
+  nazvanie_etiketka: string | null
+  cvet_id: number | null
+  cvet_color_code: string | null
+  cvet_nazvanie: string | null
+  cvet_hex: string | null
+  razmer_id: number | null
+  razmer_nazvanie: string | null
+  status_id: number | null
+  status_ozon_id: number | null
+  status_sayt_id: number | null
+  status_lamoda_id: number | null
+  sku_china_size: string | null
+  ozon_product_id: number | null
+  ozon_fbo_sku_id: number | null
+  lamoda_seller_sku: string | null
+  nomenklatura_wb: number | null
+  artikul_ozon: string | null
+  created_at: string | null
+}
+
+export async function fetchTovarDetail(id: number): Promise<TovarDetail | null> {
+  const { data, error } = await supabase
+    .from("tovary")
+    .select(`
+      id, barkod, barkod_gs1, barkod_gs2, barkod_perehod, artikul_id, razmer_id,
+      status_id, status_ozon_id, status_sayt_id, status_lamoda_id,
+      sku_china_size, ozon_product_id, ozon_fbo_sku_id, lamoda_seller_sku,
+      created_at,
+      razmery(nazvanie),
+      artikuly(
+        id, artikul, nomenklatura_wb, artikul_ozon, cvet_id,
+        cveta(color_code, cvet, hex),
+        modeli(
+          id, kod, model_osnova_id,
+          modeli_osnova(kod, nazvanie_etiketka)
+        )
+      )
+    `)
+    .eq("id", id)
+    .single()
+  if (error) {
+    if (error.code === "PGRST116") return null
+    throw error
+  }
+
+  const t = data as any
+  return {
+    id: t.id,
+    barkod: t.barkod,
+    barkod_gs1: t.barkod_gs1 ?? null,
+    barkod_gs2: t.barkod_gs2 ?? null,
+    barkod_perehod: t.barkod_perehod ?? null,
+    artikul_id: t.artikul_id,
+    artikul: t.artikuly?.artikul ?? null,
+    model_id: t.artikuly?.modeli?.id ?? null,
+    model_kod: t.artikuly?.modeli?.kod ?? null,
+    model_osnova_id: t.artikuly?.modeli?.model_osnova_id ?? null,
+    model_osnova_kod: t.artikuly?.modeli?.modeli_osnova?.kod ?? null,
+    nazvanie_etiketka: t.artikuly?.modeli?.modeli_osnova?.nazvanie_etiketka ?? null,
+    cvet_id: t.artikuly?.cvet_id ?? null,
+    cvet_color_code: t.artikuly?.cveta?.color_code ?? null,
+    cvet_nazvanie: t.artikuly?.cveta?.cvet ?? null,
+    cvet_hex: t.artikuly?.cveta?.hex ?? null,
+    razmer_id: t.razmer_id ?? null,
+    razmer_nazvanie: t.razmery?.nazvanie ?? null,
+    status_id: t.status_id,
+    status_ozon_id: t.status_ozon_id,
+    status_sayt_id: t.status_sayt_id,
+    status_lamoda_id: t.status_lamoda_id,
+    sku_china_size: t.sku_china_size,
+    ozon_product_id: t.ozon_product_id,
+    ozon_fbo_sku_id: t.ozon_fbo_sku_id,
+    lamoda_seller_sku: t.lamoda_seller_sku,
+    nomenklatura_wb: t.artikuly?.nomenklatura_wb ?? null,
+    artikul_ozon: t.artikuly?.artikul_ozon ?? null,
+    created_at: t.created_at,
+  }
+}
