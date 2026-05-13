@@ -56,6 +56,27 @@ const ROWS_FIXTURE: SearchQueryRow[] = [
     created_at: '2026-05-01T00:00:00Z',
     updated_at: '2026-05-01T00:00:00Z',
   },
+  // View v2 row: includes channel_label / entity_type / sku_label
+  {
+    unified_id: 'S303',
+    source_id: 303,
+    source_table: 'substitute_articles',
+    group_kind: 'cr_general',
+    query_text: 'WW777',
+    artikul_id: 777,
+    nomenklatura_wb: null,
+    ww_code: 'WW777',
+    campaign_name: null,
+    purpose: 'creators',
+    model_hint: 'wendy',
+    creator_ref: null,
+    channel_label: 'Креаторы',
+    entity_type: 'ww_code',
+    sku_label: 'wendy/777',
+    status: 'active',
+    created_at: '2026-05-01T00:00:00Z',
+    updated_at: '2026-05-01T00:00:00Z',
+  },
 ]
 
 function wrapper({ children }: { children: React.ReactNode }) {
@@ -200,6 +221,77 @@ describe('SearchQueryDetailPanel — funnel block', () => {
     // CRs avoid div-by-zero → render "—"
     const dashes = f.getAllByText('—')
     expect(dashes.length).toBe(3) // 3 CR rows when denominators are 0
+  })
+})
+
+describe('SearchQueryDetailPanel — view v2 fields (channel_label, sku_label)', () => {
+  beforeEach(() => {
+    mutateMock.mockClear()
+    weeklyFixture = []
+  })
+
+  it('prefers channel_label over purpose slug in the badge when present', () => {
+    render(
+      <SearchQueryDetailPanel
+        unifiedId="S303"
+        dateFrom="2026-04-01"
+        dateTo="2026-05-12"
+        onClose={() => {}}
+        mode="inline"
+      />,
+      { wrapper },
+    )
+    // Resolved label from marketing.channels — not the raw slug
+    expect(screen.getByText('Креаторы')).toBeInTheDocument()
+    expect(screen.queryByText('creators')).toBeNull()
+  })
+
+  it('falls back to purpose slug when channel_label is absent (v1 row)', () => {
+    render(
+      <SearchQueryDetailPanel
+        unifiedId="S101"
+        dateFrom="2026-04-01"
+        dateTo="2026-05-12"
+        onClose={() => {}}
+        mode="inline"
+      />,
+      { wrapper },
+    )
+    // S101 has purpose='bloggers' and no channel_label
+    expect(screen.getByText('bloggers')).toBeInTheDocument()
+  })
+
+  it('prefers sku_label over artikul_id when present', () => {
+    render(
+      <SearchQueryDetailPanel
+        unifiedId="S303"
+        dateFrom="2026-04-01"
+        dateTo="2026-05-12"
+        onClose={() => {}}
+        mode="inline"
+      />,
+      { wrapper },
+    )
+    // sku_label shown under 'Артикул', artikul_id row absent
+    expect(screen.getByText('Артикул')).toBeInTheDocument()
+    expect(screen.getByText('wendy/777')).toBeInTheDocument()
+    expect(screen.queryByText('Артикул ID')).toBeNull()
+    expect(screen.queryByText('777')).toBeNull()
+  })
+
+  it('falls back to artikul_id when sku_label is absent (v1 row)', () => {
+    render(
+      <SearchQueryDetailPanel
+        unifiedId="S101"
+        dateFrom="2026-04-01"
+        dateTo="2026-05-12"
+        onClose={() => {}}
+        mode="inline"
+      />,
+      { wrapper },
+    )
+    expect(screen.getByText('Артикул ID')).toBeInTheDocument()
+    expect(screen.getByText('555')).toBeInTheDocument()
   })
 })
 

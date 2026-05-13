@@ -71,11 +71,13 @@ export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose, m
           {updateStatus.isError && (
             <span className="text-xs text-danger">Не удалось сохранить статус</span>
           )}
-          {item.purpose && <Badge color="gray" label={item.purpose} compact />}
+          {(item.channel_label || item.purpose) && (
+            <Badge color="gray" label={(item.channel_label || item.purpose)!} compact />
+          )}
           {item.campaign_name && <Badge color="blue" label={item.campaign_name} compact />}
         </div>
 
-        {(item.nomenklatura_wb || item.ww_code || item.artikul_id != null || item.model_hint) && (
+        {(item.nomenklatura_wb || item.ww_code || item.sku_label || item.artikul_id != null || item.model_hint) && (
           <div className="bg-muted/30 rounded-md border border-border px-3 py-2 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
             {item.nomenklatura_wb && (
               <>
@@ -89,7 +91,12 @@ export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose, m
                 <span className="font-mono text-foreground/80 text-right">{item.ww_code}</span>
               </>
             )}
-            {item.artikul_id != null && (
+            {item.sku_label ? (
+              <>
+                <span className="text-muted-foreground">Артикул</span>
+                <span className="font-mono text-foreground/80 text-right">{item.sku_label}</span>
+              </>
+            ) : item.artikul_id != null && (
               <>
                 <span className="text-muted-foreground">Артикул ID</span>
                 <span className="text-foreground/80 text-right">{item.artikul_id}</span>
