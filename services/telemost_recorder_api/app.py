@@ -22,6 +22,7 @@ from services.telemost_recorder_api.config import (
     TELEMOST_WEBHOOK_SECRET,
 )
 from services.telemost_recorder_api.db import close_pool, get_pool
+from services.telemost_recorder_api.docker_client import docker_ping
 from services.telemost_recorder_api.error_alerts import install_telegram_alerts
 from services.telemost_recorder_api.routes import health, telegram
 from services.telemost_recorder_api.telegram_client import (
@@ -87,6 +88,13 @@ async def _ensure_telegram_webhook() -> None:
 async def _lifespan(app: FastAPI):
     logger.info("telemost-recorder-api starting up")
     await get_pool()
+    if not await docker_ping():
+        # Don't block startup — supervised worker logs will keep flagging,
+        # and Docker's restart-policy can recycle the container if needed.
+        # But scream loud now so the operator sees it on first boot.
+        logger.critical(
+            "docker.sock unreachable on startup; recorder spawns will fail"
+        )
     await _ensure_telegram_webhook()
     recorder_task = asyncio.create_task(
         _supervised("recorder_worker", recorder_loop), name="recorder_worker"

@@ -1,12 +1,15 @@
 """Tests for the Docker SDK wrapper used to spawn recorder containers."""
 from __future__ import annotations
 
+import asyncio
+import time
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
 
 from services.telemost_recorder_api.docker_client import (
+    docker_ping,
     list_orphan_containers,
     monitor_container,
     spawn_recorder_container,
@@ -123,3 +126,48 @@ def test_stop_container_swallows_not_found():
         return_value=fake_client,
     ):
         stop_container("missing_container")  # must not raise
+
+
+@pytest.mark.asyncio
+async def test_docker_ping_returns_true_when_reachable():
+    """When docker.from_env().ping() returns True, docker_ping must return True."""
+    fake_client = MagicMock()
+    fake_client.ping.return_value = True
+
+    with patch(
+        "services.telemost_recorder_api.docker_client.docker.from_env",
+        return_value=fake_client,
+    ):
+        result = await docker_ping()
+
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_docker_ping_returns_false_on_exception():
+    """When docker.from_env() raises (sock missing/timeout), docker_ping returns False."""
+    from docker.errors import DockerException
+
+    with patch(
+        "services.telemost_recorder_api.docker_client.docker.from_env",
+        side_effect=DockerException("docker.sock not reachable"),
+    ):
+        result = await docker_ping()
+
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_docker_ping_returns_false_on_timeout(monkeypatch):
+    """When docker.ping() hangs longer than 5s, docker_ping returns False
+    without waiting forever."""
+    fake_client = MagicMock()
+    # Simulate hang — synchronous sleep inside the thread executor.
+    fake_client.ping.side_effect = lambda: time.sleep(10)
+    monkeypatch.setattr(
+        "services.telemost_recorder_api.docker_client.docker.from_env",
+        lambda: fake_client,
+    )
+    # Bound the test itself so a regression doesn't hang CI for 10s.
+    result = await asyncio.wait_for(docker_ping(), timeout=7)
+    assert result is False
