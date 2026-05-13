@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react"
 import { X } from "lucide-react"
 import { Drawer } from "@/components/crm/ui/Drawer"
-import { Badge } from "@/components/crm/ui/Badge"
+import { Badge } from "@/components/marketing/Badge"
 import { EmptyState } from "@/components/crm/ui/EmptyState"
 import { StatusEditor } from "@/components/marketing/StatusEditor"
 import { useSearchQueries, useSearchQueryWeekly, useUpdateSearchQueryStatus } from "@/hooks/marketing/use-search-queries"
@@ -71,8 +71,8 @@ export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose, m
           {updateStatus.isError && (
             <span className="text-xs text-danger">Не удалось сохранить статус</span>
           )}
-          {item.purpose && <Badge tone="secondary">{item.purpose}</Badge>}
-          {item.campaign_name && <Badge tone="info">{item.campaign_name}</Badge>}
+          {item.purpose && <Badge color="gray" label={item.purpose} compact />}
+          {item.campaign_name && <Badge color="blue" label={item.campaign_name} compact />}
         </div>
 
         {(item.nomenklatura_wb || item.ww_code || item.artikul_id != null || item.model_hint) && (

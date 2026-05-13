@@ -5,7 +5,7 @@ import { usePromoCodes, usePromoStatsWeekly } from "@/hooks/marketing/use-promo-
 import { useChannelLabelLookup } from "@/hooks/marketing/use-channels"
 import { useGroupByPref } from "@/hooks/marketing/use-group-by-pref"
 import { QueryStatusBoundary } from "@/components/crm/ui/QueryStatusBoundary"
-import { Badge } from "@/components/crm/ui/Badge"
+import { Badge } from "@/components/marketing/Badge"
 import { SectionHeader } from "@/components/marketing/SectionHeader"
 import { GroupBySelector } from "@/components/marketing/GroupBySelector"
 import { DateRange } from "@/components/marketing/DateRange"
@@ -200,7 +200,11 @@ function PromoSectionGroup({ label, rows, collapsed, hideHeader, onToggle, chann
         </tr>
       )}
       {showRows && rows.map((p) => {
-        const tone = p.status === 'expired' ? 'warning' : p.status === 'archived' ? 'secondary' : p.status === 'paused' ? 'info' : p.qty === 0 ? 'secondary' : 'success'
+        const color: 'amber' | 'gray' | 'blue' | 'green' =
+          p.status === 'expired'  ? 'amber' :
+          p.status === 'archived' ? 'gray'  :
+          p.status === 'paused'   ? 'blue'  :
+          p.qty === 0             ? 'gray'  : 'green'
         const lab  = p.status === 'expired' ? 'Истёк' : p.status === 'archived' ? 'Архив' : p.status === 'paused' ? 'На паузе' : p.qty === 0 ? 'Нет данных' : 'Активен'
         const avg  = p.qty > 0 ? Math.round(p.sales / p.qty) : 0
         return (
@@ -210,9 +214,9 @@ function PromoSectionGroup({ label, rows, collapsed, hideHeader, onToggle, chann
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(p.id) } }}
               className="cursor-pointer transition-colors hover:bg-muted/50 focus:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset">
             <td className="px-2 py-2.5"><span className="font-mono text-xs text-foreground">{p.code.length > 24 ? p.code.slice(0, 24) + '…' : p.code}</span></td>
-            <td className="px-2 py-2.5"><Badge tone="secondary">{channelLabel(p.channel)}</Badge></td>
+            <td className="px-2 py-2.5"><Badge color="gray" label={channelLabel(p.channel)} compact /></td>
             <td className="px-2 py-2.5 text-sm tabular-nums text-foreground/80">{p.discount_pct != null ? `${p.discount_pct}%` : '—'}</td>
-            <td className="px-2 py-2.5"><Badge tone={tone}>{lab}</Badge></td>
+            <td className="px-2 py-2.5"><Badge color={color} label={lab} compact /></td>
             <td className="px-2 py-2.5 text-right tabular-nums text-sm font-medium text-foreground">{p.qty > 0 ? fmt(p.qty) : <span className="text-muted-foreground/50">—</span>}</td>
             <td className="px-2 py-2.5 text-right tabular-nums text-sm text-foreground/80">{p.sales > 0 ? fmtR(p.sales) : <span className="text-muted-foreground/50">—</span>}</td>
             <td className="px-2 py-2.5 text-right tabular-nums text-sm text-muted-foreground">{avg > 0 ? fmtR(avg) : <span className="text-muted-foreground/50">—</span>}</td>
