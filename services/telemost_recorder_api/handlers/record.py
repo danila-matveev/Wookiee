@@ -82,40 +82,70 @@ async def handle_record(chat_id: int, user_id: int, args: str) -> None:
         "bitrix_id": user.get("bitrix_id"),
     }], ensure_ascii=False)
     pool = await get_pool()
+    existing = None
     async with pool.acquire() as conn:
-        new_id = await conn.fetchval(
-            """
-            INSERT INTO telemost.meetings
-                (source, triggered_by, meeting_url, organizer_id, invitees, status)
-            VALUES ('telegram', $1, $2, $1, $3::jsonb, 'queued')
-            ON CONFLICT (meeting_url)
-                WHERE status IN ('queued','recording','postprocessing')
-            DO NOTHING
-            RETURNING id
-            """,
-            user_id,
-            canonical,
-            seed_invitees,
-        )
-        if new_id is None:
-            existing = await conn.fetchrow(
-                """
-                SELECT id, status FROM telemost.meetings
-                WHERE meeting_url = $1
-                  AND status IN ('queued','recording','postprocessing')
-                ORDER BY created_at DESC
-                LIMIT 1
-                """,
+        async with conn.transaction():
+            # Telegram retries POST on 5xx, so two webhooks can hit this handler
+            # within milliseconds for the same URL. The partial unique index on
+            # meeting_url (WHERE status IN ('queued','recording','postprocessing'))
+            # does not block parallel inserts of two different rows before either
+            # is committed — gap allows ON CONFLICT DO NOTHING to succeed twice
+            # and spawn two recorder containers.
+            #
+            # pg_advisory_xact_lock serializes on the URL hash for the duration
+            # of this transaction; the second webhook waits, then sees the
+            # already-inserted row via the SELECT below and exits cleanly.
+            # Using the *xact* variant (auto-released on COMMIT/ROLLBACK) avoids
+            # any chance of leaking session-level locks when a connection is
+            # returned to the pool.
+            #
+            # IMPORTANT: keep ONLY DB operations inside the transaction.
+            # tg_send_message is an HTTP call to Telegram (hundreds of ms — seconds);
+            # awaiting it here would hold both the pool connection and the
+            # advisory lock, throttling parallel webhooks. We collect the
+            # decision (new vs duplicate vs failed) into locals, then send the
+            # message after exiting the transaction.
+            await conn.execute(
+                "SELECT pg_advisory_xact_lock(hashtext($1::text))",
                 canonical,
             )
-            if existing is not None:
-                await tg_send_message(chat_id, _duplicate_message(existing["status"]))
-                return
-            await tg_send_message(
-                chat_id,
-                "⚠️ Не удалось поставить запись в очередь. Попробуй ещё раз через минуту.",
+            new_id = await conn.fetchval(
+                """
+                INSERT INTO telemost.meetings
+                    (source, triggered_by, meeting_url, organizer_id, invitees, status)
+                VALUES ('telegram', $1, $2, $1, $3::jsonb, 'queued')
+                ON CONFLICT (meeting_url)
+                    WHERE status IN ('queued','recording','postprocessing')
+                DO NOTHING
+                RETURNING id
+                """,
+                user_id,
+                canonical,
+                seed_invitees,
             )
+            if new_id is None:
+                existing = await conn.fetchrow(
+                    """
+                    SELECT id, status FROM telemost.meetings
+                    WHERE meeting_url = $1
+                      AND status IN ('queued','recording','postprocessing')
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                    """,
+                    canonical,
+                )
+
+    # Outside the transaction: pool connection returned, advisory lock released.
+    # Now it's safe to do slow HTTP calls without throttling parallel webhooks.
+    if new_id is None:
+        if existing is not None:
+            await tg_send_message(chat_id, _duplicate_message(existing["status"]))
             return
+        await tg_send_message(
+            chat_id,
+            "⚠️ Не удалось поставить запись в очередь. Попробуй ещё раз через минуту.",
+        )
+        return
 
     await tg_send_message(chat_id, _ACK)
     logger.info(
