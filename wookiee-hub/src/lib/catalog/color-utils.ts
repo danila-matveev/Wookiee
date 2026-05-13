@@ -1,4 +1,11 @@
-// Deterministic swatch color from color_code (fallback when hex is missing)
+import type { CSSProperties } from "react"
+
+// Deterministic swatch color from color_code (fallback when hex is missing).
+//
+// ⚠ Используй ТОЛЬКО как декоративный плейсхолдер, когда заведомо не имеем доступа
+// к реальному hex (например, «N разных цветов у модели» в матрице). Для всех
+// реальных swatch'ей цвета цветовой палитры — используй `colorSwatchStyle(hex)`,
+// который при `hex IS NULL` рисует серую штриховку (а не врёт hash-генерацией).
 export function swatchColor(colorCode: string): string {
   let hash = 0
   for (let i = 0; i < colorCode.length; i++) {
@@ -9,9 +16,72 @@ export function swatchColor(colorCode: string): string {
 }
 
 // Resolve display swatch — prefer real hex from DB, fall back to deterministic hue.
+//
+// ⚠ DEPRECATED для семантических swatch'ей цвета. Используй `colorSwatchStyle(hex)`.
+// Оставлен для обратной совместимости (color-card, ColorSwatch hex={...}), где
+// поведение «всегда вернуть что-то цветное» исторически ожидаемо.
 export function resolveSwatch(hex: string | null | undefined, colorCode: string): string {
   if (hex && /^#[0-9A-Fa-f]{6}$/.test(hex)) return hex
   return swatchColor(colorCode)
+}
+
+/**
+ * Единая утилита для рендера ЦВЕТОВОГО swatch'а из БД.
+ *
+ * Принимает любой формат, который встречается в `cveta.hex`:
+ *   - `#RRGGBB`
+ *   - `RRGGBB` (без `#`)
+ *   - `#RGB` / `RGB`
+ *   - `rgb(...)` / `rgba(...)`
+ *
+ * При null/пустой строке или нераспознаваемом формате — возвращает серую
+ * диагональную штриховку (видно, что цвет не задан). НЕ генерирует hash-цвет:
+ * нечитаемый «псевдо-цвет» хуже чем явный плейсхолдер.
+ */
+export function colorSwatchStyle(input: string | null | undefined): CSSProperties {
+  const placeholder: CSSProperties = {
+    backgroundImage:
+      "linear-gradient(45deg, #d4d4d4 25%, transparent 25%, transparent 50%, #d4d4d4 50%, #d4d4d4 75%, transparent 75%)",
+    backgroundSize: "8px 8px",
+    backgroundColor: "#f5f5f4",
+  }
+  if (!input || !input.trim()) return placeholder
+  const trimmed = input.trim()
+  // hex без # — добавим
+  if (/^[0-9a-fA-F]{6}$/.test(trimmed)) {
+    return { backgroundColor: `#${trimmed}` }
+  }
+  // hex с #
+  if (/^#[0-9a-fA-F]{6}$/.test(trimmed)) {
+    return { backgroundColor: trimmed }
+  }
+  // hex 3-char (с # или без)
+  if (/^#?[0-9a-fA-F]{3}$/.test(trimmed)) {
+    const hex = trimmed.startsWith("#") ? trimmed : `#${trimmed}`
+    return { backgroundColor: hex }
+  }
+  // rgb / rgba — passthrough
+  if (/^rgba?\(/i.test(trimmed)) {
+    return { backgroundColor: trimmed }
+  }
+  // что-то странное — placeholder
+  return placeholder
+}
+
+/**
+ * Возвращает Tailwind-класс контрастного текста для размещения поверх swatch'а.
+ * Считает яркость по hex (формула perceived luminance ITU-R BT.601).
+ * Для невалидных/null значений возвращает stone-700 (нейтральный).
+ */
+export function colorContrastClass(input: string | null | undefined): string {
+  if (!input) return "text-stone-700"
+  const hex = input.trim().replace(/^#/, "")
+  if (!/^[0-9a-fA-F]{6}$/.test(hex)) return "text-stone-700"
+  const r = parseInt(hex.slice(0, 2), 16)
+  const g = parseInt(hex.slice(2, 4), 16)
+  const b = parseInt(hex.slice(4, 6), 16)
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+  return luminance > 0.5 ? "text-stone-900" : "text-white"
 }
 
 // ── HEX helpers ───────────────────────────────────────────────────────────
