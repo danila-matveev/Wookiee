@@ -52,6 +52,65 @@ install_telegram_alerts(service="telemost-api")
 
 _WORKER_BACKOFF_SECONDS = 5
 
+# Columns that must exist on telemost.meetings for the API workers to function.
+# Derived from migrations 001 (base table) + 003 (deleted_at) + 004 (notion_*).
+# Keep in sync with services/telemost_recorder_api/migrations/*.sql so missing
+# migrations crash startup loudly instead of failing in worker SQL later.
+_EXPECTED_MEETINGS_COLUMNS = {
+    "id",
+    "source",
+    "source_event_id",
+    "triggered_by",
+    "meeting_url",
+    "title",
+    "organizer_id",
+    "invitees",
+    "scheduled_at",
+    "started_at",
+    "ended_at",
+    "duration_seconds",
+    "status",
+    "error",
+    "audio_path",
+    "audio_expires_at",
+    "raw_segments",
+    "processed_paragraphs",
+    "speakers_map",
+    "summary",
+    "tags",
+    "notified_at",
+    "created_at",
+    "updated_at",
+    "deleted_at",
+    "notion_page_id",
+    "notion_page_url",
+}
+
+
+async def _validate_schema() -> None:
+    """Fail fast if telemost.meetings is missing expected columns.
+
+    Runs once on lifespan startup right after the pool is opened. If a
+    deploy lands without running the latest migration we want to crash the
+    container immediately rather than 30 minutes later inside a worker
+    INSERT that mentions a non-existent column.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT column_name FROM information_schema.columns
+            WHERE table_schema = 'telemost' AND table_name = 'meetings'
+            """,
+        )
+    actual = {r["column_name"] for r in rows}
+    missing = _EXPECTED_MEETINGS_COLUMNS - actual
+    if missing:
+        raise RuntimeError(
+            f"telemost.meetings is missing expected columns: {sorted(missing)}. "
+            "Run database migrations."
+        )
+
 
 async def _supervised(name: str, coro_factory) -> None:
     """Run worker loop forever; if it crashes, log + restart after backoff.
@@ -98,6 +157,7 @@ async def _lifespan(app: FastAPI):
     # workers spawned further down).
     init_client(timeout=TELEGRAM_TIMEOUT_SECONDS)
     await get_pool()
+    await _validate_schema()
     if not await docker_ping():
         # Don't block startup — supervised worker logs will keep flagging,
         # and Docker's restart-policy can recycle the container if needed.
