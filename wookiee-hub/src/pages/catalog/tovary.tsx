@@ -33,6 +33,9 @@ import { downloadCsv } from "@/lib/catalog/csv-export"
 import { translateError } from "@/lib/catalog/error-translator"
 import { toast } from "@/lib/catalog/toast"
 import { razmerOrder } from "@/lib/catalog/size-utils"
+// W10.32 — single-click на строку открывает SkuDrawer (карточка SKU). См.
+// sku-card.tsx.
+import { SkuDrawer } from "./sku-card"
 
 // W1.5 — Default per-column widths (px) for the SKU registry (Товары) page.
 // W9.5 — расширено новыми ключами из TOVARY_COLUMNS_FULL (column-catalogs).
@@ -892,6 +895,8 @@ export function TovaryPage() {
   const columns = columnConfig.visibleColumns
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [linkSkleykaChannel, setLinkSkleykaChannel] = useState<"wb" | "ozon" | null>(null)
+  // W10.32 — single-click на строку открывает карточку SKU.
+  const [openTovarId, setOpenTovarId] = useState<number | null>(null)
   // W1.5 — drag-resize колонок + persist. Регистрируем все возможные колонки.
   const { widths: colWidths, bindResizer } = useResizableColumns(
     "tovary",
@@ -1529,9 +1534,17 @@ export function TovaryPage() {
                   {!collapsed && group.visibleItems.map((t) => (
                     <tr
                       key={t.id}
-                      className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60"
+                      className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60 cursor-pointer"
+                      // W10.32 — single-click на пустом месте строки открывает
+                      // SkuDrawer.  Inline-cells, status badges и checkbox
+                      // вызывают stopPropagation, чтобы не открывать drawer
+                      // при клике по интерактивным элементам.
+                      onClick={() => setOpenTovarId(t.id)}
                     >
-                      <td className="px-3 py-2.5 cat-sticky-col-checkbox">
+                      <td
+                        className="px-3 py-2.5 cat-sticky-col-checkbox"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <input
                           type="checkbox"
                           className="rounded border-stone-300"
@@ -1539,14 +1552,20 @@ export function TovaryPage() {
                           onChange={() => toggleRow(t.barkod)}
                         />
                       </td>
-                      {effectiveColumns.map((key, idx) => (
-                        <td
-                          key={key}
-                          className={`px-3 py-2.5 whitespace-nowrap${idx === 0 ? " cat-sticky-col cat-sticky-col-offset" : ""}`}
-                        >
-                          {renderCell(key, t, cellCtx)}
-                        </td>
-                      ))}
+                      {effectiveColumns.map((key, idx) => {
+                        // W10.32 — статусы по каналам имеют popover edit;
+                        // single-click по ним не должен открывать drawer.
+                        const isStatusKey = key.startsWith("status_")
+                        return (
+                          <td
+                            key={key}
+                            className={`px-3 py-2.5 whitespace-nowrap${idx === 0 ? " cat-sticky-col cat-sticky-col-offset" : ""}`}
+                            onClick={isStatusKey ? (e) => e.stopPropagation() : undefined}
+                          >
+                            {renderCell(key, t, cellCtx)}
+                          </td>
+                        )
+                      })}
                     </tr>
                   ))}
                 </React.Fragment>
@@ -1600,6 +1619,14 @@ export function TovaryPage() {
           channel={linkSkleykaChannel}
           onClose={() => setLinkSkleykaChannel(null)}
           onLink={onLinkSkleyka}
+        />
+      )}
+
+      {/* W10.32 — карточка SKU (side-drawer) по single-click на строку. */}
+      {openTovarId != null && (
+        <SkuDrawer
+          tovarId={openTovarId}
+          onClose={() => setOpenTovarId(null)}
         />
       )}
     </div>
