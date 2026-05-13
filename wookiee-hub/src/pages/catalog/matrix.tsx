@@ -23,6 +23,7 @@ import { MATRIX_COLUMNS } from "@/lib/catalog/column-catalogs"
 import { ColumnsManager } from "@/components/catalog/ui/columns-manager"
 import { downloadCsv } from "@/lib/catalog/csv-export"
 import { translateError } from "@/lib/catalog/error-translator"
+import { toast } from "@/lib/catalog/toast"
 // Standard razmer chip-pill ladder used in the table.
 const RAZMER_LADDER = ["XS", "S", "M", "L", "XL", "XXL"] as const
 // ─── Shared helpers ────────────────────────────────────────────────────────
@@ -361,7 +362,7 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
       await bulkUpdateModelStatus(kods, statusId)
       await queryClient.invalidateQueries({ queryKey: ["matrix-list"] })
       setSelectedKods(new Set()); setBulkStatusOpen(false)
-    } catch (err) { window.alert(translateError(err)) }
+    } catch (err) { toast.error(translateError(err)) }
   }, [selectedKods, queryClient])
   const handleBulkDuplicate = useCallback(async () => {
     const kods = Array.from(selectedKods)
@@ -369,7 +370,7 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
     for (const srcKod of kods) {
       const newKod = window.prompt(`Дублировать «${srcKod}»: введите новый kod`, `${srcKod}_copy`)
       if (!newKod) continue
-      try { await duplicateModel(srcKod, newKod.trim()) } catch (err) { window.alert(translateError(err)) }
+      try { await duplicateModel(srcKod, newKod.trim()) } catch (err) { toast.error(translateError(err)) }
     }
     await queryClient.invalidateQueries({ queryKey: ["matrix-list"] })
     setSelectedKods(new Set())
@@ -378,7 +379,7 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
     const kods = Array.from(selectedKods)
     if (kods.length === 0 || !window.confirm(`Архивировать ${kods.length} модель(и) и все связанные вариации/артикулы/SKU?`)) return
     for (const kod of kods) {
-      try { await archiveModel(kod) } catch (err) { window.alert(translateError(err)) }
+      try { await archiveModel(kod) } catch (err) { toast.error(translateError(err)) }
     }
     await queryClient.invalidateQueries({ queryKey: ["matrix-list"] })
     setSelectedKods(new Set())
@@ -390,14 +391,14 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
     try {
       await duplicateModel(srcKod, newKod.trim())
       await queryClient.invalidateQueries({ queryKey: ["matrix-list"] })
-    } catch (err) { window.alert(translateError(err)) }
+    } catch (err) { toast.error(translateError(err)) }
   }, [queryClient])
   const handleRowArchive = useCallback(async (kod: string) => {
     if (!window.confirm(`Архивировать «${kod}» и все связанные вариации/артикулы/SKU?`)) return
     try {
       await archiveModel(kod)
       await queryClient.invalidateQueries({ queryKey: ["matrix-list"] })
-    } catch (err) { window.alert(translateError(err)) }
+    } catch (err) { toast.error(translateError(err)) }
   }, [queryClient])
   const allVisibleSelected = filtered.length > 0 && filtered.every((r) => selectedKods.has(r.kod))
   // W7.3 — CSV-экспорт выбранных моделей через bulk-bar.
@@ -1201,7 +1202,7 @@ export function MatrixPage() {
     if (exportRef.current) {
       exportRef.current()
     } else {
-      window.alert("Экспорт недоступен для текущей вкладки")
+      toast.warning("Экспорт недоступен для текущей вкладки")
     }
   }, [])
   // ?model=KOD opens B3's <ModelCardModal /> as overlay from CatalogLayout.

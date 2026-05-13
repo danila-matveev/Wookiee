@@ -28,6 +28,7 @@ import { useColumnConfig } from "@/hooks/use-column-config"
 import { ARTIKULY_COLUMNS_FULL } from "@/lib/catalog/column-catalogs"
 import { downloadCsv } from "@/lib/catalog/csv-export"
 import { translateError } from "@/lib/catalog/error-translator"
+import { toast } from "@/lib/catalog/toast"
 
 // Default per-column widths (px) for the standalone Артикулы page (W1.5).
 // W9.5 — расширено новыми ключами из ARTIKULY_COLUMNS_FULL (column-catalogs).
@@ -131,8 +132,7 @@ function InlineArtikulStatusCell({
       await onChange(id)
       setOpen(false)
     } catch (err) {
-      // eslint-disable-next-line no-alert
-      alert(translateError(err))
+      toast.error(translateError(err))
     } finally {
       setSaving(false)
     }
@@ -786,7 +786,7 @@ export function ArtikulyPage() {
       setSelected(new Set())
       setBulkStatusOpen(false)
     } catch (err) {
-      window.alert(translateError(err))
+      toast.error(translateError(err))
     }
   }, [selectedIds, queryClient])
 

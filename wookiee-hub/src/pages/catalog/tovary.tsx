@@ -31,6 +31,7 @@ import { useDebouncedValue } from "@/hooks/use-debounced-value"
 import { useCollapsibleGroups } from "@/hooks/use-collapsible-groups"
 import { downloadCsv } from "@/lib/catalog/csv-export"
 import { translateError } from "@/lib/catalog/error-translator"
+import { toast } from "@/lib/catalog/toast"
 
 // W1.5 — Default per-column widths (px) for the SKU registry (Товары) page.
 // W9.5 — расширено новыми ключами из TOVARY_COLUMNS_FULL (column-catalogs).
@@ -150,8 +151,7 @@ function InlineStatusCell({
       await onChange(id)
       setOpen(false)
     } catch (err) {
-      // eslint-disable-next-line no-alert
-      alert(translateError(err))
+      toast.error(translateError(err))
     } finally {
       setSaving(false)
     }
@@ -591,8 +591,7 @@ function LinkSkleykaModal({ channel, onClose, onLink }: LinkSkleykaModalProps) {
       await onLink(id)
       void queryClient.invalidateQueries({ queryKey: ["skleyki", channel] })
     } catch (err) {
-      // eslint-disable-next-line no-alert
-      alert(translateError(err))
+      toast.error(translateError(err))
     } finally {
       setCreating(false)
     }
@@ -1276,11 +1275,9 @@ export function TovaryPage() {
       void queryClient.invalidateQueries({ queryKey: ["skleyki", linkSkleykaChannel] })
       setLinkSkleykaChannel(null)
       setSelected(new Set())
-      // eslint-disable-next-line no-alert
-      alert(`Привязано ${barkods.length} SKU к склейке.`)
+      toast.success(`Привязано ${barkods.length} SKU к склейке.`)
     } catch (err) {
-      // eslint-disable-next-line no-alert
-      alert(translateError(err))
+      toast.error(translateError(err))
     }
   }, [linkSkleykaChannel, queryClient, selected])
 

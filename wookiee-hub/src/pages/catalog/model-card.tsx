@@ -103,6 +103,7 @@ import {
 import { computeCompleteness, relativeDate, swatchColor } from "@/lib/catalog/color-utils"
 import { useAvailableColors } from "@/hooks/use-available-colors"
 import { translateError } from "@/lib/catalog/error-translator"
+import { toast } from "@/lib/catalog/toast"
 
 // ─── Local helpers ─────────────────────────────────────────────────────────
 
@@ -1776,8 +1777,7 @@ function InlineStatusCell({
       await onChange(id)
       setOpen(false)
     } catch (err) {
-      // eslint-disable-next-line no-alert
-      alert(translateError(err))
+      toast.error(translateError(err))
     } finally {
       setSaving(false)
     }

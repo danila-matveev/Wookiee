@@ -14,6 +14,7 @@ import { ColorPicker } from "@/components/catalog/ui/color-picker"
 import { ColorSwatch } from "@/components/catalog/ui/color-swatch"
 import { swatchColor } from "@/lib/catalog/color-utils"
 import { translateError } from "@/lib/catalog/error-translator"
+import { toast } from "@/lib/catalog/toast"
 
 export interface InlineColorCellProps {
   /** Текущий cvet_id (null если не выставлен). */
@@ -72,8 +73,7 @@ export function InlineColorCell({
       await onCommit(id)
       setOpen(false)
     } catch (e) {
-      // eslint-disable-next-line no-alert
-      alert(translateError(e))
+      toast.error(translateError(e))
     } finally {
       setSaving(false)
     }

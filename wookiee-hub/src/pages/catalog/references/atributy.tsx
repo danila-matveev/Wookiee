@@ -31,6 +31,7 @@ import {
   type AtributType,
 } from "@/lib/catalog/service"
 import { translateError } from "@/lib/catalog/error-translator"
+import { toast } from "@/lib/catalog/toast"
 import {
   AddButton,
   ConfirmDialog,
@@ -269,7 +270,7 @@ export function AtributyPage() {
             await ref.remove.mutateAsync(deleting.id)
             setDeleting(null)
           } catch (e) {
-            alert(translateError(e))
+            toast.error(translateError(e))
           }
         }}
         onCancel={() => setDeleting(null)}

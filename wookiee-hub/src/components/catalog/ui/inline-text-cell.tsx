@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Loader2 } from "lucide-react"
 import { translateError } from "@/lib/catalog/error-translator"
+import { toast } from "@/lib/catalog/toast"
 
 export interface InlineTextCellProps {
   /** Текущее значение из БД. null/undefined — пустое поле. */
@@ -96,8 +97,7 @@ export function InlineTextCell({
     if (validate) {
       const err = validate(trimmed)
       if (err) {
-        // eslint-disable-next-line no-alert
-        alert(err)
+        toast.warning(err)
         // не закрываем — позволяем поправить.
         return
       }
@@ -109,8 +109,7 @@ export function InlineTextCell({
       setEditing(false)
       setDraft("")
     } catch (e) {
-      // eslint-disable-next-line no-alert
-      alert(translateError(e))
+      toast.error(translateError(e))
       // Остаёмся в edit-mode, чтобы пользователь видел исходное значение
       // и мог поправить / нажать Esc.
     } finally {

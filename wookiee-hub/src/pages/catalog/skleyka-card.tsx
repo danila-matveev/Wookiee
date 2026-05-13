@@ -12,6 +12,7 @@ import { StatusBadge } from "@/components/catalog/ui/status-badge"
 import { BulkActionsBar } from "@/components/catalog/ui/bulk-actions-bar"
 import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
 import { translateError } from "@/lib/catalog/error-translator"
+import { toast } from "@/lib/catalog/toast"
 
 const MAX_SKU = 30
 
@@ -113,7 +114,7 @@ export function SkleykaCard({ id, channel, onBack }: SkleykaCardProps) {
       })
       invalidate()
     } catch (e) {
-      alert(translateError(e))
+      toast.error(translateError(e))
     } finally {
       setBusy(false)
     }
@@ -128,7 +129,7 @@ export function SkleykaCard({ id, channel, onBack }: SkleykaCardProps) {
       setSelected(new Set())
       invalidate()
     } catch (e) {
-      alert(translateError(e))
+      toast.error(translateError(e))
     } finally {
       setBusy(false)
     }
@@ -149,7 +150,7 @@ export function SkleykaCard({ id, channel, onBack }: SkleykaCardProps) {
       qc.invalidateQueries({ queryKey: ["catalog-counts"] })
       onBack()
     } catch (e) {
-      alert(translateError(e))
+      toast.error(translateError(e))
     } finally {
       setBusy(false)
     }
@@ -171,7 +172,7 @@ export function SkleykaCard({ id, channel, onBack }: SkleykaCardProps) {
       invalidate()
       setEditingName(false)
     } catch (e) {
-      alert(translateError(e))
+      toast.error(translateError(e))
     } finally {
       setBusy(false)
     }

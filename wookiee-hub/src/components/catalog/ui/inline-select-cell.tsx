@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Loader2 } from "lucide-react"
 import { translateError } from "@/lib/catalog/error-translator"
+import { toast } from "@/lib/catalog/toast"
 
 export interface InlineSelectOption<TValue extends string | number = number> {
   value: TValue
@@ -70,8 +71,7 @@ export function InlineSelectCell<TValue extends string | number = number>({
       await onCommit(next)
       setOpen(false)
     } catch (e) {
-      // eslint-disable-next-line no-alert
-      alert(translateError(e))
+      toast.error(translateError(e))
     } finally {
       setSaving(false)
     }
