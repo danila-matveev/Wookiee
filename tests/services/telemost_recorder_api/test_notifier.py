@@ -77,7 +77,7 @@ def test_format_summary_message_empty():
         "tags": [],
     }
     msg = format_summary_message(meeting)
-    assert "речь" in msg.lower() or "тишин" in msg.lower()
+    assert "никто не говорил" in msg.lower() or "пуст" in msg.lower()
 
 
 def test_build_transcript_text():

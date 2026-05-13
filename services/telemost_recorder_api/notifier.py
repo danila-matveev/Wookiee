@@ -76,7 +76,8 @@ def format_summary_message(meeting: dict[str, Any]) -> str:
     if summary.get("empty"):
         return (
             f"📭 {header}\n\n"
-            f"Запись завершена, речь не была распознана (тишина)."
+            f"На встрече никто не говорил — запись пустая. "
+            f"Возможно, никто не подключился, или микрофоны были выключены."
         )
 
     lines = [f"📝 {header}"]
@@ -185,20 +186,22 @@ async def notify_meeting_result(meeting_id: UUID) -> None:
             logger.exception("Failed to notify failure for %s", meeting_id)
         return
 
+    summary = meeting.get("summary") or {}
+    is_empty = bool(summary.get("empty"))
     summary_text = format_summary_message(meeting)
     short_id = str(meeting_id)[:_ID_PREFIX_LEN]
     try:
         await tg_send_message(
             triggered_by,
             summary_text,
-            reply_markup=meeting_actions(short_id),
+            reply_markup=None if is_empty else meeting_actions(short_id),
         )
     except TelegramAPIError:
         logger.exception("Failed to send summary for %s", meeting_id)
         return
 
     paragraphs = meeting.get("processed_paragraphs") or []
-    if paragraphs:
+    if paragraphs and not is_empty:
         transcript = build_transcript_text(paragraphs)
         filename = f"transcript_{str(meeting_id)[:_ID_PREFIX_LEN]}.txt"
         try:

@@ -18,7 +18,7 @@ from services.telemost_recorder.config import (
 )
 from services.telemost_recorder.speakers import load_speakers, resolve_speakers
 from services.telemost_recorder.state import FailReason, Meeting, MeetingStatus
-from services.telemost_recorder.transcribe import transcribe_audio
+from services.telemost_recorder.transcribe import transcribe_audio_async
 
 _URL_PATTERN = re.compile(
     r"^https?://(telemost\.yandex\.(ru|com)|telemost\.360\.yandex\.ru)/(j|join)/[a-zA-Z0-9_\-]+"
@@ -561,7 +561,7 @@ async def run_session(
         return
 
     try:
-        segments = transcribe_audio(audio_path)
+        segments = await transcribe_audio_async(audio_path)
         employees = load_speakers()
         speaker_map = resolve_speakers(segments, meeting.participants, employees)
         for seg in segments:
