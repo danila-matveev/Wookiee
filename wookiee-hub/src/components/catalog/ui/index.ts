@@ -45,7 +45,13 @@ export type { RefFieldDef, RefFieldType, RefFieldOption } from "./ref-modal"
 export { NewModelModal } from "./new-model-modal"
 
 export { BulkActionsBar } from "./bulk-actions-bar"
-export type { BulkAction } from "./bulk-actions-bar"
+export type {
+  BulkAction,
+  BulkButtonAction,
+  BulkDropdownAction,
+  BulkConfirmAction,
+  BulkDropdownOption,
+} from "./bulk-actions-bar"
 
 export { CommandPalette } from "./command-palette"
 export type {
