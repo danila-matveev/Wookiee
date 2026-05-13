@@ -1,4 +1,6 @@
+import logging
 import platform
+import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -57,6 +59,61 @@ def test_stop_returns_path_when_audio_file_exists(tmp_path: Path) -> None:
         capture_output=True,
     )
     assert result == audio_file
+
+
+def test_stop_kills_ffmpeg_after_terminate_timeout(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """If ffmpeg ignores SIGTERM for 10s, stop() must SIGKILL it and log a warning.
+
+    Bug scenario: pulseaudio crashed mid-recording → ffmpeg's pulse input becomes
+    a zombie I/O that ignores SIGTERM → the recorder container previously hung
+    until the 4-hour hard limit. We now kill after wait(timeout=10) raises.
+    """
+    cap = AudioCapture(meeting_id="abc123", output_dir=tmp_path)
+    fake_proc = MagicMock()
+    call_count = {"n": 0}
+
+    def wait_side_effect(timeout=None):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            # First wait(timeout=10) — simulate hung ffmpeg
+            raise subprocess.TimeoutExpired("ffmpeg", timeout)
+        # Second wait after kill — succeeds quickly
+        return 0
+
+    fake_proc.wait.side_effect = wait_side_effect
+    cap._ffmpeg_proc = fake_proc
+
+    with caplog.at_level(logging.WARNING, logger="services.telemost_recorder.audio"):
+        cap.stop()  # must not raise
+
+    fake_proc.terminate.assert_called_once()
+    fake_proc.kill.assert_called_once()
+    assert any(
+        "kill" in r.message.lower() for r in caplog.records
+    ), f"expected a kill-warning log, got {[r.message for r in caplog.records]}"
+
+
+def test_stop_logs_when_sigkill_also_ignored(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """If even SIGKILL leaves the process hanging within 2s, log and move on.
+
+    Belt-and-suspenders: we still return so that the recorder container can
+    exit normally; an orphaned ffmpeg PID is a much smaller blast radius than
+    a 4-hour-stuck container.
+    """
+    cap = AudioCapture(meeting_id="abc123", output_dir=tmp_path)
+    fake_proc = MagicMock()
+    fake_proc.wait.side_effect = subprocess.TimeoutExpired("ffmpeg", 10)
+    cap._ffmpeg_proc = fake_proc
+
+    with caplog.at_level(logging.ERROR, logger="services.telemost_recorder.audio"):
+        cap.stop()  # must still not raise
+
+    fake_proc.terminate.assert_called_once()
+    fake_proc.kill.assert_called_once()
 
 
 def test_start_on_linux_creates_sink_and_ffmpeg(tmp_path: Path) -> None:

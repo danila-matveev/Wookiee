@@ -132,14 +132,29 @@ class AudioCapture:
                 )
 
     def stop(self) -> Optional[Path]:
-        """Stop recording. Returns audio path if file is non-empty, else None."""
+        """Stop recording. Returns audio path if file is non-empty, else None.
+
+        ffmpeg can ignore SIGTERM if PulseAudio crashed mid-recording (its
+        pulse input becomes a stuck I/O). We bound the shutdown: SIGTERM →
+        wait 10s → SIGKILL → wait 2s. Logging a warning lets us see in
+        Telegram alerts when ffmpeg refused to terminate cleanly.
+        """
         if self._ffmpeg_proc is not None:
             self._ffmpeg_proc.terminate()
             try:
                 self._ffmpeg_proc.wait(timeout=10)
             except subprocess.TimeoutExpired:
+                logger.warning(
+                    "ffmpeg didn't terminate in 10s, sending SIGKILL"
+                )
                 self._ffmpeg_proc.kill()
-                self._ffmpeg_proc.wait()
+                try:
+                    self._ffmpeg_proc.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    logger.exception(
+                        "ffmpeg ignored SIGKILL after 2s — leaking PID %s",
+                        getattr(self._ffmpeg_proc, "pid", "?"),
+                    )
             self._ffmpeg_proc = None
 
         if self._sink_module_id is not None:
