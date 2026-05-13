@@ -152,6 +152,53 @@ export async function deleteAtribut(id: number): Promise<void> {
 }
 
 /**
+ * W10.18: массовая привязка атрибута к нескольким категориям одним вызовом.
+ *
+ * Для каждой `kategoriya_id` считается MAX(poryadok) в её существующих
+ * привязках, затем атрибут вставляется в конец списка (max + 1, +2, … для
+ * пустых категорий начинается с 1). Все строки кладутся одним INSERT —
+ * один round-trip к Supabase.
+ *
+ * `atribut_key` обязателен (NOT NULL в схеме, миграция 016) — дублирует
+ * `atribut_id` для обратной совместимости.
+ *
+ * Дубликаты исключаются на уровне БД (UNIQUE(kategoriya_id, atribut_key)).
+ * Если категория уже привязана — поднимется ошибка от Postgres; вызывающий
+ * код отвечает за то, чтобы не передавать таких. При создании нового
+ * атрибута это безопасно — он ещё ни к чему не привязан.
+ */
+export async function bulkLinkAtributToKategorii(
+  atributId: number,
+  atributKey: string,
+  kategoriyaIds: number[],
+): Promise<void> {
+  if (kategoriyaIds.length === 0) return
+
+  // Считаем MAX(poryadok) для всех целевых категорий одним запросом.
+  const { data: existing, error: maxErr } = await supabase
+    .from("kategoriya_atributy")
+    .select("kategoriya_id, poryadok")
+    .in("kategoriya_id", kategoriyaIds)
+  if (maxErr) throw new Error(maxErr.message)
+
+  const maxByKategoriya: Record<number, number> = {}
+  for (const row of (existing ?? []) as { kategoriya_id: number; poryadok: number }[]) {
+    const cur = maxByKategoriya[row.kategoriya_id] ?? 0
+    if (row.poryadok > cur) maxByKategoriya[row.kategoriya_id] = row.poryadok
+  }
+
+  const rows = kategoriyaIds.map((kategoriya_id) => ({
+    kategoriya_id,
+    atribut_id: atributId,
+    atribut_key: atributKey,
+    poryadok: (maxByKategoriya[kategoriya_id] ?? 0) + 1,
+  }))
+
+  const { error } = await supabase.from("kategoriya_atributy").insert(rows)
+  if (error) throw new Error(error.message)
+}
+
+/**
  * Атрибуты, привязанные к категории, в порядке `poryadok`.
  *
  * Источник истины — таблица `kategoriya_atributy` (миграция 016, W2.2) +

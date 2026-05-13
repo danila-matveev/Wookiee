@@ -15,7 +15,7 @@
 // (multiselect/pills/url/date/checkbox) — здесь только справочник.
 
 import { useEffect, useMemo, useState } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { CatalogTable, type TableColumn } from "@/components/catalog/layout/catalog-table"
@@ -23,9 +23,11 @@ import { useReferenceCrud } from "./_use-reference"
 import { supabase } from "@/lib/supabase"
 import {
   fetchAtributy,
+  fetchKategorii,
   insertAtribut,
   updateAtribut,
   deleteAtribut,
+  bulkLinkAtributToKategorii,
   type Atribut,
   type AtributPayload,
   type AtributType,
@@ -83,6 +85,7 @@ async function fetchAtributUsage(): Promise<Record<number, number>> {
 }
 
 export function AtributyPage() {
+  const qc = useQueryClient()
   const ref = useReferenceCrud<Atribut, AtributPayload>(
     "atributy",
     fetchAtributy,
@@ -97,6 +100,13 @@ export function AtributyPage() {
     queryKey: ["catalog", "reference", "atributy", "usage"],
     queryFn: fetchAtributUsage,
     staleTime: 60 * 1000,
+  })
+
+  // W10.18: список категорий для multiselect в модалке создания.
+  const kategoriiQ = useQuery({
+    queryKey: ["catalog", "reference", "kategorii"],
+    queryFn: fetchKategorii,
+    staleTime: 5 * 60 * 1000,
   })
 
   const [search, setSearch] = useState("")
@@ -197,9 +207,22 @@ export function AtributyPage() {
     },
   ]
 
-  const handleSave = async (vals: AtributPayload, isNew: boolean) => {
+  const handleSave = async (
+    vals: AtributPayload,
+    isNew: boolean,
+    kategoriyaIds: number[],
+  ) => {
     if (isNew) {
-      await ref.insert.mutateAsync(vals)
+      // insert возвращает полный Atribut с id — нужно для linkov.
+      const created = (await ref.insert.mutateAsync(vals)) as Atribut
+      // W10.18: если в модалке выбраны категории — линкуем одним INSERT-ом.
+      if (kategoriyaIds.length > 0 && created?.id) {
+        await bulkLinkAtributToKategorii(created.id, created.key, kategoriyaIds)
+        // обновим usage-колонку («Категорий»).
+        await qc.invalidateQueries({
+          queryKey: ["catalog", "reference", "atributy", "usage"],
+        })
+      }
       setCreating(false)
     } else if (editing) {
       // `key` иммутабелен — не передаём в patch.
@@ -214,7 +237,7 @@ export function AtributyPage() {
     <PageShell>
       <PageHeader
         title="Атрибуты"
-        subtitle="Поля модели — название, тип, варианты. Привязка к категориям — на странице «Категории» (W6.3+)."
+        subtitle="Поля модели — название, тип, варианты. Привязку к категориям можно задать сразу при создании или позже на странице «Категории»."
         count={ref.list.data?.length ?? 0}
         isLoading={ref.list.isLoading}
         actions={
@@ -240,7 +263,8 @@ export function AtributyPage() {
       {(creating || editing) && (
         <AtributModal
           initial={editing}
-          onSave={(vals) => handleSave(vals, creating)}
+          kategorii={kategoriiQ.data ?? []}
+          onSave={(vals, kategoriyaIds) => handleSave(vals, creating, kategoriyaIds)}
           onCancel={() => {
             setEditing(null)
             setCreating(false)
@@ -288,13 +312,20 @@ export function AtributyPage() {
 // RefModal не поддерживает динамическую видимость полей на основе других
 // значений, поэтому пишем свою.
 
+interface KategoriyaOption {
+  id: number
+  nazvanie: string
+}
+
 interface AtributModalProps {
   initial: Atribut | null
-  onSave: (payload: AtributPayload) => Promise<void>
+  /** Список категорий для multiselect в режиме создания (W10.18). */
+  kategorii: KategoriyaOption[]
+  onSave: (payload: AtributPayload, kategoriyaIds: number[]) => Promise<void>
   onCancel: () => void
 }
 
-function AtributModal({ initial, onSave, onCancel }: AtributModalProps) {
+function AtributModal({ initial, kategorii, onSave, onCancel }: AtributModalProps) {
   const isEdit = initial != null
   const [key, setKey] = useState(initial?.key ?? "")
   const [label, setLabel] = useState(initial?.label ?? "")
@@ -306,6 +337,21 @@ function AtributModal({ initial, onSave, onCancel }: AtributModalProps) {
   const [helperText, setHelperText] = useState(initial?.helper_text ?? "")
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // W10.18: выбранные категории для bulk-link при создании.
+  const [selectedKategoriyaIds, setSelectedKategoriyaIds] = useState<number[]>([])
+  const [kategoriiSearch, setKategoriiSearch] = useState("")
+
+  const filteredKategorii = useMemo(() => {
+    if (!kategoriiSearch.trim()) return kategorii
+    const q = kategoriiSearch.toLowerCase()
+    return kategorii.filter((k) => k.nazvanie.toLowerCase().includes(q))
+  }, [kategorii, kategoriiSearch])
+
+  const toggleKategoriya = (id: number) => {
+    setSelectedKategoriyaIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    )
+  }
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -357,7 +403,7 @@ function AtributModal({ initial, onSave, onCancel }: AtributModalProps) {
 
     setSaving(true)
     try {
-      await onSave(payload)
+      await onSave(payload, isEdit ? [] : selectedKategoriyaIds)
     } catch (e) {
       setError(translateError(e))
     } finally {
@@ -480,6 +526,65 @@ function AtributModal({ initial, onSave, onCancel }: AtributModalProps) {
               className={cn(inputCls, "resize-none")}
             />
           </Field>
+
+          {/* W10.18: multiselect категорий — только при создании.
+              В режиме edit привязка делается на странице «Категории». */}
+          {!isEdit && (
+            <Field
+              label="Категории"
+              hint={
+                kategorii.length === 0
+                  ? "Категории ещё не загружены — атрибут будет создан без привязки."
+                  : "Выберите категории, к которым нужно сразу привязать атрибут. Можно оставить пусто и привязать позже."
+              }
+            >
+              {kategorii.length > 7 && (
+                <input
+                  type="text"
+                  value={kategoriiSearch}
+                  onChange={(e) => setKategoriiSearch(e.target.value)}
+                  placeholder="Поиск по категориям…"
+                  className={cn(inputCls, "mb-2")}
+                />
+              )}
+              <div className="max-h-48 overflow-y-auto rounded-md border border-stone-200 bg-stone-50 divide-y divide-stone-200">
+                {filteredKategorii.length === 0 ? (
+                  <div className="px-2.5 py-2 text-xs text-stone-400 italic">
+                    {kategorii.length === 0 ? "Нет категорий" : "Ничего не найдено"}
+                  </div>
+                ) : (
+                  filteredKategorii.map((k) => {
+                    const checked = selectedKategoriyaIds.includes(k.id)
+                    return (
+                      <label
+                        key={k.id}
+                        className={cn(
+                          "flex items-center gap-2 px-2.5 py-1.5 cursor-pointer hover:bg-white",
+                          checked && "bg-white",
+                        )}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleKategoriya(k.id)}
+                          className="h-3.5 w-3.5 accent-stone-900"
+                        />
+                        <span className="text-sm text-stone-700">{k.nazvanie}</span>
+                        <span className="ml-auto text-[10px] text-stone-400 font-mono">
+                          #{k.id}
+                        </span>
+                      </label>
+                    )
+                  })
+                )}
+              </div>
+              {selectedKategoriyaIds.length > 0 && (
+                <div className="mt-1 text-[10px] text-stone-500">
+                  Выбрано: {selectedKategoriyaIds.length}
+                </div>
+              )}
+            </Field>
+          )}
         </div>
 
         {error && (
