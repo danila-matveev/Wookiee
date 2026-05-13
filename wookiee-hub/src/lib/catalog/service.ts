@@ -945,6 +945,7 @@ export interface VariationArtikul {
   cvet_color_code: string | null
   cvet_nazvanie: string | null
   cvet_semeystvo: string | null
+  cvet_hex: string | null
   status_id: number | null
   nomenklatura_wb: number | null
   artikul_ozon: string | null
@@ -981,7 +982,7 @@ export async function fetchModelDetail(id: number): Promise<ModelDetail | null> 
         importery(nazvanie),
         artikuly(
           id, artikul, cvet_id, status_id, nomenklatura_wb, artikul_ozon,
-          cveta(id, color_code, cvet, semeystvo),
+          cveta(id, color_code, cvet, semeystvo, hex),
           tovary(
             id, barkod, razmer_id, status_id, status_ozon_id, status_sayt_id,
             status_lamoda_id, sku_china_size, ozon_product_id, ozon_fbo_sku_id, lamoda_seller_sku,
@@ -1022,6 +1023,7 @@ export async function fetchModelDetail(id: number): Promise<ModelDetail | null> 
         cvet_color_code: a.cveta?.color_code ?? null,
         cvet_nazvanie: a.cveta?.cvet ?? null,
         cvet_semeystvo: a.cveta?.semeystvo ?? null,
+        cvet_hex: a.cveta?.hex ?? null,
         status_id: a.status_id,
         nomenklatura_wb: a.nomenklatura_wb,
         artikul_ozon: a.artikul_ozon,
@@ -1541,6 +1543,8 @@ export interface SkleykaDetailSKU {
   artikul: string | null
   model_osnova_kod: string | null
   cvet_color_code: string | null
+  cvet_nazvanie: string | null
+  cvet_hex: string | null
   status_id: number | null
   status_ozon_id: number | null
   nomenklatura_wb: number | null
@@ -1575,7 +1579,7 @@ export async function fetchSkleykaDetail(id: number, channel: 'wb' | 'ozon'): Pr
           razmery(nazvanie),
           artikuly(
             artikul, nomenklatura_wb, artikul_ozon,
-            cveta(color_code),
+            cveta(color_code, cvet, hex),
             modeli(kod, modeli_osnova(kod))
           )
         )
@@ -1610,6 +1614,8 @@ export async function fetchSkleykaDetail(id: number, channel: 'wb' | 'ozon'): Pr
         artikul: a.artikul ?? null,
         model_osnova_kod: a.modeli?.modeli_osnova?.kod ?? null,
         cvet_color_code: a.cveta?.color_code ?? null,
+        cvet_nazvanie: a.cveta?.cvet ?? null,
+        cvet_hex: a.cveta?.hex ?? null,
         status_id: t.status_id ?? null,
         status_ozon_id: t.status_ozon_id ?? null,
         nomenklatura_wb: a.nomenklatura_wb ?? null,
