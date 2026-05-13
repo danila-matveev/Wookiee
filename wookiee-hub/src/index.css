@@ -328,3 +328,66 @@
   --primary: oklch(0.146 0.005 60); /* stone-900 */
   --primary-foreground: oklch(1 0 0);
 }
+
+/* ───────────────────────────────────────────────────────────
+   W9.7 — Sticky first column (horizontal scroll anchor).
+   Apply `.cat-sticky-col` on the anchor `<td>` of each row in
+   ВСЕХ 3 реестрах (matrix Название, /catalog/artikuly Артикул,
+   /catalog/tovary Баркод). Header-cell counterpart adds the
+   `.cat-sticky-col-head` modifier so it sits above row cells
+   when the table header is also sticky-top.
+
+   Mechanism: `position: sticky; left: 0;` keeps the cell
+   pinned during horizontal scroll inside the surrounding
+   overflow-x container. Background + box-shadow восстанавливает
+   визуальную границу с прокручиваемой частью.
+   ─────────────────────────────────────────────────────────── */
+.catalog-scope .cat-sticky-col {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  /* Match table row background so scrolled cells don't show through. */
+  background-color: rgb(var(--cat-surface));
+  /* Subtle separator between frozen column and scrolling area. */
+  box-shadow: 2px 0 4px -2px rgba(0, 0, 0, 0.08);
+}
+
+/* Sticky cell inside a hovered row picks up the hover tint. */
+.catalog-scope tr:hover > .cat-sticky-col {
+  background-color: rgb(var(--cat-surface-hover));
+}
+
+/* Alt-tinted rows (group strips, expanded variants) — adapt bg. */
+.catalog-scope tr.cat-sticky-row-alt > .cat-sticky-col,
+.catalog-scope .cat-sticky-col.cat-sticky-col-alt {
+  background-color: rgb(var(--cat-surface-alt));
+}
+
+/* Header-cell variant: bump z-index above body sticky cells so the
+   left-top corner is rendered over the column shadow + over rows
+   when `<thead>` is itself `position: sticky; top: 0`. */
+.catalog-scope .cat-sticky-col-head {
+  z-index: 3;
+  background-color: rgb(var(--cat-surface-alt));
+}
+
+/* Second sticky offset — for реестров with leading checkbox column.
+   Checkbox `<col style={{ width: 40 }} />` фиксируется на left:0,
+   а сама якорная (artikul/barkod) колонка — на left:40px. */
+.catalog-scope .cat-sticky-col-checkbox {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background-color: rgb(var(--cat-surface));
+}
+.catalog-scope tr:hover > .cat-sticky-col-checkbox {
+  background-color: rgb(var(--cat-surface-hover));
+}
+.catalog-scope .cat-sticky-col-head.cat-sticky-col-checkbox {
+  z-index: 3;
+  background-color: rgb(var(--cat-surface-alt));
+}
+.catalog-scope .cat-sticky-col-offset {
+  left: 40px;
+}
+

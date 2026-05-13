@@ -19,6 +19,7 @@ import {
   fetchStatusy,
   fetchTipyKollekciy,
 } from "@/lib/catalog/service"
+import { translateError } from "@/lib/catalog/error-translator"
 
 interface NewModelModalProps {
   isOpen: boolean
@@ -171,7 +172,7 @@ export function NewModelModal({ isOpen, onClose, onCreated }: NewModelModalProps
       })
       onCreated(createdKod)
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Ошибка создания модели")
+      setError(translateError(e))
     } finally {
       setSaving(false)
     }

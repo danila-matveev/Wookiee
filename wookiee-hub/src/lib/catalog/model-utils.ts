@@ -57,3 +57,35 @@ export function modelCompletenessCounts(model: Partial<ModelOsnova>): {
 
 /** Базовые поля, по которым считается completeness — экспортируем для тестов. */
 export const MODEL_COMPLETENESS_FIELDS = COMPLETENESS_FIELDS
+
+// ─── W9.8: канонический размерный ряд модели ──────────────────────────────
+// Источник истины — `modeli_osnova.razmery_modeli` (CSV/JSON-строка), которую
+// пользователь редактирует в карточке модели. До W9.8 матрица собирала размеры
+// из `modeli.rossiyskiy_razmer` (это российский numeric-код вариации, не lad-
+// der), из-за чего отображение было либо пустым, либо неверным (например, для
+// Ruby показывалось 4 значения, реальный комплект — 3: S/M/L). Теперь матрица
+// читает CSV razmery_modeli — тот же источник, что и карточка модели.
+
+/** Распарсить CSV/JSON значение razmery_modeli → массив размеров (XS..XXL). */
+export function parseRazmeryModeli(raw: string | null | undefined): string[] {
+  if (!raw) return []
+  const trimmed = String(raw).trim()
+  if (!trimmed) return []
+  // accept JSON array
+  if (trimmed.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(trimmed)
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map((s) => String(s).trim())
+          .filter(Boolean)
+      }
+    } catch {
+      // fall through to CSV
+    }
+  }
+  return trimmed
+    .split(/[,;\s]+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+}

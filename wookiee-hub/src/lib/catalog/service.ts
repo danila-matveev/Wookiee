@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase"
 import type { ModelOsnova } from "@/types/catalog"
 import { computeCompleteness, getMissingFields, type CompletenessField } from "./color-utils"
+import { parseRazmeryModeli } from "./model-utils"
 
 // Re-export ui-preferences helpers for backward compatibility with existing
 // catalog imports. New code should import directly from "@/lib/ui-preferences".
@@ -155,6 +156,53 @@ export async function deleteAtribut(id: number): Promise<void> {
 }
 
 /**
+ * W10.18: массовая привязка атрибута к нескольким категориям одним вызовом.
+ *
+ * Для каждой `kategoriya_id` считается MAX(poryadok) в её существующих
+ * привязках, затем атрибут вставляется в конец списка (max + 1, +2, … для
+ * пустых категорий начинается с 1). Все строки кладутся одним INSERT —
+ * один round-trip к Supabase.
+ *
+ * `atribut_key` обязателен (NOT NULL в схеме, миграция 016) — дублирует
+ * `atribut_id` для обратной совместимости.
+ *
+ * Дубликаты исключаются на уровне БД (UNIQUE(kategoriya_id, atribut_key)).
+ * Если категория уже привязана — поднимется ошибка от Postgres; вызывающий
+ * код отвечает за то, чтобы не передавать таких. При создании нового
+ * атрибута это безопасно — он ещё ни к чему не привязан.
+ */
+export async function bulkLinkAtributToKategorii(
+  atributId: number,
+  atributKey: string,
+  kategoriyaIds: number[],
+): Promise<void> {
+  if (kategoriyaIds.length === 0) return
+
+  // Считаем MAX(poryadok) для всех целевых категорий одним запросом.
+  const { data: existing, error: maxErr } = await supabase
+    .from("kategoriya_atributy")
+    .select("kategoriya_id, poryadok")
+    .in("kategoriya_id", kategoriyaIds)
+  if (maxErr) throw new Error(maxErr.message)
+
+  const maxByKategoriya: Record<number, number> = {}
+  for (const row of (existing ?? []) as { kategoriya_id: number; poryadok: number }[]) {
+    const cur = maxByKategoriya[row.kategoriya_id] ?? 0
+    if (row.poryadok > cur) maxByKategoriya[row.kategoriya_id] = row.poryadok
+  }
+
+  const rows = kategoriyaIds.map((kategoriya_id) => ({
+    kategoriya_id,
+    atribut_id: atributId,
+    atribut_key: atributKey,
+    poryadok: (maxByKategoriya[kategoriya_id] ?? 0) + 1,
+  }))
+
+  const { error } = await supabase.from("kategoriya_atributy").insert(rows)
+  if (error) throw new Error(error.message)
+}
+
+/**
  * Атрибуты, привязанные к категории, в порядке `poryadok`.
  *
  * Источник истины — таблица `kategoriya_atributy` (миграция 016, W2.2) +
@@ -162,6 +210,35 @@ export async function deleteAtribut(id: number): Promise<void> {
  * `Atribut` (id, key, label, type, options, …) — model-card.tsx использует
  * label/type/options напрямую, без вторичного маппинга через `ALL_ATTRIBUTES`.
  */
+/**
+ * W9.14 — Привязать существующий атрибут к категории.
+ *
+ * Вставляет ряд в `kategoriya_atributy`. `poryadok` берётся как `max+1` если
+ * не передан явно. Идемпотентен: при конфликте уникального ключа (если такой
+ * есть) бросает понятную ошибку — её ловит translateError в UI.
+ */
+export async function linkAtributToKategoriya(
+  atributId: number,
+  kategoriyaId: number,
+  poryadok?: number,
+): Promise<void> {
+  let order = poryadok
+  if (order == null) {
+    const { data: maxRow } = await supabase
+      .from("kategoriya_atributy")
+      .select("poryadok")
+      .eq("kategoriya_id", kategoriyaId)
+      .order("poryadok", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    order = ((maxRow as { poryadok: number } | null)?.poryadok ?? 0) + 1
+  }
+  const { error } = await supabase
+    .from("kategoriya_atributy")
+    .insert({ atribut_id: atributId, kategoriya_id: kategoriyaId, poryadok: order })
+  if (error) throw new Error(error.message)
+}
+
 export async function fetchAttributesForCategory(
   kategoriyaId: number,
 ): Promise<Atribut[]> {
@@ -781,6 +858,8 @@ export interface MatrixRow {
   id: number
   kod: string
   nazvanie_sayt: string | null
+  /** W9.3 — нужно в search-полях матрицы (часто более полное имя, чем nazvanie_sayt). */
+  nazvanie_etiketka: string | null
   tip_kollekcii: string | null
   kategoriya_id: number | null
   kategoriya: string | null
@@ -798,6 +877,12 @@ export interface MatrixRow {
   completeness: number
   /** Список незаполненных ключевых полей для tooltip над CompletenessRing. */
   missing_fields: CompletenessField[]
+  /**
+   * W9.8 — канонический размерный ряд модели (parsed CSV из
+   * `modeli_osnova.razmery_modeli`). Единственный источник истины для колонки
+   * «Размеры» в матрице. Пустой массив, если ряд не заполнен в карточке.
+   */
+  razmery: string[]
   modeli: {
     id: number
     kod: string
@@ -843,6 +928,7 @@ export async function fetchMatrixList(): Promise<MatrixRow[]> {
       id: mo.id,
       kod: mo.kod,
       nazvanie_sayt: mo.nazvanie_sayt,
+      nazvanie_etiketka: mo.nazvanie_etiketka ?? null,
       tip_kollekcii: mo.tip_kollekcii,
       kategoriya_id: mo.kategoriya_id,
       kategoriya: mo.kategorii?.nazvanie ?? null,
@@ -858,6 +944,7 @@ export async function fetchMatrixList(): Promise<MatrixRow[]> {
       cveta_cnt: cvetaIds.size,
       completeness: computeCompleteness(mo),
       missing_fields: getMissingFields(mo),
+      razmery: parseRazmeryModeli(mo.razmery_modeli),
       modeli: modeli.map((m: any) => {
         const mArts = (m.artikuly ?? []) as any[]
         const mTovary = mArts.flatMap((a: any) => a.tovary ?? [])
@@ -909,6 +996,7 @@ export interface VariationArtikul {
   cvet_color_code: string | null
   cvet_nazvanie: string | null
   cvet_semeystvo: string | null
+  cvet_hex: string | null
   status_id: number | null
   nomenklatura_wb: number | null
   artikul_ozon: string | null
@@ -945,7 +1033,7 @@ export async function fetchModelDetail(id: number): Promise<ModelDetail | null> 
         importery(nazvanie),
         artikuly(
           id, artikul, cvet_id, status_id, nomenklatura_wb, artikul_ozon,
-          cveta(id, color_code, cvet, semeystvo),
+          cveta(id, color_code, cvet, semeystvo, hex),
           tovary(
             id, barkod, razmer_id, status_id, status_ozon_id, status_sayt_id,
             status_lamoda_id, sku_china_size, ozon_product_id, ozon_fbo_sku_id, lamoda_seller_sku,
@@ -986,6 +1074,7 @@ export async function fetchModelDetail(id: number): Promise<ModelDetail | null> 
         cvet_color_code: a.cveta?.color_code ?? null,
         cvet_nazvanie: a.cveta?.cvet ?? null,
         cvet_semeystvo: a.cveta?.semeystvo ?? null,
+        cvet_hex: a.cveta?.hex ?? null,
         status_id: a.status_id,
         nomenklatura_wb: a.nomenklatura_wb,
         artikul_ozon: a.artikul_ozon,
@@ -1311,6 +1400,8 @@ export interface ArtikulRow {
   artikul_ozon: string | null
   tovary_cnt: number
   kategoriya: string | null
+  /** W9.10 — категория модели (id) для фильтра ColorPicker по категории. */
+  kategoriya_id: number | null
   kollekciya: string | null
   fabrika: string | null
   created_at: string | null
@@ -1331,7 +1422,7 @@ export async function fetchArtikulyRegistry(): Promise<ArtikulRow[]> {
         modeli(
           id, kod, model_osnova_id,
           modeli_osnova(
-            id, kod, tip_kollekcii, nazvanie_etiketka,
+            id, kod, tip_kollekcii, nazvanie_etiketka, kategoriya_id,
             kategorii(nazvanie),
             kollekcii(nazvanie),
             fabriki(nazvanie)
@@ -1365,6 +1456,7 @@ export async function fetchArtikulyRegistry(): Promise<ArtikulRow[]> {
     artikul_ozon: a.artikul_ozon,
     tovary_cnt: (a.tovary ?? []).length,
     kategoriya: a.modeli?.modeli_osnova?.kategorii?.nazvanie ?? null,
+    kategoriya_id: a.modeli?.modeli_osnova?.kategoriya_id ?? null,
     kollekciya: a.modeli?.modeli_osnova?.kollekcii?.nazvanie ?? null,
     fabrika: a.modeli?.modeli_osnova?.fabriki?.nazvanie ?? null,
     created_at: a.created_at,
@@ -1391,6 +1483,10 @@ export interface TovarRow {
   /** modeli_osnova.kollekciya / kategoriya — для group-by. */
   kollekciya: string | null
   kategoriya: string | null
+  /** W9.10 — kategoriya_id для ColorPicker (если когда-нибудь будем редактировать цвет SKU). */
+  kategoriya_id: number | null
+  /** W9.10 — cvet_id, чтобы можно было редактировать цвет SKU (через artikul). */
+  cvet_id: number | null
   cvet_color_code: string | null
   /** cveta.cvet (RU). */
   cvet_ru: string | null
@@ -1400,6 +1496,8 @@ export interface TovarRow {
   razmer: string | null
   /** razmery.kod в БД часто совпадает с nazvanie (XS/S/M/...). */
   razmer_kod: string | null
+  /** W9.10 — razmer_id для inline-edit размера. */
+  razmer_id: number | null
   status_id: number | null
   status_ozon_id: number | null
   status_sayt_id: number | null
@@ -1432,7 +1530,7 @@ export async function fetchTovaryRegistry(): Promise<TovarRow[]> {
           modeli(
             kod, model_osnova_id,
             modeli_osnova(
-              kod, nazvanie_etiketka,
+              kod, nazvanie_etiketka, kategoriya_id,
               kategorii(nazvanie),
               kollekcii(nazvanie)
             )
@@ -1463,12 +1561,15 @@ export async function fetchTovaryRegistry(): Promise<TovarRow[]> {
       nazvanie_etiketka: t.artikuly?.modeli?.modeli_osnova?.nazvanie_etiketka ?? null,
       kollekciya: t.artikuly?.modeli?.modeli_osnova?.kollekcii?.nazvanie ?? null,
       kategoriya: t.artikuly?.modeli?.modeli_osnova?.kategorii?.nazvanie ?? null,
+      kategoriya_id: t.artikuly?.modeli?.modeli_osnova?.kategoriya_id ?? null,
+      cvet_id: t.artikuly?.cvet_id ?? null,
       cvet_color_code: t.artikuly?.cveta?.color_code ?? null,
       cvet_ru: t.artikuly?.cveta?.cvet ?? null,
       color_en: t.artikuly?.cveta?.color ?? null,
       cvet_hex: t.artikuly?.cveta?.hex ?? null,
       razmer,
       razmer_kod: razmer,
+      razmer_id: t.razmer_id ?? null,
       status_id: t.status_id,
       status_ozon_id: t.status_ozon_id,
       status_sayt_id: t.status_sayt_id,
@@ -1488,11 +1589,15 @@ export async function fetchTovaryRegistry(): Promise<TovarRow[]> {
 
 export interface SkleykaDetailSKU {
   tovar_id: number
+  /** W10.23 — нужен для группировки SKU по артикулу в карточке склейки. */
+  artikul_id: number | null
   barkod: string
   razmer: string | null
   artikul: string | null
   model_osnova_kod: string | null
   cvet_color_code: string | null
+  cvet_nazvanie: string | null
+  cvet_hex: string | null
   status_id: number | null
   status_ozon_id: number | null
   nomenklatura_wb: number | null
@@ -1523,11 +1628,11 @@ export async function fetchSkleykaDetail(id: number, channel: 'wb' | 'ozon'): Pr
         tovar_id,
         tovary(
           id, barkod, razmer_id, status_id, status_ozon_id, status_sayt_id, status_lamoda_id,
-          sku_china_size, ozon_product_id, ozon_fbo_sku_id,
+          sku_china_size, ozon_product_id, ozon_fbo_sku_id, artikul_id,
           razmery(nazvanie),
           artikuly(
-            artikul, nomenklatura_wb, artikul_ozon,
-            cveta(color_code),
+            id, artikul, nomenklatura_wb, artikul_ozon,
+            cveta(color_code, cvet, hex),
             modeli(kod, modeli_osnova(kod))
           )
         )
@@ -1557,11 +1662,14 @@ export async function fetchSkleykaDetail(id: number, channel: 'wb' | 'ozon'): Pr
       const a = t.artikuly ?? {}
       return {
         tovar_id: row.tovar_id,
+        artikul_id: t.artikul_id ?? a.id ?? null,
         barkod: t.barkod ?? '',
         razmer: t.razmery?.nazvanie ?? null,
         artikul: a.artikul ?? null,
         model_osnova_kod: a.modeli?.modeli_osnova?.kod ?? null,
         cvet_color_code: a.cveta?.color_code ?? null,
+        cvet_nazvanie: a.cveta?.cvet ?? null,
+        cvet_hex: a.cveta?.hex ?? null,
         status_id: t.status_id ?? null,
         status_ozon_id: t.status_ozon_id ?? null,
         nomenklatura_wb: a.nomenklatura_wb ?? null,
@@ -1572,6 +1680,255 @@ export async function fetchSkleykaDetail(id: number, channel: 'wb' | 'ozon'): Pr
       } as SkleykaDetailSKU
     }),
   }
+}
+
+// ─── W10.26 + W10.19 — Skleyki lookups for registries / model card ────────
+//
+// junction-таблицы (миграция 027):
+//   - artikuly_skleyki_wb (artikul_id, skleyka_id) → skleyki_wb
+//   - artikuly_skleyki_ozon (artikul_id, skleyka_id) → skleyki_ozon
+//   - tovary_skleyki_wb (tovar_id, skleyka_id) → skleyki_wb (уже существует)
+//   - tovary_skleyki_ozon (tovar_id, skleyka_id) → skleyki_ozon (уже существует)
+//
+// Эти helper'ы — batch-фетчеры, чтобы не делать N+1 запросов на каждый ряд
+// в реестре. Возвращают Map<id, RowSkleyki>, где RowSkleyki = { wb?, ozon? }.
+
+/** Ссылка на склейку для ячейки реестра. */
+export interface RegistrySkleyka {
+  id: number
+  nazvanie: string
+}
+
+/** Ссылки на склейки по обоим каналам для одной строки реестра. */
+export interface RegistryRowSkleyki {
+  wb: RegistrySkleyka | null
+  ozon: RegistrySkleyka | null
+}
+
+/**
+ * Batch-fetch склейки для списка `artikul_id`. Делает два запроса (WB и OZON
+ * junction) параллельно, JOIN-ит со skleyki_wb / skleyki_ozon, возвращает
+ * Map: artikul_id → { wb, ozon }.  Если у артикула в канале несколько склеек,
+ * берётся первая (по сортировке БД) — это считается аномалией данных.
+ *
+ * Пустой input → пустой Map.  Если junction-таблицы ещё не существуют
+ * (миграция 027 не применена), возвращаем пустой Map и логгируем warning,
+ * чтобы UI деградировал gracefully.
+ */
+export async function fetchArtikulSkleykiBatch(
+  artikulIds: number[],
+): Promise<Map<number, RegistryRowSkleyki>> {
+  const out = new Map<number, RegistryRowSkleyki>()
+  if (artikulIds.length === 0) return out
+
+  const [wbRes, ozonRes] = await Promise.all([
+    supabase
+      .from("artikuly_skleyki_wb")
+      .select("artikul_id, skleyka_id, skleyki_wb(id, nazvanie)")
+      .in("artikul_id", artikulIds),
+    supabase
+      .from("artikuly_skleyki_ozon")
+      .select("artikul_id, skleyka_id, skleyki_ozon(id, nazvanie)")
+      .in("artikul_id", artikulIds),
+  ])
+
+  // Любая ошибка (включая «table does not exist» если миграция ещё не
+  // применена) — лог и пустой Map, чтобы UI не падал.
+  if (wbRes.error) {
+    // eslint-disable-next-line no-console
+    console.warn("[fetchArtikulSkleykiBatch] WB junction unavailable:", wbRes.error.message)
+  }
+  if (ozonRes.error) {
+    // eslint-disable-next-line no-console
+    console.warn("[fetchArtikulSkleykiBatch] OZON junction unavailable:", ozonRes.error.message)
+  }
+
+  const ensure = (id: number): RegistryRowSkleyki => {
+    let cur = out.get(id)
+    if (!cur) {
+      cur = { wb: null, ozon: null }
+      out.set(id, cur)
+    }
+    return cur
+  }
+
+  for (const row of (wbRes.data ?? []) as any[]) {
+    const sk = row.skleyki_wb
+    if (!sk) continue
+    const slot = ensure(row.artikul_id as number)
+    if (!slot.wb) slot.wb = { id: sk.id, nazvanie: sk.nazvanie }
+  }
+  for (const row of (ozonRes.data ?? []) as any[]) {
+    const sk = row.skleyki_ozon
+    if (!sk) continue
+    const slot = ensure(row.artikul_id as number)
+    if (!slot.ozon) slot.ozon = { id: sk.id, nazvanie: sk.nazvanie }
+  }
+
+  return out
+}
+
+/**
+ * Аналог для SKU (tovary_skleyki_*).  Используется в реестре /tovary.
+ * Эти junction-таблицы существуют давно — fallback нужен только для
+ * консистентности с artikuly-версией.
+ */
+export async function fetchTovarSkleykiBatch(
+  tovarIds: number[],
+): Promise<Map<number, RegistryRowSkleyki>> {
+  const out = new Map<number, RegistryRowSkleyki>()
+  if (tovarIds.length === 0) return out
+
+  const [wbRes, ozonRes] = await Promise.all([
+    supabase
+      .from("tovary_skleyki_wb")
+      .select("tovar_id, skleyka_id, skleyki_wb(id, nazvanie)")
+      .in("tovar_id", tovarIds),
+    supabase
+      .from("tovary_skleyki_ozon")
+      .select("tovar_id, skleyka_id, skleyki_ozon(id, nazvanie)")
+      .in("tovar_id", tovarIds),
+  ])
+
+  if (wbRes.error) {
+    // eslint-disable-next-line no-console
+    console.warn("[fetchTovarSkleykiBatch] WB junction error:", wbRes.error.message)
+  }
+  if (ozonRes.error) {
+    // eslint-disable-next-line no-console
+    console.warn("[fetchTovarSkleykiBatch] OZON junction error:", ozonRes.error.message)
+  }
+
+  const ensure = (id: number): RegistryRowSkleyki => {
+    let cur = out.get(id)
+    if (!cur) {
+      cur = { wb: null, ozon: null }
+      out.set(id, cur)
+    }
+    return cur
+  }
+
+  for (const row of (wbRes.data ?? []) as any[]) {
+    const sk = row.skleyki_wb
+    if (!sk) continue
+    const slot = ensure(row.tovar_id as number)
+    if (!slot.wb) slot.wb = { id: sk.id, nazvanie: sk.nazvanie }
+  }
+  for (const row of (ozonRes.data ?? []) as any[]) {
+    const sk = row.skleyki_ozon
+    if (!sk) continue
+    const slot = ensure(row.tovar_id as number)
+    if (!slot.ozon) slot.ozon = { id: sk.id, nazvanie: sk.nazvanie }
+  }
+
+  return out
+}
+
+/** Склейка в секции «Склейки» карточки модели — с числом артикулов модели. */
+export interface ModelSkleyka {
+  id: number
+  nazvanie: string
+  channel: 'wb' | 'ozon'
+  /** Сколько артикулов ИМЕННО ЭТОЙ модели входит в склейку. */
+  skuCount: number
+}
+
+/**
+ * W10.19 — все склейки, в которых есть артикулы данной базовой модели.
+ *
+ * Алгоритм:
+ *   1. SELECT artikul_id FROM artikuly JOIN modeli ON ... WHERE modeli.model_osnova_id = X.
+ *   2. SELECT skleyka_id FROM artikuly_skleyki_wb WHERE artikul_id IN (...) — group.
+ *   3. Аналогично для artikuly_skleyki_ozon.
+ *   4. SELECT nazvanie из skleyki_wb / skleyki_ozon.
+ *   5. skuCount = число DISTINCT artikul_id внутри склейки, принадлежащих модели.
+ *
+ * Если junction-таблицы 027 ещё не применены → fallback пустой массив + warning.
+ */
+export async function fetchModelSkleyki(modelOsnovaId: number): Promise<ModelSkleyka[]> {
+  // Шаг 1 — artikul_id всех артикулов модели (через вариации modeli).
+  const { data: artikuly, error: aErr } = await supabase
+    .from("artikuly")
+    .select("id, modeli!inner(model_osnova_id)")
+    .eq("modeli.model_osnova_id", modelOsnovaId)
+  if (aErr) throw aErr
+  const artikulIds = ((artikuly ?? []) as { id: number }[]).map((r) => r.id)
+  if (artikulIds.length === 0) return []
+
+  // Шаг 2+3 — junction-таблицы (параллельно).
+  const [wbJ, ozonJ] = await Promise.all([
+    supabase
+      .from("artikuly_skleyki_wb")
+      .select("artikul_id, skleyka_id")
+      .in("artikul_id", artikulIds),
+    supabase
+      .from("artikuly_skleyki_ozon")
+      .select("artikul_id, skleyka_id")
+      .in("artikul_id", artikulIds),
+  ])
+  if (wbJ.error) {
+    // eslint-disable-next-line no-console
+    console.warn("[fetchModelSkleyki] WB junction unavailable:", wbJ.error.message)
+  }
+  if (ozonJ.error) {
+    // eslint-disable-next-line no-console
+    console.warn("[fetchModelSkleyki] OZON junction unavailable:", ozonJ.error.message)
+  }
+
+  // Группировка skleyka_id → Set<artikul_id> (DISTINCT).
+  const wbCounts = new Map<number, Set<number>>()
+  for (const row of (wbJ.data ?? []) as { artikul_id: number; skleyka_id: number }[]) {
+    let set = wbCounts.get(row.skleyka_id)
+    if (!set) { set = new Set(); wbCounts.set(row.skleyka_id, set) }
+    set.add(row.artikul_id)
+  }
+  const ozonCounts = new Map<number, Set<number>>()
+  for (const row of (ozonJ.data ?? []) as { artikul_id: number; skleyka_id: number }[]) {
+    let set = ozonCounts.get(row.skleyka_id)
+    if (!set) { set = new Set(); ozonCounts.set(row.skleyka_id, set) }
+    set.add(row.artikul_id)
+  }
+
+  if (wbCounts.size === 0 && ozonCounts.size === 0) return []
+
+  // Шаг 4 — nazvanie склеек.
+  const wbIds = Array.from(wbCounts.keys())
+  const ozonIds = Array.from(ozonCounts.keys())
+  const [wbNames, ozonNames] = await Promise.all([
+    wbIds.length === 0
+      ? Promise.resolve({ data: [] as any[], error: null as any })
+      : supabase.from("skleyki_wb").select("id, nazvanie").in("id", wbIds),
+    ozonIds.length === 0
+      ? Promise.resolve({ data: [] as any[], error: null as any })
+      : supabase.from("skleyki_ozon").select("id, nazvanie").in("id", ozonIds),
+  ])
+  if (wbNames.error) throw wbNames.error
+  if (ozonNames.error) throw ozonNames.error
+
+  const out: ModelSkleyka[] = []
+  for (const row of (wbNames.data ?? []) as { id: number; nazvanie: string }[]) {
+    out.push({
+      id: row.id,
+      nazvanie: row.nazvanie,
+      channel: 'wb',
+      skuCount: wbCounts.get(row.id)?.size ?? 0,
+    })
+  }
+  for (const row of (ozonNames.data ?? []) as { id: number; nazvanie: string }[]) {
+    out.push({
+      id: row.id,
+      nazvanie: row.nazvanie,
+      channel: 'ozon',
+      skuCount: ozonCounts.get(row.id)?.size ?? 0,
+    })
+  }
+
+  // Стабильный sort: WB первым, потом OZON; внутри — по nazvanie.
+  out.sort((a, b) => {
+    if (a.channel !== b.channel) return a.channel === 'wb' ? -1 : 1
+    return a.nazvanie.localeCompare(b.nazvanie, "ru", { numeric: true })
+  })
+  return out
 }
 
 // ─── Cveta mutations ───────────────────────────────────────────────────────
@@ -1612,6 +1969,42 @@ export async function deleteCvet(id: number): Promise<void> {
   if (archiveId == null) throw new Error("Status 'Архив' (tip='color') not found in DB")
   const { error } = await supabase.from("cveta").update({ status_id: archiveId }).eq("id", id)
   if (error) throw new Error(error.message)
+}
+
+// ─── W9.12: cvet_kategoriya (colour → category m2m) ──────────────────────
+
+/**
+ * Return the list of kategoriya_id values mapped to a colour.
+ * Empty array = colour applies to ALL categories (legacy fallback).
+ */
+export async function fetchKategoriiForCvet(cvetId: number): Promise<number[]> {
+  const { data, error } = await supabase
+    .from("cvet_kategoriya")
+    .select("kategoriya_id")
+    .eq("cvet_id", cvetId)
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((r) => (r as { kategoriya_id: number }).kategoriya_id)
+}
+
+/**
+ * Replace the full set of categories for a colour (delete-then-insert).
+ * Pass an empty array to clear all mappings (colour becomes universal again).
+ */
+export async function setKategoriiForCvet(
+  cvetId: number,
+  kategoriyaIds: number[],
+): Promise<void> {
+  const { error: delErr } = await supabase
+    .from("cvet_kategoriya")
+    .delete()
+    .eq("cvet_id", cvetId)
+  if (delErr) throw new Error(delErr.message)
+
+  if (kategoriyaIds.length === 0) return
+
+  const rows = kategoriyaIds.map((kid) => ({ cvet_id: cvetId, kategoriya_id: kid }))
+  const { error: insErr } = await supabase.from("cvet_kategoriya").insert(rows)
+  if (insErr) throw new Error(insErr.message)
 }
 
 // ─── Modeli operations (create / update / duplicate / archive cascade) ────
@@ -2045,6 +2438,66 @@ export async function bulkUpdateModelStatus(kods: string[], statusId: number): P
   if (error) throw new Error(error.message)
 }
 
+/**
+ * W9.20 — Bulk-update fabrika_id у моделей (addressed by kod).
+ *
+ * Передай `fabrikaId = null` чтобы очистить ссылку на фабрику.
+ */
+export async function bulkUpdateModelFabrika(
+  kods: string[],
+  fabrikaId: number | null,
+): Promise<void> {
+  if (kods.length === 0) return
+  const { error } = await supabase
+    .from("modeli_osnova")
+    .update({ fabrika_id: fabrikaId })
+    .in("kod", kods)
+  if (error) throw new Error(error.message)
+}
+
+/**
+ * W9.20 — Bulk-replace набор сертификатов для моделей.
+ *
+ * `modeli_osnova_sertifikaty` — M:N join-table. Для каждого выбранного `kod`:
+ *   1) Считываем `modeli_osnova.id` по kod (одним IN-запросом).
+ *   2) Удаляем все существующие связи в join-table.
+ *   3) Вставляем новые связи для всех id × sertifikatIds.
+ *
+ * Если `sertifikatIds = []` — просто удаляем все связи (clear).
+ */
+export async function bulkReplaceModelSertifikaty(
+  kods: string[],
+  sertifikatIds: number[],
+): Promise<void> {
+  if (kods.length === 0) return
+  // 1) kod → model_osnova.id
+  const { data: ids, error: idsErr } = await supabase
+    .from("modeli_osnova")
+    .select("id, kod")
+    .in("kod", kods)
+  if (idsErr) throw new Error(idsErr.message)
+  const modelIds = (ids ?? []).map((r) => r.id as number)
+  if (modelIds.length === 0) return
+  // 2) wipe existing links
+  const { error: delErr } = await supabase
+    .from("modeli_osnova_sertifikaty")
+    .delete()
+    .in("model_osnova_id", modelIds)
+  if (delErr) throw new Error(delErr.message)
+  // 3) insert fresh links (cross-product modelIds × sertifikatIds).
+  if (sertifikatIds.length === 0) return
+  const rows: { model_osnova_id: number; sertifikat_id: number }[] = []
+  for (const mid of modelIds) {
+    for (const sid of sertifikatIds) {
+      rows.push({ model_osnova_id: mid, sertifikat_id: sid })
+    }
+  }
+  const { error: insErr } = await supabase
+    .from("modeli_osnova_sertifikaty")
+    .insert(rows)
+  if (insErr) throw new Error(insErr.message)
+}
+
 /** Bulk-update status_id of artikuly rows (addressed by id). */
 export async function bulkUpdateArtikulStatus(artikulIds: number[], statusId: number): Promise<void> {
   if (artikulIds.length === 0) return
@@ -2052,6 +2505,146 @@ export async function bulkUpdateArtikulStatus(artikulIds: number[], statusId: nu
     .from("artikuly")
     .update({ status_id: statusId })
     .in("id", artikulIds)
+  if (error) throw new Error(error.message)
+}
+
+/**
+ * W9.10 — Patch для inline-edit одной строки artikuly.
+ *
+ * Поддерживаемые поля:
+ *   - artikul (varchar, NOT NULL) — основной код/имя
+ *   - cvet_id (FK на cveta)
+ *   - nomenklatura_wb (bigint | null)
+ *   - artikul_ozon (varchar | null)
+ *   - status_id — лучше через bulkUpdateArtikulStatus (есть отдельный popover)
+ *
+ * Аудит-триггер (W7.1 / W9.1) пишет в `istoriya_izmeneniy`.
+ */
+export interface ArtikulPatch {
+  artikul?: string
+  cvet_id?: number
+  nomenklatura_wb?: number | null
+  artikul_ozon?: string | null
+  status_id?: number
+}
+export async function updateArtikul(id: number, patch: ArtikulPatch): Promise<void> {
+  if (Object.keys(patch).length === 0) return
+  const { error } = await supabase
+    .from("artikuly")
+    .update(patch)
+    .eq("id", id)
+  if (error) throw new Error(error.message)
+}
+
+/**
+ * W9.10 — Patch для inline-edit одной строки tovary.
+ *
+ * Поддерживаемые поля:
+ *   - barkod (varchar, NOT NULL) — основной баркод
+ *   - barkod_gs1, barkod_gs2, barkod_perehod (varchar | null)
+ *   - razmer_id (FK на razmery)
+ *   - sku_china_size (varchar | null)
+ *   - lamoda_seller_sku (varchar | null)
+ *   - ozon_product_id, ozon_fbo_sku_id (bigint | null)
+ *   - status_<channel>_id — лучше через bulkUpdateTovaryStatus.
+ *
+ * Цены WB/OZON в схеме `tovary` отсутствуют — поля cena_wb/cena_ozon
+ * в реестре пока стоят как plain «—» (см. column-catalogs W9.5). Здесь не
+ * редактируются. Если когда-нибудь появятся отдельные таблицы — добавить
+ * параллельный patch в them.
+ */
+export interface TovarPatch {
+  barkod?: string
+  barkod_gs1?: string | null
+  barkod_gs2?: string | null
+  barkod_perehod?: string | null
+  razmer_id?: number
+  sku_china_size?: string | null
+  lamoda_seller_sku?: string | null
+  ozon_product_id?: number | null
+  ozon_fbo_sku_id?: number | null
+}
+export async function updateTovar(id: number, patch: TovarPatch): Promise<void> {
+  if (Object.keys(patch).length === 0) return
+  const { error } = await supabase
+    .from("tovary")
+    .update(patch)
+    .eq("id", id)
+  if (error) throw new Error(error.message)
+}
+
+/**
+ * Bulk-смена фабрики у моделей, к которым относятся выбранные артикулы.
+ *
+ * ВАЖНО: `fabrika_id` хранится на `modeli_osnova`, а не на `artikuly`.
+ * Поэтому функция:
+ *   1) резолвит artikul.id → modeli.model_osnova_id (через FK `modeli`),
+ *   2) обновляет `modeli_osnova.fabrika_id` для всех уникальных
+ *      `model_osnova_id`, найденных среди выбранных артикулов.
+ *
+ * Side-effect: если у одной модели N артикулов и пользователь выбрал
+ * только часть — фабрика всё равно меняется на ВСЕЙ модели (так как поле
+ * живёт на ней).  UI должен предупреждать об этом перед вызовом.
+ *
+ * Категория аналогична фабрике (тоже на modeli_osnova), но из соображений
+ * безопасности bulk-смена категории на артикул-уровне НЕ реализована —
+ * категория сильнее влияет на структуру атрибутов модели и должна меняться
+ * прицельно на model-card.tsx.
+ */
+export async function bulkUpdateArtikulFabrika(
+  artikulIds: number[],
+  fabrikaId: number,
+): Promise<void> {
+  if (artikulIds.length === 0) return
+  // 1) artikuly.id → model_id → modeli.model_osnova_id
+  const { data: artRows, error: artErr } = await supabase
+    .from("artikuly")
+    .select("model_id, modeli(model_osnova_id)")
+    .in("id", artikulIds)
+  if (artErr) throw new Error(artErr.message)
+  const osnovaIds = new Set<number>()
+  for (const r of (artRows ?? []) as any[]) {
+    const oid = r.modeli?.model_osnova_id
+    if (typeof oid === "number") osnovaIds.add(oid)
+  }
+  if (osnovaIds.size === 0) return
+  // 2) bulk-update modeli_osnova.fabrika_id для уникальных моделей.
+  const { error } = await supabase
+    .from("modeli_osnova")
+    .update({ fabrika_id: fabrikaId })
+    .in("id", Array.from(osnovaIds))
+  if (error) throw new Error(error.message)
+}
+
+/**
+ * Bulk-delete артикулов. Каскадно удалит привязанные `tovary` (PostgreSQL
+ * cascading FK). Если FK без ON DELETE CASCADE — упадёт с ошибкой, UI
+ * покажет её в alert.
+ *
+ * UI должен показать window.confirm перед вызовом (BulkActionsBar
+ * type='confirm' делает это автоматически).
+ */
+export async function bulkDeleteArtikuly(artikulIds: number[]): Promise<void> {
+  if (artikulIds.length === 0) return
+  const { error } = await supabase
+    .from("artikuly")
+    .delete()
+    .in("id", artikulIds)
+  if (error) throw new Error(error.message)
+}
+
+/**
+ * Bulk-delete tovary (SKU) по списку barkod.
+ *
+ * Каскадно удалит junction-строки `tovary_skleyki_wb/ozon`.
+ * UI должен показать window.confirm перед вызовом.
+ */
+export async function bulkDeleteTovary(barkods: string[]): Promise<void> {
+  if (barkods.length === 0) return
+  const { error } = await supabase
+    .from("tovary")
+    .delete()
+    .in("barkod", barkods)
   if (error) throw new Error(error.message)
 }
 
@@ -2164,8 +2757,14 @@ async function getDefaultArtikulStatusId(): Promise<number | null> {
  * Create a single `artikuly` row for a given variation (`modeli.id`) and
  * a colour (`cveta.id`).
  *
- * `artikul` is auto-generated as `${modeli.kod}/${cveta.color_code}` to
- * match historical naming convention (e.g. `Alice-1/black`, `Nora/brown`).
+ * By default `artikul` is auto-generated as `${modeli.kod}/${cveta.color_code}`
+ * to match historical naming convention (e.g. `Alice-1/black`, `Nora/brown`).
+ *
+ * W9.11 — caller may pass `customArtikul` to override the generated name.
+ * Trimmed value is used; if empty after trim, falls back to auto-generated.
+ * Uniqueness is guaranteed by DB constraint `artikuly_artikul_key`
+ * (translated to a human message by `translateError` on 23505).
+ *
  * Default `status_id` = `statusy(tip='artikul', nazvanie='Запуск')`.
  *
  * Caller is responsible for invalidating ["catalog", "model", kod].
@@ -2173,6 +2772,7 @@ async function getDefaultArtikulStatusId(): Promise<number | null> {
 export async function insertArtikul(
   modeliId: number,
   cvetId: number,
+  customArtikul?: string,
 ): Promise<InsertedArtikul> {
   // 1. Look up the variation's kod + colour's color_code in parallel.
   const [modeliRes, cvetRes, defaultStatusId] = await Promise.all([
@@ -2188,7 +2788,10 @@ export async function insertArtikul(
   if (!modeliKod) throw new Error(`modeli.id=${modeliId} has empty kod`)
   if (!colorCode) throw new Error(`cveta.id=${cvetId} has empty color_code`)
 
-  const artikul = `${modeliKod}/${colorCode}`
+  const trimmedCustom = customArtikul?.trim() ?? ""
+  const artikul = trimmedCustom.length > 0
+    ? trimmedCustom
+    : `${modeliKod}/${colorCode}`
 
   // 2. INSERT. status_id may legitimately be null if the dictionary has no
   // tip='artikul' rows at all — schema allows it.
@@ -2209,19 +2812,28 @@ export async function insertArtikul(
 /**
  * Bulk-create artikuly for one variation across multiple colours.
  *
+ * Accepts a list of `{ cvetId, customArtikul? }` entries. If `customArtikul`
+ * is omitted/empty for an entry, the server generates `${kod}/${color_code}`
+ * (см. `insertArtikul`).
+ *
  * Skips colours that would produce a duplicate `artikul` string (the UI is
  * expected to filter these out, but the guard is here so the call is
  * idempotent). Runs the inserts sequentially via `insertArtikul` to keep
  * error handling simple — N ≤ palette size, typically < 20.
  */
+export interface ArtikulCreateInput {
+  cvetId: number
+  customArtikul?: string
+}
+
 export async function bulkCreateArtikuly(
   modeliId: number,
-  cvetIds: number[],
+  entries: ArtikulCreateInput[],
 ): Promise<InsertedArtikul[]> {
-  if (cvetIds.length === 0) return []
+  if (entries.length === 0) return []
   const out: InsertedArtikul[] = []
-  for (const cvetId of cvetIds) {
-    const row = await insertArtikul(modeliId, cvetId)
+  for (const entry of entries) {
+    const row = await insertArtikul(modeliId, entry.cvetId, entry.customArtikul)
     out.push(row)
   }
   return out
@@ -2394,6 +3006,107 @@ export async function bulkAddSizeToArtikuly(
       barkod,
       artikul_id: artikulId,
       razmer_id: razmerId,
+      status_id: TOVAR_DEFAULT_STATUS_ID,
+      status_ozon_id: TOVAR_DEFAULT_STATUS_ID,
+      status_sayt_id: TOVAR_DEFAULT_STATUS_ID,
+      status_lamoda_id: TOVAR_DEFAULT_LAMODA_STATUS_ID,
+    })
+  }
+
+  const { data, error } = await supabase
+    .from("tovary")
+    .insert(rows)
+    .select("id, barkod, artikul_id, razmer_id")
+  if (error) throw new Error(error.message)
+  return (data ?? []) as InsertedTovar[]
+}
+
+/**
+ * W10.9 + W10.37 — Bulk create SKU rows for arbitrary (artikul_id, razmer_id)
+ * combinations.
+ *
+ * Used by the "create artikuly + sizes together" flow in `AddArtikulModal`:
+ * after `bulkCreateArtikuly` returns N new artikul IDs, the caller forms the
+ * full cross-product `N × M` (где M = выбранные размеры) и передаёт его сюда
+ * одним батчем.
+ *
+ * Контракт:
+ *   - принимает массив `{ artikulId, razmerId }` пар;
+ *   - **сам пропускает дубли** (probes `(artikul_id, razmer_id)` в одном SELECT
+ *     и не вставляет уже существующие комбинации — никаких 23505 от UNIQUE
+ *     constraint, идемпотентно при повторном вызове);
+ *   - генерит уникальные EAN-13 barkod-плейсхолдеры (как `insertTovar`);
+ *   - применяет дефолтные статусы (`TOVAR_DEFAULT_STATUS_ID = 12 ('План')`);
+ *   - один multi-row INSERT для всего батча.
+ *
+ * Возвращает только реально вставленные строки (может быть короче входа,
+ * если часть комбинаций уже существовала).
+ */
+export interface TovarCreateInput {
+  artikulId: number
+  razmerId: number
+}
+
+export async function bulkInsertTovary(
+  inputs: TovarCreateInput[],
+): Promise<InsertedTovar[]> {
+  if (inputs.length === 0) return []
+
+  // Deduplicate within the input list itself (caller may pass the cross-product
+  // with accidental repeats; the DB UNIQUE would catch it, но дешевле здесь).
+  const seen = new Set<string>()
+  const deduped: TovarCreateInput[] = []
+  for (const inp of inputs) {
+    const key = `${inp.artikulId}:${inp.razmerId}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    deduped.push(inp)
+  }
+
+  // Probe existing combinations to skip.
+  const artikulIds = Array.from(new Set(deduped.map((x) => x.artikulId)))
+  const razmerIds = Array.from(new Set(deduped.map((x) => x.razmerId)))
+  const { data: existing, error: existingErr } = await supabase
+    .from("tovary")
+    .select("artikul_id, razmer_id")
+    .in("artikul_id", artikulIds)
+    .in("razmer_id", razmerIds)
+  if (existingErr) throw new Error(existingErr.message)
+  const existingKeys = new Set(
+    ((existing ?? []) as { artikul_id: number; razmer_id: number }[]).map(
+      (r) => `${r.artikul_id}:${r.razmer_id}`,
+    ),
+  )
+  const toCreate = deduped.filter(
+    (x) => !existingKeys.has(`${x.artikulId}:${x.razmerId}`),
+  )
+  if (toCreate.length === 0) return []
+
+  // Pre-generate barkods (uniqueness guarded vs DB + within this batch).
+  const rows: Array<{
+    barkod: string
+    artikul_id: number
+    razmer_id: number
+    status_id: number
+    status_ozon_id: number
+    status_sayt_id: number
+    status_lamoda_id: number | null
+  }> = []
+  const localBarkods = new Set<string>()
+  for (const inp of toCreate) {
+    let barkod: string
+    while (true) {
+      const candidate = await generateUniqueBarkod()
+      if (!localBarkods.has(candidate)) {
+        barkod = candidate
+        localBarkods.add(candidate)
+        break
+      }
+    }
+    rows.push({
+      barkod,
+      artikul_id: inp.artikulId,
+      razmer_id: inp.razmerId,
       status_id: TOVAR_DEFAULT_STATUS_ID,
       status_ozon_id: TOVAR_DEFAULT_STATUS_ID,
       status_sayt_id: TOVAR_DEFAULT_STATUS_ID,
@@ -2837,4 +3550,559 @@ export async function fetchAuditFor(
     .limit(limit)
   if (error) throw new Error(error.message)
   return (data ?? []) as AuditEntry[]
+}
+
+/**
+ * W10.25 + W10.36 — история склейки.
+ *
+ * Возвращает audit_log по самой склейке (`skleyki_wb` / `skleyki_ozon`),
+ * её SKU-junction (`tovary_skleyki_{channel}`) и junction артикулов
+ * (`artikuly_skleyki_{channel}` — миграция 027).
+ *
+ * У junction-таблиц composite PK → `audit_log.row_id` для них может быть
+ * NULL. Поэтому фильтруем по JSONB `before/after.skleyka_id` через
+ * Supabase `.or()`-цепочку.
+ */
+export async function fetchSkleykaHistory(
+  skleykaId: number,
+  channel: "wb" | "ozon",
+  limit = 200,
+): Promise<AuditEntry[]> {
+  const mainTable = channel === "wb" ? "skleyki_wb" : "skleyki_ozon"
+  const tovaryJunction = channel === "wb" ? "tovary_skleyki_wb" : "tovary_skleyki_ozon"
+  const artikulyJunction = channel === "wb" ? "artikuly_skleyki_wb" : "artikuly_skleyki_ozon"
+
+  const idStr = String(skleykaId)
+
+  // Композитная OR-цепочка:
+  //   (table_name = 'skleyki_<ch>' AND row_id = id)
+  //   OR (table_name IN junctions AND after->>'skleyka_id' = id)
+  //   OR (table_name IN junctions AND before->>'skleyka_id' = id)
+  //
+  // PostgREST: `or=(cond1,cond2,...)` — внутри запятые-разделители.
+  // Подзапросы по нескольким AND нужно оборачивать в `and()`.
+  const orExpr = [
+    `and(table_name.eq.${mainTable},row_id.eq.${idStr})`,
+    `and(table_name.in.(${tovaryJunction},${artikulyJunction}),after->>skleyka_id.eq.${idStr})`,
+    `and(table_name.in.(${tovaryJunction},${artikulyJunction}),before->>skleyka_id.eq.${idStr})`,
+  ].join(",")
+
+  const { data, error } = await supabase
+    .from("audit_log")
+    .select("*")
+    .or(orExpr)
+    .order("created_at", { ascending: false })
+    .limit(limit)
+  if (error) throw new Error(error.message)
+  return (data ?? []) as AuditEntry[]
+}
+
+// ─── W10.12: Audit-log для всей карточки модели ─────────────────────────────
+//
+// Возвращает объединённую историю по модели (modeli_osnova + все её modeli/
+// artikuly/tovary). Используется в `TabHistory` карточки модели — раньше
+// показывали только `modeli_osnova` + `modeli`, теперь ещё и `artikuly`/`tovary`.
+//
+// Внутри — 3 параллельных запроса (по table_name) с .in(row_id, [...]) и общим
+// limit на каждом, затем merge + сортировка DESC. Limit на каждый источник
+// одинаковый, чтобы не пропустить свежие изменения SKU при активной модели.
+
+export interface AuditForModelInput {
+  modelId: number
+  variationIds: number[]
+  artikulIds: number[]
+  tovarIds: number[]
+  /** Лимит на каждый из 3 SELECT-ов (default 500). */
+  limit?: number
+}
+
+export async function fetchAuditForModel(
+  input: AuditForModelInput,
+): Promise<AuditEntry[]> {
+  const { modelId, variationIds, artikulIds, tovarIds } = input
+  const limit = input.limit ?? 500
+
+  const tasks: Promise<AuditEntry[]>[] = []
+
+  // 1) modeli_osnova + modeli (по id модели + id вариаций)
+  const modelRowIds = [String(modelId), ...variationIds.map(String)]
+  tasks.push(
+    (async () => {
+      const { data, error } = await supabase
+        .from("audit_log")
+        .select("*")
+        .in("table_name", ["modeli_osnova", "modeli"])
+        .in("row_id", modelRowIds)
+        .order("created_at", { ascending: false })
+        .limit(limit)
+      if (error) throw new Error(error.message)
+      return (data ?? []) as AuditEntry[]
+    })(),
+  )
+
+  // 2) artikuly
+  if (artikulIds.length > 0) {
+    tasks.push(
+      (async () => {
+        const { data, error } = await supabase
+          .from("audit_log")
+          .select("*")
+          .eq("table_name", "artikuly")
+          .in("row_id", artikulIds.map(String))
+          .order("created_at", { ascending: false })
+          .limit(limit)
+        if (error) throw new Error(error.message)
+        return (data ?? []) as AuditEntry[]
+      })(),
+    )
+  }
+
+  // 3) tovary
+  if (tovarIds.length > 0) {
+    tasks.push(
+      (async () => {
+        const { data, error } = await supabase
+          .from("audit_log")
+          .select("*")
+          .eq("table_name", "tovary")
+          .in("row_id", tovarIds.map(String))
+          .order("created_at", { ascending: false })
+          .limit(limit)
+        if (error) throw new Error(error.message)
+        return (data ?? []) as AuditEntry[]
+      })(),
+    )
+  }
+
+  const buckets = await Promise.all(tasks)
+  const merged = buckets.flat()
+  merged.sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
+  return merged.slice(0, limit)
+}
+
+// ─── W10.13: Откат изменения из audit_log ──────────────────────────────────
+//
+// Берём существующую UPDATE-запись из `audit_log` и применяем обратный diff
+// к исходной строке (table_name, row_id). Сами audit_log не редактируем —
+// новая запись истории появится автоматически через `audit_trigger_fn` при
+// выполнении UPDATE.
+//
+// Поддерживаемые таблицы: modeli, modeli_osnova, artikuly, tovary.
+// Системные колонки (id, created_at, updated_at) автоматически
+// исключаются — их откатывать бессмысленно.
+
+const ROLLBACK_ALLOWED_TABLES: ReadonlySet<string> = new Set([
+  "modeli",
+  "modeli_osnova",
+  "artikuly",
+  "tovary",
+])
+
+const ROLLBACK_SKIP_COLUMNS: ReadonlySet<string> = new Set([
+  "id",
+  "created_at",
+  "updated_at",
+])
+
+/**
+ * Возвращает список колонок из `changed`, которые можно откатить
+ * (без системных). Полезно для предпросмотра в confirm-диалоге.
+ */
+export function getRollbackableFields(
+  entry: AuditEntry,
+): Array<{ column: string; from: unknown; to: unknown }> {
+  if (entry.action !== "UPDATE" || !entry.changed) return []
+  return Object.entries(entry.changed)
+    .filter(([k]) => !ROLLBACK_SKIP_COLUMNS.has(k))
+    .map(([column, diff]) => ({ column, from: diff.from, to: diff.to }))
+}
+
+/**
+ * Откатить UPDATE-запись из audit_log. Возвращает количество откаченных полей.
+ * Бросает Error, если запись не подходит (DELETE/INSERT, неподдерживаемая
+ * таблица, нет полей для отката).
+ *
+ * Стратегия — НЕ редактировать audit_log, а сделать новый UPDATE с обратным
+ * diff. Триггер `audit_trigger_fn` создаст новую audit-запись автоматически.
+ */
+export async function rollbackAuditChange(auditId: number): Promise<number> {
+  // 1. Перечитываем запись (на случай если она устарела в кэше React Query).
+  const { data: rawEntry, error: readErr } = await supabase
+    .from("audit_log")
+    .select("*")
+    .eq("id", auditId)
+    .single()
+  if (readErr) throw new Error(readErr.message)
+  if (!rawEntry) throw new Error(`audit_log #${auditId} не найден`)
+  const entry = rawEntry as AuditEntry
+
+  if (entry.action !== "UPDATE") {
+    throw new Error(`Откат поддерживается только для UPDATE (action=${entry.action})`)
+  }
+  if (!ROLLBACK_ALLOWED_TABLES.has(entry.table_name)) {
+    throw new Error(`Откат для таблицы ${entry.table_name} не поддерживается`)
+  }
+  if (!entry.changed) {
+    throw new Error("В записи нет diff'а — откатывать нечего")
+  }
+
+  // 2. Собираем обратный patch: для каждой колонки берём `from`, кроме системных.
+  const patch: Record<string, unknown> = {}
+  for (const [col, diff] of Object.entries(entry.changed)) {
+    if (ROLLBACK_SKIP_COLUMNS.has(col)) continue
+    patch[col] = diff.from
+  }
+
+  const fieldCount = Object.keys(patch).length
+  if (fieldCount === 0) {
+    throw new Error("Нет полей для отката (все изменённые колонки — системные)")
+  }
+
+  // 3. Применяем UPDATE через supabase. Триггер audit_trigger_fn запишет новую
+  // строку в audit_log с обратным diff.
+  const rowIdAsNumber = Number(entry.row_id)
+  if (!Number.isFinite(rowIdAsNumber)) {
+    throw new Error(`row_id "${entry.row_id}" не является числом`)
+  }
+
+  const { error: updErr } = await supabase
+    .from(entry.table_name)
+    .update(patch)
+    .eq("id", rowIdAsNumber)
+  if (updErr) throw new Error(updErr.message)
+
+  return fieldCount
+}
+
+// ─── W10.6: ArtikulDetail — карточка артикула ───────────────────────────────
+//
+// Используется в ArtikulDrawer (`pages/catalog/artikul-card.tsx`). Возвращает
+// один артикул + его модель/цвет + список SKU (tovary) для вкладки «SKU».
+// Аналог fetchModelDetail, но в скоупе одного артикула.
+
+export interface ArtikulDetail {
+  id: number
+  artikul: string
+  model_id: number | null
+  model_kod: string | null
+  model_osnova_id: number | null
+  model_osnova_kod: string | null
+  nazvanie_etiketka: string | null
+  cvet_id: number | null
+  cvet_color_code: string | null
+  cvet_nazvanie: string | null
+  cvet_hex: string | null
+  status_id: number | null
+  status_nazvanie: string | null
+  status_color: string | null
+  nomenklatura_wb: number | null
+  artikul_ozon: string | null
+  kategoriya: string | null
+  kategoriya_id: number | null
+  kollekciya: string | null
+  fabrika: string | null
+  created_at: string | null
+  updated_at: string | null
+  tovary: ArtTovar[]
+}
+
+export async function fetchArtikulDetail(id: number): Promise<ArtikulDetail | null> {
+  const { data, error } = await supabase
+    .from("artikuly")
+    .select(`
+      id, artikul, model_id, cvet_id, status_id, nomenklatura_wb, artikul_ozon,
+      created_at, updated_at,
+      cveta(id, color_code, cvet, hex),
+      statusy(nazvanie, color),
+      modeli(
+        id, kod, model_osnova_id,
+        modeli_osnova(
+          id, kod, nazvanie_etiketka, kategoriya_id,
+          kategorii(nazvanie),
+          kollekcii(nazvanie),
+          fabriki(nazvanie)
+        )
+      ),
+      tovary(
+        id, barkod, razmer_id, status_id, status_ozon_id, status_sayt_id,
+        status_lamoda_id, sku_china_size, ozon_product_id, ozon_fbo_sku_id,
+        lamoda_seller_sku,
+        razmery(nazvanie)
+      )
+    `)
+    .eq("id", id)
+    .single()
+  if (error) {
+    if (error.code === "PGRST116") return null
+    throw error
+  }
+
+  const raw = data as any
+  return {
+    id: raw.id,
+    artikul: raw.artikul,
+    model_id: raw.model_id,
+    model_kod: raw.modeli?.kod ?? null,
+    model_osnova_id: raw.modeli?.model_osnova_id ?? null,
+    model_osnova_kod: raw.modeli?.modeli_osnova?.kod ?? null,
+    nazvanie_etiketka: raw.modeli?.modeli_osnova?.nazvanie_etiketka ?? null,
+    cvet_id: raw.cvet_id,
+    cvet_color_code: raw.cveta?.color_code ?? null,
+    cvet_nazvanie: raw.cveta?.cvet ?? null,
+    cvet_hex: raw.cveta?.hex ?? null,
+    status_id: raw.status_id,
+    status_nazvanie: raw.statusy?.nazvanie ?? null,
+    status_color: raw.statusy?.color ?? null,
+    nomenklatura_wb: raw.nomenklatura_wb,
+    artikul_ozon: raw.artikul_ozon,
+    kategoriya: raw.modeli?.modeli_osnova?.kategorii?.nazvanie ?? null,
+    kategoriya_id: raw.modeli?.modeli_osnova?.kategoriya_id ?? null,
+    kollekciya: raw.modeli?.modeli_osnova?.kollekcii?.nazvanie ?? null,
+    fabrika: raw.modeli?.modeli_osnova?.fabriki?.nazvanie ?? null,
+    created_at: raw.created_at,
+    updated_at: raw.updated_at,
+    tovary: (raw.tovary ?? []).map((t: any) => ({
+      id: t.id,
+      barkod: t.barkod,
+      razmer_id: t.razmer_id,
+      razmer_nazvanie: t.razmery?.nazvanie ?? null,
+      status_id: t.status_id,
+      status_ozon_id: t.status_ozon_id,
+      status_sayt_id: t.status_sayt_id,
+      status_lamoda_id: t.status_lamoda_id,
+      sku_china_size: t.sku_china_size,
+      ozon_product_id: t.ozon_product_id,
+      ozon_fbo_sku_id: t.ozon_fbo_sku_id,
+      lamoda_seller_sku: t.lamoda_seller_sku,
+    } as ArtTovar)),
+  } as ArtikulDetail
+}
+
+// ─── W10.32: TovarDetail — карточка SKU ──────────────────────────────────────
+//
+// Используется в SkuDrawer (`pages/catalog/sku-card.tsx`). Возвращает один SKU
+// с raw-ссылкой на артикул/модель/цвет/размер. Статусы по 4 каналам — id-only,
+// имена резолвятся через fetchStatusy() на клиенте.
+
+export interface TovarDetail {
+  id: number
+  barkod: string
+  barkod_gs1: string | null
+  barkod_gs2: string | null
+  barkod_perehod: string | null
+  artikul_id: number | null
+  artikul: string | null
+  model_id: number | null
+  model_kod: string | null
+  model_osnova_id: number | null
+  model_osnova_kod: string | null
+  nazvanie_etiketka: string | null
+  cvet_id: number | null
+  cvet_color_code: string | null
+  cvet_nazvanie: string | null
+  cvet_hex: string | null
+  razmer_id: number | null
+  razmer_nazvanie: string | null
+  status_id: number | null
+  status_ozon_id: number | null
+  status_sayt_id: number | null
+  status_lamoda_id: number | null
+  sku_china_size: string | null
+  ozon_product_id: number | null
+  ozon_fbo_sku_id: number | null
+  lamoda_seller_sku: string | null
+  nomenklatura_wb: number | null
+  artikul_ozon: string | null
+  created_at: string | null
+}
+
+export async function fetchTovarDetail(id: number): Promise<TovarDetail | null> {
+  const { data, error } = await supabase
+    .from("tovary")
+    .select(`
+      id, barkod, barkod_gs1, barkod_gs2, barkod_perehod, artikul_id, razmer_id,
+      status_id, status_ozon_id, status_sayt_id, status_lamoda_id,
+      sku_china_size, ozon_product_id, ozon_fbo_sku_id, lamoda_seller_sku,
+      created_at,
+      razmery(nazvanie),
+      artikuly(
+        id, artikul, nomenklatura_wb, artikul_ozon, cvet_id,
+        cveta(color_code, cvet, hex),
+        modeli(
+          id, kod, model_osnova_id,
+          modeli_osnova(kod, nazvanie_etiketka)
+        )
+      )
+    `)
+    .eq("id", id)
+    .single()
+  if (error) {
+    if (error.code === "PGRST116") return null
+    throw error
+  }
+
+  const t = data as any
+  return {
+    id: t.id,
+    barkod: t.barkod,
+    barkod_gs1: t.barkod_gs1 ?? null,
+    barkod_gs2: t.barkod_gs2 ?? null,
+    barkod_perehod: t.barkod_perehod ?? null,
+    artikul_id: t.artikul_id,
+    artikul: t.artikuly?.artikul ?? null,
+    model_id: t.artikuly?.modeli?.id ?? null,
+    model_kod: t.artikuly?.modeli?.kod ?? null,
+    model_osnova_id: t.artikuly?.modeli?.model_osnova_id ?? null,
+    model_osnova_kod: t.artikuly?.modeli?.modeli_osnova?.kod ?? null,
+    nazvanie_etiketka: t.artikuly?.modeli?.modeli_osnova?.nazvanie_etiketka ?? null,
+    cvet_id: t.artikuly?.cvet_id ?? null,
+    cvet_color_code: t.artikuly?.cveta?.color_code ?? null,
+    cvet_nazvanie: t.artikuly?.cveta?.cvet ?? null,
+    cvet_hex: t.artikuly?.cveta?.hex ?? null,
+    razmer_id: t.razmer_id ?? null,
+    razmer_nazvanie: t.razmery?.nazvanie ?? null,
+    status_id: t.status_id,
+    status_ozon_id: t.status_ozon_id,
+    status_sayt_id: t.status_sayt_id,
+    status_lamoda_id: t.status_lamoda_id,
+    sku_china_size: t.sku_china_size,
+    ozon_product_id: t.ozon_product_id,
+    ozon_fbo_sku_id: t.ozon_fbo_sku_id,
+    lamoda_seller_sku: t.lamoda_seller_sku,
+    nomenklatura_wb: t.artikuly?.nomenklatura_wb ?? null,
+    artikul_ozon: t.artikuly?.artikul_ozon ?? null,
+    created_at: t.created_at,
+  }
+}
+
+// ─── W10.14 + W10.15 + W10.35 — Reference drawer linked-models ──────────────
+//
+// Все справочники (бренды/коллекции/категории/типы/фабрики) показывают список
+// привязанных моделей через колонки на `modeli_osnova`. Универсальный fetcher
+// принимает имя FK-колонки и значение.
+//
+// Также для kategorii — отдельная секция с атрибутами через junction
+// `kategoriya_atributy` (linkAtributToKategoriya уже существует выше;
+// добавляем unlink + поиск кандидатов для add-picker).
+
+export type ModelRefColumn =
+  | "brand_id"
+  | "kategoriya_id"
+  | "kollekciya_id"
+  | "fabrika_id"
+  | "tip_kollekcii_id"
+
+export interface ModelMini {
+  id: number
+  kod: string
+  nazvanie: string | null
+}
+
+export async function fetchModeliByRef(
+  column: ModelRefColumn,
+  refId: number,
+): Promise<ModelMini[]> {
+  const { data, error } = await supabase
+    .from("modeli_osnova")
+    .select("id, kod, nazvanie_etiketka")
+    .eq(column, refId)
+    .order("kod")
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((r: any) => ({
+    id: r.id as number,
+    kod: String(r.kod ?? ""),
+    nazvanie: (r.nazvanie_etiketka ?? null) as string | null,
+  }))
+}
+
+export async function fetchModeliWithoutRef(
+  column: ModelRefColumn,
+  search: string,
+  limit = 30,
+): Promise<ModelMini[]> {
+  let q = supabase
+    .from("modeli_osnova")
+    .select("id, kod, nazvanie_etiketka")
+    .is(column, null)
+    .order("kod")
+    .limit(limit)
+  const term = search.trim()
+  if (term) {
+    q = q.or(`kod.ilike.%${term}%,nazvanie_etiketka.ilike.%${term}%`)
+  }
+  const { data, error } = await q
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((r: any) => ({
+    id: r.id as number,
+    kod: String(r.kod ?? ""),
+    nazvanie: (r.nazvanie_etiketka ?? null) as string | null,
+  }))
+}
+
+export async function setModelRef(
+  modelId: number,
+  column: ModelRefColumn,
+  refId: number | null,
+): Promise<void> {
+  const patch: Record<string, number | null> = { [column]: refId }
+  const { error } = await supabase
+    .from("modeli_osnova")
+    .update(patch)
+    .eq("id", modelId)
+  if (error) throw new Error(error.message)
+}
+
+// ─── Атрибуты ↔ Категории: unlink + picker для секции «Атрибуты» в kategorii drawer
+
+export async function unlinkAtributFromKategoriya(
+  atributId: number,
+  kategoriyaId: number,
+): Promise<void> {
+  const { error } = await supabase
+    .from("kategoriya_atributy")
+    .delete()
+    .eq("atribut_id", atributId)
+    .eq("kategoriya_id", kategoriyaId)
+  if (error) throw new Error(error.message)
+}
+
+export async function fetchAtributyNotLinkedToKategoriya(
+  kategoriyaId: number,
+  search: string,
+  limit = 30,
+): Promise<Atribut[]> {
+  // Сначала — все id уже привязанных. Если их немного — отдельный запрос.
+  const { data: linked, error: linkedErr } = await supabase
+    .from("kategoriya_atributy")
+    .select("atribut_id")
+    .eq("kategoriya_id", kategoriyaId)
+    .not("atribut_id", "is", null)
+  if (linkedErr) throw new Error(linkedErr.message)
+  const linkedIds = (linked ?? [])
+    .map((r: any) => r.atribut_id as number)
+    .filter((x): x is number => x != null)
+
+  let q = supabase
+    .from("atributy")
+    .select("id, key, label, type, options, default_value, helper_text")
+    .order("label")
+    .limit(limit)
+  if (linkedIds.length > 0) {
+    q = q.not("id", "in", `(${linkedIds.join(",")})`)
+  }
+  const term = search.trim()
+  if (term) {
+    q = q.or(`label.ilike.%${term}%,key.ilike.%${term}%`)
+  }
+  const { data, error } = await q
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((a: any) => ({
+    id: a.id as number,
+    key: a.key as string,
+    label: a.label as string,
+    type: a.type as AtributType,
+    options: Array.isArray(a.options) ? (a.options as string[]) : [],
+    default_value: (a.default_value ?? null) as string | null,
+    helper_text: (a.helper_text ?? null) as string | null,
+  }))
 }

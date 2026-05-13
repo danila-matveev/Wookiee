@@ -13,6 +13,7 @@ import {
   type Sertifikat,
   type SertifikatPayload,
 } from "@/lib/catalog/service"
+import { translateError } from "@/lib/catalog/error-translator"
 import {
   AddButton,
   ConfirmDialog,
@@ -330,7 +331,7 @@ function SertifikatModal({ initial, onSave, onPathChange, onClose }: SertifikatM
       await onSave(payload, id)
       onClose()
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Ошибка сохранения")
+      setError(translateError(e))
     } finally {
       setSaving(false)
     }

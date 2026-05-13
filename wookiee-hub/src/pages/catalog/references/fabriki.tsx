@@ -22,6 +22,7 @@ import {
   SkeletonTable,
   type RefFieldDef,
 } from "./_shared"
+import { ReferenceDrawer } from "@/pages/catalog/reference-card"
 
 interface FabrikaRow {
   id: number
@@ -209,33 +210,51 @@ export function FabrikiPage() {
       {ref.list.isLoading ? (
         <SkeletonTable rows={6} cols={9} />
       ) : (
-        <CatalogTable columns={columns} data={filtered} emptyText="Производители не найдены" />
+        <CatalogTable
+          columns={columns}
+          data={filtered}
+          emptyText="Производители не найдены"
+          onRowClick={(r) => setEditing(r)}
+        />
       )}
 
-      {(creating || editing) && (
+      {creating && (
         <RefModal
-          title={editing ? "Редактировать производителя" : "Новый производитель"}
+          title="Новый производитель"
           fields={FIELDS}
-          initial={
-            editing
-              ? {
-                  nazvanie: editing.nazvanie,
-                  strana: editing.strana ?? "",
-                  gorod: editing.gorod ?? "",
-                  kontakt: editing.kontakt ?? "",
-                  email: editing.email ?? "",
-                  wechat: editing.wechat ?? "",
-                  specializaciya: editing.specializaciya ?? "",
-                  leadtime_dni: editing.leadtime_dni ?? null,
-                  notes: editing.notes ?? "",
-                }
-              : undefined
-          }
           onSave={handleSave}
-          onCancel={() => {
-            setEditing(null)
-            setCreating(false)
+          onCancel={() => setCreating(false)}
+        />
+      )}
+
+      {editing && (
+        <ReferenceDrawer
+          kind="Производитель"
+          title={editing.nazvanie}
+          fields={FIELDS}
+          initial={{
+            nazvanie: editing.nazvanie,
+            strana: editing.strana ?? "",
+            gorod: editing.gorod ?? "",
+            kontakt: editing.kontakt ?? "",
+            email: editing.email ?? "",
+            wechat: editing.wechat ?? "",
+            specializaciya: editing.specializaciya ?? "",
+            leadtime_dni: editing.leadtime_dni ?? null,
+            notes: editing.notes ?? "",
           }}
+          onSave={async (vals) => {
+            await handleSave(vals)
+          }}
+          onClose={() => setEditing(null)}
+          linkedSections={[
+            {
+              kind: "models",
+              title: "Модели на этой фабрике",
+              refColumn: "fabrika_id",
+              refId: editing.id,
+            },
+          ]}
         />
       )}
 

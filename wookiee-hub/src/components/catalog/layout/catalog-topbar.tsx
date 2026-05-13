@@ -1,39 +1,15 @@
 import { useLocation, useSearchParams } from "react-router-dom"
 import { ChevronRight, Search } from "lucide-react"
 
-const BREADCRUMB_MAP: Record<string, string> = {
-  catalog: "Каталог",
-  matrix: "Матрица",
-  colors: "Цвета",
-  artikuly: "Артикулы",
-  tovary: "Товары/SKU",
-  skleyki: "Склейки",
-  references: "Справочники",
-  kategorii: "Категории",
-  kollekcii: "Коллекции",
-  fabriki: "Производители",
-  importery: "Юрлица",
-  razmery: "Размеры",
-  statusy: "Статусы",
-  "semeystva-cvetov": "Семейства цветов",
-  upakovki: "Упаковки",
-  "kanaly-prodazh": "Каналы продаж",
-  sertifikaty: "Сертификаты",
-  __demo__: "UI Demo",
-}
+import { getRouteLabel } from "@/lib/catalog/route-labels"
 
-// Map root catalog → "Каталог > Матрица" (matrix is the default)
+// Map root catalog → "Каталог > Матрица" (matrix is the default).
+// W10.16 — лейблы вынесены в `src/lib/catalog/route-labels.ts`. Здесь только
+// логика построения цепочки (порядок сегментов, дефолт «Матрица» на /catalog,
+// добавление KOD из ?model/?color как последний crumb).
 function buildCrumbs(pathname: string, modelKod: string | null, colorCode: string | null): string[] {
   const segments = pathname.split("/").filter(Boolean)
-  const crumbs: string[] = []
-  for (const seg of segments) {
-    const label = BREADCRUMB_MAP[seg]
-    if (label) {
-      crumbs.push(label)
-    } else {
-      crumbs.push(seg)
-    }
-  }
+  const crumbs: string[] = segments.map((seg) => getRouteLabel(seg))
   // For pretty hub UX: when on /catalog (root) without children, append "Матрица"
   if (segments.length === 1 && segments[0] === "catalog") {
     crumbs.push("Матрица")

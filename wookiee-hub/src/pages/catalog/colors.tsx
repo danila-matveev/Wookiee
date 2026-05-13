@@ -13,6 +13,8 @@ import {
 } from "@/lib/catalog/service"
 import { ColorSwatch } from "@/components/catalog/ui/color-swatch"
 import { StatusBadge } from "@/components/catalog/ui/status-badge"
+import { CellText } from "@/components/catalog/ui/cell-text"
+import { FilterBar } from "@/components/catalog/ui/filter-bar"
 import { resolveSwatch } from "@/lib/catalog/color-utils"
 import { ColorCard } from "./color-card"
 import { CvetEditModal } from "./colors-edit"
@@ -59,8 +61,9 @@ function FamilyTable({ title, description, items, statusById, onOpen, onEdit, on
           <span className="text-stone-400 italic font-normal text-[11px]">{description}</span>
         )}
       </h3>
-      <div className="bg-white rounded-lg border border-stone-200 overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="bg-white rounded-lg border border-stone-200 overflow-x-auto">
+        {/* W10.2 — min-w даёт горизонтальный скролл при недостатке viewport-а. */}
+        <table className="w-full text-sm min-w-[1000px]">
           <thead className="bg-stone-50/80 border-b border-stone-200">
             <tr className="text-left text-[11px] uppercase tracking-wider text-stone-500">
               <th className="px-3 py-2 font-medium w-10" />
@@ -83,10 +86,20 @@ function FamilyTable({ title, description, items, statusById, onOpen, onEdit, on
                   className="group border-b border-stone-100 last:border-0 hover:bg-stone-50/60 cursor-pointer"
                 >
                   <td className="px-3 py-2"><SwatchOrPhoto cvet={c} /></td>
-                  <td className="px-3 py-2"><span className="font-mono text-stone-900">{c.color_code}</span></td>
-                  <td className="px-3 py-2">{c.cvet ?? "—"}</td>
-                  <td className="px-3 py-2 text-stone-500">{c.color ?? "—"}</td>
-                  <td className="px-3 py-2 text-stone-500">{c.lastovica ?? "—"}</td>
+                  <td className="px-3 py-2">
+                    <CellText className="font-mono text-stone-900" title={c.color_code}>
+                      {c.color_code}
+                    </CellText>
+                  </td>
+                  <td className="px-3 py-2">
+                    <CellText title={c.cvet ?? ""}>{c.cvet ?? "—"}</CellText>
+                  </td>
+                  <td className="px-3 py-2 text-stone-500">
+                    <CellText title={c.color ?? ""}>{c.color ?? "—"}</CellText>
+                  </td>
+                  <td className="px-3 py-2 text-stone-500">
+                    <CellText title={c.lastovica ?? ""}>{c.lastovica ?? "—"}</CellText>
+                  </td>
                   <td className="px-3 py-2 text-stone-600">
                     {c.modeli_cnt > 0 || c.artikuly_cnt > 0 ? (
                       <span>
@@ -175,7 +188,7 @@ function SwatchOrPhoto({ cvet }: { cvet: CvetRow }) {
       />
     )
   }
-  return <ColorSwatch hex={resolveSwatch(cvet.hex, cvet.color_code)} size={24} />
+  return <ColorSwatch hex={cvet.hex} size={24} />
 }
 
 // ─── Colors list ─────────────────────────────────────────────────────────
@@ -191,8 +204,10 @@ function ColorsView({ onOpen }: { onOpen: (code: string) => void }) {
   const { data: statuses } = useColorStatuses()
 
   const [search, setSearch] = useState("")
-  const [familyFilter, setFamilyFilter] = useState<"all" | string>("all")
-  const [statusFilter, setStatusFilter] = useState<"all" | number>("all")
+  // W10.31 — multi-select фильтры через FilterBar (раньше были single-select
+  // chip-кнопки «Семейство: Все / Трикотаж / ...» и «Статус: Все / ...»).
+  const [familyFilters, setFamilyFilters] = useState<Set<string>>(new Set())
+  const [statusFilters, setStatusFilters] = useState<Set<number>>(new Set())
   const [editingRow, setEditingRow] = useState<CvetRow | "new" | null>(null)
 
   const archive = useMutation({
@@ -215,14 +230,14 @@ function ColorsView({ onOpen }: { onOpen: (code: string) => void }) {
   const filtered = useMemo(() => {
     if (!data) return []
     let res = data
-    if (familyFilter !== "all") {
+    if (familyFilters.size > 0) {
       res = res.filter((c) => {
         const fam = c.semeystvo_id ? semeystvaById.get(c.semeystvo_id)?.kod : c.semeystvo
-        return fam === familyFilter
+        return fam != null && familyFilters.has(fam)
       })
     }
-    if (statusFilter !== "all") {
-      res = res.filter((c) => c.status_id === statusFilter)
+    if (statusFilters.size > 0) {
+      res = res.filter((c) => c.status_id != null && statusFilters.has(c.status_id))
     }
     if (search.trim()) {
       const q = search.trim().toLowerCase()
@@ -233,7 +248,27 @@ function ColorsView({ onOpen }: { onOpen: (code: string) => void }) {
       )
     }
     return res
-  }, [data, familyFilter, statusFilter, search, semeystvaById])
+  }, [data, familyFilters, statusFilters, search, semeystvaById])
+
+  // W10.31 — counts для FilterBar (отображаются справа от опции в popover).
+  // Считаем по всему датасету `data`, не по `filtered`, чтобы значения не
+  // «прыгали» при выборе одного из фильтров.
+  const familyCounts = useMemo(() => {
+    const acc = new Map<string, number>()
+    for (const c of data ?? []) {
+      const fam = c.semeystvo_id ? semeystvaById.get(c.semeystvo_id)?.kod : c.semeystvo
+      if (fam) acc.set(fam, (acc.get(fam) ?? 0) + 1)
+    }
+    return acc
+  }, [data, semeystvaById])
+
+  const statusCounts = useMemo(() => {
+    const acc = new Map<number, number>()
+    for (const c of data ?? []) {
+      if (c.status_id != null) acc.set(c.status_id, (acc.get(c.status_id) ?? 0) + 1)
+    }
+    return acc
+  }, [data])
 
   const grouped = useMemo(() => {
     const families = (semeystva ?? [])
@@ -287,31 +322,44 @@ function ColorsView({ onOpen }: { onOpen: (code: string) => void }) {
           />
         </div>
 
-        <span className="text-xs text-stone-500 mx-1">Семейство:</span>
-        <button
-          onClick={() => setFamilyFilter("all")}
-          className={`px-2.5 py-1 text-xs rounded-md transition-colors ${familyFilter === "all" ? "bg-stone-900 text-white" : "text-stone-600 hover:bg-stone-100"}`}
-        >Все</button>
-        {(semeystva ?? []).map((s) => (
-          <button
-            key={s.kod}
-            onClick={() => setFamilyFilter(s.kod)}
-            className={`px-2.5 py-1 text-xs rounded-md transition-colors ${familyFilter === s.kod ? "bg-stone-900 text-white" : "text-stone-600 hover:bg-stone-100"}`}
-          >{s.nazvanie}</button>
-        ))}
-
-        <span className="text-xs text-stone-500 mx-1 ml-3">Статус:</span>
-        <button
-          onClick={() => setStatusFilter("all")}
-          className={`px-2.5 py-1 text-xs rounded-md transition-colors ${statusFilter === "all" ? "bg-stone-900 text-white" : "text-stone-600 hover:bg-stone-100"}`}
-        >Все</button>
-        {(statuses ?? []).map((s) => (
-          <button
-            key={s.id}
-            onClick={() => setStatusFilter(s.id)}
-            className={`px-2.5 py-1 text-xs rounded-md transition-colors ${statusFilter === s.id ? "bg-stone-900 text-white" : "text-stone-600 hover:bg-stone-100"}`}
-          >{s.nazvanie}</button>
-        ))}
+        {/* W10.31 — компактные Notion-style multi-select dropdown'ы
+            (см. /matrix). Раньше тут был длинный ряд chip-кнопок
+            «Семейство: Все/Трикотаж/Jelly/...» и «Статус: Все/...» —
+            single-select, без поиска, занимал две строки на широком экране. */}
+        <FilterBar
+          filters={[
+            {
+              key: "family",
+              label: "Семейство",
+              options: (semeystva ?? []).map((s) => ({
+                value: s.kod,
+                label: s.nazvanie,
+                count: familyCounts.get(s.kod) ?? 0,
+              })),
+            },
+            {
+              key: "status",
+              label: "Статус",
+              options: (statuses ?? []).map((s) => ({
+                value: String(s.id),
+                label: s.nazvanie,
+                count: statusCounts.get(s.id) ?? 0,
+              })),
+            },
+          ]}
+          values={{
+            family: Array.from(familyFilters),
+            status: Array.from(statusFilters).map(String),
+          }}
+          onChange={(key, next) => {
+            if (key === "family") setFamilyFilters(new Set(next))
+            else if (key === "status") setStatusFilters(new Set(next.map((v) => Number(v))))
+          }}
+          onResetAll={() => {
+            setFamilyFilters(new Set())
+            setStatusFilters(new Set())
+          }}
+        />
 
         <div className="ml-auto text-xs text-stone-500 tabular-nums">
           {filtered.length} из {data?.length ?? 0}

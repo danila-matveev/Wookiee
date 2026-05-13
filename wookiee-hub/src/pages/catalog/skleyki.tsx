@@ -11,6 +11,7 @@ import {
 } from "@/lib/catalog/service"
 import { RefModal, type RefFieldDef } from "@/components/catalog/ui/ref-modal"
 import { StatusBadge } from "@/components/catalog/ui/status-badge"
+import { CellText } from "@/components/catalog/ui/cell-text"
 import { relativeDate } from "@/lib/catalog/color-utils"
 import { SkleykaCard } from "./skleyka-card"
 
@@ -227,8 +228,9 @@ function SkleykiList({ onOpen, onCreateClick }: SkleykiListProps) {
         {isLoading && <div className="text-sm text-stone-400">Загрузка…</div>}
         {error && <div className="text-sm text-red-500">Ошибка загрузки склеек</div>}
         {!isLoading && !error && (
-          <div className="bg-white rounded-lg border border-stone-200 overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="bg-white rounded-lg border border-stone-200 overflow-x-auto">
+            {/* W10.2 — min-w даёт горизонтальный скролл при недостатке viewport-а. */}
+            <table className="w-full text-sm min-w-[1100px]">
               <thead className="bg-stone-50/80 border-b border-stone-200">
                 <tr className="text-left text-[11px] uppercase tracking-wider text-stone-500">
                   <th className="px-3 py-2.5 font-medium">Название</th>
@@ -256,9 +258,13 @@ function SkleykiList({ onOpen, onCreateClick }: SkleykiListProps) {
                       className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60 cursor-pointer"
                     >
                       <td className="px-3 py-3">
-                        <div className="font-medium text-stone-900">{s.nazvanie}</div>
+                        <CellText className="font-medium text-stone-900" title={s.nazvanie ?? ""}>
+                          {s.nazvanie}
+                        </CellText>
                         {s.importer_nazvanie && (
-                          <div className="text-[11px] text-stone-400">{s.importer_nazvanie}</div>
+                          <CellText className="text-[11px] text-stone-400" title={s.importer_nazvanie}>
+                            {s.importer_nazvanie}
+                          </CellText>
                         )}
                       </td>
                       <td className="px-3 py-3">

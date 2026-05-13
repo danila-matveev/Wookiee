@@ -2,15 +2,19 @@ import { useEffect, useMemo, useState } from "react"
 import { X } from "lucide-react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
+  fetchKategorii,
+  fetchKategoriiForCvet,
   fetchSemeystvaCvetov,
   fetchStatusy,
   insertCvet,
   makeStoragePathForColorSample,
+  setKategoriiForCvet,
   updateCvet,
   type CvetPayload,
   type CvetRow,
 } from "@/lib/catalog/service"
 import { AssetUploader } from "@/components/catalog/ui"
+import { translateError } from "@/lib/catalog/error-translator"
 
 interface CvetEditModalProps {
   initial?: CvetRow | null
@@ -50,6 +54,25 @@ export function CvetEditModal({ initial, onClose }: CvetEditModalProps) {
     staleTime: 10 * 60 * 1000,
     select: (rows) => rows.filter((s) => s.tip === "color"),
   })
+  // W9.12 — applicable categories for this colour.
+  const { data: kategorii } = useQuery({
+    queryKey: ["catalog", "kategorii"],
+    queryFn: fetchKategorii,
+    staleTime: 10 * 60 * 1000,
+  })
+  const { data: initialKategoriiIds } = useQuery({
+    queryKey: ["catalog", "cvet-kategorii", initial?.id ?? null],
+    queryFn: () => fetchKategoriiForCvet(initial!.id),
+    enabled: initial?.id != null,
+    staleTime: 60 * 1000,
+  })
+  const [selectedKategoriiIds, setSelectedKategoriiIds] = useState<Set<number>>(
+    () => new Set<number>(),
+  )
+  // Sync from server-fetched initial state once.
+  useEffect(() => {
+    if (initialKategoriiIds) setSelectedKategoriiIds(new Set(initialKategoriiIds))
+  }, [initialKategoriiIds])
 
   const lastovicaOptions = useMemo(() => ["", "есть", "нет"], [])
 
@@ -77,16 +100,34 @@ export function CvetEditModal({ initial, onClose }: CvetEditModalProps) {
     setForm((p) => ({ ...p, [k]: v }))
 
   const insert = useMutation({
-    mutationFn: (payload: CvetPayload) => insertCvet(payload),
+    mutationFn: async (
+      args: { payload: CvetPayload; kategoriyaIds: number[] },
+    ): Promise<void> => {
+      const { id } = await insertCvet(args.payload)
+      if (args.kategoriyaIds.length > 0) {
+        await setKategoriiForCvet(id, args.kategoriyaIds)
+      }
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["cveta-with-usage"] })
+      qc.invalidateQueries({ queryKey: ["catalog", "cveta-with-usage"] })
+      qc.invalidateQueries({ queryKey: ["catalog", "cvet-kategoriya-links"] })
       onClose()
     },
   })
   const update = useMutation({
-    mutationFn: ({ id, patch }: { id: number; patch: Partial<CvetPayload> }) => updateCvet(id, patch),
+    mutationFn: async (args: {
+      id: number
+      patch: Partial<CvetPayload>
+      kategoriyaIds: number[]
+    }): Promise<void> => {
+      await updateCvet(args.id, args.patch)
+      await setKategoriiForCvet(args.id, args.kategoriyaIds)
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["cveta-with-usage"] })
+      qc.invalidateQueries({ queryKey: ["catalog", "cveta-with-usage"] })
+      qc.invalidateQueries({ queryKey: ["catalog", "cvet-kategoriya-links"] })
       qc.invalidateQueries({ queryKey: ["color-detail-by-code"] })
       onClose()
     },
@@ -114,10 +155,14 @@ export function CvetEditModal({ initial, onClose }: CvetEditModalProps) {
         status_id: form.status_id ?? null,
         image_url: form.image_url ?? null,
       }
-      if (initial) await update.mutateAsync({ id: initial.id, patch: payload })
-      else await insert.mutateAsync(payload)
+      const kategoriyaIds = Array.from(selectedKategoriiIds)
+      if (initial) {
+        await update.mutateAsync({ id: initial.id, patch: payload, kategoriyaIds })
+      } else {
+        await insert.mutateAsync({ payload, kategoriyaIds })
+      }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Ошибка сохранения")
+      setError(translateError(e))
       setSaving(false)
     }
   }
@@ -238,6 +283,44 @@ export function CvetEditModal({ initial, onClose }: CvetEditModalProps) {
                 <option key={s.id} value={s.id}>{s.nazvanie}</option>
               ))}
             </select>
+          </div>
+
+          <div className="col-span-2">
+            <label className={labelCls}>
+              Применимые категории
+              <span className="ml-1 text-stone-400 normal-case text-[10px] tracking-normal">
+                (пусто = во всех категориях)
+              </span>
+            </label>
+            <div className="flex flex-wrap gap-1.5">
+              {(kategorii ?? []).map((k) => {
+                const checked = selectedKategoriiIds.has(k.id)
+                return (
+                  <button
+                    type="button"
+                    key={k.id}
+                    onClick={() =>
+                      setSelectedKategoriiIds((prev) => {
+                        const next = new Set(prev)
+                        if (next.has(k.id)) next.delete(k.id)
+                        else next.add(k.id)
+                        return next
+                      })
+                    }
+                    className={`px-2 py-1 rounded-md text-xs border transition-colors ${
+                      checked
+                        ? "bg-stone-900 text-white border-stone-900"
+                        : "bg-white text-stone-700 border-stone-200 hover:border-stone-400"
+                    }`}
+                  >
+                    {k.nazvanie}
+                  </button>
+                )
+              })}
+              {(!kategorii || kategorii.length === 0) && (
+                <span className="text-xs text-stone-400 italic">Загрузка…</span>
+              )}
+            </div>
           </div>
 
           <div className="col-span-2">

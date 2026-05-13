@@ -23,6 +23,7 @@ import {
   SkeletonTable,
   type RefFieldDef,
 } from "./_shared"
+import { ReferenceDrawer } from "@/pages/catalog/reference-card"
 
 const FIELDS: RefFieldDef[] = [
   {
@@ -119,19 +120,41 @@ export function TipyKollekciyPage() {
       {ref.list.isLoading ? (
         <SkeletonTable rows={6} cols={4} />
       ) : (
-        <CatalogTable columns={columns} data={filtered} emptyText="Типы коллекций не найдены" />
+        <CatalogTable
+          columns={columns}
+          data={filtered}
+          emptyText="Типы коллекций не найдены"
+          onRowClick={(r) => setEditing(r)}
+        />
       )}
 
-      {(creating || editing) && (
+      {creating && (
         <RefModal
-          title={editing ? "Редактировать тип коллекции" : "Новый тип коллекции"}
+          title="Новый тип коллекции"
           fields={FIELDS}
-          initial={editing ? { nazvanie: editing.nazvanie } : undefined}
           onSave={handleSave}
-          onCancel={() => {
-            setEditing(null)
-            setCreating(false)
+          onCancel={() => setCreating(false)}
+        />
+      )}
+
+      {editing && (
+        <ReferenceDrawer
+          kind="Тип коллекции"
+          title={editing.nazvanie}
+          fields={FIELDS}
+          initial={{ nazvanie: editing.nazvanie }}
+          onSave={async (vals) => {
+            await handleSave(vals)
           }}
+          onClose={() => setEditing(null)}
+          linkedSections={[
+            {
+              kind: "models",
+              title: "Модели этого типа",
+              refColumn: "tip_kollekcii_id",
+              refId: editing.id,
+            },
+          ]}
         />
       )}
 
