@@ -30,6 +30,9 @@ import { downloadCsv } from "@/lib/catalog/csv-export"
 import { translateError } from "@/lib/catalog/error-translator"
 import { toast } from "@/lib/catalog/toast"
 import { compareRazmer } from "@/lib/catalog/size-utils"
+// W10.6 — single-click на строку открывает ArtikulDrawer (полноценная карточка
+// с вкладками Описание / SKU / История). См. artikul-card.tsx.
+import { ArtikulDrawer } from "./artikul-card"
 
 // Default per-column widths (px) for the standalone Артикулы page (W1.5).
 // W9.5 — расширено новыми ключами из ARTIKULY_COLUMNS_FULL (column-catalogs).
@@ -633,6 +636,8 @@ export function ArtikulyPage() {
   const bulkStatusRef = useRef<HTMLDivElement | null>(null)
   // W8.4 — drill-down overlay (клик по ячейке `artikul`).
   const [drillDown, setDrillDown] = useState<ArtikulRow | null>(null)
+  // W10.6 — single-click на строку открывает полноценную карточку артикула.
+  const [openArtikulId, setOpenArtikulId] = useState<number | null>(null)
   // W1.5 — drag-resize колонок + persist через ui_preferences. Регистрируем все
   // возможные колонки (visibility управляется ColumnsManager-ом отдельно).
   const { widths: colWidths, bindResizer } = useResizableColumns(
@@ -1046,9 +1051,18 @@ export function ArtikulyPage() {
               {visible.map((a) => (
                 <tr
                   key={a.id}
-                  className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60"
+                  className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60 cursor-pointer"
+                  // W10.6 — single-click на пустом месте строки открывает
+                  // карточку артикула. Inline-cells, checkbox и кнопки
+                  // ниже сами вызывают stopPropagation, чтобы клик по ним
+                  // не открывал drawer. Inline-edit активируется dbl-click
+                  // (см. inline-text-cell.tsx и связанные).
+                  onClick={() => setOpenArtikulId(a.id)}
                 >
-                  <td className="px-3 py-2.5 cat-sticky-col-checkbox">
+                  <td
+                    className="px-3 py-2.5 cat-sticky-col-checkbox"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <input
                       type="checkbox"
                       className="rounded border-stone-300"
@@ -1065,12 +1079,20 @@ export function ArtikulyPage() {
                         // W9.10 — inline-edit имени артикула + side-button для drill-down.
                         // Кликабельная зона разделена: текст = edit, иконка = открыть карточку.
                         <div className="flex items-center gap-1 min-w-0">
-                          <div className="flex-1 min-w-0">
+                          <div
+                            className="flex-1 min-w-0"
+                            // W10.6 — InlineTextCell слушает dbl-click для edit;
+                            // single-click пусть всплывает к row для открытия
+                            // drawer.  Не stopPropagation здесь.
+                          >
                             {renderCell(key, a, cellCtx)}
                           </div>
                           <button
                             type="button"
-                            onClick={() => setDrillDown(a)}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setDrillDown(a)
+                            }}
                             className="p-0.5 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded shrink-0"
                             title="Открыть карточку артикула с SKU"
                             aria-label="Карточка артикула"
@@ -1079,14 +1101,18 @@ export function ArtikulyPage() {
                           </button>
                         </div>
                       ) : key === "status" ? (
-                        <InlineArtikulStatusCell
-                          currentStatusId={a.status_id ?? null}
-                          statusOptions={artikulStatuses}
-                          onChange={async (newId) => {
-                            await bulkUpdateArtikulStatus([a.id], newId)
-                            await queryClient.invalidateQueries({ queryKey: ["artikuly-registry"] })
-                          }}
-                        />
+                        // W10.6 — клик по статус-пилюле должен открывать popover
+                        // выбора статуса, не drawer.
+                        <div onClick={(e) => e.stopPropagation()}>
+                          <InlineArtikulStatusCell
+                            currentStatusId={a.status_id ?? null}
+                            statusOptions={artikulStatuses}
+                            onChange={async (newId) => {
+                              await bulkUpdateArtikulStatus([a.id], newId)
+                              await queryClient.invalidateQueries({ queryKey: ["artikuly-registry"] })
+                            }}
+                          />
+                        </div>
                       ) : renderCell(key, a, cellCtx)}
                     </td>
                   ))}
@@ -1171,6 +1197,14 @@ export function ArtikulyPage() {
           row={drillDown}
           statusyData={statusyData}
           onClose={() => setDrillDown(null)}
+        />
+      )}
+
+      {/* W10.6 — карточка артикула (side-drawer) по single-click на строку. */}
+      {openArtikulId != null && (
+        <ArtikulDrawer
+          artikulId={openArtikulId}
+          onClose={() => setOpenArtikulId(null)}
         />
       )}
     </div>
