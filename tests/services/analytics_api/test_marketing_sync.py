@@ -99,8 +99,10 @@ def test_trigger_sync_db_failure_returns_500(_mock_create):
 class _FakeCursor:
     def __init__(self, row):
         self._row = row
+        self.execute_calls: list[tuple] = []
 
-    def execute(self, *_args, **_kwargs):
+    def execute(self, *args, **_kwargs):
+        self.execute_calls.append(args)
         return None
 
     def fetchone(self):
@@ -116,9 +118,18 @@ class _FakeCursor:
 class _FakeConn:
     def __init__(self, row):
         self._row = row
+        self.cursors: list[_FakeCursor] = []
 
     def cursor(self):
-        return _FakeCursor(self._row)
+        cur = _FakeCursor(self._row)
+        self.cursors.append(cur)
+        return cur
+
+    def commit(self):
+        return None
+
+    def rollback(self):
+        return None
 
     def close(self):
         return None
@@ -150,3 +161,60 @@ def test_status_never_run_returns_marker(mock_conn):
     body = r.json()
     assert body["status"] == "never_run"
     assert body["job_name"] == "promocodes"
+
+
+# -----------------------------------------------------------------------------
+# Canonical sync_log job_name (R.2.1)
+#
+# The API exposes hyphenated URL slugs ("search-queries"/"promocodes"), but
+# marketing.sync_log stores the snake_case name written by cron scripts so the
+# frontend sees one unified history. These tests pin that contract.
+# -----------------------------------------------------------------------------
+@patch("shared.data_layer._connection._get_supabase_connection")
+def test_create_sync_log_persists_canonical_search_queries_name(mock_conn):
+    fake = _FakeConn((123,))
+    mock_conn.return_value = fake
+
+    from services.analytics_api.marketing import create_sync_log_entry
+
+    new_id = create_sync_log_entry("search-queries")
+    assert new_id == 123
+
+    assert fake.cursors, "cursor() was never called"
+    calls = fake.cursors[0].execute_calls
+    assert calls, "execute() was never called"
+    sql, params = calls[0]
+    assert "INSERT INTO marketing.sync_log" in sql
+    # First bound parameter is job_name — must be canonical snake_case.
+    assert params[0] == "search_queries_sync"
+
+
+@patch("shared.data_layer._connection._get_supabase_connection")
+def test_create_sync_log_persists_canonical_promocodes_name(mock_conn):
+    fake = _FakeConn((456,))
+    mock_conn.return_value = fake
+
+    from services.analytics_api.marketing import create_sync_log_entry
+
+    create_sync_log_entry("promocodes")
+
+    calls = fake.cursors[0].execute_calls
+    sql, params = calls[0]
+    assert "INSERT INTO marketing.sync_log" in sql
+    assert params[0] == "promo_codes_sync"
+
+
+@patch("shared.data_layer._connection._get_supabase_connection")
+def test_status_queries_canonical_job_name(mock_conn):
+    started = datetime(2026, 5, 12, 10, 0, 0, tzinfo=timezone.utc)
+    fake = _FakeConn((1, "success", started, started, 0, None))
+    mock_conn.return_value = fake
+
+    r = client.get("/api/marketing/sync/search-queries/status", headers=HEADERS)
+    assert r.status_code == 200
+
+    # SELECT must filter by canonical name, not the URL slug.
+    calls = fake.cursors[0].execute_calls
+    sql, params = calls[0]
+    assert "FROM marketing.sync_log" in sql
+    assert params[0] == "search_queries_sync"

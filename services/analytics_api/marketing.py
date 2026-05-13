@@ -28,6 +28,15 @@ JOB_SCRIPTS: dict[str, str] = {
     "promocodes":     "scripts/run_wb_promocodes_sync.py",
 }
 
+# URL slug → canonical sync_log job_name (snake_case used by cron scripts).
+# We keep the URL slug hyphenated for REST hygiene but persist the canonical
+# snake_case name in marketing.sync_log so cron-driven and manually-triggered
+# runs share a single history (frontend reads by canonical name too).
+JOB_LOG_NAMES: dict[str, str] = {
+    "search-queries": "search_queries_sync",
+    "promocodes":     "promo_codes_sync",
+}
+
 # 15-minute hard cap for any single sync subprocess.
 SUBPROCESS_TIMEOUT_SECONDS = 900
 
@@ -65,9 +74,15 @@ def _now_iso() -> str:
 
 
 def create_sync_log_entry(job_name: str, triggered_by: str = "analytics_api") -> int:
-    """Insert a 'running' row into marketing.sync_log and return its id."""
+    """Insert a 'running' row into marketing.sync_log and return its id.
+
+    Persists the canonical snake_case name (`search_queries_sync` / `promo_codes_sync`)
+    regardless of the API URL slug, so manual triggers and cron history share a
+    single timeline (see JOB_LOG_NAMES).
+    """
     from shared.data_layer._connection import _get_supabase_connection
 
+    log_name = JOB_LOG_NAMES.get(job_name, job_name)
     conn = _get_supabase_connection()
     try:
         with conn.cursor() as cur:
@@ -77,7 +92,7 @@ def create_sync_log_entry(job_name: str, triggered_by: str = "analytics_api") ->
                 VALUES (%s, 'running', NOW(), %s)
                 RETURNING id
                 """,
-                (job_name, triggered_by),
+                (log_name, triggered_by),
             )
             row = cur.fetchone()
             if not row:
@@ -227,6 +242,7 @@ async def sync_status(job_name: str) -> dict:
 
     from shared.data_layer._connection import _get_supabase_connection
 
+    log_name = JOB_LOG_NAMES.get(job_name, job_name)
     conn = _get_supabase_connection()
     try:
         with conn.cursor() as cur:
@@ -239,7 +255,7 @@ async def sync_status(job_name: str) -> dict:
                 ORDER BY started_at DESC
                 LIMIT 1
                 """,
-                (job_name,),
+                (log_name,),
             )
             row = cur.fetchone()
     except Exception as e:

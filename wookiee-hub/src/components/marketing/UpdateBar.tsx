@@ -12,15 +12,17 @@ export interface UpdateBarProps {
   job: SyncJobName
 }
 
-// analytics_api uses hyphenated job slugs; supabase sync_log table stores
-// the snake_case names written by the cron scripts.
-const SUPABASE_JOB_NAME: Record<SyncJobName, string> = {
+// analytics_api now writes the canonical snake_case job_name into
+// marketing.sync_log (see JOB_LOG_NAMES in services/analytics_api/marketing.py),
+// so both the supabase-driven last-success query (useLastSync) and the API-
+// driven live-run query (useSyncStatus) share the same history row.
+const SYNC_LOG_NAME: Record<SyncJobName, string> = {
   'search-queries': 'search_queries_sync',
   'promocodes':     'promo_codes_sync',
 }
 
 export function UpdateBar({ job }: UpdateBarProps) {
-  const lastSyncQ   = useLastSync(SUPABASE_JOB_NAME[job])
+  const lastSyncQ   = useLastSync(SYNC_LOG_NAME[job])
   const statusQ     = useSyncStatus(job)
   const triggerMut  = useTriggerSync()
 
