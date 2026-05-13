@@ -2129,6 +2129,66 @@ export async function bulkUpdateModelStatus(kods: string[], statusId: number): P
   if (error) throw new Error(error.message)
 }
 
+/**
+ * W9.20 — Bulk-update fabrika_id у моделей (addressed by kod).
+ *
+ * Передай `fabrikaId = null` чтобы очистить ссылку на фабрику.
+ */
+export async function bulkUpdateModelFabrika(
+  kods: string[],
+  fabrikaId: number | null,
+): Promise<void> {
+  if (kods.length === 0) return
+  const { error } = await supabase
+    .from("modeli_osnova")
+    .update({ fabrika_id: fabrikaId })
+    .in("kod", kods)
+  if (error) throw new Error(error.message)
+}
+
+/**
+ * W9.20 — Bulk-replace набор сертификатов для моделей.
+ *
+ * `modeli_osnova_sertifikaty` — M:N join-table. Для каждого выбранного `kod`:
+ *   1) Считываем `modeli_osnova.id` по kod (одним IN-запросом).
+ *   2) Удаляем все существующие связи в join-table.
+ *   3) Вставляем новые связи для всех id × sertifikatIds.
+ *
+ * Если `sertifikatIds = []` — просто удаляем все связи (clear).
+ */
+export async function bulkReplaceModelSertifikaty(
+  kods: string[],
+  sertifikatIds: number[],
+): Promise<void> {
+  if (kods.length === 0) return
+  // 1) kod → model_osnova.id
+  const { data: ids, error: idsErr } = await supabase
+    .from("modeli_osnova")
+    .select("id, kod")
+    .in("kod", kods)
+  if (idsErr) throw new Error(idsErr.message)
+  const modelIds = (ids ?? []).map((r) => r.id as number)
+  if (modelIds.length === 0) return
+  // 2) wipe existing links
+  const { error: delErr } = await supabase
+    .from("modeli_osnova_sertifikaty")
+    .delete()
+    .in("model_osnova_id", modelIds)
+  if (delErr) throw new Error(delErr.message)
+  // 3) insert fresh links (cross-product modelIds × sertifikatIds).
+  if (sertifikatIds.length === 0) return
+  const rows: { model_osnova_id: number; sertifikat_id: number }[] = []
+  for (const mid of modelIds) {
+    for (const sid of sertifikatIds) {
+      rows.push({ model_osnova_id: mid, sertifikat_id: sid })
+    }
+  }
+  const { error: insErr } = await supabase
+    .from("modeli_osnova_sertifikaty")
+    .insert(rows)
+  if (insErr) throw new Error(insErr.message)
+}
+
 /** Bulk-update status_id of artikuly rows (addressed by id). */
 export async function bulkUpdateArtikulStatus(artikulIds: number[], statusId: number): Promise<void> {
   if (artikulIds.length === 0) return

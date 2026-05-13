@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { useSearchParams } from "react-router-dom"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { AlertCircle, Archive, Building2, ChevronDown, ChevronRight, Copy, Download, Edit3, Info, MoreHorizontal, Package, Plus, Search } from "lucide-react"
-import { archiveModel, bulkUpdateModelStatus, duplicateModel, fetchArtikulyRegistry, fetchBrendy, fetchKategorii, fetchKollekcii, fetchMatrixList, fetchStatusy, fetchTovaryRegistry, getUiPref, setUiPref } from "@/lib/catalog/service"
+import { archiveModel, bulkReplaceModelSertifikaty, bulkUpdateModelFabrika, bulkUpdateModelStatus, duplicateModel, fetchArtikulyRegistry, fetchBrendy, fetchFabriki, fetchKategorii, fetchKollekcii, fetchMatrixList, fetchSertifikaty, fetchStatusy, fetchTovaryRegistry, getUiPref, setUiPref } from "@/lib/catalog/service"
 import type { ArtikulRow, Brend, MatrixRow, TovarRow } from "@/lib/catalog/service"
 import { StatusBadge, CATALOG_STATUSES } from "@/components/catalog/ui/status-badge"
 import { CompletenessRing } from "@/components/catalog/ui/completeness-ring"
@@ -170,7 +170,7 @@ function buildCompletenessTooltip(row: MatrixRow): string {
   const moreSuffix = tail > 0 ? ` · и ещё ${tail}` : ""
   return `Заполненность ${pct}%. Не заполнено: ${lines}${moreSuffix}`
 }
-function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, onOpen, onRegisterExport }: { rows: MatrixRow[]; brendy: Brend[]; kategorii: { id: number; nazvanie: string }[]; kollekcii: { id: number; nazvanie: string }[]; modelStatuses: StatusOption[]; onOpen: (kod: string) => void; onRegisterExport?: (fn: (() => void) | null) => void }) {
+function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, fabriki, sertifikaty, modelStatuses, onOpen, onRegisterExport }: { rows: MatrixRow[]; brendy: Brend[]; kategorii: { id: number; nazvanie: string }[]; kollekcii: { id: number; nazvanie: string }[]; fabriki: { id: number; nazvanie: string }[]; sertifikaty: { id: number; nazvanie: string }[]; modelStatuses: StatusOption[]; onOpen: (kod: string) => void; onRegisterExport?: (fn: (() => void) | null) => void }) {
   const queryClient = useQueryClient()
   const { widths: colWidths, bindResizer } = useResizableColumns("matrix.modeli", [...MODEL_COLUMN_IDS])
   // W9.5 — конфигуратор колонок матрицы. Видимость управляет рендер-ключами
@@ -215,6 +215,10 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
   const [selectedKods, setSelectedKods] = useState<Set<string>>(new Set())
   const [openMenuKod, setOpenMenuKod] = useState<string | null>(null)
   const [bulkStatusOpen, setBulkStatusOpen] = useState(false)
+  // W9.20 — состояние дополнительных bulk-меню (фабрика / сертификаты).
+  const [bulkFabrikaOpen, setBulkFabrikaOpen] = useState(false)
+  const [bulkSertifikatyOpen, setBulkSertifikatyOpen] = useState(false)
+  const [bulkSertifikatyDraft, setBulkSertifikatyDraft] = useState<Set<number>>(new Set())
   const groupByLoadedRef = useRef(false)
   // W8.1 — sort state + persist via ui_preferences.
   const { sort, toggleSort, setSortState, sortRows } = useTableSort<ModeliOsnovaSortKey>()
@@ -244,13 +248,19 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
     if (!sortLoadedRef.current) return
     setUiPref("matrix.modeli", "sort", sort).catch(() => { /* non-fatal */ })
   }, [sort])
-  // Close more-menu / bulk-status dropdown when clicking elsewhere
+  // Close more-menu / bulk dropdowns when clicking elsewhere.
+  // W9.20 — bulk-fabrika / bulk-sertifikaty также закрываются по клику вне.
   useEffect(() => {
-    if (!openMenuKod && !bulkStatusOpen) return
-    const onDocClick = () => { setOpenMenuKod(null); setBulkStatusOpen(false) }
+    if (!openMenuKod && !bulkStatusOpen && !bulkFabrikaOpen && !bulkSertifikatyOpen) return
+    const onDocClick = () => {
+      setOpenMenuKod(null)
+      setBulkStatusOpen(false)
+      setBulkFabrikaOpen(false)
+      setBulkSertifikatyOpen(false)
+    }
     document.addEventListener("click", onDocClick)
     return () => document.removeEventListener("click", onDocClick)
-  }, [openMenuKod, bulkStatusOpen])
+  }, [openMenuKod, bulkStatusOpen, bulkFabrikaOpen, bulkSertifikatyOpen])
   const statusNameById = useMemo(() => new Map(modelStatuses.map((s) => [s.id, s.nazvanie])), [modelStatuses])
   // Live status lookup by id — used to render <StatusBadge> for both parent
   // modeli_osnova rows (status_ids 20–26) and variation modeli rows. The
@@ -385,6 +395,31 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
     await queryClient.invalidateQueries({ queryKey: ["matrix-list"] })
     setSelectedKods(new Set())
   }, [selectedKods, queryClient])
+  // W9.20 — bulk-set фабрики выбранным моделям (single-select).
+  const handleBulkSetFabrika = useCallback(async (fabrikaId: number | null) => {
+    const kods = Array.from(selectedKods)
+    if (kods.length === 0) return
+    try {
+      await bulkUpdateModelFabrika(kods, fabrikaId)
+      await queryClient.invalidateQueries({ queryKey: ["matrix-list"] })
+      setSelectedKods(new Set()); setBulkFabrikaOpen(false)
+      toast.success(`Фабрика обновлена для ${kods.length} модель(ей)`)
+    } catch (err) { toast.error(translateError(err)) }
+  }, [selectedKods, queryClient])
+  // W9.20 — bulk-replace сертификатов (multi-select; draft подтверждается кнопкой).
+  const handleBulkApplySertifikaty = useCallback(async () => {
+    const kods = Array.from(selectedKods)
+    if (kods.length === 0) return
+    const ids = Array.from(bulkSertifikatyDraft)
+    try {
+      await bulkReplaceModelSertifikaty(kods, ids)
+      await queryClient.invalidateQueries({ queryKey: ["matrix-list"] })
+      setSelectedKods(new Set())
+      setBulkSertifikatyOpen(false)
+      setBulkSertifikatyDraft(new Set())
+      toast.success(`Сертификаты обновлены для ${kods.length} модель(ей)`)
+    } catch (err) { toast.error(translateError(err)) }
+  }, [selectedKods, bulkSertifikatyDraft, queryClient])
   // Single-row actions
   const handleRowDuplicate = useCallback(async (srcKod: string) => {
     const newKod = window.prompt(`Дублировать «${srcKod}»: введите новый kod`, `${srcKod}_copy`)
@@ -727,24 +762,93 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
         <BulkBar
           selectedCount={selectedKods.size}
           modelStatuses={modelStatuses}
+          fabriki={fabriki}
+          sertifikaty={sertifikaty}
           bulkStatusOpen={bulkStatusOpen}
-          onToggleBulkStatus={() => setBulkStatusOpen((v) => !v)}
+          bulkFabrikaOpen={bulkFabrikaOpen}
+          bulkSertifikatyOpen={bulkSertifikatyOpen}
+          sertifikatyDraft={bulkSertifikatyDraft}
+          onToggleBulkStatus={() => {
+            setBulkStatusOpen((v) => !v)
+            setBulkFabrikaOpen(false)
+            setBulkSertifikatyOpen(false)
+          }}
+          onToggleBulkFabrika={() => {
+            setBulkFabrikaOpen((v) => !v)
+            setBulkStatusOpen(false)
+            setBulkSertifikatyOpen(false)
+          }}
+          onToggleBulkSertifikaty={() => {
+            setBulkSertifikatyOpen((v) => !v)
+            setBulkStatusOpen(false)
+            setBulkFabrikaOpen(false)
+          }}
           onPickStatus={handleBulkSetStatus}
+          onPickFabrika={handleBulkSetFabrika}
+          onToggleSertifikat={(id) => {
+            setBulkSertifikatyDraft((prev) => {
+              const next = new Set(prev)
+              if (next.has(id)) next.delete(id)
+              else next.add(id)
+              return next
+            })
+          }}
+          onApplySertifikaty={handleBulkApplySertifikaty}
           onDuplicate={handleBulkDuplicate}
           onExport={handleBulkExport}
           onArchive={handleBulkArchive}
-          onClear={() => { setSelectedKods(new Set()); setBulkStatusOpen(false) }}
+          onClear={() => {
+            setSelectedKods(new Set())
+            setBulkStatusOpen(false)
+            setBulkFabrikaOpen(false)
+            setBulkSertifikatyOpen(false)
+            setBulkSertifikatyDraft(new Set())
+          }}
         />
       )}
     </>
   )
 }
 /**
- * BulkBar — обёртка над atomic BulkActionsBar с дополнительной выпадашкой
- * статусов. atomic BulkActionsBar не поддерживает submenu из коробки, поэтому
- * рисуем контейнер сами и переиспользуем стилистику.
+ * BulkBar — обёртка над atomic BulkActionsBar с дополнительными выпадашками
+ * (статусы / фабрика / сертификаты). atomic BulkActionsBar не поддерживает
+ * submenu из коробки, поэтому рисуем контейнер сами.
+ *
+ * W9.20 — добавлены три новых действия:
+ *   - «Изменить фабрику» — single-select по `fabriki` (FK modeli_osnova.fabrika_id).
+ *   - «Изменить сертификаты» — multi-select по `sertifikaty` (M:N через
+ *     modeli_osnova_sertifikaty).  При apply делается полная замена набора.
+ *   - «Каналы продаж» в схеме на уровне модели отсутствуют (хранятся per-SKU
+ *     через status_<channel>_id), поэтому в bulk-баре они опущены — bulk-edit
+ *     по каналам уже доступен в реестре SKU (см. /catalog/tovary).
  */
-function BulkBar({ selectedCount, modelStatuses, bulkStatusOpen, onToggleBulkStatus, onPickStatus, onDuplicate, onExport, onArchive, onClear }: { selectedCount: number; modelStatuses: StatusOption[]; bulkStatusOpen: boolean; onToggleBulkStatus: () => void; onPickStatus: (id: number) => void; onDuplicate: () => void; onExport: () => void; onArchive: () => void; onClear: () => void }) {
+function BulkBar({
+  selectedCount, modelStatuses, fabriki, sertifikaty,
+  bulkStatusOpen, bulkFabrikaOpen, bulkSertifikatyOpen, sertifikatyDraft,
+  onToggleBulkStatus, onToggleBulkFabrika, onToggleBulkSertifikaty,
+  onPickStatus, onPickFabrika, onToggleSertifikat, onApplySertifikaty,
+  onDuplicate, onExport, onArchive, onClear,
+}: {
+  selectedCount: number
+  modelStatuses: StatusOption[]
+  fabriki: { id: number; nazvanie: string }[]
+  sertifikaty: { id: number; nazvanie: string }[]
+  bulkStatusOpen: boolean
+  bulkFabrikaOpen: boolean
+  bulkSertifikatyOpen: boolean
+  sertifikatyDraft: Set<number>
+  onToggleBulkStatus: () => void
+  onToggleBulkFabrika: () => void
+  onToggleBulkSertifikaty: () => void
+  onPickStatus: (id: number) => void
+  onPickFabrika: (id: number | null) => void
+  onToggleSertifikat: (id: number) => void
+  onApplySertifikaty: () => void
+  onDuplicate: () => void
+  onExport: () => void
+  onArchive: () => void
+  onClear: () => void
+}) {
   return (
     <div className="catalog-scope fixed bottom-0 left-0 right-0 z-40 border-t border-stone-200 bg-white px-6 py-3 flex items-center gap-3 shrink-0 shadow-[0_-4px_16px_-8px_rgba(0,0,0,0.08)]" onClick={(e) => e.stopPropagation()}>
       <span className="text-sm">Выбрано: <span className="font-medium tabular-nums">{selectedCount}</span></span>
@@ -758,6 +862,73 @@ function BulkBar({ selectedCount, modelStatuses, bulkStatusOpen, onToggleBulkSta
                 <StatusBadge status={{ nazvanie: s.nazvanie, color: s.color }} compact size="sm" />
               </button>
             ))}
+          </div>
+        )}
+      </div>
+      {/* W9.20 — фабрика (single-select). */}
+      <div className="relative">
+        <button type="button" onClick={onToggleBulkFabrika} className="px-3 py-1 text-xs text-stone-700 hover:bg-stone-100 rounded-md flex items-center gap-1.5">Изменить фабрику<ChevronDown className="w-3 h-3" /></button>
+        {bulkFabrikaOpen && (
+          <div className="absolute bottom-9 left-0 z-50 w-56 max-h-64 overflow-y-auto bg-white border border-stone-200 rounded-md shadow-lg py-1">
+            <button type="button" onClick={() => onPickFabrika(null)} className="w-full text-left px-3 py-1.5 text-xs hover:bg-stone-50 text-stone-500 italic">
+              Сбросить (без фабрики)
+            </button>
+            <div className="h-px bg-stone-100 my-1" />
+            {fabriki.length === 0 && (
+              <div className="px-3 py-1.5 text-xs text-stone-400">Список фабрик пуст</div>
+            )}
+            {fabriki.map((f) => (
+              <button key={f.id} type="button" onClick={() => onPickFabrika(f.id)} className="w-full text-left px-3 py-1.5 text-xs hover:bg-stone-50">
+                {f.nazvanie}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      {/* W9.20 — сертификаты (multi-select; apply кнопкой). */}
+      <div className="relative">
+        <button type="button" onClick={onToggleBulkSertifikaty} className="px-3 py-1 text-xs text-stone-700 hover:bg-stone-100 rounded-md flex items-center gap-1.5">
+          Изменить сертификаты
+          {sertifikatyDraft.size > 0 && (
+            <span className="tabular-nums text-stone-500">· {sertifikatyDraft.size}</span>
+          )}
+          <ChevronDown className="w-3 h-3" />
+        </button>
+        {bulkSertifikatyOpen && (
+          <div className="absolute bottom-9 left-0 z-50 w-72 max-h-72 overflow-y-auto bg-white border border-stone-200 rounded-md shadow-lg py-1">
+            {sertifikaty.length === 0 && (
+              <div className="px-3 py-1.5 text-xs text-stone-400">Список сертификатов пуст</div>
+            )}
+            {sertifikaty.map((s) => {
+              const checked = sertifikatyDraft.has(s.id)
+              return (
+                <label key={s.id} className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-stone-50 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => onToggleSertifikat(s.id)}
+                    style={{ accentColor: "#1C1917" }}
+                    className="rounded border-stone-300"
+                  />
+                  <span className="truncate">{s.nazvanie}</span>
+                </label>
+              )
+            })}
+            {sertifikaty.length > 0 && (
+              <>
+                <div className="h-px bg-stone-100 my-1" />
+                <div className="px-2 py-1 flex items-center justify-between gap-2">
+                  <span className="text-[11px] text-stone-500 px-1">Замена набора (полная)</span>
+                  <button
+                    type="button"
+                    onClick={onApplySertifikaty}
+                    className="px-2.5 py-1 text-xs text-white bg-stone-900 hover:bg-stone-800 rounded-md"
+                  >
+                    Применить
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -1273,6 +1444,9 @@ export function MatrixPage() {
   const kategoriiQ = useQuery({ queryKey: ["kategorii"], queryFn: fetchKategorii, staleTime: 10 * 60 * 1000 })
   const kollekciiQ = useQuery({ queryKey: ["kollekcii"], queryFn: fetchKollekcii, staleTime: 10 * 60 * 1000 })
   const statusyQ = useQuery({ queryKey: ["statusy"], queryFn: fetchStatusy, staleTime: 30 * 60 * 1000 })
+  // W9.20 — справочники для bulk-edit фабрики и сертификатов.
+  const fabrikiQ = useQuery({ queryKey: ["fabriki"], queryFn: fetchFabriki, staleTime: 10 * 60 * 1000 })
+  const sertifikatyQ = useQuery({ queryKey: ["sertifikaty"], queryFn: fetchSertifikaty, staleTime: 10 * 60 * 1000 })
   const openModel = useCallback((kod: string) => {
     const next = new URLSearchParams(searchParams)
     next.set("model", kod)
@@ -1311,6 +1485,8 @@ export function MatrixPage() {
   const brendy = brendyQ.data ?? []
   const kategorii = kategoriiQ.data ?? []
   const kollekcii = kollekciiQ.data ?? []
+  const fabriki = fabrikiQ.data ?? []
+  const sertifikaty = sertifikatyQ.data ?? []
   const modelStatuses = (statusyQ.data ?? []).filter((s) => s.tip === "model")
   const totalVariations = rows.reduce((s, r) => s + r.modeli_cnt, 0)
   const totalArts = rows.reduce((s, r) => s + r.artikuly_cnt, 0)
@@ -1352,7 +1528,7 @@ export function MatrixPage() {
         {matrixQ.isLoading && listTab === "modeli_osnova" && <div className="px-6 py-8 text-sm text-stone-400">Загрузка…</div>}
         {matrixQ.error && <div className="px-6 py-8 text-sm text-red-500">Ошибка загрузки: {String(matrixQ.error)}</div>}
         {listTab === "modeli_osnova" && !matrixQ.isLoading && !matrixQ.error && (
-          <ModeliOsnovaTable rows={rows} brendy={brendy} kategorii={kategorii} kollekcii={kollekcii} modelStatuses={modelStatuses} onOpen={openModel} onRegisterExport={registerExport} />
+          <ModeliOsnovaTable rows={rows} brendy={brendy} kategorii={kategorii} kollekcii={kollekcii} fabriki={fabriki} sertifikaty={sertifikaty} modelStatuses={modelStatuses} onOpen={openModel} onRegisterExport={registerExport} />
         )}
         {listTab === "artikuly" && <ArtikulyTable onRegisterExport={registerExport} />}
         {listTab === "tovary" && <TovaryTable onRegisterExport={registerExport} />}
