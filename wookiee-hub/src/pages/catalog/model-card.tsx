@@ -1303,6 +1303,11 @@ function TabArticles({ m, hexByCvet, openColor }: TabContentProps) {
 // (CSV), маппинг nazvanie → razmer_id берётся из глобального справочника
 // `razmery` через `fetchRazmery`. По умолчанию выбраны все размеры модели.
 //
+// W10.10 — фильтр палитры по семействам цветов (`semeystva_cvetov`).
+// Multi-select chips над списком цветов; пустой выбор = «Все семейства».
+// Это display-only фильтр: уже выбранные цвета вне фильтра остаются
+// выбранными (учитываются в submit и в счётчике).
+//
 // artikul генерируется автоматически как `${modeli.kod}/${cveta.color_code}`
 // — это поведение сервиса, не UI. См. `insertArtikul` в service.ts.
 function AddArtikulModal({
@@ -1329,6 +1334,8 @@ function AddArtikulModal({
   const [selectedRazmery, setSelectedRazmery] = useState<Set<string>>(
     () => new Set(modelRazmery),
   )
+  // W10.10 — выбранные семейства цветов. Empty Set = «Все семейства» (no filter).
+  const [selectedSemeystva, setSelectedSemeystva] = useState<Set<number>>(new Set())
   // W9.11 — per-cvet custom artikul name. Empty/undefined ⇒ use generated.
   // Map keyed by cvet_id so values persist across select/deselect toggles
   // until variation switch (then we reset along with selection).
@@ -1354,6 +1361,14 @@ function AddArtikulModal({
     return m
   }, [razmeryQ.data])
 
+  // W10.10 — справочник `semeystva_cvetov` для фильтра палитры.
+  const semeystvaQ = useQuery({
+    queryKey: ["catalog", "semeystva-cvetov"],
+    queryFn: fetchSemeystvaCvetov,
+    staleTime: 5 * 60 * 1000,
+  })
+  const semeystvaList = semeystvaQ.data ?? []
+
   // Already-attached cveta ids — для исключения из выбора (нельзя создать
   // дубликат `${kod}/${color_code}` — артикул должен быть уникальным).
   const attachedCvetIds = useMemo(() => {
@@ -1362,10 +1377,24 @@ function AddArtikulModal({
     return new Set(v.artikuly.map((a) => a.cvet_id).filter((id): id is number => id != null))
   }, [variationId, variations])
 
-  // Available colours — category-filtered, minus already attached.
-  const availableCveta: CvetRow[] = useMemo(() => {
+  // Pool of цветов в принципе доступных для выбора (category-filtered,
+  // minus already attached). Используется и для submit, и для счётчика —
+  // независимо от display-фильтра семейств (W10.10).
+  const eligibleCveta: CvetRow[] = useMemo(() => {
     return categoryColors.filter((c) => !attachedCvetIds.has(c.id))
   }, [categoryColors, attachedCvetIds])
+
+  // W10.10 — отображаемая палитра: eligibleCveta, дополнительно отфильтрованная
+  // по выбранным семействам. Empty Set = «Все семейства» (no filter).
+  // Это **display-only** фильтр: уже выбранные цвета вне фильтра остаются
+  // выбранными (учитываются в submit и в счётчике), просто не показываются
+  // в основном списке палитры.
+  const availableCveta: CvetRow[] = useMemo(() => {
+    if (selectedSemeystva.size === 0) return eligibleCveta
+    return eligibleCveta.filter(
+      (c) => c.semeystvo_id != null && selectedSemeystva.has(c.semeystvo_id),
+    )
+  }, [eligibleCveta, selectedSemeystva])
 
   // W9.11 — existing artikul names across ALL variations of this model
   // (lower-cased) for client-side uniqueness pre-check. Server-side guarantee
@@ -1455,7 +1484,14 @@ function AddArtikulModal({
     })
   }
 
-  const selectAll = () => setSelectedCvety(new Set(availableCveta.map((c) => c.id)))
+  // W10.10 — «Выбрать все» добавляет все ВИДИМЫЕ цвета (после фильтра семейств)
+  // к уже выбранным. Не сбрасывает выбранные цвета вне текущего фильтра.
+  const selectAll = () =>
+    setSelectedCvety((prev) => {
+      const next = new Set(prev)
+      for (const c of availableCveta) next.add(c.id)
+      return next
+    })
   const clearAll = () => setSelectedCvety(new Set())
 
   const selectedVariation = variations.find((v) => v.id === variationId)
@@ -1513,9 +1549,12 @@ function AddArtikulModal({
     [customNames, effectiveName, existingArtikulNames],
   )
 
+  // selectedCveta — все реально выбранные цвета (а не только видимые в
+  // текущем фильтре семейств). Это важно для UI «Имена артикулов» (юзер должен
+  // видеть все выбранные, даже скрытые фильтром) и для submit.
   const selectedCveta = useMemo(
-    () => availableCveta.filter((c) => selectedCvety.has(c.id)),
-    [availableCveta, selectedCvety],
+    () => eligibleCveta.filter((c) => selectedCvety.has(c.id)),
+    [eligibleCveta, selectedCvety],
   )
 
   // W10.9 — сколько выбранных размеров реально создадутся (есть в справочнике).
@@ -1618,6 +1657,64 @@ function AddArtikulModal({
             </div>
           )}
 
+          {/* W10.10 — фильтр палитры по семействам цветов. */}
+          {semeystvaList.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-[11px] uppercase tracking-wider text-stone-500">
+                  Семейства цветов
+                </label>
+                {selectedSemeystva.size > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedSemeystva(new Set())}
+                    className="text-xs text-stone-600 hover:text-stone-900 underline underline-offset-2"
+                  >
+                    Сбросить
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setSelectedSemeystva(new Set())}
+                  className={`px-2 py-1 text-xs rounded-md border transition-colors ${
+                    selectedSemeystva.size === 0
+                      ? "border-stone-900 bg-stone-900 text-white"
+                      : "border-stone-200 text-stone-700 hover:border-stone-400"
+                  }`}
+                >
+                  Все
+                </button>
+                {semeystvaList.map((s) => {
+                  const checked = selectedSemeystva.has(s.id)
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedSemeystva((prev) => {
+                          const next = new Set(prev)
+                          if (next.has(s.id)) next.delete(s.id)
+                          else next.add(s.id)
+                          return next
+                        })
+                      }}
+                      className={`px-2 py-1 text-xs rounded-md border transition-colors ${
+                        checked
+                          ? "border-stone-900 bg-stone-900 text-white"
+                          : "border-stone-200 text-stone-700 hover:border-stone-400"
+                      }`}
+                      title={s.opisanie ?? undefined}
+                    >
+                      {s.nazvanie}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="block text-[11px] uppercase tracking-wider text-stone-500">
@@ -1650,7 +1747,9 @@ function AddArtikulModal({
               <div className="text-sm text-stone-400 italic py-6 text-center">
                 {categoryColors.length === 0
                   ? "Для этой категории нет цветов в палитре. Привяжите цвета к категории в справочнике."
-                  : "Все доступные цвета уже привязаны к этой вариации"}
+                  : eligibleCveta.length === 0
+                    ? "Все доступные цвета уже привязаны к этой вариации"
+                    : "Нет цветов в выбранных семействах. Сбросьте фильтр или выберите другое семейство."}
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-1.5 max-h-[28vh] overflow-y-auto pr-1">
