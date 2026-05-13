@@ -3,9 +3,11 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowLeft, Trash2, Edit3, X, Check, Sparkles } from "lucide-react"
 import {
   fetchSkleykaDetail,
+  fetchSkleykaHistory,
   bulkUnlinkTovaryFromSkleyka,
   deleteSkleyka,
   updateSkleyka,
+  type AuditEntry,
   type SkleykaDetailSKU,
 } from "@/lib/catalog/service"
 import { CompletenessRing } from "@/components/catalog/ui/completeness-ring"
@@ -55,6 +57,184 @@ function SidebarBlock({ title, children }: { title: string; children: React.Reac
 }
 
 type Tab = "sku" | "analytics" | "history"
+
+// ─── W10.25 + W10.36 — История склейки (audit_log) ────────────────────────
+//
+// Read-only лента изменений по `audit_log`: сама склейка + её junction
+// (`tovary_skleyki_*`, `artikuly_skleyki_*`). Сделано по образцу TabHistory
+// из `model-card.tsx`.
+
+function skleykaActionBadgeClass(action: AuditEntry["action"]): string {
+  switch (action) {
+    case "INSERT":
+      return "bg-emerald-100 text-emerald-700 border-emerald-200"
+    case "UPDATE":
+      return "bg-blue-100 text-blue-700 border-blue-200"
+    case "DELETE":
+      return "bg-red-100 text-red-700 border-red-200"
+  }
+}
+
+function skleykaTableLabel(t: string): string {
+  switch (t) {
+    case "skleyki_wb":
+    case "skleyki_ozon":
+      return "Склейка"
+    case "tovary_skleyki_wb":
+    case "tovary_skleyki_ozon":
+      return "Привязка SKU"
+    case "artikuly_skleyki_wb":
+    case "artikuly_skleyki_ozon":
+      return "Привязка артикула"
+    default:
+      return t
+  }
+}
+
+function formatAuditValue(v: unknown): string {
+  if (v === null || v === undefined) return "—"
+  if (typeof v === "string") return v.length > 80 ? v.slice(0, 80) + "…" : v
+  if (typeof v === "number" || typeof v === "boolean") return String(v)
+  try {
+    const json = JSON.stringify(v)
+    return json.length > 80 ? json.slice(0, 80) + "…" : json
+  } catch {
+    return String(v)
+  }
+}
+
+function formatAuditDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString("ru-RU", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+  } catch {
+    return iso
+  }
+}
+
+function shortUser(uid: string | null): string {
+  if (!uid) return "system"
+  return uid.slice(0, 8)
+}
+
+function SkleykaHistoryTab({ id, channel }: { id: number; channel: "wb" | "ozon" }) {
+  const { data, isLoading, error } = useQuery<AuditEntry[]>({
+    queryKey: ["skleyka-history", id, channel],
+    queryFn: () => fetchSkleykaHistory(id, channel, 200),
+    staleTime: 30 * 1000,
+  })
+
+  if (isLoading) {
+    return (
+      <div className="bg-white rounded-lg border border-stone-200 p-8 text-center text-sm text-stone-400">
+        Загружаем историю…
+      </div>
+    )
+  }
+  if (error) {
+    return (
+      <div className="bg-white rounded-lg border border-stone-200 p-8 text-center text-sm text-red-600">
+        Не удалось загрузить историю: {String(error)}
+      </div>
+    )
+  }
+
+  const rows = data ?? []
+  if (rows.length === 0) {
+    return (
+      <div className="bg-white rounded-lg border border-stone-200 p-8 text-center">
+        <div className="text-sm text-stone-700 font-medium">История изменений</div>
+        <div className="text-xs text-stone-500 mt-1">
+          Изменений пока нет. Журнал ведётся автоматически.
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-white rounded-lg border border-stone-200 p-4 space-y-2">
+      <div className="px-1 pb-1 flex items-baseline justify-between">
+        <div className="font-medium text-stone-900 text-sm">История изменений</div>
+        <div className="text-[11px] text-stone-400 uppercase tracking-wider">
+          Последние {rows.length}
+        </div>
+      </div>
+      {rows.map((r) => (
+        <div key={r.id} className="border border-stone-200 rounded-md p-3 bg-stone-50">
+          <div className="flex items-center gap-2 flex-wrap text-xs">
+            <span
+              className={
+                "px-1.5 py-0.5 rounded border font-medium uppercase tracking-wider " +
+                skleykaActionBadgeClass(r.action)
+              }
+            >
+              {r.action}
+            </span>
+            <span className="font-medium text-stone-800">
+              {skleykaTableLabel(r.table_name)}
+            </span>
+            <span className="text-stone-400">·</span>
+            <span className="text-stone-500 tabular-nums">{formatAuditDate(r.created_at)}</span>
+            <span className="text-stone-400">·</span>
+            <span
+              className="text-stone-500 font-mono"
+              title={r.user_id ?? "service_role / system"}
+            >
+              {shortUser(r.user_id)}
+            </span>
+          </div>
+
+          {r.action === "INSERT" && (
+            <div className="mt-2 text-xs text-stone-600">
+              Запись создана{r.row_id ? ` (id=${r.row_id}).` : "."}
+            </div>
+          )}
+
+          {r.action === "DELETE" && r.before && (
+            <div className="mt-2 text-xs text-stone-600">
+              <div className="text-stone-500 mb-1">Удалено. Снимок до удаления:</div>
+              <div className="grid grid-cols-1 gap-0.5 font-mono text-[11px] text-stone-700">
+                {Object.entries(r.before)
+                  .slice(0, 8)
+                  .map(([k, v]) => (
+                    <div key={k} className="truncate">
+                      <span className="text-stone-500">{k}:</span> {formatAuditValue(v)}
+                    </div>
+                  ))}
+                {Object.keys(r.before).length > 8 && (
+                  <div className="text-stone-400">
+                    … ещё {Object.keys(r.before).length - 8} полей
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {r.action === "UPDATE" && r.changed && (
+            <div className="mt-2 space-y-1 font-mono text-[11px]">
+              {Object.entries(r.changed).map(([key, diff]) => (
+                <div key={key} className="flex flex-wrap gap-1 items-baseline">
+                  <span className="text-stone-700 font-medium">{key}:</span>
+                  <span className="text-red-600 line-through">{formatAuditValue(diff.from)}</span>
+                  <span className="text-stone-400">→</span>
+                  <span className="text-emerald-700">{formatAuditValue(diff.to)}</span>
+                </div>
+              ))}
+              {Object.keys(r.changed).length === 0 && (
+                <div className="text-stone-400 italic">изменено (без полевых изменений)</div>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
 
 interface SkleykaCardProps {
   id: number
@@ -519,15 +699,7 @@ export function SkleykaCard({ id, channel, onBack }: SkleykaCardProps) {
               </div>
             )}
 
-            {tab === "history" && (
-              <div className="bg-white rounded-lg border border-stone-200 p-8 text-center">
-                <div className="text-sm text-stone-700 font-medium">История изменений</div>
-                <div className="text-xs text-stone-500 mt-1">
-                  Будет в следующих фазах: лог добавления/удаления SKU, переименований, операций
-                  публикации.
-                </div>
-              </div>
-            )}
+            {tab === "history" && <SkleykaHistoryTab id={id} channel={channel} />}
           </div>
 
           {/* Sidebar (1/3) */}

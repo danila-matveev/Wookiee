@@ -3577,6 +3577,51 @@ export async function fetchAuditFor(
   return (data ?? []) as AuditEntry[]
 }
 
+/**
+ * W10.25 + W10.36 — история склейки.
+ *
+ * Возвращает audit_log по самой склейке (`skleyki_wb` / `skleyki_ozon`),
+ * её SKU-junction (`tovary_skleyki_{channel}`) и junction артикулов
+ * (`artikuly_skleyki_{channel}` — миграция 027).
+ *
+ * У junction-таблиц composite PK → `audit_log.row_id` для них может быть
+ * NULL. Поэтому фильтруем по JSONB `before/after.skleyka_id` через
+ * Supabase `.or()`-цепочку.
+ */
+export async function fetchSkleykaHistory(
+  skleykaId: number,
+  channel: "wb" | "ozon",
+  limit = 200,
+): Promise<AuditEntry[]> {
+  const mainTable = channel === "wb" ? "skleyki_wb" : "skleyki_ozon"
+  const tovaryJunction = channel === "wb" ? "tovary_skleyki_wb" : "tovary_skleyki_ozon"
+  const artikulyJunction = channel === "wb" ? "artikuly_skleyki_wb" : "artikuly_skleyki_ozon"
+
+  const idStr = String(skleykaId)
+
+  // Композитная OR-цепочка:
+  //   (table_name = 'skleyki_<ch>' AND row_id = id)
+  //   OR (table_name IN junctions AND after->>'skleyka_id' = id)
+  //   OR (table_name IN junctions AND before->>'skleyka_id' = id)
+  //
+  // PostgREST: `or=(cond1,cond2,...)` — внутри запятые-разделители.
+  // Подзапросы по нескольким AND нужно оборачивать в `and()`.
+  const orExpr = [
+    `and(table_name.eq.${mainTable},row_id.eq.${idStr})`,
+    `and(table_name.in.(${tovaryJunction},${artikulyJunction}),after->>skleyka_id.eq.${idStr})`,
+    `and(table_name.in.(${tovaryJunction},${artikulyJunction}),before->>skleyka_id.eq.${idStr})`,
+  ].join(",")
+
+  const { data, error } = await supabase
+    .from("audit_log")
+    .select("*")
+    .or(orExpr)
+    .order("created_at", { ascending: false })
+    .limit(limit)
+  if (error) throw new Error(error.message)
+  return (data ?? []) as AuditEntry[]
+}
+
 // ─── W10.6: ArtikulDetail — карточка артикула ───────────────────────────────
 //
 // Используется в ArtikulDrawer (`pages/catalog/artikul-card.tsx`). Возвращает
