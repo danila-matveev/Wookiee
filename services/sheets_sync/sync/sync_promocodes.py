@@ -17,6 +17,7 @@ from datetime import date
 from shared.clients.sheets_client import get_moscow_now
 
 from .promocodes.aggregate import aggregate_by_uuid
+from .promocodes.bridge import ensure_db_promos_in_sheets
 from .promocodes.dashboard import compute_dashboard_summary, write_dashboard_header
 from .promocodes.db_io import write_product_breakdown, write_weekly_metrics
 from .promocodes.dictionary import _truthy, parse_dictionary
@@ -43,6 +44,7 @@ __all__ = [
     # Side-effecting helpers (tests patch these on this module)
     "fetch_report",
     "read_dictionary_sheet", "ensure_analytics_sheet",
+    "ensure_db_promos_in_sheets",
     "_read_pivot_state", "ensure_analytics_dict_rows", "upsert_pivot",
     "write_dashboard_header",
     "write_weekly_metrics", "write_product_breakdown",
@@ -139,8 +141,23 @@ def run(
                 "started_at": started.isoformat(timespec="seconds")}
 
     weeks = _resolve_weeks(mode, week_from, week_to, weeks_back)
-    dictionary = read_dictionary_sheet()
     ws = ensure_analytics_sheet() if write_to_sheets else None
+
+    # DB→Sheets bridge: codes added through the Marketing Hub UI live only in
+    # `crm.promo_codes` until the next operator-driven sheet edit. Sync them to
+    # the dictionary section before reading it, so weekly metrics get attached
+    # to the new rows instead of being dropped as "unknown UUIDs". Failures are
+    # logged + re-raised — better to abort than to drift on a stale list.
+    if write_to_sheets and ws is not None:
+        try:
+            bridged = ensure_db_promos_in_sheets(ws)
+            if bridged:
+                logger.info("Bridge added %d DB-only promo codes to Sheets", bridged)
+        except Exception as e:
+            logger.exception("Bridge DB→Sheets failed; aborting sync to avoid drift: %s", e)
+            raise
+
+    dictionary = read_dictionary_sheet()
     if write_to_sheets:
         week_col_map, uuid_row_map = _read_pivot_state(ws)
     else:
