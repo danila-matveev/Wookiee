@@ -10,6 +10,7 @@ import {
 import { CompletenessRing } from "@/components/catalog/ui/completeness-ring"
 import { StatusBadge } from "@/components/catalog/ui/status-badge"
 import { BulkActionsBar } from "@/components/catalog/ui/bulk-actions-bar"
+import { CellText } from "@/components/catalog/ui/cell-text"
 import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
 import { translateError } from "@/lib/catalog/error-translator"
 import { toast } from "@/lib/catalog/toast"
@@ -331,7 +332,9 @@ export function SkleykaCard({ id, channel, onBack }: SkleykaCardProps) {
                     {skuCount} {skuCount === 0 ? "(пусто)" : `из ${MAX_SKU}`}
                   </div>
                 </div>
-                <table className="w-full text-sm">
+                {/* W10.27 — горизонтальный скролл + min-w для SKU-таблицы внутри склейки. */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm min-w-[900px]">
                   <thead className="bg-stone-50/80 border-b border-stone-200">
                     <tr className="text-left text-[11px] uppercase tracking-wider text-stone-500">
                       <th className="px-3 py-2 w-8">
@@ -375,18 +378,26 @@ export function SkleykaCard({ id, channel, onBack }: SkleykaCardProps) {
                             />
                           </td>
                           <td className="px-3 py-2">
-                            <span className="font-mono text-xs text-stone-700">{t.barkod}</span>
-                          </td>
-                          <td className="px-3 py-2 font-mono text-xs text-stone-600">
-                            {t.artikul ?? "—"}
-                          </td>
-                          <td className="px-3 py-2 font-mono text-xs font-medium">
-                            {t.model_osnova_kod ?? "—"}
+                            <CellText className="font-mono text-xs text-stone-700" title={t.barkod}>
+                              {t.barkod}
+                            </CellText>
                           </td>
                           <td className="px-3 py-2">
-                            <div className="flex items-center gap-1.5">
+                            <CellText className="font-mono text-xs text-stone-600" title={t.artikul ?? ""}>
+                              {t.artikul ?? "—"}
+                            </CellText>
+                          </td>
+                          <td className="px-3 py-2">
+                            <CellText className="font-mono text-xs font-medium" title={t.model_osnova_kod ?? ""}>
+                              {t.model_osnova_kod ?? "—"}
+                            </CellText>
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="flex items-center gap-1.5 min-w-0">
                               <ColorSwatch colorCode={t.cvet_color_code} size={14} />
-                              <span className="font-mono text-xs">{t.cvet_color_code ?? "—"}</span>
+                              <CellText className="font-mono text-xs" title={t.cvet_color_code ?? ""}>
+                                {t.cvet_color_code ?? "—"}
+                              </CellText>
                             </div>
                           </td>
                           <td className="px-3 py-2 font-mono text-xs">{t.razmer ?? "—"}</td>
@@ -415,7 +426,8 @@ export function SkleykaCard({ id, channel, onBack }: SkleykaCardProps) {
                       </tr>
                     )}
                   </tbody>
-                </table>
+                  </table>
+                </div>
               </div>
             )}
 
