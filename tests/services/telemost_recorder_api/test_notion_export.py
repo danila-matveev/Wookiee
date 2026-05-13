@@ -13,6 +13,8 @@ from services.telemost_recorder_api.notion_export import (
     _combined_tags,
     _page_properties,
     _page_title,
+    _pick_notion_department,
+    _pick_notion_type,
     export_meeting_to_notion,
 )
 
@@ -61,6 +63,54 @@ def test_page_properties_includes_date_iso():
     props = _page_properties(m)
     assert props["Name"]["title"][0]["text"]["content"].startswith("Daily standup")
     assert props["Date"]["date"]["start"] == "2026-05-12"
+
+
+def test_pick_notion_type_matches_dayli_variants():
+    assert _pick_notion_type({"title": "Dayli"}) == "Dayli"
+    assert _pick_notion_type({"title": "ДЕЙЛИ команды"}) == "Dayli"
+    assert _pick_notion_type({"title": "Daily standup"}) == "Dayli"
+
+
+def test_pick_notion_type_matches_other_options():
+    assert _pick_notion_type({"title": "1-1 с Алиной"}) == "1-n-1"
+    assert _pick_notion_type({"title": "Планёрка продаж"}) == "Планерка"
+    assert _pick_notion_type({"title": "Обсуждение продуктовой стратегии"}) == "Отдел продукта"
+
+
+def test_pick_notion_type_returns_none_when_no_match():
+    assert _pick_notion_type({"title": ""}) is None
+    assert _pick_notion_type({"title": "Просто звонок"}) is None
+
+
+def test_pick_notion_department_maps_tags():
+    assert _pick_notion_department({"tags": ["логистика"]}) == "Логистика"
+    assert _pick_notion_department({"tags": ["продажи", "креативы"]}) == "Продаж и маркетинга"
+    assert _pick_notion_department({"tags": ["продукт"]}) == "Продукт"
+    assert _pick_notion_department({"tags": ["контент"]}) == "SMM и контента"
+    assert _pick_notion_department({"tags": []}) is None
+    assert _pick_notion_department({"tags": ["прочее"]}) is None
+
+
+def test_page_properties_includes_notion_select_when_match():
+    """Свойства Тип и Отдел в Notion-странице должны заполняться, а не оставаться Empty."""
+    props = _page_properties({
+        "title": "Dayli команды",
+        "started_at": None,
+        "tags": ["продукт", "разработка"],
+    })
+    assert props["Тип"]["select"]["name"] == "Dayli"
+    assert props["Отдел"]["select"]["name"] == "Продукт"
+
+
+def test_page_properties_omits_select_when_no_match():
+    """Если совпадений нет — не плодим мусорные опции, оставляем Empty."""
+    props = _page_properties({
+        "title": "Какая-то встреча",
+        "started_at": None,
+        "tags": ["прочее"],
+    })
+    assert "Тип" not in props
+    assert "Отдел" not in props
 
 
 def test_page_properties_omits_date_when_missing():

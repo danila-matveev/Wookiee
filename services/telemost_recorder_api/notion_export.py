@@ -189,6 +189,64 @@ def _page_title(meeting: dict[str, Any]) -> str:
     return f"Встреча {when}" if when else "Встреча"
 
 
+# Маппинг названия встречи (с поправкой на ASR-варианты) на select "Тип"
+# в Notion DB "Записи встреч". Опции этого select зафиксированы вручную
+# (через Notion UI), и если LLM/Bitrix выдадут что-то не из этого списка —
+# поле останется пустым, чтобы не плодить мусорные опции автогенерацией.
+_NOTION_TYPE_KEYWORDS: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("dayli", "daily", "дейли", "дэйли"), "Dayli"),
+    (("1-1", "1 на 1", "one-on-one", "one on one", "1-n-1"), "1-n-1"),
+    (("планерк", "планёрк"), "Планерка"),
+    (("продукт",), "Отдел продукта"),
+    (("контент",), "Отдел контента"),
+    (("маркетинг", "реклам"), "Отдел маркетинга"),
+)
+
+# Маппинг тематических LLM-тегов на select "Отдел". Source of truth — список
+# тегов canonical, который LLM получает в промте.
+_NOTION_DEPARTMENT_BY_TAG: dict[str, str] = {
+    "логистика": "Логистика",
+    "поставки": "Логистика",
+    "маркетплейс": "Маркетплейсы",
+    "финансы": "Финансы",
+    "отчётность": "Финансы",
+    "продажи": "Продаж и маркетинга",
+    "маркетинг": "Продаж и маркетинга",
+    "реклама": "Продаж и маркетинга",
+    "конкуренты": "Продаж и маркетинга",
+    "продукт": "Продукт",
+    "ассортимент": "Продукт",
+    "бренд": "Продукт",
+    "разработка": "Продукт",
+    "контент": "SMM и контента",
+    "креативы": "SMM и контента",
+}
+
+
+def _pick_notion_type(meeting: dict[str, Any]) -> str | None:
+    """Сматчить название встречи на опцию select 'Тип' в Notion."""
+    title = (meeting.get("title") or "").lower()
+    if not title:
+        return None
+    for needles, option in _NOTION_TYPE_KEYWORDS:
+        if any(n in title for n in needles):
+            return option
+    return None
+
+
+def _pick_notion_department(meeting: dict[str, Any]) -> str | None:
+    """Сматчить тематические теги встречи на опцию select 'Отдел'."""
+    tags = [str(t).lower().strip() for t in (meeting.get("tags") or [])]
+    if not tags:
+        return None
+    # Order: walk through canonical mapping (predictable), pick first matching tag.
+    for tag in tags:
+        dep = _NOTION_DEPARTMENT_BY_TAG.get(tag)
+        if dep:
+            return dep
+    return None
+
+
 def _page_properties(meeting: dict[str, Any]) -> dict:
     props: dict[str, Any] = {
         "Name": {"title": [{"text": {"content": _page_title(meeting)[:200]}}]},
@@ -196,6 +254,15 @@ def _page_properties(meeting: dict[str, Any]) -> dict:
     started_at = meeting.get("started_at")
     if started_at:
         props["Date"] = {"date": {"start": started_at.date().isoformat()}}
+
+    note_type = _pick_notion_type(meeting)
+    if note_type:
+        props["Тип"] = {"select": {"name": note_type}}
+
+    department = _pick_notion_department(meeting)
+    if department:
+        props["Отдел"] = {"select": {"name": department}}
+
     return props
 
 
