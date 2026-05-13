@@ -3443,7 +3443,7 @@ export function ModelCard({ kod, onClose }: ModelCardProps) {
         onClick={onClose}
         aria-hidden="true"
       />
-      <div className="relative ml-auto w-full max-w-[min(1280px,98vw)] h-full bg-stone-50 border-l border-stone-200 shadow-2xl flex flex-col overflow-hidden">
+      <div className="relative ml-auto w-full max-w-[min(1280px,98vw)] h-full bg-stone-50 border-l border-stone-200 rounded-l-2xl shadow-[-20px_0_40px_rgba(0,0,0,0.08)] flex flex-col overflow-hidden">
         {isLoading && (
           <div className="flex-1 flex items-center justify-center text-stone-400 text-sm">
             Загрузка модели…
