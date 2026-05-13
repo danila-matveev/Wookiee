@@ -93,6 +93,10 @@ export const ARTIKULY_COLUMNS_FULL: ColumnDescriptor[] = [
   { key: "cvet_en",         label: "Цвет (EN)",        default: false, group: "Цвет" },
   { key: "cvet_color_code", label: "Цвет (код)",       default: false, group: "Цвет" },
   { key: "tovary_cnt",      label: "SKU (шт)",         default: false, group: "Связи" },
+  // W10.26 — склейка артикула (WB и/или OZON).  По умолчанию выключена —
+  // данные подгружаются отдельным запросом, не нагружаем основной fetch если
+  // колонка скрыта (хук в artikuly.tsx сам решает делать fetch или нет).
+  { key: "skleyka",         label: "Склейка",          default: false, group: "Связи" },
 ]
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -124,6 +128,8 @@ export const TOVARY_COLUMNS_FULL: ColumnDescriptor[] = [
   { key: "lamoda_seller_sku",label: "Lamoda seller SKU",  default: false, group: "Маркетплейсы", badge: "Lamoda" },
   { key: "kollekciya",       label: "Коллекция",          default: false, group: "Метаданные" },
   { key: "kategoriya",       label: "Категория",          default: false, group: "Метаданные" },
+  // W10.26 — склейка SKU (WB и/или OZON), JOIN на tovary_skleyki_*.
+  { key: "skleyka",          label: "Склейка",            default: false, group: "Связи" },
   // TODO(W9.5-followup): `updated_at` есть в tovary в БД, но не выбирается в
   // fetchTovaryRegistry — добавить, если потребуется. Пока скрыто.
 ]

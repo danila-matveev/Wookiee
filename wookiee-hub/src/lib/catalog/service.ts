@@ -1675,6 +1675,255 @@ export async function fetchSkleykaDetail(id: number, channel: 'wb' | 'ozon'): Pr
   }
 }
 
+// ─── W10.26 + W10.19 — Skleyki lookups for registries / model card ────────
+//
+// junction-таблицы (миграция 027):
+//   - artikuly_skleyki_wb (artikul_id, skleyka_id) → skleyki_wb
+//   - artikuly_skleyki_ozon (artikul_id, skleyka_id) → skleyki_ozon
+//   - tovary_skleyki_wb (tovar_id, skleyka_id) → skleyki_wb (уже существует)
+//   - tovary_skleyki_ozon (tovar_id, skleyka_id) → skleyki_ozon (уже существует)
+//
+// Эти helper'ы — batch-фетчеры, чтобы не делать N+1 запросов на каждый ряд
+// в реестре. Возвращают Map<id, RowSkleyki>, где RowSkleyki = { wb?, ozon? }.
+
+/** Ссылка на склейку для ячейки реестра. */
+export interface RegistrySkleyka {
+  id: number
+  nazvanie: string
+}
+
+/** Ссылки на склейки по обоим каналам для одной строки реестра. */
+export interface RegistryRowSkleyki {
+  wb: RegistrySkleyka | null
+  ozon: RegistrySkleyka | null
+}
+
+/**
+ * Batch-fetch склейки для списка `artikul_id`. Делает два запроса (WB и OZON
+ * junction) параллельно, JOIN-ит со skleyki_wb / skleyki_ozon, возвращает
+ * Map: artikul_id → { wb, ozon }.  Если у артикула в канале несколько склеек,
+ * берётся первая (по сортировке БД) — это считается аномалией данных.
+ *
+ * Пустой input → пустой Map.  Если junction-таблицы ещё не существуют
+ * (миграция 027 не применена), возвращаем пустой Map и логгируем warning,
+ * чтобы UI деградировал gracefully.
+ */
+export async function fetchArtikulSkleykiBatch(
+  artikulIds: number[],
+): Promise<Map<number, RegistryRowSkleyki>> {
+  const out = new Map<number, RegistryRowSkleyki>()
+  if (artikulIds.length === 0) return out
+
+  const [wbRes, ozonRes] = await Promise.all([
+    supabase
+      .from("artikuly_skleyki_wb")
+      .select("artikul_id, skleyka_id, skleyki_wb(id, nazvanie)")
+      .in("artikul_id", artikulIds),
+    supabase
+      .from("artikuly_skleyki_ozon")
+      .select("artikul_id, skleyka_id, skleyki_ozon(id, nazvanie)")
+      .in("artikul_id", artikulIds),
+  ])
+
+  // Любая ошибка (включая «table does not exist» если миграция ещё не
+  // применена) — лог и пустой Map, чтобы UI не падал.
+  if (wbRes.error) {
+    // eslint-disable-next-line no-console
+    console.warn("[fetchArtikulSkleykiBatch] WB junction unavailable:", wbRes.error.message)
+  }
+  if (ozonRes.error) {
+    // eslint-disable-next-line no-console
+    console.warn("[fetchArtikulSkleykiBatch] OZON junction unavailable:", ozonRes.error.message)
+  }
+
+  const ensure = (id: number): RegistryRowSkleyki => {
+    let cur = out.get(id)
+    if (!cur) {
+      cur = { wb: null, ozon: null }
+      out.set(id, cur)
+    }
+    return cur
+  }
+
+  for (const row of (wbRes.data ?? []) as any[]) {
+    const sk = row.skleyki_wb
+    if (!sk) continue
+    const slot = ensure(row.artikul_id as number)
+    if (!slot.wb) slot.wb = { id: sk.id, nazvanie: sk.nazvanie }
+  }
+  for (const row of (ozonRes.data ?? []) as any[]) {
+    const sk = row.skleyki_ozon
+    if (!sk) continue
+    const slot = ensure(row.artikul_id as number)
+    if (!slot.ozon) slot.ozon = { id: sk.id, nazvanie: sk.nazvanie }
+  }
+
+  return out
+}
+
+/**
+ * Аналог для SKU (tovary_skleyki_*).  Используется в реестре /tovary.
+ * Эти junction-таблицы существуют давно — fallback нужен только для
+ * консистентности с artikuly-версией.
+ */
+export async function fetchTovarSkleykiBatch(
+  tovarIds: number[],
+): Promise<Map<number, RegistryRowSkleyki>> {
+  const out = new Map<number, RegistryRowSkleyki>()
+  if (tovarIds.length === 0) return out
+
+  const [wbRes, ozonRes] = await Promise.all([
+    supabase
+      .from("tovary_skleyki_wb")
+      .select("tovar_id, skleyka_id, skleyki_wb(id, nazvanie)")
+      .in("tovar_id", tovarIds),
+    supabase
+      .from("tovary_skleyki_ozon")
+      .select("tovar_id, skleyka_id, skleyki_ozon(id, nazvanie)")
+      .in("tovar_id", tovarIds),
+  ])
+
+  if (wbRes.error) {
+    // eslint-disable-next-line no-console
+    console.warn("[fetchTovarSkleykiBatch] WB junction error:", wbRes.error.message)
+  }
+  if (ozonRes.error) {
+    // eslint-disable-next-line no-console
+    console.warn("[fetchTovarSkleykiBatch] OZON junction error:", ozonRes.error.message)
+  }
+
+  const ensure = (id: number): RegistryRowSkleyki => {
+    let cur = out.get(id)
+    if (!cur) {
+      cur = { wb: null, ozon: null }
+      out.set(id, cur)
+    }
+    return cur
+  }
+
+  for (const row of (wbRes.data ?? []) as any[]) {
+    const sk = row.skleyki_wb
+    if (!sk) continue
+    const slot = ensure(row.tovar_id as number)
+    if (!slot.wb) slot.wb = { id: sk.id, nazvanie: sk.nazvanie }
+  }
+  for (const row of (ozonRes.data ?? []) as any[]) {
+    const sk = row.skleyki_ozon
+    if (!sk) continue
+    const slot = ensure(row.tovar_id as number)
+    if (!slot.ozon) slot.ozon = { id: sk.id, nazvanie: sk.nazvanie }
+  }
+
+  return out
+}
+
+/** Склейка в секции «Склейки» карточки модели — с числом артикулов модели. */
+export interface ModelSkleyka {
+  id: number
+  nazvanie: string
+  channel: 'wb' | 'ozon'
+  /** Сколько артикулов ИМЕННО ЭТОЙ модели входит в склейку. */
+  skuCount: number
+}
+
+/**
+ * W10.19 — все склейки, в которых есть артикулы данной базовой модели.
+ *
+ * Алгоритм:
+ *   1. SELECT artikul_id FROM artikuly JOIN modeli ON ... WHERE modeli.model_osnova_id = X.
+ *   2. SELECT skleyka_id FROM artikuly_skleyki_wb WHERE artikul_id IN (...) — group.
+ *   3. Аналогично для artikuly_skleyki_ozon.
+ *   4. SELECT nazvanie из skleyki_wb / skleyki_ozon.
+ *   5. skuCount = число DISTINCT artikul_id внутри склейки, принадлежащих модели.
+ *
+ * Если junction-таблицы 027 ещё не применены → fallback пустой массив + warning.
+ */
+export async function fetchModelSkleyki(modelOsnovaId: number): Promise<ModelSkleyka[]> {
+  // Шаг 1 — artikul_id всех артикулов модели (через вариации modeli).
+  const { data: artikuly, error: aErr } = await supabase
+    .from("artikuly")
+    .select("id, modeli!inner(model_osnova_id)")
+    .eq("modeli.model_osnova_id", modelOsnovaId)
+  if (aErr) throw aErr
+  const artikulIds = ((artikuly ?? []) as { id: number }[]).map((r) => r.id)
+  if (artikulIds.length === 0) return []
+
+  // Шаг 2+3 — junction-таблицы (параллельно).
+  const [wbJ, ozonJ] = await Promise.all([
+    supabase
+      .from("artikuly_skleyki_wb")
+      .select("artikul_id, skleyka_id")
+      .in("artikul_id", artikulIds),
+    supabase
+      .from("artikuly_skleyki_ozon")
+      .select("artikul_id, skleyka_id")
+      .in("artikul_id", artikulIds),
+  ])
+  if (wbJ.error) {
+    // eslint-disable-next-line no-console
+    console.warn("[fetchModelSkleyki] WB junction unavailable:", wbJ.error.message)
+  }
+  if (ozonJ.error) {
+    // eslint-disable-next-line no-console
+    console.warn("[fetchModelSkleyki] OZON junction unavailable:", ozonJ.error.message)
+  }
+
+  // Группировка skleyka_id → Set<artikul_id> (DISTINCT).
+  const wbCounts = new Map<number, Set<number>>()
+  for (const row of (wbJ.data ?? []) as { artikul_id: number; skleyka_id: number }[]) {
+    let set = wbCounts.get(row.skleyka_id)
+    if (!set) { set = new Set(); wbCounts.set(row.skleyka_id, set) }
+    set.add(row.artikul_id)
+  }
+  const ozonCounts = new Map<number, Set<number>>()
+  for (const row of (ozonJ.data ?? []) as { artikul_id: number; skleyka_id: number }[]) {
+    let set = ozonCounts.get(row.skleyka_id)
+    if (!set) { set = new Set(); ozonCounts.set(row.skleyka_id, set) }
+    set.add(row.artikul_id)
+  }
+
+  if (wbCounts.size === 0 && ozonCounts.size === 0) return []
+
+  // Шаг 4 — nazvanie склеек.
+  const wbIds = Array.from(wbCounts.keys())
+  const ozonIds = Array.from(ozonCounts.keys())
+  const [wbNames, ozonNames] = await Promise.all([
+    wbIds.length === 0
+      ? Promise.resolve({ data: [] as any[], error: null as any })
+      : supabase.from("skleyki_wb").select("id, nazvanie").in("id", wbIds),
+    ozonIds.length === 0
+      ? Promise.resolve({ data: [] as any[], error: null as any })
+      : supabase.from("skleyki_ozon").select("id, nazvanie").in("id", ozonIds),
+  ])
+  if (wbNames.error) throw wbNames.error
+  if (ozonNames.error) throw ozonNames.error
+
+  const out: ModelSkleyka[] = []
+  for (const row of (wbNames.data ?? []) as { id: number; nazvanie: string }[]) {
+    out.push({
+      id: row.id,
+      nazvanie: row.nazvanie,
+      channel: 'wb',
+      skuCount: wbCounts.get(row.id)?.size ?? 0,
+    })
+  }
+  for (const row of (ozonNames.data ?? []) as { id: number; nazvanie: string }[]) {
+    out.push({
+      id: row.id,
+      nazvanie: row.nazvanie,
+      channel: 'ozon',
+      skuCount: ozonCounts.get(row.id)?.size ?? 0,
+    })
+  }
+
+  // Стабильный sort: WB первым, потом OZON; внутри — по nazvanie.
+  out.sort((a, b) => {
+    if (a.channel !== b.channel) return a.channel === 'wb' ? -1 : 1
+    return a.nazvanie.localeCompare(b.nazvanie, "ru", { numeric: true })
+  })
+  return out
+}
+
 // ─── Cveta mutations ───────────────────────────────────────────────────────
 
 export interface CvetPayload {

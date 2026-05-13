@@ -6,8 +6,10 @@ import {
   bulkUpdateArtikulFabrika, bulkDeleteArtikuly, fetchFabriki,
   fetchRazmery, fetchTovaryByArtikul, insertTovar,
   updateArtikul,
+  fetchArtikulSkleykiBatch,
   getUiPref, setUiPref,
   type ArtikulRow, type ArtikulTovar, type Razmer,
+  type RegistryRowSkleyki,
 } from "@/lib/catalog/service"
 import { StatusBadge } from "@/components/catalog/ui/status-badge"
 import { ColorSwatch } from "@/components/catalog/ui/color-swatch"
@@ -35,6 +37,8 @@ import { compareRazmer } from "@/lib/catalog/size-utils"
 // W10.6 — single-click на строку открывает ArtikulDrawer (полноценная карточка
 // с вкладками Описание / SKU / История). См. artikul-card.tsx.
 import { ArtikulDrawer } from "./artikul-card"
+// W10.26 — drawer склейки по клику на чип в новой колонке «Склейка».
+import { SkleykaDrawer } from "./skleyka-drawer"
 
 // Default per-column widths (px) for the standalone Артикулы page (W1.5).
 // W9.5 — расширено новыми ключами из ARTIKULY_COLUMNS_FULL (column-catalogs).
@@ -56,6 +60,8 @@ const ARTIKULY_DEFAULT_WIDTHS: Record<string, number> = {
   cvet_en: 130,
   cvet_color_code: 110,
   tovary_cnt: 80,
+  // W10.26 — колонка «Склейка»: чип канала + укороченное название.
+  skleyka: 180,
 }
 
 // W9.5 — каталог колонок переехал в shared `lib/catalog/column-catalogs.ts`.
@@ -478,6 +484,10 @@ interface ArtikulCellCtx {
   onUpdate: (id: number, patch: { artikul?: string; nomenklatura_wb?: number | null; artikul_ozon?: string | null }) => Promise<void>
   /** Изменить цвет (cvet_id). */
   onUpdateColor: (id: number, cvetId: number) => Promise<void>
+  /** W10.26 — Map artikul_id → склейки (WB+OZON). null если данные ещё грузятся. */
+  skleykiByArtikulId?: Map<number, RegistryRowSkleyki> | null
+  /** W10.26 — клик по чипу склейки → открыть SkleykaDrawer. */
+  onOpenSkleyka?: (channel: "wb" | "ozon", skleykaId: number) => void
 }
 
 function renderCell(key: string, a: ArtikulRow, ctx?: ArtikulCellCtx): React.ReactNode {
@@ -605,6 +615,56 @@ function renderCell(key: string, a: ArtikulRow, ctx?: ArtikulCellCtx): React.Rea
       return <CellText className="font-mono text-xs text-stone-700" title={a.cvet_color_code ?? ""}>{a.cvet_color_code ?? "—"}</CellText>
     case "tovary_cnt":
       return <span className="text-xs text-stone-700 tabular-nums">{a.tovary_cnt}</span>
+    case "skleyka": {
+      // W10.26 — рендер чипа склейки (WB и/или OZON).  Данные подгружаются
+      // отдельным batched-запросом fetchArtikulSkleykiBatch (см. родителя).
+      // Если карта ещё не пришла или артикул не в склейке — показываем «—».
+      const map = ctx?.skleykiByArtikulId ?? null
+      const slot = map ? map.get(a.id) : null
+      if (!map) {
+        return <span className="text-xs text-stone-400 tabular-nums">…</span>
+      }
+      if (!slot || (!slot.wb && !slot.ozon)) {
+        return <span className="text-xs text-stone-400 italic">—</span>
+      }
+      const openSk = ctx?.onOpenSkleyka
+      return (
+        <div className="flex flex-col gap-0.5 min-w-0">
+          {slot.wb && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                openSk?.("wb", slot.wb!.id)
+              }}
+              className="inline-flex items-center gap-1 min-w-0 text-left hover:underline"
+              title={`WB · ${slot.wb.nazvanie}`}
+            >
+              <span className="inline-flex items-center px-1 py-px rounded text-[9px] font-medium uppercase tracking-wider bg-pink-50 text-pink-700 ring-1 ring-inset ring-pink-600/20 shrink-0">
+                WB
+              </span>
+              <span className="text-xs text-stone-700 truncate">{slot.wb.nazvanie}</span>
+            </button>
+          )}
+          {slot.ozon && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                openSk?.("ozon", slot.ozon!.id)
+              }}
+              className="inline-flex items-center gap-1 min-w-0 text-left hover:underline"
+              title={`OZON · ${slot.ozon.nazvanie}`}
+            >
+              <span className="inline-flex items-center px-1 py-px rounded text-[9px] font-medium uppercase tracking-wider bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-600/20 shrink-0">
+                OZON
+              </span>
+              <span className="text-xs text-stone-700 truncate">{slot.ozon.nazvanie}</span>
+            </button>
+          )}
+        </div>
+      )
+    }
     default:
       return null
   }
@@ -638,6 +698,8 @@ export function ArtikulyPage() {
   const [drillDown, setDrillDown] = useState<ArtikulRow | null>(null)
   // W10.6 — single-click на строку открывает полноценную карточку артикула.
   const [openArtikulId, setOpenArtikulId] = useState<number | null>(null)
+  // W10.26 — открыть drawer склейки по клику на чип в колонке «Склейка».
+  const [openSkleyka, setOpenSkleyka] = useState<{ channel: "wb" | "ozon"; id: number } | null>(null)
 
   // W10.11 — fabriki для bulk-fabrika dropdown.
   const { data: fabrikiData } = useQuery({
@@ -781,6 +843,21 @@ export function ArtikulyPage() {
   const paginated = useMemo(() => paginate(sortedFiltered), [paginate, sortedFiltered])
   const visible = paginated.slice
 
+  // W10.26 — batch-fetch склейки для текущей видимой страницы. Запрос идёт
+  // только если колонка «Склейка» включена в конфигураторе.  Ключ запроса
+  // включает id'шники видимых артикулов, поэтому смена страницы / фильтра
+  // приводит к новому fetch.
+  const skleykaColumnVisible = columns.includes("skleyka")
+  const visibleArtikulIds = useMemo(() => visible.map((r) => r.id).sort((a, b) => a - b), [visible])
+  const skleykiQ = useQuery({
+    queryKey: ["artikuly-skleyki", visibleArtikulIds.join(",")],
+    queryFn: () => fetchArtikulSkleykiBatch(visibleArtikulIds),
+    enabled: skleykaColumnVisible && visibleArtikulIds.length > 0,
+    staleTime: 60 * 1000,
+  })
+  const skleykiByArtikulId: Map<number, RegistryRowSkleyki> | null =
+    skleykaColumnVisible ? (skleykiQ.data ?? null) : new Map()
+
   const toggleRow = useCallback((artikul: string) => {
     setSelected((prev) => {
       const next = new Set(prev)
@@ -853,9 +930,18 @@ export function ArtikulyPage() {
     },
     [queryClient],
   )
+  const onOpenSkleykaCb = useCallback(
+    (channel: "wb" | "ozon", id: number) => setOpenSkleyka({ channel, id }),
+    [],
+  )
   const cellCtx = useMemo<ArtikulCellCtx>(
-    () => ({ onUpdate: onUpdateArtikul, onUpdateColor: onUpdateArtikulColor }),
-    [onUpdateArtikul, onUpdateArtikulColor],
+    () => ({
+      onUpdate: onUpdateArtikul,
+      onUpdateColor: onUpdateArtikulColor,
+      skleykiByArtikulId,
+      onOpenSkleyka: onOpenSkleykaCb,
+    }),
+    [onUpdateArtikul, onUpdateArtikulColor, skleykiByArtikulId, onOpenSkleykaCb],
   )
 
   // W10.11 — bulk-смена fabrika. Артикул напрямую не имеет fabrika_id —
@@ -1258,6 +1344,15 @@ export function ArtikulyPage() {
         <ArtikulDrawer
           artikulId={openArtikulId}
           onClose={() => setOpenArtikulId(null)}
+        />
+      )}
+
+      {/* W10.26 — drawer склейки по клику на чип в колонке «Склейка». */}
+      {openSkleyka != null && (
+        <SkleykaDrawer
+          skleykaId={openSkleyka.id}
+          channel={openSkleyka.channel}
+          onClose={() => setOpenSkleyka(null)}
         />
       )}
     </div>

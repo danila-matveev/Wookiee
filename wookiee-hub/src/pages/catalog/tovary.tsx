@@ -6,8 +6,10 @@ import {
   fetchRazmery,
   bulkUpdateTovaryStatus, bulkLinkTovaryToSkleyka, bulkDeleteTovary,
   updateTovar, updateArtikul,
+  fetchTovarSkleykiBatch,
   getUiPref, setUiPref,
   type TovarRow, type TovarChannel, type SkleykaRow,
+  type RegistryRowSkleyki,
 } from "@/lib/catalog/service"
 import { supabase } from "@/lib/supabase"
 import { StatusBadge } from "@/components/catalog/ui/status-badge"
@@ -36,6 +38,8 @@ import { razmerOrder } from "@/lib/catalog/size-utils"
 // W10.32 — single-click на строку открывает SkuDrawer (карточка SKU). См.
 // sku-card.tsx.
 import { SkuDrawer } from "./sku-card"
+// W10.26 — drawer склейки по клику на чип в новой колонке «Склейка».
+import { SkleykaDrawer } from "./skleyka-drawer"
 
 // W1.5 — Default per-column widths (px) for the SKU registry (Товары) page.
 // W9.5 — расширено новыми ключами из TOVARY_COLUMNS_FULL (column-catalogs).
@@ -64,6 +68,8 @@ const TOVARY_DEFAULT_WIDTHS: Record<string, number> = {
   lamoda_seller_sku: 160,
   kollekciya: 140,
   kategoriya: 130,
+  // W10.26 — колонка «Склейка»: чип канала + укороченное название.
+  skleyka: 180,
 }
 
 // W9.9 — синтетический ключ колонки «Статус» (для одного выбранного канала).
@@ -248,6 +254,10 @@ interface CellContext {
   ) => Promise<void>
   /** W9.10 — справочник размеров для InlineSelectCell. */
   razmerOptions?: { value: number; label: string }[]
+  /** W10.26 — Map tovar.id → склейки (WB+OZON). null если данные ещё грузятся. */
+  skleykiByTovarId?: Map<number, RegistryRowSkleyki> | null
+  /** W10.26 — клик по чипу склейки → открыть SkleykaDrawer. */
+  onOpenSkleyka?: (channel: "wb" | "ozon", skleykaId: number) => void
 }
 
 function renderChannelStatusCell(t: TovarRow, ctx: CellContext): React.ReactNode {
@@ -541,6 +551,55 @@ function renderCell(
       return <CellText className="text-xs text-stone-600" title={t.kollekciya ?? ""}>{t.kollekciya ?? "—"}</CellText>
     case "kategoriya":
       return <CellText className="text-xs text-stone-600" title={t.kategoriya ?? ""}>{t.kategoriya ?? "—"}</CellText>
+    case "skleyka": {
+      // W10.26 — чип склейки (WB и/или OZON).  Данные подгружаются отдельным
+      // batched-запросом fetchTovarSkleykiBatch (см. родителя).
+      const map = ctx.skleykiByTovarId ?? null
+      const slot = map ? map.get(t.id) : null
+      if (!map) {
+        return <span className="text-xs text-stone-400 tabular-nums">…</span>
+      }
+      if (!slot || (!slot.wb && !slot.ozon)) {
+        return <span className="text-xs text-stone-400 italic">—</span>
+      }
+      const openSk = ctx.onOpenSkleyka
+      return (
+        <div className="flex flex-col gap-0.5 min-w-0">
+          {slot.wb && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                openSk?.("wb", slot.wb!.id)
+              }}
+              className="inline-flex items-center gap-1 min-w-0 text-left hover:underline"
+              title={`WB · ${slot.wb.nazvanie}`}
+            >
+              <span className="inline-flex items-center px-1 py-px rounded text-[9px] font-medium uppercase tracking-wider bg-pink-50 text-pink-700 ring-1 ring-inset ring-pink-600/20 shrink-0">
+                WB
+              </span>
+              <span className="text-xs text-stone-700 truncate">{slot.wb.nazvanie}</span>
+            </button>
+          )}
+          {slot.ozon && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                openSk?.("ozon", slot.ozon!.id)
+              }}
+              className="inline-flex items-center gap-1 min-w-0 text-left hover:underline"
+              title={`OZON · ${slot.ozon.nazvanie}`}
+            >
+              <span className="inline-flex items-center px-1 py-px rounded text-[9px] font-medium uppercase tracking-wider bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-600/20 shrink-0">
+                OZON
+              </span>
+              <span className="text-xs text-stone-700 truncate">{slot.ozon.nazvanie}</span>
+            </button>
+          )}
+        </div>
+      )
+    }
     default:
       return null
   }
@@ -1168,14 +1227,46 @@ export function TovaryPage() {
     [channelFilter],
   )
 
+  // W10.26 — drawer склейки по клику на чип.
+  const [openSkleyka, setOpenSkleyka] = useState<{ channel: "wb" | "ozon"; id: number } | null>(null)
+  const onOpenSkleykaCb = useCallback(
+    (ch: "wb" | "ozon", id: number) => setOpenSkleyka({ channel: ch, id }),
+    [],
+  )
+
+  // W10.26 — batch-fetch склейки для видимой страницы. Lazy: только если
+  // колонка «Склейка» включена в конфигураторе.  Учитываем как paginated
+  // (group=none), так и групповой режим (показываем все items внутри групп).
+  const skleykaColumnVisible = columns.includes("skleyka")
+  const visibleTovarIds = useMemo<number[]>(() => {
+    const ids = new Set<number>()
+    for (const g of visibleByGroup) {
+      for (const t of g.visibleItems) ids.add(t.id)
+    }
+    return Array.from(ids).sort((a, b) => a - b)
+  }, [visibleByGroup])
+  const skleykiQ = useQuery({
+    queryKey: ["tovary-skleyki", visibleTovarIds.join(",")],
+    queryFn: () => fetchTovarSkleykiBatch(visibleTovarIds),
+    enabled: skleykaColumnVisible && visibleTovarIds.length > 0,
+    staleTime: 60 * 1000,
+  })
+  const skleykiByTovarId: Map<number, RegistryRowSkleyki> | null =
+    skleykaColumnVisible ? (skleykiQ.data ?? null) : new Map()
+
   const cellCtx: CellContext = useMemo(
     () => ({
       statusOptions, onUpdateStatus, selectedChannel,
       onUpdateTovar: onUpdateTovarField,
       onUpdateArtikulField,
       razmerOptions: razmerEditOptions,
+      skleykiByTovarId,
+      onOpenSkleyka: onOpenSkleykaCb,
     }),
-    [statusOptions, onUpdateStatus, selectedChannel, onUpdateTovarField, onUpdateArtikulField, razmerEditOptions],
+    [
+      statusOptions, onUpdateStatus, selectedChannel, onUpdateTovarField,
+      onUpdateArtikulField, razmerEditOptions, skleykiByTovarId, onOpenSkleykaCb,
+    ],
   )
 
   // Список ключей колонок, фактически отрисованных в таблице (учитывает фильтр канала).
@@ -1659,6 +1750,15 @@ export function TovaryPage() {
         <SkuDrawer
           tovarId={openTovarId}
           onClose={() => setOpenTovarId(null)}
+        />
+      )}
+
+      {/* W10.26 — drawer склейки по клику на чип в колонке «Склейка». */}
+      {openSkleyka != null && (
+        <SkleykaDrawer
+          skleykaId={openSkleyka.id}
+          channel={openSkleyka.channel}
+          onClose={() => setOpenSkleyka(null)}
         />
       )}
     </div>
