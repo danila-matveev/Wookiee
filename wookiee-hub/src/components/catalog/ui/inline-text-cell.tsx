@@ -1,8 +1,10 @@
 // W9.10 — Inline-edit ячейка с text/number input.
+// W10.7 — переход в edit-mode по double-click + hover-индикатор (карандаш).
 //
 // Поведение:
-// - Read mode: показывает значение (или плейсхолдер «—»).  По клику переходит
-//   в edit mode.
+// - Read mode: показывает значение (или плейсхолдер «—»).  По ДВОЙНОМУ клику
+//   переходит в edit mode (single-click ничего не делает — защита от случайной
+//   правки).  В правом краю при hover видна иконка карандаша.
 // - Edit mode: input авто-фокусится, текст выделяется.
 // - Enter — сохранить (вызвать `onCommit`), Esc — отмена.
 // - Blur — сохранить (как Enter), если значение изменилось; иначе закрыть.
@@ -14,7 +16,7 @@
 // после успешного `onCommit` вызывает react-query invalidate / patch стейта.
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { Loader2 } from "lucide-react"
+import { Loader2, Pencil } from "lucide-react"
 import { translateError } from "@/lib/catalog/error-translator"
 import { toast } from "@/lib/catalog/toast"
 
@@ -134,11 +136,11 @@ export function InlineTextCell({
     return (
       <button
         type="button"
-        onClick={enter}
+        onDoubleClick={enter}
         disabled={disabled}
-        title={hint ?? "Кликните, чтобы изменить"}
+        title={hint ?? "Двойной клик — редактировать"}
         className={
-          "block text-left w-full min-w-0 rounded px-1 -mx-1 py-0.5 overflow-hidden " +
+          "group relative block text-left w-full min-w-0 rounded px-1 -mx-1 py-0.5 overflow-hidden pr-5 " +
           "hover:bg-stone-100 hover:ring-1 hover:ring-stone-300 " +
           "disabled:hover:bg-transparent disabled:hover:ring-0 disabled:cursor-default " +
           "transition-colors"
@@ -155,6 +157,12 @@ export function InlineTextCell({
           </span>
         ) : (
           <span className="text-stone-400 italic text-xs">{placeholder}</span>
+        )}
+        {!disabled && (
+          <Pencil
+            aria-hidden="true"
+            className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 w-3 h-3 text-stone-400 opacity-0 group-hover:opacity-100 transition-opacity"
+          />
         )}
       </button>
     )
