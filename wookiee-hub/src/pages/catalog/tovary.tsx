@@ -23,7 +23,7 @@ import { FilterBar } from "@/components/catalog/ui/filter-bar"
 import { CellText } from "@/components/catalog/ui/cell-text"
 import { InlineTextCell } from "@/components/catalog/ui/inline-text-cell"
 import { InlineSelectCell } from "@/components/catalog/ui/inline-select-cell"
-import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
+import { relativeDate } from "@/lib/catalog/color-utils"
 import { useResizableColumns } from "@/hooks/use-resizable-columns"
 import { useTableSort, type SortState } from "@/hooks/use-table-sort"
 import { usePagination } from "@/hooks/use-pagination"
@@ -314,11 +314,14 @@ function renderCell(
         </div>
       )
     case "cvet":
+      // W10.5: swatch + код цвета + русское название.
+      // Используем colorSwatchStyle через ColorSwatch — при отсутствии hex
+      // покажет серую штриховку, а не fake hash-цвет.
       return (
-        <div className="flex items-center gap-1.5 min-w-0">
-          <ColorSwatch hex={t.cvet_hex ?? swatchColor(t.cvet_color_code ?? "")} size={14} />
-          <CellText className="font-mono text-xs text-stone-600" title={t.cvet_color_code ?? ""}>{t.cvet_color_code ?? "—"}</CellText>
-          {t.cvet_ru && <CellText className="text-stone-500 text-[11px]" title={t.cvet_ru}>{t.cvet_ru}</CellText>}
+        <div className="flex items-center gap-2 min-w-0">
+          <ColorSwatch hex={t.cvet_hex} size={14} />
+          <CellText className="text-stone-500 tabular-nums font-mono text-xs" title={t.cvet_color_code ?? ""}>{t.cvet_color_code ?? "—"}</CellText>
+          {t.cvet_ru && <CellText className="text-stone-900 text-xs" title={t.cvet_ru}>{t.cvet_ru}</CellText>}
         </div>
       )
     case "razmer":
