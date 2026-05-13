@@ -3705,6 +3705,100 @@ export async function fetchAuditForModel(
   return merged.slice(0, limit)
 }
 
+// ─── W10.13: Откат изменения из audit_log ──────────────────────────────────
+//
+// Берём существующую UPDATE-запись из `audit_log` и применяем обратный diff
+// к исходной строке (table_name, row_id). Сами audit_log не редактируем —
+// новая запись истории появится автоматически через `audit_trigger_fn` при
+// выполнении UPDATE.
+//
+// Поддерживаемые таблицы: modeli, modeli_osnova, artikuly, tovary.
+// Системные колонки (id, created_at, updated_at) автоматически
+// исключаются — их откатывать бессмысленно.
+
+const ROLLBACK_ALLOWED_TABLES: ReadonlySet<string> = new Set([
+  "modeli",
+  "modeli_osnova",
+  "artikuly",
+  "tovary",
+])
+
+const ROLLBACK_SKIP_COLUMNS: ReadonlySet<string> = new Set([
+  "id",
+  "created_at",
+  "updated_at",
+])
+
+/**
+ * Возвращает список колонок из `changed`, которые можно откатить
+ * (без системных). Полезно для предпросмотра в confirm-диалоге.
+ */
+export function getRollbackableFields(
+  entry: AuditEntry,
+): Array<{ column: string; from: unknown; to: unknown }> {
+  if (entry.action !== "UPDATE" || !entry.changed) return []
+  return Object.entries(entry.changed)
+    .filter(([k]) => !ROLLBACK_SKIP_COLUMNS.has(k))
+    .map(([column, diff]) => ({ column, from: diff.from, to: diff.to }))
+}
+
+/**
+ * Откатить UPDATE-запись из audit_log. Возвращает количество откаченных полей.
+ * Бросает Error, если запись не подходит (DELETE/INSERT, неподдерживаемая
+ * таблица, нет полей для отката).
+ *
+ * Стратегия — НЕ редактировать audit_log, а сделать новый UPDATE с обратным
+ * diff. Триггер `audit_trigger_fn` создаст новую audit-запись автоматически.
+ */
+export async function rollbackAuditChange(auditId: number): Promise<number> {
+  // 1. Перечитываем запись (на случай если она устарела в кэше React Query).
+  const { data: rawEntry, error: readErr } = await supabase
+    .from("audit_log")
+    .select("*")
+    .eq("id", auditId)
+    .single()
+  if (readErr) throw new Error(readErr.message)
+  if (!rawEntry) throw new Error(`audit_log #${auditId} не найден`)
+  const entry = rawEntry as AuditEntry
+
+  if (entry.action !== "UPDATE") {
+    throw new Error(`Откат поддерживается только для UPDATE (action=${entry.action})`)
+  }
+  if (!ROLLBACK_ALLOWED_TABLES.has(entry.table_name)) {
+    throw new Error(`Откат для таблицы ${entry.table_name} не поддерживается`)
+  }
+  if (!entry.changed) {
+    throw new Error("В записи нет diff'а — откатывать нечего")
+  }
+
+  // 2. Собираем обратный patch: для каждой колонки берём `from`, кроме системных.
+  const patch: Record<string, unknown> = {}
+  for (const [col, diff] of Object.entries(entry.changed)) {
+    if (ROLLBACK_SKIP_COLUMNS.has(col)) continue
+    patch[col] = diff.from
+  }
+
+  const fieldCount = Object.keys(patch).length
+  if (fieldCount === 0) {
+    throw new Error("Нет полей для отката (все изменённые колонки — системные)")
+  }
+
+  // 3. Применяем UPDATE через supabase. Триггер audit_trigger_fn запишет новую
+  // строку в audit_log с обратным diff.
+  const rowIdAsNumber = Number(entry.row_id)
+  if (!Number.isFinite(rowIdAsNumber)) {
+    throw new Error(`row_id "${entry.row_id}" не является числом`)
+  }
+
+  const { error: updErr } = await supabase
+    .from(entry.table_name)
+    .update(patch)
+    .eq("id", rowIdAsNumber)
+  if (updErr) throw new Error(updErr.message)
+
+  return fieldCount
+}
+
 // ─── W10.6: ArtikulDetail — карточка артикула ───────────────────────────────
 //
 // Используется в ArtikulDrawer (`pages/catalog/artikul-card.tsx`). Возвращает

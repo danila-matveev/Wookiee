@@ -34,6 +34,7 @@ import {
   Plus,
   Save,
   Trash2,
+  Undo2,
   X,
 } from "lucide-react"
 
@@ -58,6 +59,8 @@ import {
   type Atribut,
   type AtributPayload,
   fetchAuditForModel,
+  getRollbackableFields,
+  rollbackAuditChange,
   fetchBrendy,
   fetchFabriki,
   fetchImportery,
@@ -2968,6 +2971,22 @@ function TabSkleyki({ m }: { m: ModelDetail }) {
 // "model" объединяет `modeli_osnova` + `modeli` (это единая бизнес-сущность).
 type HistoryFilter = "all" | "model" | "artikuly" | "tovary"
 
+// W10.13: набор таблиц, для которых поддерживается откат UPDATE-записи.
+// Должен совпадать с ROLLBACK_ALLOWED_TABLES в service.ts.
+const ROLLBACK_TABLES: ReadonlySet<string> = new Set([
+  "modeli",
+  "modeli_osnova",
+  "artikuly",
+  "tovary",
+])
+
+// W10.13: системные поля, которые не имеет смысла откатывать.
+const ROLLBACK_SKIP: ReadonlySet<string> = new Set([
+  "id",
+  "created_at",
+  "updated_at",
+])
+
 // Стабильная ссылка на пустой массив — чтобы useMemo, зависящий от data ?? [],
 // не пересоздавался на каждом рендере во время loading-стейта.
 const EMPTY_AUDIT_ROWS: AuditRowExt[] = []
@@ -3018,6 +3037,8 @@ function TabHistory({ m }: { m: ModelDetail }) {
     }
     return map
   }, [m.modeli])
+
+  const queryClient = useQueryClient()
 
   const sourceLabelFor = useCallback(
     (row: AuditEntry): string => {
@@ -3070,6 +3091,51 @@ function TabHistory({ m }: { m: ModelDetail }) {
 
   // W10.12: фильтр по типу сущности. Default "all" — единая timeline.
   const [filter, setFilter] = useState<HistoryFilter>("all")
+
+  // W10.13: id текущей откатываемой записи (для disable-кнопки во время mutate).
+  const [rollbackingId, setRollbackingId] = useState<number | null>(null)
+
+  const handleRollback = useCallback(
+    async (row: AuditEntry) => {
+      if (row.action !== "UPDATE" || !row.changed) return
+      if (!ROLLBACK_TABLES.has(row.table_name)) return
+
+      const fields = Object.entries(row.changed).filter(
+        ([k]) => !ROLLBACK_SKIP.has(k),
+      )
+      if (fields.length === 0) {
+        toast.warning("Нет полей для отката")
+        return
+      }
+
+      const preview = fields
+        .map(([col, diff]) => `  ${col}: ${formatAuditValue(diff.to)} → ${formatAuditValue(diff.from)}`)
+        .join("\n")
+      const msg =
+        `Откатить изменение от ${formatAuditDate(row.created_at)}?\n\n` +
+        `Поля:\n${preview}\n\n` +
+        `Будет создана новая запись истории.`
+      if (!window.confirm(msg)) return
+
+      try {
+        setRollbackingId(row.id)
+        const n = await rollbackAuditChange(row.id)
+        toast.success(`Откатили ${n} ${n === 1 ? "поле" : "поля"}`)
+        // Освежаем историю + основную карточку модели (поля могли измениться).
+        await queryClient.invalidateQueries({
+          queryKey: ["catalog", "audit", "model-scope", m.id],
+        })
+        await queryClient.invalidateQueries({
+          queryKey: ["catalog", "model", m.kod],
+        })
+      } catch (e) {
+        toast.error(translateError(e))
+      } finally {
+        setRollbackingId(null)
+      }
+    },
+    [queryClient, m.id, m.kod],
+  )
 
   // ВНИМАНИЕ: все useMemo/useCallback должны быть до первого early-return,
   // иначе нарушится Rules of Hooks при переходе loading → ready.
@@ -3175,6 +3241,11 @@ function TabHistory({ m }: { m: ModelDetail }) {
       ) : (
         <div className="space-y-2">
           {rows.map((r) => {
+            const rollbackable =
+              r.action === "UPDATE" &&
+              ROLLBACK_TABLES.has(r.table_name) &&
+              !!r.changed &&
+              getRollbackableFields(r).length > 0
             return (
               <div
                 key={r.id}
@@ -3205,6 +3276,28 @@ function TabHistory({ m }: { m: ModelDetail }) {
                   >
                     {shortUser(r.user_id)}
                   </span>
+
+                  {rollbackable && (
+                    <button
+                      type="button"
+                      onClick={() => handleRollback(r)}
+                      disabled={rollbackingId === r.id}
+                      title="Откатить это изменение — создать новую запись с обратным diff"
+                      className={
+                        "ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs font-medium transition " +
+                        (rollbackingId === r.id
+                          ? "bg-stone-100 text-stone-400 border-stone-200 cursor-wait"
+                          : "bg-white text-stone-700 border-stone-300 hover:border-stone-500 hover:bg-stone-50")
+                      }
+                    >
+                      {rollbackingId === r.id ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <Undo2 className="w-3 h-3" />
+                      )}
+                      Откатить
+                    </button>
+                  )}
                 </div>
 
                 {r.action === "INSERT" && (
