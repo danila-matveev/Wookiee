@@ -14,6 +14,7 @@ import { CellText } from "@/components/catalog/ui/cell-text"
 import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
 import { translateError } from "@/lib/catalog/error-translator"
 import { toast } from "@/lib/catalog/toast"
+import { compareRazmer } from "@/lib/catalog/size-utils"
 
 const MAX_SKU = 30
 
@@ -81,7 +82,20 @@ export function SkleykaCard({ id, channel, onBack }: SkleykaCardProps) {
   const fraction = Math.min(skuCount / MAX_SKU, 1)
   const isOverflow = skuCount > MAX_SKU
 
-  const allBarkods = useMemo(() => (data?.tovary.map((t) => t.barkod) ?? []), [data])
+  // W10.29 — стабильный физический порядок: artikul → cvet → размер. Не
+  // зависит от статусов: смена статуса не должна менять порядок строк.
+  const sortedTovary = useMemo(() => {
+    const rows = data?.tovary ?? []
+    return [...rows].sort((a, b) => {
+      const artCmp = (a.artikul ?? "").localeCompare(b.artikul ?? "", "ru", { numeric: true })
+      if (artCmp !== 0) return artCmp
+      const cvetCmp = (a.cvet_color_code ?? "").localeCompare(b.cvet_color_code ?? "", "ru", { numeric: true })
+      if (cvetCmp !== 0) return cvetCmp
+      return compareRazmer(a.razmer ?? null, b.razmer ?? null)
+    })
+  }, [data])
+
+  const allBarkods = useMemo(() => sortedTovary.map((t) => t.barkod), [sortedTovary])
   const allSelected = allBarkods.length > 0 && selected.size === allBarkods.length
 
   const toggleAll = () => {
@@ -358,7 +372,7 @@ export function SkleykaCard({ id, channel, onBack }: SkleykaCardProps) {
                     </tr>
                   </thead>
                   <tbody>
-                    {data.tovary.map((t) => {
+                    {sortedTovary.map((t) => {
                       const isSel = selected.has(t.barkod)
                       const status = channel === "wb" ? t.status_id : t.status_ozon_id
                       return (

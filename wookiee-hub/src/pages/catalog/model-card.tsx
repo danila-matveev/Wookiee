@@ -104,6 +104,7 @@ import { computeCompleteness, relativeDate, swatchColor } from "@/lib/catalog/co
 import { useAvailableColors } from "@/hooks/use-available-colors"
 import { translateError } from "@/lib/catalog/error-translator"
 import { toast } from "@/lib/catalog/toast"
+import { compareRazmer } from "@/lib/catalog/size-utils"
 
 // ─── Local helpers ─────────────────────────────────────────────────────────
 
@@ -1185,9 +1186,18 @@ function AddAtributModal({
 // ─── Tab 3: Articles ───────────────────────────────────────────────────────
 
 function TabArticles({ m, hexByCvet, openColor }: TabContentProps) {
-  const allArts = m.modeli.flatMap((v) =>
-    v.artikuly.map((a) => ({ ...a, variantKod: v.kod, importerName: v.importer_nazvanie })),
-  )
+  // W10.29 — стабильный порядок: variantKod → cvet.color_code. Смена статуса
+  // не должна менять порядок строк.
+  const allArts = useMemo(() => {
+    const rows = m.modeli.flatMap((v) =>
+      v.artikuly.map((a) => ({ ...a, variantKod: v.kod, importerName: v.importer_nazvanie })),
+    )
+    return rows.sort((a, b) => {
+      const variantCmp = (a.variantKod ?? "").localeCompare(b.variantKod ?? "", "ru", { numeric: true })
+      if (variantCmp !== 0) return variantCmp
+      return (a.cvet_color_code ?? "").localeCompare(b.cvet_color_code ?? "", "ru", { numeric: true })
+    })
+  }, [m.modeli])
   const [addOpen, setAddOpen] = useState(false)
   const hasVariations = m.modeli.length > 0
   return (
@@ -1870,16 +1880,28 @@ function TabSKU({ m, hexByCvet }: TabContentProps) {
   })
   const razmery: Razmer[] = razmeryQ.data ?? []
 
-  const allSku = m.modeli.flatMap((v) =>
-    v.artikuly.flatMap((a) =>
-      a.tovary.map((t) => ({
-        ...t,
-        variantKod: v.kod,
-        cvet_color_code: a.cvet_color_code,
-        cvet_id: a.cvet_id,
-      })),
-    ),
-  )
+  // W10.29 — стабильная сортировка SKU: variantKod → cvet.color_code → razmer
+  // (physical ladder). Не зависит от статусов: смена статуса не должна менять
+  // порядок строк (избегаем «прыжков» при клике по статус-pill).
+  const allSku = useMemo(() => {
+    const rows = m.modeli.flatMap((v) =>
+      v.artikuly.flatMap((a) =>
+        a.tovary.map((t) => ({
+          ...t,
+          variantKod: v.kod,
+          cvet_color_code: a.cvet_color_code,
+          cvet_id: a.cvet_id,
+        })),
+      ),
+    )
+    return rows.sort((a, b) => {
+      const variantCmp = (a.variantKod ?? "").localeCompare(b.variantKod ?? "", "ru", { numeric: true })
+      if (variantCmp !== 0) return variantCmp
+      const cvetCmp = (a.cvet_color_code ?? "").localeCompare(b.cvet_color_code ?? "", "ru", { numeric: true })
+      if (cvetCmp !== 0) return cvetCmp
+      return compareRazmer(a.razmer_nazvanie ?? null, b.razmer_nazvanie ?? null)
+    })
+  }, [m.modeli])
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["catalog", "model", m.kod] })

@@ -25,8 +25,9 @@ import { EmptyState } from "@/components/catalog/ui/empty-state"
 import { downloadCsv } from "@/lib/catalog/csv-export"
 import { translateError } from "@/lib/catalog/error-translator"
 import { toast } from "@/lib/catalog/toast"
-// Standard razmer chip-pill ladder used in the table.
-const RAZMER_LADDER = ["XS", "S", "M", "L", "XL", "XXL"] as const
+import { RAZMER_LADDER, razmerOrder } from "@/lib/catalog/size-utils"
+
+const RAZMER_DISPLAY_CHIPS = ["XS", "S", "M", "L", "XL", "XXL"] as const
 // ─── Shared helpers ────────────────────────────────────────────────────────
 function ColorSwatch({ colorCode, size = 16 }: { colorCode: string | null; size?: number }) {
   if (!colorCode) return <div className="rounded-full bg-stone-200" style={{ width: size, height: size }} />
@@ -691,6 +692,7 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, fabriki, sertif
                     const variantSizes = new Set<string>(
                       m.razmery.map((s) => s.toUpperCase().trim()).filter(Boolean)
                     )
+                    const displaySizes = RAZMER_DISPLAY_CHIPS
                     return (
                       <Fragment key={`${m.kod}-row`}>
                         <tr className="border-b border-stone-100 hover:bg-stone-50/60 group">
@@ -730,7 +732,7 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, fabriki, sertif
                               case "status":
                                 return <td key={key} className={`px-3 py-3${stickyCls}`}><StatusBadge status={m.status_id != null ? statusById.get(m.status_id) ?? null : null} /></td>
                               case "razmery":
-                                return <td key={key} className={`px-3 py-3${stickyCls}`}><div className="flex items-center gap-0.5">{RAZMER_LADDER.map((sz) => <span key={sz} className={`text-[10px] px-1 py-0.5 rounded ${variantSizes.has(sz) ? "bg-stone-900 text-white" : "bg-stone-50 text-stone-300 ring-1 ring-inset ring-stone-200"}`}>{sz}</span>)}</div></td>
+                                return <td key={key} className={`px-3 py-3${stickyCls}`}><div className="flex items-center gap-0.5">{displaySizes.map((sz) => <span key={sz} className={`text-[10px] px-1 py-0.5 rounded ${variantSizes.has(sz) ? "bg-stone-900 text-white" : "bg-stone-50 text-stone-300 ring-1 ring-inset ring-stone-200"}`}>{sz}</span>)}</div></td>
                               case "cveta":
                                 return <td key={key} className={`px-3 py-3${stickyCls}`}><ColorChips modelKod={m.kod} count={m.cveta_cnt} /></td>
                               case "completeness":
@@ -1280,7 +1282,8 @@ function TovaryTable({ onRegisterExport }: { onRegisterExport?: (fn: (() => void
         case "model": return t.model_osnova_kod ?? ""
         case "variation": return t.model_kod ?? ""
         case "cvet": return t.cvet_color_code ?? ""
-        case "razmer": return t.razmer ?? ""
+        // W10.29 — физический порядок размеров (XS<S<M<L<…), не alpha.
+        case "razmer": return razmerOrder(t.razmer)
         case "wb": return t.status_id ?? null
         case "ozon": return t.status_ozon_id ?? null
         case "sayt": return t.status_sayt_id ?? null

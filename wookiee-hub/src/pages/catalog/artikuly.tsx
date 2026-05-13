@@ -29,6 +29,7 @@ import { ARTIKULY_COLUMNS_FULL } from "@/lib/catalog/column-catalogs"
 import { downloadCsv } from "@/lib/catalog/csv-export"
 import { translateError } from "@/lib/catalog/error-translator"
 import { toast } from "@/lib/catalog/toast"
+import { compareRazmer } from "@/lib/catalog/size-utils"
 
 // Default per-column widths (px) for the standalone Артикулы page (W1.5).
 // W9.5 — расширено новыми ключами из ARTIKULY_COLUMNS_FULL (column-catalogs).
@@ -213,7 +214,12 @@ function ArtikulDrillDown({ row, statusyData, onClose }: ArtikulDrillDownProps) 
     queryFn: () => fetchTovaryByArtikul(row.id),
     staleTime: 30 * 1000,
   })
-  const tovary: ArtikulTovar[] = tovaryQ.data ?? []
+  // W10.29 — стабильный физический порядок SKU внутри артикула (по razmer).
+  // Не зависит от статусов — клик по статус-pill не должен менять порядок.
+  const tovary: ArtikulTovar[] = useMemo(() => {
+    const rows = tovaryQ.data ?? []
+    return [...rows].sort((a, b) => compareRazmer(a.razmer_nazvanie ?? null, b.razmer_nazvanie ?? null))
+  }, [tovaryQ.data])
 
   // Размеры — для select-поля в RefModal «+ SKU».
   const razmeryQ = useQuery({

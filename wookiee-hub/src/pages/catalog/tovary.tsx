@@ -32,6 +32,7 @@ import { useCollapsibleGroups } from "@/hooks/use-collapsible-groups"
 import { downloadCsv } from "@/lib/catalog/csv-export"
 import { translateError } from "@/lib/catalog/error-translator"
 import { toast } from "@/lib/catalog/toast"
+import { razmerOrder } from "@/lib/catalog/size-utils"
 
 // W1.5 — Default per-column widths (px) for the SKU registry (Товары) page.
 // W9.5 — расширено новыми ключами из TOVARY_COLUMNS_FULL (column-catalogs).
@@ -93,7 +94,8 @@ function getTovarSortValue(t: TovarRow, col: TovarSortKey): unknown {
     case "artikul": return t.artikul ?? ""
     case "model": return t.model_osnova_kod ?? ""
     case "cvet": return t.cvet_color_code ?? ""
-    case "razmer": return t.razmer ?? ""
+    // W10.29 — физический порядок размеров (XS<S<M<L<…), не alpha.
+    case "razmer": return razmerOrder(t.razmer)
     case "wb_nom": return t.nomenklatura_wb ?? null
     case "ozon_art": return t.artikul_ozon ?? ""
     case "status_wb": return t.status_id ?? null
@@ -844,7 +846,13 @@ function groupRows(rows: TovarRow[], by: GroupBy): Group[] {
   }
   return Array.from(map.entries())
     .map(([key, items]) => ({ key, label: labelFor(key, items), items }))
-    .sort((a, b) => a.key.localeCompare(b.key))
+    // W10.29 — при groupBy="size" сортируем группы по физическому ладдеру,
+    // остальные группировки — alphanumeric.
+    .sort((a, b) => (
+      by === "size"
+        ? razmerOrder(a.key) - razmerOrder(b.key)
+        : a.key.localeCompare(b.key)
+    ))
 }
 
 // ─── Page ──────────────────────────────────────────────────────────────────
