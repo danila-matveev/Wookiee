@@ -397,6 +397,7 @@ async def postprocess_meeting(
         raise LLMPostprocessError(f"invalid JSON (summary chunk): {e}") from e
 
     paragraphs_data: dict
+    paragraphs_failed = False
     try:
         paragraphs_prompt = _build_paragraphs_prompt(segments, participants)
         paragraphs_raw = await _call_openrouter(
@@ -408,12 +409,20 @@ async def postprocess_meeting(
             "LLM (paragraphs chunk) failed, falling back to empty paragraphs: %s", e
         )
         paragraphs_data = {"paragraphs": [], "speakers_map": {}}
+        paragraphs_failed = True
+
+    summary_block = summary_data.get("summary", {}) or {}
+    if paragraphs_failed:
+        # Помечаем summary как partial, чтобы UI-слой (notifier) показал юзеру
+        # warning «транскрипт не собрался» — иначе он молча получит short
+        # message без объяснения почему нет transcript.txt.
+        summary_block = {**summary_block, "partial": True}
 
     merged = {
         "paragraphs": paragraphs_data.get("paragraphs", []),
         "speakers_map": paragraphs_data.get("speakers_map", {}),
         "tags": summary_data.get("tags", []),
-        "summary": summary_data.get("summary", {}),
+        "summary": summary_block,
     }
     _validate_shape(merged)
     return merged

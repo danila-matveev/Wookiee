@@ -68,6 +68,31 @@ def test_format_summary_message_renders_task_context_and_conditions():
     assert "новые фото" in msg
 
 
+def test_format_summary_message_partial_renders_warning():
+    """summary.partial=True (paragraphs chunk failed) → UI warning,
+    чтобы юзер понимал почему transcript.txt не пришёл."""
+    meeting = {
+        "id": _MEETING_ID,
+        "title": "Дейли",
+        "started_at": datetime(2026, 5, 8, 10, 0, tzinfo=timezone.utc),
+        "duration_seconds": 1800,
+        "summary": {
+            "partial": True,
+            "participants": ["Полина"],
+            "topics": [],
+            "decisions": ["Релизим в пятницу"],
+            "tasks": [],
+        },
+        "tags": [],
+    }
+    msg = format_summary_message(meeting)
+    lower = msg.lower()
+    assert "транскрипт" in lower
+    assert "итоги встречи" in lower
+    # Сам summary при этом рендерится (decisions есть)
+    assert "Релизим в пятницу" in msg
+
+
 def test_format_summary_message_empty():
     meeting = {
         "id": _MEETING_ID, "title": None,

@@ -85,6 +85,15 @@ def format_summary_message(meeting: dict[str, Any]) -> str:
 
     lines = [f"📝 {header}"]
 
+    # partial=True означает: chunked summary прошёл, а paragraphs chunk упал
+    # (см. llm_postprocess._call_paragraphs_chunked fallback). Транскрипт-файл
+    # в этом случае не присылается, и без warning юзер не поймёт почему.
+    if summary.get("partial"):
+        lines.append(
+            "\n⚠ Транскрипт собрать не удалось целиком — "
+            "ниже только итоги встречи."
+        )
+
     participants = summary.get("participants") or []
     if participants:
         joined = ", ".join(_md_escape(p) for p in participants)
