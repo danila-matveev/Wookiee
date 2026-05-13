@@ -47,6 +47,8 @@ _BAD_URL = (
 )
 _NOT_AUTHED = "🔒 Сначала /start — нужно проверить доступ."
 
+_INSTANT_ACK = "⏳ Получил, проверяю…"
+
 _ACK = (
     "✅ *Принял ссылку*\n\n"
     "🚀 Иду на встречу — зайду через ~30 сек как «Wookiee Recorder».\n\n"
@@ -80,6 +82,12 @@ async def handle_record(chat_id: int, user_id: int, args: str) -> None:
     if not is_valid_telemost_url(raw_url):
         await tg_send_message(chat_id, _BAD_URL)
         return
+
+    # Immediate ack BEFORE the DB transaction (advisory lock + INSERT) and
+    # the fire-and-forget Bitrix enrichment. Telegram itself can take
+    # 100-300 ms to deliver; users panic if they see nothing back for a
+    # full second after pasting the link.
+    await tg_send_message(chat_id, _INSTANT_ACK)
 
     canonical = canonicalize_telemost_url(raw_url)
     # Seed invitees with the triggering user so the LLM has at least one real

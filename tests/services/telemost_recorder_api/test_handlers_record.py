@@ -119,9 +119,10 @@ async def test_record_enqueues_meeting():
         await handle_update(
             _msg("/record https://telemost.360.yandex.ru/j/abc")
         )
-    # New UX ack: friendly "Принял ссылку / Иду на встречу" — no raw ID exposed
-    assert sent
-    assert "принял" in sent[0].lower() or "иду" in sent[0].lower()
+    # Two sends: instant ack + final "Принял ссылку / Иду на встречу" ack.
+    assert len(sent) == 2, f"expected instant ack + final ack, got: {sent}"
+    assert "получил" in sent[0].lower() and "проверя" in sent[0].lower()
+    assert "принял" in sent[1].lower() or "иду" in sent[1].lower()
 
 
 @pytest.mark.asyncio
@@ -172,9 +173,11 @@ async def test_record_duplicate_concurrent_returns_already():
         AsyncMock(side_effect=lambda c, t, **k: sent.append(t)),
     ):
         await handle_update(_msg("/record https://telemost.yandex.ru/j/abc"))
-    assert sent
-    assert "уже" in sent[0].lower()
-    assert "recording" in sent[0]
+    # Instant ack + duplicate-found message.
+    assert len(sent) == 2, f"expected instant ack + duplicate notice, got: {sent}"
+    assert "получил" in sent[0].lower() and "проверя" in sent[0].lower()
+    assert "уже" in sent[1].lower()
+    assert "recording" in sent[1]
 
 
 @pytest.mark.asyncio
@@ -293,17 +296,20 @@ async def test_record_strips_whitespace_and_extra_args():
         AsyncMock(side_effect=lambda c, t, **k: sent.append(t)),
     ):
         await handle_update(_msg("/record   https://telemost.yandex.ru/j/abc   trailing"))
-    assert sent
-    assert "принял" in sent[0].lower() or "иду" in sent[0].lower()
+    # Instant ack at sent[0], final ack at sent[1].
+    assert len(sent) == 2
+    assert "получил" in sent[0].lower()
+    assert "принял" in sent[1].lower() or "иду" in sent[1].lower()
 
 
 @pytest.mark.asyncio
 async def test_record_sends_telegram_outside_transaction():
-    """tg_send_message must run AFTER the transaction's __aexit__ — otherwise
-    a slow Telegram HTTP call (hundreds of ms — seconds) would hold the DB
-    connection from the pool and the advisory lock, throttling parallel
-    webhooks on the same URL. We assert ordering via a shared call_log:
-    every tg_send_message call must be appended AFTER the 'txn_exit' marker.
+    """The DB-result-dependent tg_send_message (final ack or duplicate
+    notice) must run AFTER the transaction's __aexit__ — otherwise a slow
+    Telegram HTTP call (hundreds of ms — seconds) would hold the pool
+    connection and the advisory lock, throttling parallel webhooks. The
+    instant ack at the very top of the handler is exempt — it intentionally
+    runs BEFORE any DB work so the user sees an immediate response.
     """
     new_id = uuid4()
     call_log: list[str] = []
@@ -364,15 +370,14 @@ async def test_record_sends_telegram_outside_transaction():
         f"tg_send_message missing from call_log={call_log}"
     )
 
-    # The critical invariant: every tg_send_message must be AFTER txn_exit.
+    # The critical invariant: the LAST tg_send_message (final ack) must be
+    # AFTER txn_exit. The first one is the instant ack and is allowed before.
     txn_exit_idx = call_log.index("txn_exit")
     tg_indices = [i for i, c in enumerate(call_log) if c == "tg_send_message"]
-    for idx in tg_indices:
-        assert idx > txn_exit_idx, (
-            "tg_send_message must run AFTER transaction exit, "
-            f"but found tg_send_message at idx={idx} before txn_exit at "
-            f"idx={txn_exit_idx}. call_log={call_log}"
-        )
+    assert tg_indices[-1] > txn_exit_idx, (
+        "final tg_send_message must run AFTER transaction exit, "
+        f"call_log={call_log}"
+    )
 
 
 @pytest.mark.asyncio
@@ -441,11 +446,114 @@ async def test_record_duplicate_sends_telegram_outside_transaction():
     txn_exit_idx = call_log.index("txn_exit")
     tg_indices = [i for i, c in enumerate(call_log) if c == "tg_send_message"]
     assert tg_indices, "expected duplicate-path tg_send_message call"
-    for idx in tg_indices:
-        assert idx > txn_exit_idx, (
-            "duplicate-path tg_send_message must run AFTER transaction exit, "
-            f"call_log={call_log}"
-        )
+    # Final "уже в работе" must be after txn_exit; instant ack is allowed before.
+    assert tg_indices[-1] > txn_exit_idx, (
+        "duplicate-path final tg_send_message must run AFTER transaction exit, "
+        f"call_log={call_log}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_record_sends_immediate_ack_before_db_work():
+    """The first Telegram message to the user must be the instant ack
+    ('⏳ Получил, проверяю…'). It runs BEFORE any DB acquire/transaction,
+    so users see an immediate response while Bitrix enrichment + advisory
+    lock + INSERT can take hundreds of ms — seconds.
+    """
+    new_id = uuid4()
+    call_log: list[str] = []
+
+    class FakeTxn:
+        async def __aenter__(self):
+            call_log.append("txn_enter")
+            return self
+
+        async def __aexit__(self, *_):
+            call_log.append("txn_exit")
+            return False
+
+    class FakeConn:
+        def transaction(self):
+            return FakeTxn()
+
+        async def execute(self, query: str, *args):
+            call_log.append("db:execute")
+            return "SELECT 1"
+
+        async def fetchval(self, query: str, *args):
+            call_log.append("db:fetchval")
+            return new_id
+
+        async def fetchrow(self, query: str, *args):
+            call_log.append("db:fetchrow")
+            return None
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return False
+
+    class FakePool:
+        def acquire(self):
+            call_log.append("pool:acquire")
+            return FakeConn()
+
+    sent: list[str] = []
+
+    async def fake_send(chat_id, text, **kwargs):
+        call_log.append(f"tg:{text[:40]}")
+        sent.append(text)
+
+    with patch(
+        "services.telemost_recorder_api.handlers.record.get_user_by_telegram_id",
+        AsyncMock(return_value=_AUTHED_USER),
+    ), patch(
+        "services.telemost_recorder_api.handlers.record.get_pool",
+        AsyncMock(return_value=FakePool()),
+    ), patch(
+        "services.telemost_recorder_api.handlers.record.tg_send_message",
+        AsyncMock(side_effect=fake_send),
+    ):
+        await handle_update(_msg("/record https://telemost.yandex.ru/j/abc"))
+
+    # First send must be the instant ack
+    assert sent, "expected at least one tg_send_message"
+    first_text = sent[0].lower()
+    assert (
+        "получил" in first_text and "проверя" in first_text
+    ), f"first message must be instant ack, got: {sent[0]!r}"
+
+    # And it must appear before any DB access
+    first_tg_idx = next(i for i, c in enumerate(call_log) if c.startswith("tg:"))
+    first_db_idx = next(
+        (i for i, c in enumerate(call_log) if c.startswith(("pool:", "db:", "txn_"))),
+        None,
+    )
+    assert first_db_idx is not None, f"expected DB calls in call_log={call_log}"
+    assert first_tg_idx < first_db_idx, (
+        "instant ack must be sent BEFORE acquiring the DB connection, "
+        f"call_log={call_log}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_record_no_ack_when_url_invalid():
+    """Instant ack must only fire AFTER URL validation passes — otherwise
+    users get '⏳ Получил, проверяю…' followed by 'не похоже на ссылку',
+    which is confusing.
+    """
+    sent: list[str] = []
+    with patch(
+        "services.telemost_recorder_api.handlers.record.get_user_by_telegram_id",
+        AsyncMock(return_value=_AUTHED_USER),
+    ), patch(
+        "services.telemost_recorder_api.handlers.record.tg_send_message",
+        AsyncMock(side_effect=lambda c, t, **k: sent.append(t)),
+    ):
+        await handle_update(_msg("/record not-a-url"))
+    assert len(sent) == 1, f"expected only the bad-url reply, got: {sent}"
+    assert "получил" not in sent[0].lower() or "проверя" not in sent[0].lower()
 
 
 @pytest.mark.asyncio
