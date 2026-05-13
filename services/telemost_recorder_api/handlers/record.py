@@ -19,9 +19,19 @@ logger = logging.getLogger(__name__)
 
 
 def _log_enrichment_failure(task: asyncio.Task) -> None:
+    """Surface Bitrix enrichment failures to the operator.
+
+    Pre-fix the callback logged WARNING — invisible to the global
+    TelegramAlertHandler (level=ERROR). Now we use logger.error with
+    exc_info so failures actually reach @wookiee_alerts_bot, and the
+    operator hears about a broken Bitrix integration instead of
+    discovering it via users receiving empty-title meetings.
+    """
     exc = task.exception()
     if exc is not None:
-        logger.warning("Bitrix enrichment task failed: %s", exc, exc_info=exc)
+        logger.error(
+            "Bitrix enrichment task failed: %s", exc, exc_info=exc
+        )
 
 
 _USAGE = (

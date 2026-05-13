@@ -1,6 +1,8 @@
 """Tests for /record command."""
 from __future__ import annotations
 
+import asyncio
+import logging
 from unittest.mock import AsyncMock, patch
 from uuid import UUID, uuid4
 
@@ -444,3 +446,80 @@ async def test_record_duplicate_sends_telegram_outside_transaction():
             "duplicate-path tg_send_message must run AFTER transaction exit, "
             f"call_log={call_log}"
         )
+
+
+@pytest.mark.asyncio
+async def test_record_alerts_on_bitrix_enrichment_failure(caplog):
+    """If enrich_meeting_from_bitrix() raises, the failure must surface as an
+    ERROR-level log with the exception attached — that's what the global
+    TelegramAlertHandler routes to @wookiee_alerts_bot. Before this fix the
+    callback only logged WARNING, so a broken Bitrix integration was invisible
+    to the operator and users got empty-title meetings silently.
+    """
+    new_id = uuid4()
+
+    class FakeTxn:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return False
+
+    class FakeConn:
+        def transaction(self):
+            return FakeTxn()
+
+        async def execute(self, query: str, *args):
+            return "SELECT 1"
+
+        async def fetchval(self, query: str, *args):
+            return new_id
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return False
+
+    class FakePool:
+        def acquire(self):
+            return FakeConn()
+
+    authed_with_bitrix = {**_AUTHED_USER, "bitrix_id": "42"}
+
+    async def boom(*a, **kw):
+        raise RuntimeError("bitrix down")
+
+    with patch(
+        "services.telemost_recorder_api.handlers.record.get_user_by_telegram_id",
+        AsyncMock(return_value=authed_with_bitrix),
+    ), patch(
+        "services.telemost_recorder_api.handlers.record.get_pool",
+        AsyncMock(return_value=FakePool()),
+    ), patch(
+        "services.telemost_recorder_api.handlers.record.tg_send_message",
+        AsyncMock(),
+    ), patch(
+        "services.telemost_recorder_api.handlers.record.enrich_meeting_from_bitrix",
+        AsyncMock(side_effect=boom),
+    ):
+        with caplog.at_level(
+            logging.ERROR,
+            logger="services.telemost_recorder_api.handlers.record",
+        ):
+            await handle_update(_msg("/record https://telemost.yandex.ru/j/abc"))
+            # Enrichment is fire-and-forget; yield until the background task
+            # finishes and the done-callback fires.
+            for _ in range(20):
+                await asyncio.sleep(0)
+
+    error_records = [r for r in caplog.records if r.levelno >= logging.ERROR]
+    assert error_records, (
+        "Bitrix enrichment failure must log at ERROR level so the global "
+        "TelegramAlertHandler delivers it to @wookiee_alerts_bot — "
+        f"got: {[(r.levelname, r.message) for r in caplog.records]}"
+    )
+    joined = " ".join(r.getMessage() for r in error_records).lower()
+    assert "bitrix" in joined or "enrich" in joined, (
+        f"alert message should mention Bitrix/enrich, got: {joined}"
+    )
