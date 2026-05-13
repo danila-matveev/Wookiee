@@ -12,6 +12,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -26,6 +27,10 @@ logger = logging.getLogger(__name__)
 _LOOKUP_WINDOW_HOURS = 4  # ±2 ч от now()
 _BITRIX_RETRIES = 3
 _BITRIX_BACKOFF_BASE = 1.0
+# Bitrix returns DATE_FROM as a naive string in the calendar owner's TZ.
+# Wookiee's kabinet is Europe/Moscow — hard-coded here because there's no
+# per-user TZ in the webhook payload we use.
+_BITRIX_TZ = ZoneInfo("Europe/Moscow")
 
 
 def _extract_attendee_ids(codes: list[Any] | None) -> list[int]:
@@ -51,14 +56,20 @@ def _event_mentions_url(ev: dict, url: str) -> bool:
 def _parse_bitrix_date(s: str | None) -> datetime | None:
     """Parse Bitrix DATE_FROM ('13.05.2026 08:30:00') to UTC datetime.
 
-    Bitrix returns dates in user TZ without explicit offset; we use UTC-naive
-    comparison anyway (we just need closeness in minutes, not absolute time).
+    Bitrix returns dates as naive strings in the calendar owner's TZ
+    (Europe/Moscow for Wookiee). Pre-fix we tagged the parsed datetime
+    as UTC, which made every event look 3 hours earlier than it was —
+    enough to make _pick_closest_meeting choose the wrong neighbour.
+
+    We attach Europe/Moscow explicitly, then convert to UTC for
+    storage and comparisons.
     """
     if not s:
         return None
     for fmt in ("%d.%m.%Y %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
         try:
-            return datetime.strptime(s, fmt).replace(tzinfo=timezone.utc)
+            naive = datetime.strptime(s, fmt)
+            return naive.replace(tzinfo=_BITRIX_TZ).astimezone(timezone.utc)
         except ValueError:
             continue
     return None

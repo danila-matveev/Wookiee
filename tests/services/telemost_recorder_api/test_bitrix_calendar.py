@@ -1,6 +1,7 @@
 """Bitrix calendar lookup by meeting_url."""
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -8,6 +9,7 @@ import httpx
 import pytest
 
 from services.telemost_recorder_api.bitrix_calendar import (
+    _parse_bitrix_date,
     find_event_by_url,
     enrich_meeting_from_bitrix,
 )
@@ -212,6 +214,38 @@ async def test_find_event_no_fallback_if_only_personal_blocks():
             meeting_url="https://telemost.yandex.ru/j/none",
         )
     assert ev is None
+
+
+def test_parse_bitrix_date_assumes_moscow_tz():
+    """Bitrix returns DATE_FROM as a naive string in the calendar owner's TZ
+    (Europe/Moscow for Wookiee). Pre-fix we tagged it as UTC, which shifted
+    every event by 3h — _pick_closest_meeting could pick the wrong neighbour
+    when two real meetings sit within a few hours.
+    """
+    result = _parse_bitrix_date("13.05.2026 08:30:00")
+    assert result is not None
+    # 08:30 Europe/Moscow == 05:30 UTC
+    assert result.year == 2026
+    assert result.month == 5
+    assert result.day == 13
+    assert result.hour == 5
+    assert result.minute == 30
+    assert result.tzinfo == timezone.utc
+
+
+def test_parse_bitrix_date_iso_format_assumes_moscow_tz():
+    """The ISO fallback format is also TZ-naive in Bitrix responses."""
+    result = _parse_bitrix_date("2026-05-13T08:30:00")
+    assert result is not None
+    assert result.hour == 5
+    assert result.minute == 30
+    assert result.tzinfo == timezone.utc
+
+
+def test_parse_bitrix_date_empty_and_invalid():
+    assert _parse_bitrix_date(None) is None
+    assert _parse_bitrix_date("") is None
+    assert _parse_bitrix_date("not-a-date") is None
 
 
 @pytest.mark.asyncio
