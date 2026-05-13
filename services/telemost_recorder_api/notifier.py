@@ -187,9 +187,13 @@ async def notify_meeting_result(meeting_id: UUID) -> None:
             )
         except TelegramAPIError as e:
             if e.error_code in (400, 403):
-                logger.warning(
-                    "Cannot notify failure for %s — user unreachable (%s)",
-                    meeting_id, e,
+                # logger.error (not .warning) so install_telegram_alerts
+                # bubbles it to the operator — when a user blocks the bot
+                # we still need a human signal that their meeting failed
+                # and the failure DM never landed.
+                logger.error(
+                    "Cannot notify failure for %s — user unreachable (Telegram %d): %s",
+                    meeting_id, e.error_code, e,
                 )
             else:
                 logger.exception("Failed to notify failure for %s", meeting_id)
@@ -209,9 +213,9 @@ async def notify_meeting_result(meeting_id: UUID) -> None:
         )
     except TelegramAPIError as e:
         if e.error_code in (400, 403):
-            logger.warning(
-                "Cannot send summary for %s — user unreachable (%s)",
-                meeting_id, e,
+            logger.error(
+                "Cannot send summary for %s — user unreachable (Telegram %d): %s",
+                meeting_id, e.error_code, e,
             )
         else:
             logger.exception("Failed to send summary for %s", meeting_id)
@@ -230,9 +234,9 @@ async def notify_meeting_result(meeting_id: UUID) -> None:
             )
         except TelegramAPIError as e:
             if e.error_code in (400, 403):
-                logger.warning(
-                    "Cannot send transcript for %s — user unreachable (%s)",
-                    meeting_id, e,
+                logger.error(
+                    "Cannot send transcript for %s — user unreachable (Telegram %d): %s",
+                    meeting_id, e.error_code, e,
                 )
             else:
                 logger.exception("Failed to send transcript for %s", meeting_id)

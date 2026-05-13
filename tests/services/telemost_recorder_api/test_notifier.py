@@ -345,6 +345,68 @@ async def test_notify_continues_when_transcript_send_fails():
 
 
 @pytest.mark.asyncio
+async def test_bot_blocked_logs_error_for_alert(caplog):
+    """Telegram 403 (bot blocked) на summary-send → logger.error,
+    чтобы install_telegram_alerts поднял alert оператору.
+    Раньше это был logger.warning → молчаливый таймаут на стороне юзера."""
+    import logging
+    from services.telemost_recorder_api.telegram_client import TelegramAPIError
+
+    meeting_row = {
+        "id": _MEETING_ID,
+        "title": "Дейли",
+        "triggered_by": 555,
+        "started_at": datetime(2026, 5, 8, 10, 0, tzinfo=timezone.utc),
+        "duration_seconds": 1800,
+        "status": "done",
+        "summary": {"participants": ["Полина"], "topics": [], "decisions": [], "tasks": []},
+        "tags": [],
+        "processed_paragraphs": [{"speaker": "Полина", "start_ms": 0, "text": "ok"}],
+        "error": None,
+    }
+
+    class FakeConn:
+        async def fetchval(self, query, *args):
+            return datetime(2026, 5, 8, 11, 0, tzinfo=timezone.utc)
+
+        async def fetchrow(self, query, *args):
+            return meeting_row
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+    class FakePool:
+        def acquire(self):
+            return FakeConn()
+
+    err = TelegramAPIError("Forbidden: bot was blocked by the user", error_code=403)
+
+    caplog.set_level(logging.WARNING, logger="services.telemost_recorder_api.notifier")
+
+    with patch(
+        "services.telemost_recorder_api.notifier.get_pool",
+        AsyncMock(return_value=FakePool()),
+    ), patch(
+        "services.telemost_recorder_api.notifier.tg_send_message",
+        AsyncMock(side_effect=err),
+    ), patch(
+        "services.telemost_recorder_api.notifier.tg_send_document",
+        AsyncMock(),
+    ):
+        await notify_meeting_result(_MEETING_ID)
+
+    error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert error_records, (
+        f"expected at least one ERROR-level record so the alert handler "
+        f"picks it up; got levels={[r.levelno for r in caplog.records]}"
+    )
+    assert any("unreachable" in r.getMessage() for r in error_records)
+
+
+@pytest.mark.asyncio
 async def test_resend_after_notified_at_reset():
     """End-to-end semantics: claim → claim again (skip) → reset by
     postprocess_worker._update_meeting(status='postprocessing') → claim again
