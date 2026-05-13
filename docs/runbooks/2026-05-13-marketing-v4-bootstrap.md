@@ -112,74 +112,76 @@ GROUP BY u.entity_type
 ORDER BY 1;
 ```
 
-Ожидание для текущих данных:
-- `nomenclature` и `ww_code` — `with_orders` > 0 (исторические подмен-артикулы метчатся напрямую по `query_text == search_word`).
-- `brand` — **может быть нулевым** даже после успешного sync. Это известная проблема, см. ниже.
+> Имя RPC одно и то же — `marketing.search_query_stats_aggregated`; v2 и v3 — это альтернативные тела под одним идентификатором. Актуальная — v3 (см. `database/marketing/rpcs/2026-05-13-search-query-stats-aggregated-v3.sql`, применена в R.1.1). v3 добавляет JOIN через `core.nomenklatura_wb`, чтобы метчить `substitute_articles` с цифровым `search_word` (nm_id) к `query_text == article`.
 
-UI: открыть `https://hub.os.wookiee.shop/marketing/search-queries`. В колонках «Частота / Переходы / Корзина / Заказы» цифры > 0 хотя бы у `nomenclature` и `ww_code`. В UpdateBar — «Готово», свежий timestamp.
+Ожидание для текущих данных (после R.1.1 фикс):
+- `substitute_articles` (entity_type `nomenclature` / `ww_code`) — `with_orders` > 0; на bootstrap-периоде матчатся ~10 строк через nm_id-путь (`crm.substitute_articles.search_word == core.nomenklatura_wb.nm_id`, далее `wb.article` склеивается с `query_text`).
+- `brand` — **остаётся нулевым** до тех пор, пока `crm.branded_queries` не будет заполнена (см. раздел 5). Это data-issue, не код.
+
+UI: открыть `https://hub.os.wookiee.shop/marketing/search-queries`. В колонках «Частота / Переходы / Корзина / Заказы» цифры > 0 у `nomenclature` / `ww_code` строк, у `brand`-строк пока 0 (ожидаемо).
 
 ---
 
 ## 5. Известная проблема — brand-метрики остаются нулевыми
 
-Зафиксировано в задаче B.0.2 этой ветки.
+История этого ограничения растянулась на B.0.2 (v2 RPC) → R.1.1 (v3 RPC) → Phase 3 (data ops). Ниже — текущее состояние.
 
-### Симптом
+### История
 
-После всех шагов раздела 3 RPC `search_query_stats_aggregated` для unified_id с `entity_type = 'brand'` возвращает нули по `frequency / transitions / additions / orders`, хотя `marketing.search_queries_weekly` содержит 1396 строк.
+- **HISTORICAL (B.0.2, v2 RPC).** Первая итерация джоинила `marketing.search_queries_unified` к `marketing.search_queries_weekly` ТОЛЬКО по `w.search_word = u.query_text`. На bootstrap-данных это давало 0 пересечений по всем сущностям — ни бренды, ни подмен-артикулы не получали метрик, потому что `crm.substitute_articles.search_word` хранит nm_id (например `163151603`), а `u.query_text` — артикул (`Wendy/white`). Полный пробой JOIN.
+- **FIXED (R.1.1, v3 RPC).** Текущая активная версия — `database/marketing/rpcs/2026-05-13-search-query-stats-aggregated-v3.sql`. Тело расширено двумя путями JOIN:
+  - прямой: `w.search_word = u.query_text` (как было) — закрывает `brand`-сущности и текстовые подмен-артикулы;
+  - через `core.nomenklatura_wb`: `w.search_word = nwb.nm_id::text AND nwb.article = u.query_text` — закрывает substitute_articles, у которых `search_word` числовой nm_id.
 
-### Причина
+  Эффект на bootstrap-периоде: ~10 строк `substitute_articles` (entity_type `nomenclature` / `ww_code`) с непустым `nomenklatura_wb` получают ненулевые `frequency / transitions / additions / orders`.
 
-RPC v2 джоинит `marketing.search_queries_unified` к `marketing.search_queries_weekly` по точному равенству:
+- **REMAINING (Phase 3 data ops).** Brand-метрики продолжают быть нулевыми — это уже не баг кода, а пустая таблица `crm.branded_queries` (0 rows). Пока туда не зальют хотя бы 5-10 brand-aliases, отражающих то, как WB реально пишет бренд в `search_queries_weekly.search_word`, RPC честно вернёт 0 по всем `entity_type = 'brand'` строкам unified.
+
+### Симптом сейчас (после R.1.1)
+
+`brand`-строки в UI и в покрытии-запросе из §4 — все нули. `nomenclature` / `ww_code` — частично заполнены.
+
+### Проверить, какие brand-слова реально приходят от WB
 
 ```sql
-ON w.search_word = u.query_text
-```
-
-В `crm.branded_queries` слова заведены в формате, который НЕ совпадает с тем, что WB API возвращает для bootstrap-периода в `marketing.search_queries_weekly.search_word`. На текущих данных пересечения нет.
-
-Проверить руками:
-
-```sql
-SELECT q.query AS branded_query
-FROM crm.branded_queries q
-INTERSECT
 SELECT DISTINCT search_word
-FROM marketing.search_queries_weekly;
+  FROM marketing.search_queries_weekly
+ WHERE search_word !~ '^[0-9]+$'  -- отсечь числовые nm_id из bridge
+ ORDER BY 1
+ LIMIT 100;
 ```
 
-Если результат — 0 строк, симптом подтверждён.
+Глазами выделить те, что выглядят как бренд/модель/коллекция (`wookiee`, `wendy`, `audrey` и т.п.), и засеять `crm.branded_queries`.
 
-### Временный workaround
+### Шаблон для seed-а brand-aliases
 
-Заполнить `crm.branded_queries` теми поисковыми словами, что реально есть в `marketing.search_queries_weekly`. Полуавтоматически:
+> Это **черновик**, требует ревью оператора (Phase 3 data-ops тикет). Не запускать вслепую — `canonical_brand = 'Wookiee'` подойдёт не всем строкам; для модель-специфичных запросов нужен правильный `canonical_brand` (например `Wendy` для `wendy black`).
 
 ```sql
-SELECT DISTINCT w.search_word
-FROM marketing.search_queries_weekly w
-LEFT JOIN crm.branded_queries q ON q.query = w.search_word
-WHERE q.id IS NULL
-  AND (
-    w.search_word ILIKE '%вуки%'
-    OR w.search_word ILIKE '%wookie%'
-    OR w.search_word ILIKE '%wendy%'
-    OR w.search_word ILIKE '%audrey%'
-    OR w.search_word ILIKE '%charlotte%'
-  )
-ORDER BY 1;
+-- Seed brands from observed search_word values that look like brand names
+-- (Example, requires operator review):
+INSERT INTO crm.branded_queries (query, canonical_brand, status, created_at)
+SELECT DISTINCT search_word, 'Wookiee', 'active', NOW()
+  FROM marketing.search_queries_weekly
+ WHERE search_word ~ '^[a-zа-я]+'  -- non-numeric, alphabetic
+   AND search_word NOT IN (SELECT query FROM crm.branded_queries)
+LIMIT 10;
 ```
 
-Глазами отфильтровать релевантные → INSERT в `crm.branded_queries` с правильным `canonical_brand` и `model_osnova_id`. После этого view + RPC начнут возвращать ненулевые метрики для бренда.
+После INSERT-а view `marketing.search_queries_unified` сразу подхватит новые `brand`-строки (это view, без материализации), а v3 RPC через прямой JOIN (`w.search_word = u.query_text`) вернёт по ним ненулевые метрики.
 
 ### Долгосрочное решение
 
-Адресуется в Phase 2B-rework / Phase 3: либо нормализация `query_text` (lower + trim + диакритика), либо ввод поля `match_pattern` (LIKE/regex) в `crm.branded_queries`, либо отдельная таблица brand-aliases. Пока что — workaround выше.
+Phase 3 data-ops тикет (не код, а данные + процесс):
+1. Собрать первичный seed brand-aliases вручную (5-15 строк, с правильными `canonical_brand` / `model_osnova_id`).
+2. Решить, нужен ли в `crm.branded_queries` дополнительный столбец `match_pattern` (LIKE/regex), чтобы один запис ловил множество вариаций (`wendy*` → все «wendy black», «wendy 30», и т.д.) — альтернатива поштучному вводу.
+3. Зафиксировать оператора, ответственного за поддержание этой таблицы (CRM-вкладка `branded_queries` уже есть в Hub).
 
 ---
 
 ## 6. Откат
 
-Если v2 view/RPC сломали что-то в проде и нужно срочно откатиться к v1.
+Если v2/v3 view+RPC сломали что-то в проде и нужно срочно откатиться к v1.
 
 ```bash
 psql "$SUPABASE_DB_URL" -f database/marketing/views/2026-05-09-search-queries-unified.DOWN.sql
@@ -187,7 +189,7 @@ psql "$SUPABASE_DB_URL" -f database/marketing/views/2026-05-09-search-queries-un
 psql "$SUPABASE_DB_URL" -f database/marketing/rpcs/2026-05-09-search-query-stats-aggregated.sql
 ```
 
-DOWN-скрипт дропнет v2 view и v2 RPC; файлы 2026-05-09 пересоздадут v1-версии (без `entity_type`, без JOIN на weekly — RPC возвращает нули, как было до этой ветки). Сид `marketing.channels` откатывать не обязательно — лишняя строка ничего не ломает. UI продолжит работать на v1-схеме: фронт ветки использует только колонки, которые есть и в v1, новые поля опциональны.
+DOWN-скрипт дропнет v2 view и текущее тело RPC (v3 шарит идентификатор с v2 — DROP по имени снесёт обе ревизии); файлы 2026-05-09 пересоздадут v1-версии (без `entity_type`, без JOIN на weekly — RPC возвращает нули, как было до этой ветки). Сид `marketing.channels` откатывать не обязательно — лишняя строка ничего не ломает. UI продолжит работать на v1-схеме: фронт ветки использует только колонки, которые есть и в v1, новые поля опциональны.
 
 ---
 
