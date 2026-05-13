@@ -64,6 +64,8 @@ import {
   fetchKategorii,
   fetchKollekcii,
   fetchModelDetail,
+  fetchModelSkleyki,
+  type ModelSkleyka,
   fetchRazmery,
   fetchSemeystvaCvetov,
   fetchSertifikaty,
@@ -506,7 +508,14 @@ function SizeLineupField({
 
 // ─── Tab type + props passed into each tab ────────────────────────────────
 
-type TabId = "description" | "attributes" | "articles" | "sku" | "content" | "history"
+type TabId =
+  | "description"
+  | "attributes"
+  | "articles"
+  | "sku"
+  | "skleyki" // W10.19 — секция склеек модели.
+  | "content"
+  | "history"
 
 interface TabContentProps {
   m: ModelDetail
@@ -2848,6 +2857,114 @@ function formatAuditDate(iso: string): string {
   }
 }
 
+// ─── Tab 6: Skleyki ───────────────────────────────────────────────────────
+//
+// W10.19 — список склеек, в которых есть артикулы базовой модели.
+//
+// Источник данных: fetchModelSkleyki(modelOsnovaId) — делает 3 запроса:
+//   1. id артикулов модели (JOIN на modeli по model_osnova_id)
+//   2. junction artikuly_skleyki_wb + artikuly_skleyki_ozon (параллельно)
+//   3. nazvanie склеек из skleyki_wb / skleyki_ozon
+//
+// Render: список карточек.  Левая колонка — chip канала + название.  Правая —
+// «N SKU» (число DISTINCT артикулов модели в этой склейке) + Link «Открыть».
+// Link ведёт на /catalog/skleyki?kanal=X&id=Y (стандартный routing страницы
+// склеек).  Drawer-over-drawer не делаем — это сложнее по z-index, а
+// существующая страница уже корректно открывает SkleykaCard.
+
+function TabSkleyki({ m }: { m: ModelDetail }) {
+  const skleykiQ = useQuery<ModelSkleyka[]>({
+    queryKey: ["catalog", "model-skleyki", m.id],
+    queryFn: () => fetchModelSkleyki(m.id),
+    staleTime: 30 * 1000,
+  })
+
+  if (skleykiQ.isLoading) {
+    return (
+      <Section label="Склейки модели">
+        <div className="flex items-center gap-2 text-sm text-stone-500">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          Загружаем склейки…
+        </div>
+      </Section>
+    )
+  }
+
+  if (skleykiQ.error) {
+    return (
+      <Section label="Склейки модели">
+        <div className="text-sm text-red-600">
+          Не удалось загрузить склейки: {String(skleykiQ.error)}
+        </div>
+      </Section>
+    )
+  }
+
+  const rows = skleykiQ.data ?? []
+
+  if (rows.length === 0) {
+    return (
+      <Section
+        label="Склейки модели"
+        hint="Склейки, в которые входят артикулы этой модели (Wildberries и/или Ozon)."
+      >
+        <div className="text-sm text-stone-400 italic py-6 text-center">
+          Артикулы этой модели пока не входят ни в одну склейку.
+        </div>
+      </Section>
+    )
+  }
+
+  // Суффикс «N SKU» по числу — простая RU-склонялка.
+  const formatSkuCount = (n: number): string => {
+    if (n % 10 === 1 && n % 100 !== 11) return `${n} SKU`
+    if ([2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100)) return `${n} SKU`
+    return `${n} SKU`
+  }
+
+  return (
+    <Section
+      label={`Склейки модели · ${rows.length}`}
+      hint="Склейки, в которые входят артикулы этой модели. Клик «Открыть» — карточка склейки в реестре."
+    >
+      <div className="space-y-1.5">
+        {rows.map((s) => (
+          <div
+            key={`${s.channel}-${s.id}`}
+            className="flex items-center gap-3 px-3 py-2 border border-stone-200 rounded-md bg-stone-50/40 hover:bg-stone-50"
+          >
+            <span
+              className={
+                s.channel === "wb"
+                  ? "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-pink-50 text-pink-700 ring-1 ring-inset ring-pink-600/20 shrink-0"
+                  : "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-600/20 shrink-0"
+              }
+            >
+              {s.channel === "wb" ? "WB" : "OZON"}
+            </span>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm text-stone-900 truncate" title={s.nazvanie}>
+                {s.nazvanie}
+              </div>
+              <div className="text-[11px] text-stone-500 tabular-nums">
+                {formatSkuCount(s.skuCount)} из этой модели
+              </div>
+            </div>
+            <Link
+              to={`/catalog/skleyki?kanal=${s.channel}&id=${s.id}`}
+              className="inline-flex items-center gap-1 px-2 py-1 text-xs text-stone-700 hover:text-stone-900 hover:bg-stone-100 rounded-md shrink-0"
+              title="Открыть карточку склейки"
+            >
+              Открыть
+              <ExternalLink className="w-3 h-3" />
+            </Link>
+          </div>
+        ))}
+      </div>
+    </Section>
+  )
+}
+
 function TabHistory({ m }: { m: ModelDetail }) {
   // Параллельно: история по `modeli_osnova` + по каждой вариации `modeli`.
   const variationIds = useMemo(() => m.modeli.map((v) => v.id), [m.modeli])
@@ -3739,6 +3856,8 @@ export function ModelCard({ kod, onClose }: ModelCardProps) {
                   label: "SKU",
                   count: model.modeli.flatMap((v) => v.artikuly.flatMap((a) => a.tovary)).length,
                 },
+                // W10.19 — список склеек, в которых есть артикулы этой модели.
+                { id: "skleyki", label: "Склейки" },
                 { id: "content", label: "Контент" },
                 { id: "history", label: "История" },
               ] as Array<{ id: TabId; label: string; count?: number }>).map((t) => (
@@ -3843,6 +3962,7 @@ function TabSwitcher(props: TabContentProps & { tab: TabId }) {
     case "attributes":  return <TabAttributes  {...rest} />
     case "articles":    return <TabArticles    {...rest} />
     case "sku":         return <TabSKU         {...rest} />
+    case "skleyki":     return <TabSkleyki     m={rest.m} />
     case "content":     return <TabContent     {...rest} />
     case "history":     return <TabHistory     m={rest.m} />
     default:            return null
