@@ -22,6 +22,7 @@ from datetime import date, datetime, timedelta
 import gspread.exceptions
 import httpx
 
+from .search_queries.bridge import ensure_db_words_in_sheets
 from .search_queries.db_io import write_product_breakdown, write_weekly
 
 from shared.clients.sheets_client import (
@@ -117,6 +118,19 @@ def _sync_search_words(
         return 0
 
     logger.info("Search words period: %s - %s", display_start, display_end)
+
+    # Bridge: pull any words added in the Marketing Hub UI (crm.branded_queries
+    # / crm.substitute_articles) into Sheets col A BEFORE we read the word list
+    # for the WB pull. Without this, words added since the last sync run are
+    # silently skipped because the WB loop iterates the Sheets column. Errors
+    # are logged + re-raised — better to abort than to drift on a stale list.
+    try:
+        bridged = ensure_db_words_in_sheets(ws)
+        if bridged:
+            logger.info("Bridge added %d DB-only words to Sheets col A", bridged)
+    except Exception as e:
+        logger.exception("Bridge DB→Sheets failed; aborting sync to avoid drift: %s", e)
+        raise
 
     # Load search words from column A (A3+), deduplicate while preserving row order
     col_a = ws.col_values(1)
