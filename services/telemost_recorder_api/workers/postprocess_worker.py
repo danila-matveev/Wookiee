@@ -104,7 +104,7 @@ async def process_one() -> bool:
     meeting_id = pick["id"]
     segments = pick["raw_segments"] or []
     invitees = pick["invitees"] or []
-    logger.info("Postprocessing meeting %s (segments=%d)", meeting_id, len(segments))
+    logger.info("[%s] Postprocessing meeting (segments=%d)", meeting_id, len(segments))
 
     try:
         if not segments:
@@ -126,11 +126,11 @@ async def process_one() -> bool:
             )
         await notify_meeting_result(meeting_id)
     except LLMPostprocessError as e:
-        logger.exception("LLM failed for meeting %s", meeting_id)
+        logger.exception("[%s] LLM failed", meeting_id)
         await _update_meeting(meeting_id, "failed", error=f"LLM: {e}")
         await notify_meeting_result(meeting_id)
     except Exception as e:  # noqa: BLE001
-        logger.exception("Postprocess crashed for meeting %s", meeting_id)
+        logger.exception("[%s] Postprocess crashed", meeting_id)
         await _update_meeting(meeting_id, "failed", error=f"unexpected: {e}")
         await notify_meeting_result(meeting_id)
     return True

@@ -83,7 +83,7 @@ async def _finalize_recording(
         try:
             raw_segments = json.loads(raw_segments_path.read_text())
         except Exception:  # noqa: BLE001
-            logger.exception("Failed to parse raw_segments for %s", meeting_id)
+            logger.exception("[%s] Failed to parse raw_segments", meeting_id)
 
     has_audio = audio_path.exists() and audio_path.stat().st_size > 0
     # `raw_segments=None` means the recorder reached audio but transcription
@@ -112,7 +112,7 @@ async def _finalize_recording(
                     audio_expires = upload["expires_at"]
                 except Exception:  # noqa: BLE001
                     logger.exception(
-                        "Audio upload failed for %s — leaving local",
+                        "[%s] Audio upload failed — leaving local",
                         meeting_id,
                     )
             await conn.execute(
@@ -131,7 +131,7 @@ async def _finalize_recording(
                 audio_expires,
             )
             logger.info(
-                "Recording %s ready for postprocess (segments=%d)",
+                "[%s] Recording ready for postprocess (segments=%d)",
                 meeting_id,
                 len(raw_segments or []),
             )
@@ -163,7 +163,7 @@ async def _finalize_recording(
                 meeting_id,
                 error_msg,
             )
-            logger.warning("Recording %s failed: %s", meeting_id, error_msg)
+            logger.warning("[%s] Recording failed: %s", meeting_id, error_msg)
 
 
 async def process_one() -> bool:
@@ -172,7 +172,7 @@ async def process_one() -> bool:
     if not pick:
         return False
     meeting_id = pick["id"]
-    logger.info("Recording meeting %s url=%s", meeting_id, pick["meeting_url"])
+    logger.info("[%s] Recording meeting url=%s", meeting_id, pick["meeting_url"])
     container_id = await asyncio.to_thread(
         spawn_recorder_container,
         meeting_id=meeting_id,
