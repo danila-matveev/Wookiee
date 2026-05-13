@@ -51,6 +51,22 @@ def meeting_actions(short_id: str) -> dict:
     }
 
 
+def empty_meeting_actions(short_id: str) -> dict:
+    """Keyboard for an 'empty' meeting (никто не говорил).
+
+    Only the delete button — transcript/summary/Notion are meaningless when
+    there's no content, but leaving the row entirely buttonless meant the
+    operator had no way to clear pollution from the list without DM-ing the
+    bot. Uses the same `meet:<short_id>:delete` callback as meeting_actions
+    so it flows through the existing confirm-delete handler.
+    """
+    return {
+        "inline_keyboard": [
+            [{"text": "🗑 Удалить", "callback_data": f"meet:{short_id}:delete"}],
+        ]
+    }
+
+
 def confirm_delete(short_id: str) -> dict:
     return {
         "inline_keyboard": [

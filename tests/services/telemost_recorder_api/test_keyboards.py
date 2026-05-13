@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from services.telemost_recorder_api.keyboards import (
     confirm_delete,
+    empty_meeting_actions,
     list_row_button,
     meeting_actions,
 )
@@ -32,3 +33,13 @@ def test_confirm_delete_has_yes_and_no():
     cbs = [b["callback_data"] for b in flat]
     assert "meet:abcdef12:confirm_delete" in cbs
     assert "meet:abcdef12:show" in cbs  # cancel returns to show
+
+
+def test_empty_meeting_has_delete_only_keyboard():
+    """Пустая встреча → одна кнопка 'Удалить', reuse meet:* callback пространства."""
+    kb = empty_meeting_actions("abcdef12")
+    assert len(kb["inline_keyboard"]) == 1
+    assert len(kb["inline_keyboard"][0]) == 1
+    btn = kb["inline_keyboard"][0][0]
+    assert btn["callback_data"] == "meet:abcdef12:delete"
+    assert "Удалить" in btn["text"]

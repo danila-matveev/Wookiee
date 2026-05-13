@@ -12,7 +12,10 @@ from typing import Any
 from uuid import UUID
 
 from services.telemost_recorder_api.db import get_pool
-from services.telemost_recorder_api.keyboards import meeting_actions
+from services.telemost_recorder_api.keyboards import (
+    empty_meeting_actions,
+    meeting_actions,
+)
 from services.telemost_recorder_api.meetings_repo import (
     build_transcript_text,  # re-export for back-compat
 )
@@ -200,7 +203,9 @@ async def notify_meeting_result(meeting_id: UUID) -> None:
         await tg_send_message(
             triggered_by,
             summary_text,
-            reply_markup=None if is_empty else meeting_actions(short_id),
+            reply_markup=empty_meeting_actions(short_id)
+            if is_empty
+            else meeting_actions(short_id),
         )
     except TelegramAPIError as e:
         if e.error_code in (400, 403):
