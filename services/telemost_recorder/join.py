@@ -616,8 +616,14 @@ async def run_session(
                         meeting.participants = await extract_participants(page)
                         participant_tick = 0
 
-                    # Grace period: don't exit for the first 90s so the host has time to join
-                    if elapsed >= 90 and await detect_meeting_ended(page):
+                    # Grace period: 5 минут вместо 90с. Раньше бот выходил, если
+                    # к 90-й секунде хост ещё не подключился и badge_count держался
+                    # на 1 — но реально хост часто приходит в 2-3 минуты после
+                    # старта. 5 минут — компромисс: достаточно чтобы хост успел,
+                    # но без переплаты за полностью пустой звонок.
+                    # Полноценный silence-based детект (анализ аудио-уровня) — TODO,
+                    # тут только raise grace.
+                    if elapsed >= 300 and await detect_meeting_ended(page):
                         _emit({"status": "MEETING_ENDED_DETECTED", "meeting_id": meeting.meeting_id})
                         break
             except (asyncio.CancelledError, KeyboardInterrupt):
