@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -132,13 +133,18 @@ def _make_item(
     default: str = "archive",
     files: list[str] | None = None,
 ) -> QueueItem:
+    now = datetime.now(timezone.utc)
     return QueueItem(
         id=id,
+        source_report=".hygiene/reports/hygiene-2026-05-14.json",
+        enqueued_at=now,
+        expires_at=now + timedelta(days=7),
         category="orphan-docs",
         files=files or ["docs/old.md"],
         question_ru=question_ru,
         options=["archive", "keep"],
         default_after_7d=default,
+        last_surfaced_at=now,
     )
 
 

@@ -145,3 +145,65 @@ class Decision(BaseModel):
     rationale_ru: str
     expires_at: Optional[datetime] = None
     metadata: Optional[dict[str, Any]] = None
+
+
+class Finding(BaseModel):
+    """Lightweight finding emitted by per-skill scanners (coverage, etc.).
+
+    A trimmed cousin of HygieneFinding/CodeQualityFinding — no autofix metadata,
+    just enough to surface the issue in reports and queues.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    category: HygieneCategory
+    severity: Severity
+    safe_to_autofix: bool = False
+    files: list[str] = Field(default_factory=list)
+    rationale: str
+    current_pct: Optional[float] = None
+    baseline_pct: Optional[float] = None
+    delta_pct: Optional[float] = None
+    ask_user: Optional[AskUser] = None
+
+
+class CoverageReport(BaseModel):
+    """Top-level report written by `/test-coverage-check` skill."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_url: str = Field(
+        default="https://wookiee.shop/schemas/coverage-report-v1.json",
+        alias="$schema",
+    )
+    version: str = "1.0.0"
+    run_id: str
+    started_at: datetime
+    finished_at: datetime
+    commit_sha: str
+    current_pct: float
+    baseline_pct: float
+    delta_pct: float
+    threshold_pct: float
+    drop_threshold_pp: float
+    findings: list[Finding] = Field(default_factory=list)
+    blocking: bool = False
+    truncated: bool = False
+    summary: dict[str, Any] = Field(default_factory=dict)
+
+
+class HeartbeatSummary(BaseModel):
+    """Aggregate snapshot for the morning heartbeat Telegram message."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    date_str: str
+    fixes_applied: int = 0
+    fixes_examples: list[str] = Field(default_factory=list)
+    needs_human_count: int = 0
+    coverage_pct: Optional[float] = None
+    coverage_delta_pp: Optional[float] = None
+    pr_number: Optional[int] = None
+    pr_status: Optional[Literal["open", "merged", "closed", "failed"]] = None
+    failure: Optional[str] = None
