@@ -10,7 +10,8 @@ from shared.clients.sheets_client import (
     get_or_create_worksheet,
     write_range,
 )
-from services.sheets_sync.config import GOOGLE_SA_FILE, SPREADSHEET_ID, TEST_MODE, get_sheet_name
+from services.sheets_sync import config
+from services.sheets_sync.config import GOOGLE_SA_FILE, SPREADSHEET_ID, get_sheet_name
 
 logger = logging.getLogger(__name__)
 
@@ -28,11 +29,23 @@ def update_status(results: list) -> None:
     if not results:
         return
 
+    grouped: dict[bool, list] = {}
+    for result in results:
+        mode = getattr(result, "test_mode", None)
+        grouped.setdefault(config.is_test_mode() if mode is None else mode, []).append(result)
+
+    for mode, mode_results in grouped.items():
+        _update_status_for_mode(mode_results, mode)
+
+
+def _update_status_for_mode(results: list, test_mode: bool) -> None:
+    """Write sync results to the status sheet for one effective mode."""
     try:
         gc = get_client(GOOGLE_SA_FILE)
         spreadsheet = gc.open_by_key(SPREADSHEET_ID)
-        sheet_name = get_sheet_name(SHEET_NAME)
-        ws = get_or_create_worksheet(spreadsheet, sheet_name)
+        with config.test_mode_override(test_mode):
+            sheet_name = get_sheet_name(SHEET_NAME)
+            ws = get_or_create_worksheet(spreadsheet, sheet_name)
 
         date_str, time_str = get_moscow_datetime()
         timestamp = f"{date_str} {time_str}"
@@ -42,7 +55,7 @@ def update_status(results: list) -> None:
 
         # Update with new results
         for r in results:
-            suffix = "_TEST" if TEST_MODE else ""
+            suffix = "_TEST" if test_mode else ""
             existing[r.name] = [
                 r.name,
                 f"{r.sheet_name}{suffix}",

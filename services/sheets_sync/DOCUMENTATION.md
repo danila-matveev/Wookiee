@@ -829,7 +829,8 @@ def main()
 CLI entry point. Аргументы:
 - `<name>` — имя скрипта или `all`
 - `--list` — список доступных скриптов
-- `--test` — принудительный тестовый режим
+- `--test` — принудительный тестовый режим (`*_TEST` листы)
+- `--prod` — принудительный продакшен-режим (основные листы)
 - `--start DD.MM.YYYY` — начальная дата (для search_analytics)
 - `--end DD.MM.YYYY` — конечная дата
 
@@ -839,6 +840,7 @@ CLI entry point. Аргументы:
 python -m services.sheets_sync.runner --list
 python -m services.sheets_sync.runner wb_stocks
 python -m services.sheets_sync.runner all
+python -m services.sheets_sync.runner fin_data_new --prod --start 14.03.2026 --end 13.05.2026
 python -m services.sheets_sync.runner search_analytics --start 01.01.2026 --end 07.01.2026
 ```
 
@@ -1013,9 +1015,11 @@ python -m services.sheets_sync.control_panel --interval 30
 ```bash
 # Тестовый режим (пишет в листы с суффиксом _TEST)
 SYNC_TEST_MODE=true python -m services.sheets_sync.runner wb_stocks
+python -m services.sheets_sync.runner wb_stocks --test
 
 # Продакшн (пишет в основные листы)
 SYNC_TEST_MODE=false python -m services.sheets_sync.runner wb_stocks
+python -m services.sheets_sync.runner wb_stocks --prod
 ```
 
 ### Запуск всех скриптов
@@ -1106,7 +1110,9 @@ Python `str "4.90"` → Sheets хранит как текст → отображ
 
 ### Тестовый режим
 
-`SYNC_TEST_MODE=true` → все листы получают суффикс `_TEST` (e.g. `WB остатки_TEST`). Продакшн-данные не затрагиваются.
+`SYNC_TEST_MODE=true` → CLI и ежедневный auto-run пишут в листы с суффиксом `_TEST` (e.g. `WB остатки_TEST`). Продакшн-данные не затрагиваются. Флаги `--test` / `--prod` переопределяют режим для разового CLI-запуска.
+
+Checkbox polling проверяет и основной лист, и `_TEST`-лист. Если чекбокс сработал на основном листе, конкретный sync запускается в prod-режиме; если на `_TEST` — в test-режиме. Это защищает кнопку обновления от ситуации, когда сам сервис запущен с `SYNC_TEST_MODE=true`, но пользователь нажал кнопку на основном листе.
 
 ### JS vs Python truthiness
 
