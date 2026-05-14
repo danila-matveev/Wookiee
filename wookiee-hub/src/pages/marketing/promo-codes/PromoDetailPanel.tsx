@@ -15,8 +15,6 @@ import type { PromoCodeRow, PromoProductBreakdownAgg, PromoStatWeekly } from "@/
 interface PromoDetailPanelProps {
   promoId: number
   onClose: () => void
-  /** Kept for API compatibility — only 'drawer' is rendered (split-pane removed). */
-  mode?: 'drawer'
 }
 
 const fmt  = (n: number) => n.toLocaleString('ru-RU')

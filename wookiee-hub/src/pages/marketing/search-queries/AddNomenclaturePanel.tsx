@@ -11,7 +11,6 @@ const NM_PURPOSES = ['Яндекс', 'Таргет ВК', 'Adblogger']
 
 interface AddNomenclaturePanelProps {
   onClose: () => void
-  mode?: 'drawer' | 'inline'
 }
 
 export function AddNomenclaturePanel({ onClose }: AddNomenclaturePanelProps) {

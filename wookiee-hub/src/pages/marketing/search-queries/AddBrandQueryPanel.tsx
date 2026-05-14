@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { X } from 'lucide-react'
 import { Drawer } from '@/components/crm/ui/Drawer'
 import { Button } from '@/components/crm/ui/Button'
 import { Input } from '@/components/crm/ui/Input'
@@ -7,11 +6,9 @@ import { useCreateBrandQuery } from '@/hooks/marketing/use-search-queries'
 
 interface AddBrandQueryPanelProps {
   onClose: () => void
-  /** 'inline' renders bare content for split-pane host; 'drawer' (default) wraps in Drawer. */
-  mode?: 'drawer' | 'inline'
 }
 
-export function AddBrandQueryPanel({ onClose, mode = 'drawer' }: AddBrandQueryPanelProps) {
+export function AddBrandQueryPanel({ onClose }: AddBrandQueryPanelProps) {
   const create = useCreateBrandQuery()
 
   const [query, setQuery] = useState('')
@@ -118,28 +115,6 @@ export function AddBrandQueryPanel({ onClose, mode = 'drawer' }: AddBrandQueryPa
       </Button>
     </>
   )
-
-  if (mode === 'inline') {
-    return (
-      <div className="flex flex-col h-full">
-        <header className="px-6 py-4 border-b border-border flex items-center justify-between shrink-0">
-          <h2 className="font-semibold text-lg text-fg">Новый брендированный запрос</h2>
-          <button
-            type="button"
-            aria-label="Закрыть"
-            className="p-2 rounded-md hover:bg-primary-light cursor-pointer"
-            onClick={onClose}
-          >
-            <X size={18} />
-          </button>
-        </header>
-        <div className="flex-1 overflow-y-auto px-6 py-4">{formBody}</div>
-        <footer className="px-6 py-4 border-t border-border flex justify-end gap-2 shrink-0">
-          {footer}
-        </footer>
-      </div>
-    )
-  }
 
   return (
     <Drawer

@@ -30,8 +30,8 @@ export function PromoCodesPage() {
   // Previous split-pane (560px) caused the right table columns to clip on viewport ≤ 1600.
   const renderPanel = () => {
     if (!active) return null
-    if (active.kind === 'add') return <AddPromoPanel onClose={closeAdd} mode="drawer" />
-    return <PromoDetailPanel promoId={active.promoId} onClose={closeDetail} mode="drawer" />
+    if (active.kind === 'add') return <AddPromoPanel onClose={closeAdd} />
+    return <PromoDetailPanel promoId={active.promoId} onClose={closeDetail} />
   }
 
   return (

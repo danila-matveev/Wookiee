@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { X } from 'lucide-react'
 import { Drawer } from '@/components/crm/ui/Drawer'
 import { Button } from '@/components/marketing/Button'
 import { Input } from '@/components/marketing/Input'
@@ -29,11 +28,9 @@ const CAMPAIGN_SUGGESTIONS = [
 
 interface AddWWPanelProps {
   onClose: () => void
-  /** 'inline' renders bare content for split-pane host; 'drawer' (default) wraps in Drawer. */
-  mode?: 'drawer' | 'inline'
 }
 
-export function AddWWPanel({ onClose, mode = 'drawer' }: AddWWPanelProps) {
+export function AddWWPanel({ onClose }: AddWWPanelProps) {
   const { data: modeli = [] } = useModeli()
   const createMut = useCreateSubstituteArticle()
 
@@ -175,26 +172,6 @@ export function AddWWPanel({ onClose, mode = 'drawer' }: AddWWPanelProps) {
       {createMut.isPending ? 'Создаю…' : 'Добавить'}
     </Button>
   )
-
-  if (mode === 'inline') {
-    return (
-      <div className="flex flex-col h-full min-h-0">
-        <header className="px-5 py-4 border-b border-stone-200 flex items-center justify-between shrink-0">
-          <div className="text-sm font-medium text-stone-900">Новый WW-код</div>
-          <button
-            type="button"
-            aria-label="Закрыть"
-            onClick={onClose}
-            className="p-1.5 rounded-md text-stone-400 hover:bg-stone-100 cursor-pointer"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </header>
-        <div className="flex-1 overflow-y-auto px-5 py-4 min-h-0">{body}</div>
-        <footer className="px-5 py-3 border-t border-stone-200 shrink-0 bg-card">{footer}</footer>
-      </div>
-    )
-  }
 
   return (
     <Drawer open={true} onClose={onClose} title="Новый WW-код" footer={footer}>

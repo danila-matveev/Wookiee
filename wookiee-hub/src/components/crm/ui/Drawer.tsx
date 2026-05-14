@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils'
  * For backward compatibility a raw Tailwind class string is still accepted
  * (e.g. width="max-w-3xl" used by influence drawers).
  */
-type DrawerWidth = 'sm' | 'md' | 'lg' | 'xl' | string
+type DrawerWidth = 'sm' | 'md' | 'lg' | 'xl' | (string & {})
 
 interface DrawerProps {
   open: boolean

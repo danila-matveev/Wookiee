@@ -67,13 +67,13 @@ describe('PromoDetailPanel — edit mode', () => {
   })
 
   it('renders external_uuid as small mono-font read-only label', () => {
-    render(<PromoDetailPanel promoId={42} onClose={() => {}} mode="drawer" />, { wrapper })
+    render(<PromoDetailPanel promoId={42} onClose={() => {}} />, { wrapper })
     expect(screen.getByText(/uuid-aaa-bbb/i)).toBeInTheDocument()
   })
 
   it('pencil click switches fields into editable inputs', async () => {
     const user = userEvent.setup()
-    render(<PromoDetailPanel promoId={42} onClose={() => {}} mode="drawer" />, { wrapper })
+    render(<PromoDetailPanel promoId={42} onClose={() => {}} />, { wrapper })
 
     // before edit: no Save button
     expect(screen.queryByRole('button', { name: /сохранить/i })).not.toBeInTheDocument()
@@ -92,7 +92,7 @@ describe('PromoDetailPanel — edit mode', () => {
 
   it('Save calls mutateAsync with edited shape and clears edit mode', async () => {
     const user = userEvent.setup()
-    render(<PromoDetailPanel promoId={42} onClose={() => {}} mode="drawer" />, { wrapper })
+    render(<PromoDetailPanel promoId={42} onClose={() => {}} />, { wrapper })
 
     await user.click(screen.getByRole('button', { name: /edit/i }))
 
@@ -123,7 +123,7 @@ describe('PromoDetailPanel — edit mode', () => {
 
   it('Cancel reverts edits without calling the mutation', async () => {
     const user = userEvent.setup()
-    render(<PromoDetailPanel promoId={42} onClose={() => {}} mode="drawer" />, { wrapper })
+    render(<PromoDetailPanel promoId={42} onClose={() => {}} />, { wrapper })
 
     await user.click(screen.getByRole('button', { name: /edit/i }))
 
@@ -147,7 +147,7 @@ describe('PromoDetailPanel — edit mode', () => {
   it('drawer renders close button that fires onClose', async () => {
     const onClose = vi.fn()
     const user = userEvent.setup()
-    render(<PromoDetailPanel promoId={42} onClose={onClose} mode="drawer" />, { wrapper })
+    render(<PromoDetailPanel promoId={42} onClose={onClose} />, { wrapper })
     // close button is the only Закрыть-style button — find by aria-label
     const closeBtn = screen.getByRole('button', { name: /закрыть/i })
     await user.click(closeBtn)

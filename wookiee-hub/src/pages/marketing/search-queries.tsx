@@ -84,16 +84,15 @@ export function SearchQueriesPage() {
   // (CR корз / Корз / CR зак / Заказы / CRV) at viewport ≤ 1600.
   const renderPanel = () => {
     if (!active) return null
-    if (active.kind === 'add-brand') return <AddBrandQueryPanel onClose={closeAdd} mode="drawer" />
+    if (active.kind === 'add-brand') return <AddBrandQueryPanel onClose={closeAdd} />
     if (active.kind === 'add-nm')    return <AddNomenclaturePanel onClose={closeAdd} />
-    if (active.kind === 'add-ww')    return <AddWWPanel onClose={closeAdd} mode="drawer" />
+    if (active.kind === 'add-ww')    return <AddWWPanel onClose={closeAdd} />
     return (
       <SearchQueryDetailPanel
         unifiedId={active.unifiedId}
         dateFrom={dateFrom}
         dateTo={dateTo}
         onClose={closeDetail}
-        mode="drawer"
       />
     )
   }
