@@ -531,7 +531,6 @@ async def run_session(
     historical behaviour: a fresh UUID is generated and artefacts land in
     ``data/telemost/<meeting_id>``.
     """
-    from services.telemost_recorder.audio import AudioCapture
 
     meeting = Meeting(url=url)
     if meeting_id is not None:
