@@ -9,7 +9,8 @@
 --    anchor: "Модель"
 -- =========================================================================
 
-create or replace view public.vw_export_modeli as
+create or replace view public.vw_export_modeli
+    with (security_invoker = true) as
 select
     m.kod                              as "Модель",
     mo.kod                             as "Модель основа",
@@ -73,7 +74,8 @@ left join public.statusy          s   on s.id   = m.status_id;
 --    anchor: "Артикул"
 -- =========================================================================
 
-create or replace view public.vw_export_artikuly as
+create or replace view public.vw_export_artikuly
+    with (security_invoker = true) as
 select
     a.artikul              as "Артикул",
     m.kod                  as "Модель",
@@ -95,7 +97,8 @@ left join public.statusy s on s.id = a.status_id;
 --    anchor: "БАРКОД"
 -- =========================================================================
 
-create or replace view public.vw_export_tovary as
+create or replace view public.vw_export_tovary
+    with (security_invoker = true) as
 select
     t.barkod                as "БАРКОД",
     t.barkod_gs1            as "БАРКОД GS1",
@@ -133,7 +136,8 @@ left join public.statusy  s_lm on s_lm.id = t.status_lamoda_id;
 --    anchor: "Color code"
 -- =========================================================================
 
-create or replace view public.vw_export_cveta as
+create or replace view public.vw_export_cveta
+    with (security_invoker = true) as
 select
     c.color_code   as "Color code",
     c.color        as "Color",
@@ -150,7 +154,8 @@ left join public.statusy s on s.id = c.status_id;
 --    anchor: ("Название склейки", "БАРКОД")
 -- =========================================================================
 
-create or replace view public.vw_export_skleyki_wb as
+create or replace view public.vw_export_skleyki_wb
+    with (security_invoker = true) as
 select
     sw.nazvanie     as "Название склейки",
     t.barkod        as "БАРКОД",
@@ -174,7 +179,8 @@ left join public.razmery     r  on r.id  = t.razmer_id;
 --    anchor: ("Название склейки", "БАРКОД")
 -- =========================================================================
 
-create or replace view public.vw_export_skleyki_ozon as
+create or replace view public.vw_export_skleyki_ozon
+    with (security_invoker = true) as
 select
     so.nazvanie     as "Название склейки",
     t.barkod        as "БАРКОД",

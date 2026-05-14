@@ -59,6 +59,7 @@ def _start_run(triggered_by: str) -> Optional[str]:
     from shared.data_layer._connection import _get_supabase_connection
 
     run_id = str(uuid.uuid4())
+    conn = None
     try:
         conn = _get_supabase_connection()
         with conn.cursor() as cur:
@@ -70,11 +71,21 @@ def _start_run(triggered_by: str) -> Optional[str]:
                 (run_id, TOOL_SLUG, triggered_by),
             )
         conn.commit()
-        conn.close()
         return run_id
     except Exception as exc:
         logger.warning("tool_runs insert failed for %s: %s", TOOL_SLUG, exc)
+        if conn is not None:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         return None
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 def _finish_run(
@@ -96,6 +107,7 @@ def _finish_run(
         f"appended={summary.get('rows_appended', 0)} "
         f"deleted={summary.get('rows_deleted', 0)}"
     )
+    conn = None
     try:
         conn = _get_supabase_connection()
         with conn.cursor() as cur:
@@ -112,9 +124,19 @@ def _finish_run(
                 (status, duration_ms, output_summary, error, run_id),
             )
         conn.commit()
-        conn.close()
     except Exception as exc:
         logger.warning("tool_runs update failed for %s: %s", run_id, exc)
+        if conn is not None:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 # ---------------------------------------------------------------------------
