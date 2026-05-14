@@ -259,3 +259,6 @@ _scratch/
 .crm-mockups/
 
 .claude/worktrees/
+
+# Codex CLI local config (contains MCP secrets)
+.codex/config.toml
