@@ -5,6 +5,31 @@
 
 ---
 
+## [2026-05-14] Sheets Sync: prod/test routing for `Фин данные NEW`
+
+### Что сделано
+- Найдена причина, почему кнопка обновления не меняла основной лист `Фин данные NEW`: сервис был запущен с `SYNC_TEST_MODE=true`, Apps Script выбирал `Фин данные NEW_TEST`, а в тестовом листе не было баркодов, поэтому sync завершался как `ok (0 rows)`.
+- `control_panel.py` теперь проверяет и основной лист, и `_TEST`, а запуск делает в режиме фактического листа-триггера.
+- Добавлен recovery для `Фин данные NEW_TEST`: если чекбокс сработал на пустом тестовом листе, sync перенаправляется на основной лист с баркодами.
+- Исправлен CLI-флаг `--test` и добавлен `--prod` для ручного запуска без изменения `.env`.
+- Обновлён Apps Script-шаблон кнопки: целевой лист выбирается по активному листу, а не по наличию `_TEST`.
+- Основной лист `Фин данные NEW` вручную обновлён за период `14.03.2026 — 13.05.2026`.
+
+### Обновлено
+- [x] `services/sheets_sync/config.py`
+- [x] `services/sheets_sync/control_panel.py`
+- [x] `services/sheets_sync/runner.py`
+- [x] `services/sheets_sync/status.py`
+- [x] `services/sheets_sync/apps_script/Обновление Фин данные NEW.js`
+- [x] `tests/services/sheets_sync/test_runtime_modes.py`
+- [x] `README.md`
+- [x] `services/sheets_sync/README.md`
+- [x] `services/sheets_sync/DOCUMENTATION.md`
+- [x] `services/sheets_sync/docs/scripts/fin-data.md`
+- [x] `docs/development-history.md`
+
+---
+
 ## 2026-04-26 — Refactor v3 Phase 1 (PRs #51-58)
 
 8-PR рефакторинг + Stage C верификация:
@@ -219,4 +244,3 @@
 - [x] `agents/oleg/services/data_freshness_service.py` (пороги + новые проверки)
 - [x] `scripts/check_data_ready.py` (синхронизация порогов)
 - [x] `docs/database/DATA_QUALITY_NOTES.md` (п.12)
-
