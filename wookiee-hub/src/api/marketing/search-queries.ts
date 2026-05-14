@@ -128,13 +128,15 @@ export async function fetchSearchQueryWeeklyByWord(
   searchWord: string,
   nomenklaturaWb: string | null,
 ): Promise<SearchQueryWeeklyStat[]> {
-  const orFilter = nomenklaturaWb
-    ? `search_word.eq.${searchWord},search_word.eq.${nomenklaturaWb}`
-    : `search_word.eq.${searchWord}`
+  // .in() over .or() — каждое значение шлётся отдельным URL-параметром,
+  // не склеивается строкой → безопасно для значений с «,», пробелами, «/».
+  const words = nomenklaturaWb && nomenklaturaWb !== searchWord
+    ? [searchWord, nomenklaturaWb]
+    : [searchWord]
   const { data, error } = await supabase
     .schema('marketing').from('search_queries_weekly')
     .select('search_word, week_start, frequency, open_card, add_to_cart, orders')
-    .or(orFilter)
+    .in('search_word', words)
     .order('week_start', { ascending: true })
   if (error) throw error
   return ((data ?? []) as Record<string, unknown>[]).map((r) => ({
