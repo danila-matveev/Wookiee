@@ -207,6 +207,12 @@ test-results/
 .claude/state/
 
 # ============================================================================
+# Auto-installed external skills (Vercel Labs / Pencil etc.) — auto-managed
+# Canonical tracked skills live under .claude/skills/
+# ============================================================================
+.agents/skills/
+
+# ============================================================================
 # Refactor v3 phase 1 hardening
 # ============================================================================
 
