@@ -68,6 +68,31 @@ def test_format_summary_message_renders_task_context_and_conditions():
     assert "новые фото" in msg
 
 
+def test_format_summary_message_partial_renders_warning():
+    """summary.partial=True (paragraphs chunk failed) → UI warning,
+    чтобы юзер понимал почему transcript.txt не пришёл."""
+    meeting = {
+        "id": _MEETING_ID,
+        "title": "Дейли",
+        "started_at": datetime(2026, 5, 8, 10, 0, tzinfo=timezone.utc),
+        "duration_seconds": 1800,
+        "summary": {
+            "partial": True,
+            "participants": ["Полина"],
+            "topics": [],
+            "decisions": ["Релизим в пятницу"],
+            "tasks": [],
+        },
+        "tags": [],
+    }
+    msg = format_summary_message(meeting)
+    lower = msg.lower()
+    assert "транскрипт" in lower
+    assert "итоги встречи" in lower
+    # Сам summary при этом рендерится (decisions есть)
+    assert "Релизим в пятницу" in msg
+
+
 def test_format_summary_message_empty():
     meeting = {
         "id": _MEETING_ID, "title": None,
@@ -77,7 +102,7 @@ def test_format_summary_message_empty():
         "tags": [],
     }
     msg = format_summary_message(meeting)
-    assert "речь" in msg.lower() or "тишин" in msg.lower()
+    assert "никто не говорил" in msg.lower() or "пуст" in msg.lower()
 
 
 def test_build_transcript_text():
@@ -342,6 +367,68 @@ async def test_notify_continues_when_transcript_send_fails():
         await notify_meeting_result(_MEETING_ID)
 
     assert len(msgs) == 1  # summary delivered
+
+
+@pytest.mark.asyncio
+async def test_bot_blocked_logs_error_for_alert(caplog):
+    """Telegram 403 (bot blocked) на summary-send → logger.error,
+    чтобы install_telegram_alerts поднял alert оператору.
+    Раньше это был logger.warning → молчаливый таймаут на стороне юзера."""
+    import logging
+    from services.telemost_recorder_api.telegram_client import TelegramAPIError
+
+    meeting_row = {
+        "id": _MEETING_ID,
+        "title": "Дейли",
+        "triggered_by": 555,
+        "started_at": datetime(2026, 5, 8, 10, 0, tzinfo=timezone.utc),
+        "duration_seconds": 1800,
+        "status": "done",
+        "summary": {"participants": ["Полина"], "topics": [], "decisions": [], "tasks": []},
+        "tags": [],
+        "processed_paragraphs": [{"speaker": "Полина", "start_ms": 0, "text": "ok"}],
+        "error": None,
+    }
+
+    class FakeConn:
+        async def fetchval(self, query, *args):
+            return datetime(2026, 5, 8, 11, 0, tzinfo=timezone.utc)
+
+        async def fetchrow(self, query, *args):
+            return meeting_row
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+    class FakePool:
+        def acquire(self):
+            return FakeConn()
+
+    err = TelegramAPIError("Forbidden: bot was blocked by the user", error_code=403)
+
+    caplog.set_level(logging.WARNING, logger="services.telemost_recorder_api.notifier")
+
+    with patch(
+        "services.telemost_recorder_api.notifier.get_pool",
+        AsyncMock(return_value=FakePool()),
+    ), patch(
+        "services.telemost_recorder_api.notifier.tg_send_message",
+        AsyncMock(side_effect=err),
+    ), patch(
+        "services.telemost_recorder_api.notifier.tg_send_document",
+        AsyncMock(),
+    ):
+        await notify_meeting_result(_MEETING_ID)
+
+    error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert error_records, (
+        f"expected at least one ERROR-level record so the alert handler "
+        f"picks it up; got levels={[r.levelno for r in caplog.records]}"
+    )
+    assert any("unreachable" in r.getMessage() for r in error_records)
 
 
 @pytest.mark.asyncio

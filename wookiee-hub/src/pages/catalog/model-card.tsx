@@ -34,6 +34,7 @@ import {
   Plus,
   Save,
   Trash2,
+  Undo2,
   X,
 } from "lucide-react"
 
@@ -47,19 +48,27 @@ import {
   type AuditEntry,
   bulkAddSizeToArtikuly,
   bulkCreateArtikuly,
+  bulkInsertTovary,
   bulkUpdateTovaryStatus,
   duplicateModel,
   fetchAllTags,
   fetchAttributesForCategory,
+  fetchAtributy,
+  insertAtribut,
+  linkAtributToKategoriya,
   type Atribut,
-  fetchAuditFor,
+  type AtributPayload,
+  fetchAuditForModel,
+  getRollbackableFields,
+  rollbackAuditChange,
   fetchBrendy,
-  fetchCvetaWithUsage,
   fetchFabriki,
   fetchImportery,
   fetchKategorii,
   fetchKollekcii,
   fetchModelDetail,
+  fetchModelSkleyki,
+  type ModelSkleyka,
   fetchRazmery,
   fetchSemeystvaCvetov,
   fetchSertifikaty,
@@ -84,6 +93,7 @@ import {
 import {
   AssetUploader,
   AttributeControl,
+  CellText,
   CompletenessRing,
   FieldWrap,
   LevelBadge,
@@ -96,7 +106,11 @@ import {
   TextareaField,
   Tooltip,
 } from "@/components/catalog/ui"
-import { computeCompleteness, relativeDate, swatchColor } from "@/lib/catalog/color-utils"
+import { colorSwatchStyle, computeCompleteness, relativeDate } from "@/lib/catalog/color-utils"
+import { useAvailableColors } from "@/hooks/use-available-colors"
+import { translateError } from "@/lib/catalog/error-translator"
+import { toast } from "@/lib/catalog/toast"
+import { compareRazmer } from "@/lib/catalog/size-utils"
 
 // ─── Local helpers ─────────────────────────────────────────────────────────
 
@@ -497,7 +511,14 @@ function SizeLineupField({
 
 // ─── Tab type + props passed into each tab ────────────────────────────────
 
-type TabId = "description" | "attributes" | "articles" | "sku" | "content" | "history"
+type TabId =
+  | "description"
+  | "attributes"
+  | "articles"
+  | "sku"
+  | "skleyki" // W10.19 — секция склеек модели.
+  | "content"
+  | "history"
 
 interface TabContentProps {
   m: ModelDetail
@@ -890,6 +911,7 @@ function TabAttributes({ m, draft, setDraft, editing }: TabContentProps) {
     staleTime: 5 * 60 * 1000,
   })
   const attrs: Atribut[] = attrKeysQ.data ?? []
+  const [addOpen, setAddOpen] = useState(false)
 
   const set = (k: string, v: unknown) => {
     if (!draft) return
@@ -899,46 +921,296 @@ function TabAttributes({ m, draft, setDraft, editing }: TabContentProps) {
     ? (draft as unknown as Record<string, unknown>)
     : (m as unknown as Record<string, unknown>))
 
-  if (attrs.length === 0) {
-    return (
-      <Section label="Атрибуты">
-        <div className="text-sm text-stone-400 italic">
-          Нет специфичных атрибутов для этой категории
-        </div>
-      </Section>
-    )
-  }
+  // W9.20 — прогресс заполнения атрибутов: считаем сколько из `attrs` имеют
+  // непустое значение в текущем view (draft или сохранённой модели).
+  const filledCount = useMemo(() => {
+    return attrs.filter((a) => {
+      const v = view[a.key]
+      if (v == null) return false
+      if (typeof v === "string") return v.trim().length > 0
+      if (Array.isArray(v)) return v.length > 0
+      return true
+    }).length
+  }, [attrs, view])
+  const totalCount = attrs.length
+  const pct = totalCount > 0 ? Math.round((filledCount / totalCount) * 100) : 0
+
+  const sectionHeader = (
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center gap-3">
+        <span>{totalCount > 0 ? `${totalCount} атрибутов настроены для этой категории` : "Атрибуты не настроены"}</span>
+        {totalCount > 0 && (
+          <span className="inline-flex items-center gap-1.5 text-[11px] text-stone-500">
+            <span>Заполнено {filledCount} из {totalCount}</span>
+            <span className="w-24 h-1.5 rounded-full bg-stone-100 overflow-hidden">
+              <span
+                className="block h-full bg-stone-900 transition-all"
+                style={{ width: `${pct}%` }}
+              />
+            </span>
+            <span className="tabular-nums">{pct}%</span>
+          </span>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={() => setAddOpen(true)}
+        disabled={m.kategoriya_id == null}
+        title={m.kategoriya_id != null ? "Создать новый атрибут и привязать к этой категории" : "У модели не указана категория"}
+        className="px-2.5 py-1 text-xs text-white bg-stone-900 rounded-md flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-stone-800"
+      >
+        <Plus className="w-3 h-3" /> Новый атрибут
+      </button>
+    </div>
+  )
 
   return (
-    <Section
-      label={`Атрибуты категории «${m.kategoriya ?? "—"}»`}
-      hint={`${attrs.length} атрибутов настроены для этой категории`}
+    <>
+      <Section
+        label={`Атрибуты категории «${m.kategoriya ?? "—"}»`}
+        hint={sectionHeader as unknown as string}
+      >
+        {attrs.length === 0 ? (
+          <div className="text-sm text-stone-400 italic">
+            Нет специфичных атрибутов для этой категории. Нажмите «+ Новый атрибут» чтобы создать первый.
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-x-4 gap-y-4">
+            {attrs.map((a) => {
+              const lvl = FIELD_LEVEL[a.key] ?? "model"
+              return (
+                <AttributeControl
+                  key={a.key}
+                  atribut={a}
+                  value={view[a.key]}
+                  onChange={(v) => set(a.key, v)}
+                  readonly={!editing}
+                  level={lvl}
+                />
+              )
+            })}
+          </div>
+        )}
+      </Section>
+      {addOpen && m.kategoriya_id != null && (
+        <AddAtributModal
+          kategoriyaId={m.kategoriya_id}
+          existingAtributIds={new Set(attrs.map((a) => a.id))}
+          onClose={() => setAddOpen(false)}
+        />
+      )}
+    </>
+  )
+}
+
+// W9.14 — модалка для создания нового атрибута + привязки к текущей категории.
+// Также позволяет привязать существующий (не связанный с этой категорией) атрибут.
+function AddAtributModal({
+  kategoriyaId,
+  existingAtributIds,
+  onClose,
+}: {
+  kategoriyaId: number
+  existingAtributIds: Set<number>
+  onClose: () => void
+}) {
+  const queryClient = useQueryClient()
+  const [mode, setMode] = useState<"create" | "link">("create")
+  const [key, setKey] = useState("")
+  const [label, setLabel] = useState("")
+  const [type, setType] = useState<"text" | "number" | "select" | "multiselect" | "boolean">("text")
+  const [optionsText, setOptionsText] = useState("")
+  const [linkAtributId, setLinkAtributId] = useState<number | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const allAtributyQ = useQuery({
+    queryKey: ["catalog", "atributy", "all"],
+    queryFn: fetchAtributy,
+    staleTime: 5 * 60 * 1000,
+  })
+  const linkableAtributy = useMemo(
+    () => (allAtributyQ.data ?? []).filter((a) => !existingAtributIds.has(a.id)),
+    [allAtributyQ.data, existingAtributIds],
+  )
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["catalog", "kategoriya-atributy", kategoriyaId] })
+    queryClient.invalidateQueries({ queryKey: ["catalog", "atributy"] })
+  }
+
+  const createMut = useMutation({
+    mutationFn: async () => {
+      if (mode === "link") {
+        if (linkAtributId == null) throw new Error("Выберите атрибут из списка")
+        await linkAtributToKategoriya(linkAtributId, kategoriyaId)
+        return
+      }
+      const k = key.trim()
+      const l = label.trim()
+      if (!k) throw new Error("Укажите внутренний key атрибута (латиница, snake_case)")
+      if (!l) throw new Error("Укажите подпись атрибута для UI")
+      const options = (type === "select" || type === "multiselect")
+        ? optionsText.split(",").map((s) => s.trim()).filter(Boolean)
+        : []
+      const payload: AtributPayload = {
+        key: k,
+        label: l,
+        type: type as never,
+        options: options.length > 0 ? options : undefined,
+        default_value: null,
+        helper_text: null,
+      }
+      const created = await insertAtribut(payload)
+      await linkAtributToKategoriya(created.id, kategoriyaId)
+    },
+    onSuccess: () => {
+      invalidate()
+      onClose()
+    },
+    onError: (e: unknown) => setError(translateError(e)),
+  })
+
+  return (
+    <div
+      className="fixed inset-0 bg-stone-900/40 flex items-center justify-center z-50 p-4"
+      onClick={onClose}
     >
-      <div className="grid grid-cols-2 gap-x-4 gap-y-4">
-        {attrs.map((a) => {
-          const lvl = FIELD_LEVEL[a.key] ?? "model"
-          return (
-            <AttributeControl
-              key={a.key}
-              atribut={a}
-              value={view[a.key]}
-              onChange={(v) => set(a.key, v)}
-              readonly={!editing}
-              level={lvl}
-            />
-          )
-        })}
+      <div
+        className="bg-white rounded-lg shadow-xl border border-stone-200 w-full max-w-md p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-medium text-stone-900">Новый атрибут</h3>
+          <button onClick={onClose} className="text-stone-400 hover:text-stone-700">×</button>
+        </div>
+        <div className="flex gap-2 mb-4 text-xs">
+          <button
+            type="button"
+            onClick={() => setMode("create")}
+            className={`px-2.5 py-1 rounded-md border ${mode === "create" ? "bg-stone-900 text-white border-stone-900" : "bg-white text-stone-700 border-stone-200"}`}
+          >
+            Создать новый
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("link")}
+            className={`px-2.5 py-1 rounded-md border ${mode === "link" ? "bg-stone-900 text-white border-stone-900" : "bg-white text-stone-700 border-stone-200"}`}
+          >
+            Подключить существующий
+          </button>
+        </div>
+
+        {mode === "create" ? (
+          <div className="space-y-3">
+            <div>
+              <label className="block text-[11px] text-stone-500 mb-1">Внутренний key (snake_case)</label>
+              <input
+                type="text"
+                value={key}
+                onChange={(e) => setKey(e.target.value)}
+                placeholder="material_sostav"
+                className="w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md outline-none focus:border-stone-400"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] text-stone-500 mb-1">Подпись для UI</label>
+              <input
+                type="text"
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                placeholder="Состав материала"
+                className="w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md outline-none focus:border-stone-400"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] text-stone-500 mb-1">Тип значения</label>
+              <select
+                value={type}
+                onChange={(e) => setType(e.target.value as never)}
+                className="w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md outline-none focus:border-stone-400 bg-white"
+              >
+                <option value="text">Текст</option>
+                <option value="number">Число</option>
+                <option value="boolean">Да / Нет</option>
+                <option value="select">Один из списка</option>
+                <option value="multiselect">Несколько из списка</option>
+              </select>
+            </div>
+            {(type === "select" || type === "multiselect") && (
+              <div>
+                <label className="block text-[11px] text-stone-500 mb-1">Варианты значений (через запятую)</label>
+                <input
+                  type="text"
+                  value={optionsText}
+                  onChange={(e) => setOptionsText(e.target.value)}
+                  placeholder="хлопок, лён, шёлк"
+                  className="w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md outline-none focus:border-stone-400"
+                />
+              </div>
+            )}
+          </div>
+        ) : (
+          <div>
+            <label className="block text-[11px] text-stone-500 mb-1">Атрибут из общего справочника</label>
+            <select
+              value={linkAtributId ?? ""}
+              onChange={(e) => setLinkAtributId(e.target.value ? Number(e.target.value) : null)}
+              className="w-full px-2.5 py-1.5 text-sm border border-stone-200 rounded-md outline-none focus:border-stone-400 bg-white"
+            >
+              <option value="">— выберите атрибут —</option>
+              {linkableAtributy.map((a) => (
+                <option key={a.id} value={a.id}>{a.label} ({a.type})</option>
+              ))}
+            </select>
+            <p className="text-[11px] text-stone-500 mt-2">
+              Показаны атрибуты, ещё не привязанные к этой категории.
+            </p>
+          </div>
+        )}
+
+        {error && (
+          <div className="mt-3 text-xs text-red-600 bg-red-50 border border-red-200 rounded-md px-2.5 py-1.5">
+            {error}
+          </div>
+        )}
+
+        <div className="flex items-center justify-end gap-2 mt-5">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-3 py-1.5 text-xs text-stone-700 bg-white border border-stone-200 hover:bg-stone-50 rounded-md"
+          >
+            Отмена
+          </button>
+          <button
+            type="button"
+            onClick={() => { setError(null); createMut.mutate() }}
+            disabled={createMut.isPending}
+            className="px-3 py-1.5 text-xs text-white bg-stone-900 hover:bg-stone-800 rounded-md disabled:opacity-50"
+          >
+            {createMut.isPending ? "Сохраняем…" : (mode === "create" ? "Создать и привязать" : "Подключить")}
+          </button>
+        </div>
       </div>
-    </Section>
+    </div>
   )
 }
 
 // ─── Tab 3: Articles ───────────────────────────────────────────────────────
 
 function TabArticles({ m, hexByCvet, openColor }: TabContentProps) {
-  const allArts = m.modeli.flatMap((v) =>
-    v.artikuly.map((a) => ({ ...a, variantKod: v.kod, importerName: v.importer_nazvanie })),
-  )
+  // W10.29 — стабильный порядок: variantKod → cvet.color_code. Смена статуса
+  // не должна менять порядок строк.
+  const allArts = useMemo(() => {
+    const rows = m.modeli.flatMap((v) =>
+      v.artikuly.map((a) => ({ ...a, variantKod: v.kod, importerName: v.importer_nazvanie })),
+    )
+    return rows.sort((a, b) => {
+      const variantCmp = (a.variantKod ?? "").localeCompare(b.variantKod ?? "", "ru", { numeric: true })
+      if (variantCmp !== 0) return variantCmp
+      return (a.cvet_color_code ?? "").localeCompare(b.cvet_color_code ?? "", "ru", { numeric: true })
+    })
+  }, [m.modeli])
   const [addOpen, setAddOpen] = useState(false)
   const hasVariations = m.modeli.length > 0
   return (
@@ -954,15 +1226,17 @@ function TabArticles({ m, hexByCvet, openColor }: TabContentProps) {
           type="button"
           onClick={() => setAddOpen(true)}
           disabled={!hasVariations}
-          title={hasVariations ? "Создать артикулы" : "Сначала создайте вариацию модели"}
+          title={hasVariations ? "Добавить цвет — создать артикулы из доступных цветов категории" : "Сначала создайте вариацию модели"}
           className="px-2.5 py-1 text-xs text-white bg-stone-900 rounded-md flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-stone-800"
         >
-          <Plus className="w-3 h-3" /> Добавить
+          <Plus className="w-3 h-3" /> Добавить цвет
         </button>
       </div>
       {addOpen && (
         <AddArtikulModal
           modelKod={m.kod}
+          modelRazmery={parseRazmery(m.razmery_modeli)}
+          kategoriyaId={m.kategoriya_id ?? null}
           variations={m.modeli}
           onClose={() => setAddOpen(false)}
         />
@@ -982,36 +1256,35 @@ function TabArticles({ m, hexByCvet, openColor }: TabContentProps) {
         <tbody>
           {allArts.map((a) => {
             const hex = a.cvet_id != null ? hexByCvet.get(a.cvet_id) ?? null : null
-            const swatch = hex ?? (a.cvet_color_code ? swatchColor(a.cvet_color_code) : "#E7E5E4")
             return (
               <tr key={a.id} className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60">
-                <td className="px-3 py-2 font-mono text-xs text-stone-700">{a.artikul}</td>
-                <td className="px-3 py-2 font-mono text-xs text-stone-600">{a.variantKod}</td>
+                <td className="px-3 py-2 font-mono text-xs text-stone-700"><CellText title={a.artikul}>{a.artikul}</CellText></td>
+                <td className="px-3 py-2 font-mono text-xs text-stone-600"><CellText title={a.variantKod ?? ""}>{a.variantKod}</CellText></td>
                 <td className="px-3 py-2">
                   <button
                     type="button"
                     onClick={() => a.cvet_color_code && openColor(a.cvet_color_code)}
                     disabled={!a.cvet_color_code}
-                    className="flex items-center gap-1.5 hover:bg-stone-100 rounded px-1 py-0.5 -mx-1 disabled:cursor-default"
+                    className="flex items-center gap-1.5 min-w-0 max-w-full hover:bg-stone-100 rounded px-1 py-0.5 -mx-1 disabled:cursor-default"
                   >
                     <span
                       className="inline-block w-3.5 h-3.5 rounded ring-1 ring-stone-200 shrink-0"
-                      style={{ background: swatch }}
+                      style={{ ...colorSwatchStyle(hex) }}
                     />
-                    <span className="font-mono text-xs text-stone-700">
+                    <CellText className="font-mono text-xs text-stone-700" title={a.cvet_color_code ?? ""}>
                       {a.cvet_color_code ?? "—"}
-                    </span>
+                    </CellText>
                     {a.cvet_nazvanie && (
-                      <span className="text-stone-500 text-xs">{a.cvet_nazvanie}</span>
+                      <CellText className="text-stone-500 text-xs" title={a.cvet_nazvanie}>{a.cvet_nazvanie}</CellText>
                     )}
                   </button>
                 </td>
-                <td className="px-3 py-2"><StatusBadge statusId={a.status_id ?? 0} compact /></td>
+                <td className="px-3 py-2"><StatusBadge statusId={a.status_id} compact /></td>
                 <td className="px-3 py-2 font-mono text-[11px] text-stone-500 tabular-nums">
-                  {a.nomenklatura_wb ?? "—"}
+                  <CellText title={a.nomenklatura_wb != null ? String(a.nomenklatura_wb) : ""}>{a.nomenklatura_wb ?? "—"}</CellText>
                 </td>
                 <td className="px-3 py-2 font-mono text-[11px] text-stone-500">
-                  {a.artikul_ozon ?? "—"}
+                  <CellText title={a.artikul_ozon ?? ""}>{a.artikul_ozon ?? "—"}</CellText>
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums text-stone-700">
                   {a.tovary.length}
@@ -1038,14 +1311,29 @@ function TabArticles({ m, hexByCvet, openColor }: TabContentProps) {
 // ещё НЕ привязаны к выбранной вариации (исключение дублей). Кнопка «Создать»
 // делает bulk-create через `bulkCreateArtikuly`.
 //
+// W10.9 — секция «Размеры» multi-select. Источник — `razmery_modeli` модели
+// (CSV), маппинг nazvanie → razmer_id берётся из глобального справочника
+// `razmery` через `fetchRazmery`. По умолчанию выбраны все размеры модели.
+//
+// W10.10 — фильтр палитры по семействам цветов (`semeystva_cvetov`).
+// Multi-select chips над списком цветов; пустой выбор = «Все семейства».
+// Это display-only фильтр: уже выбранные цвета вне фильтра остаются
+// выбранными (учитываются в submit и в счётчике).
+//
 // artikul генерируется автоматически как `${modeli.kod}/${cveta.color_code}`
 // — это поведение сервиса, не UI. См. `insertArtikul` в service.ts.
 function AddArtikulModal({
   modelKod,
+  modelRazmery,
+  kategoriyaId,
   variations,
   onClose,
 }: {
   modelKod: string
+  /** Размеры модели (parseRazmery(m.razmery_modeli)). Может быть пустым. */
+  modelRazmery: string[]
+  /** W9.12 — filter colour palette by model category. */
+  kategoriyaId: number | null
   variations: ModelVariation[]
   onClose: () => void
 }) {
@@ -1054,13 +1342,44 @@ function AddArtikulModal({
   // Default — first variation. Если их больше одной, юзер может переключиться.
   const [variationId, setVariationId] = useState<number>(variations[0]?.id ?? 0)
   const [selectedCvety, setSelectedCvety] = useState<Set<number>>(new Set())
+  // W10.9 — выбранные размеры модели. Default — ВСЕ размеры модели.
+  const [selectedRazmery, setSelectedRazmery] = useState<Set<string>>(
+    () => new Set(modelRazmery),
+  )
+  // W10.10 — выбранные семейства цветов. Empty Set = «Все семейства» (no filter).
+  const [selectedSemeystva, setSelectedSemeystva] = useState<Set<number>>(new Set())
+  // W9.11 — per-cvet custom artikul name. Empty/undefined ⇒ use generated.
+  // Map keyed by cvet_id so values persist across select/deselect toggles
+  // until variation switch (then we reset along with selection).
+  const [customNames, setCustomNames] = useState<Record<number, string>>({})
   const [error, setError] = useState<string | null>(null)
 
-  const cvetaQ = useQuery({
-    queryKey: ["catalog", "cveta-with-usage"],
-    queryFn: fetchCvetaWithUsage,
+  // W9.12 — palette filtered by category. Legacy colours (no category tags)
+  // remain visible everywhere.
+  const { colors: categoryColors, isLoading: colorsLoading } =
+    useAvailableColors(kategoriyaId)
+
+  // W10.9 — справочник `razmery` для маппинга nazvanie → id при создании SKU.
+  const razmeryQ = useQuery({
+    queryKey: ["catalog", "razmery"],
+    queryFn: fetchRazmery,
     staleTime: 5 * 60 * 1000,
   })
+  const razmeryIdByName = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const r of razmeryQ.data ?? []) {
+      if (r.nazvanie) m.set(r.nazvanie, r.id)
+    }
+    return m
+  }, [razmeryQ.data])
+
+  // W10.10 — справочник `semeystva_cvetov` для фильтра палитры.
+  const semeystvaQ = useQuery({
+    queryKey: ["catalog", "semeystva-cvetov"],
+    queryFn: fetchSemeystvaCvetov,
+    staleTime: 5 * 60 * 1000,
+  })
+  const semeystvaList = semeystvaQ.data ?? []
 
   // Already-attached cveta ids — для исключения из выбора (нельзя создать
   // дубликат `${kod}/${color_code}` — артикул должен быть уникальным).
@@ -1070,15 +1389,43 @@ function AddArtikulModal({
     return new Set(v.artikuly.map((a) => a.cvet_id).filter((id): id is number => id != null))
   }, [variationId, variations])
 
-  // Available colours — exclude already attached.
-  const availableCveta: CvetRow[] = useMemo(() => {
-    const rows = cvetaQ.data ?? []
-    return rows.filter((c) => !attachedCvetIds.has(c.id))
-  }, [cvetaQ.data, attachedCvetIds])
+  // Pool of цветов в принципе доступных для выбора (category-filtered,
+  // minus already attached). Используется и для submit, и для счётчика —
+  // независимо от display-фильтра семейств (W10.10).
+  const eligibleCveta: CvetRow[] = useMemo(() => {
+    return categoryColors.filter((c) => !attachedCvetIds.has(c.id))
+  }, [categoryColors, attachedCvetIds])
 
-  // Reset selection when variation changes (different attached set).
+  // W10.10 — отображаемая палитра: eligibleCveta, дополнительно отфильтрованная
+  // по выбранным семействам. Empty Set = «Все семейства» (no filter).
+  // Это **display-only** фильтр: уже выбранные цвета вне фильтра остаются
+  // выбранными (учитываются в submit и в счётчике), просто не показываются
+  // в основном списке палитры.
+  const availableCveta: CvetRow[] = useMemo(() => {
+    if (selectedSemeystva.size === 0) return eligibleCveta
+    return eligibleCveta.filter(
+      (c) => c.semeystvo_id != null && selectedSemeystva.has(c.semeystvo_id),
+    )
+  }, [eligibleCveta, selectedSemeystva])
+
+  // W9.11 — existing artikul names across ALL variations of this model
+  // (lower-cased) for client-side uniqueness pre-check. Server-side guarantee
+  // is the global UNIQUE constraint `artikuly_artikul_key`; this is UX only —
+  // catch duplicates BEFORE submit instead of surfacing a translated 23505.
+  const existingArtikulNames = useMemo(() => {
+    const s = new Set<string>()
+    for (const v of variations) {
+      for (const a of v.artikuly) {
+        if (a.artikul) s.add(a.artikul.toLowerCase())
+      }
+    }
+    return s
+  }, [variations])
+
+  // Reset selection + custom names when variation changes (different attached set).
   useEffect(() => {
     setSelectedCvety(new Set())
+    setCustomNames({})
     setError(null)
   }, [variationId])
 
@@ -1090,8 +1437,44 @@ function AddArtikulModal({
     return () => window.removeEventListener("keydown", onKey)
   }, [onClose])
 
+  // W10.9 + W10.37 — bulk-create артикулов И SKU за один submit.
+  //
+  // Шаги:
+  //   1. `bulkCreateArtikuly(variationId, entries)` — создаёт N артикулов.
+  //   2. Для каждого нового артикула × каждый выбранный размер собирается
+  //      cross-product → `bulkInsertTovary(payload)` за один батч. SKU
+  //      создаются с дефолтным статусом «План» во всех 3-х каналах.
+  // Если шаг 1 успешен, а шаг 2 падает — артикулы останутся (без SKU),
+  // пользователь увидит ошибку и сможет добавить SKU вручную через TabSKU.
+  // Это компромисс: rollback артикулов потребовал бы транзакции на сервере,
+  // которой у Supabase REST нет.
+  // Дубликаты `(artikul_id, razmer_id)` тихо пропускаются `bulkInsertTovary`
+  // (UNIQUE constraint на уровне DB + явный probe в самом сервисе).
   const createMut = useMutation({
-    mutationFn: (cvetIds: number[]) => bulkCreateArtikuly(variationId, cvetIds),
+    mutationFn: async (
+      entries: { cvetId: number; customArtikul?: string }[],
+    ) => {
+      const created = await bulkCreateArtikuly(variationId, entries)
+      // Resolve razmer ids from selected names. Размеры, которых нет в
+      // справочнике, тихо пропускаются — это data-quality (razmery_modeli
+      // содержит размер, отсутствующий в таблице `razmery`). Лучше дать
+      // создать N×M-1, чем падать.
+      const razmerIds: number[] = []
+      for (const name of selectedRazmery) {
+        const id = razmeryIdByName.get(name)
+        if (id != null) razmerIds.push(id)
+      }
+      if (created.length > 0 && razmerIds.length > 0) {
+        const payload: { artikulId: number; razmerId: number }[] = []
+        for (const a of created) {
+          for (const rid of razmerIds) {
+            payload.push({ artikulId: a.id, razmerId: rid })
+          }
+        }
+        await bulkInsertTovary(payload)
+      }
+      return created
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["catalog", "model", modelKod] })
       queryClient.invalidateQueries({ queryKey: ["catalog", "matrix-list"] })
@@ -1100,7 +1483,7 @@ function AddArtikulModal({
       onClose()
     },
     onError: (e: unknown) => {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(translateError(e))
     },
   })
 
@@ -1113,16 +1496,123 @@ function AddArtikulModal({
     })
   }
 
-  const selectAll = () => setSelectedCvety(new Set(availableCveta.map((c) => c.id)))
+  // W10.10 — «Выбрать все» добавляет все ВИДИМЫЕ цвета (после фильтра семейств)
+  // к уже выбранным. Не сбрасывает выбранные цвета вне текущего фильтра.
+  const selectAll = () =>
+    setSelectedCvety((prev) => {
+      const next = new Set(prev)
+      for (const c of availableCveta) next.add(c.id)
+      return next
+    })
   const clearAll = () => setSelectedCvety(new Set())
 
   const selectedVariation = variations.find((v) => v.id === variationId)
   const selectedCount = selectedCvety.size
-  const canSubmit = selectedCount > 0 && variationId > 0 && !createMut.isPending
+
+  // W9.11 — generated default for a given cvet (used as input placeholder/value).
+  const buildDefaultName = useCallback(
+    (cvet: CvetRow): string => {
+      const kod = selectedVariation?.kod ?? modelKod
+      return `${kod}/${cvet.color_code}`
+    },
+    [selectedVariation, modelKod],
+  )
+
+  // Resolve effective name for a selected cvet: user-typed value (if any)
+  // takes precedence over the generated default.
+  const effectiveName = useCallback(
+    (cvet: CvetRow): string => {
+      const custom = customNames[cvet.id]
+      if (custom !== undefined && custom.trim().length > 0) return custom.trim()
+      return buildDefaultName(cvet)
+    },
+    [customNames, buildDefaultName],
+  )
+
+  // W9.11 — per-row validation. Returns null if valid, else human message.
+  const validateRow = useCallback(
+    (cvet: CvetRow, allSelected: CvetRow[]): string | null => {
+      const raw = customNames[cvet.id]
+      // If user did not touch the input, default value applies — assume valid
+      // (default = `${kod}/${color_code}`, which is non-empty and not present
+      // in attached colours of this variation by construction).
+      const name = effectiveName(cvet)
+      if (!name) return "Имя не может быть пустым"
+      if (raw !== undefined && raw.trim().length === 0) {
+        return "Имя не может быть пустым"
+      }
+      // Spaces are not allowed in the historical `${kod}/${color_code}` format
+      // and would clash with how artikul is referenced downstream (Sheets,
+      // marketplaces). Keep the constraint conservative.
+      if (/\s/.test(name)) return "Без пробелов"
+      // Uniqueness vs already-existing artikuly across the model.
+      if (existingArtikulNames.has(name.toLowerCase())) {
+        return "Такой артикул уже существует"
+      }
+      // Uniqueness within the current batch (two selected rows could collide
+      // if the user edits one to match another).
+      const lower = name.toLowerCase()
+      const collisions = allSelected.filter(
+        (c) => effectiveName(c).toLowerCase() === lower,
+      )
+      if (collisions.length > 1) return "Дубликат в этой форме"
+      return null
+    },
+    [customNames, effectiveName, existingArtikulNames],
+  )
+
+  // selectedCveta — все реально выбранные цвета (а не только видимые в
+  // текущем фильтре семейств). Это важно для UI «Имена артикулов» (юзер должен
+  // видеть все выбранные, даже скрытые фильтром) и для submit.
+  const selectedCveta = useMemo(
+    () => eligibleCveta.filter((c) => selectedCvety.has(c.id)),
+    [eligibleCveta, selectedCvety],
+  )
+
+  // W10.9 — сколько выбранных размеров реально создадутся (есть в справочнике).
+  // Размер из `razmery_modeli`, отсутствующий в таблице `razmery` — data-quality
+  // issue: SKU для него создать нельзя. Считаем только resolvable.
+  const resolvedRazmerCount = useMemo(() => {
+    let n = 0
+    for (const r of selectedRazmery) {
+      if (razmeryIdByName.get(r) != null) n += 1
+    }
+    return n
+  }, [selectedRazmery, razmeryIdByName])
+
+  const rowErrors = useMemo(() => {
+    const errs: Record<number, string | null> = {}
+    for (const c of selectedCveta) {
+      errs[c.id] = validateRow(c, selectedCveta)
+    }
+    return errs
+  }, [selectedCveta, validateRow])
+
+  const hasValidationErrors = useMemo(
+    () => Object.values(rowErrors).some((e) => e !== null),
+    [rowErrors],
+  )
+
+  const canSubmit =
+    selectedCount > 0 &&
+    variationId > 0 &&
+    !createMut.isPending &&
+    !hasValidationErrors
 
   const handleSubmit = () => {
     if (!canSubmit) return
-    createMut.mutate(Array.from(selectedCvety))
+    const entries = selectedCveta.map((c) => {
+      const raw = customNames[c.id]
+      // Send `customArtikul` only when the user actually typed something
+      // different from default. Server falls back to generated when missing
+      // — keeps the wire payload small and the audit log clean.
+      const trimmed = raw?.trim() ?? ""
+      if (trimmed.length > 0 && trimmed !== buildDefaultName(c)) {
+        return { cvetId: c.id, customArtikul: trimmed }
+      }
+      return { cvetId: c.id }
+    })
+    createMut.mutate(entries)
   }
 
   return (
@@ -1179,6 +1669,64 @@ function AddArtikulModal({
             </div>
           )}
 
+          {/* W10.10 — фильтр палитры по семействам цветов. */}
+          {semeystvaList.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-[11px] uppercase tracking-wider text-stone-500">
+                  Семейства цветов
+                </label>
+                {selectedSemeystva.size > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedSemeystva(new Set())}
+                    className="text-xs text-stone-600 hover:text-stone-900 underline underline-offset-2"
+                  >
+                    Сбросить
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setSelectedSemeystva(new Set())}
+                  className={`px-2 py-1 text-xs rounded-md border transition-colors ${
+                    selectedSemeystva.size === 0
+                      ? "border-stone-900 bg-stone-900 text-white"
+                      : "border-stone-200 text-stone-700 hover:border-stone-400"
+                  }`}
+                >
+                  Все
+                </button>
+                {semeystvaList.map((s) => {
+                  const checked = selectedSemeystva.has(s.id)
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedSemeystva((prev) => {
+                          const next = new Set(prev)
+                          if (next.has(s.id)) next.delete(s.id)
+                          else next.add(s.id)
+                          return next
+                        })
+                      }}
+                      className={`px-2 py-1 text-xs rounded-md border transition-colors ${
+                        checked
+                          ? "border-stone-900 bg-stone-900 text-white"
+                          : "border-stone-200 text-stone-700 hover:border-stone-400"
+                      }`}
+                      title={s.opisanie ?? undefined}
+                    >
+                      {s.nazvanie}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="block text-[11px] uppercase tracking-wider text-stone-500">
@@ -1205,18 +1753,21 @@ function AddArtikulModal({
               </div>
             </div>
 
-            {cvetaQ.isLoading ? (
+            {colorsLoading ? (
               <div className="text-sm text-stone-400 italic py-6 text-center">Загрузка цветов…</div>
             ) : availableCveta.length === 0 ? (
               <div className="text-sm text-stone-400 italic py-6 text-center">
-                Все доступные цвета уже привязаны к этой вариации
+                {categoryColors.length === 0
+                  ? "Для этой категории нет цветов в палитре. Привяжите цвета к категории в справочнике."
+                  : eligibleCveta.length === 0
+                    ? "Все доступные цвета уже привязаны к этой вариации"
+                    : "Нет цветов в выбранных семействах. Сбросьте фильтр или выберите другое семейство."}
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-1.5 max-h-[40vh] overflow-y-auto pr-1">
+              <div className="grid grid-cols-2 gap-1.5 max-h-[28vh] overflow-y-auto pr-1">
                 {availableCveta.map((c) => {
                   const checked = selectedCvety.has(c.id)
-                  const hex = c.hex ?? swatchColor(c.color_code)
-                  const previewArtikul = `${selectedVariation?.kod ?? modelKod}/${c.color_code}`
+                  const previewArtikul = effectiveName(c)
                   return (
                     <label
                       key={c.id}
@@ -1234,7 +1785,7 @@ function AddArtikulModal({
                       />
                       <span
                         className="inline-block w-4 h-4 rounded ring-1 ring-stone-200 shrink-0"
-                        style={{ background: hex }}
+                        style={colorSwatchStyle(c.hex)}
                       />
                       <span className="font-mono text-xs text-stone-700 shrink-0">{c.color_code}</span>
                       {c.cvet && (
@@ -1250,6 +1801,139 @@ function AddArtikulModal({
             )}
           </div>
 
+          {/* W9.11 — editable artikul names for selected colours. */}
+          {selectedCveta.length > 0 && (
+            <div>
+              <label className="block text-[11px] uppercase tracking-wider text-stone-500 mb-2">
+                Имена артикулов
+              </label>
+              <div className="space-y-1.5 max-h-[32vh] overflow-y-auto pr-1">
+                {selectedCveta.map((c) => {
+                  const defaultName = buildDefaultName(c)
+                  const raw = customNames[c.id]
+                  const value = raw !== undefined ? raw : defaultName
+                  const isCustom = raw !== undefined && raw.trim() !== defaultName
+                  const err = rowErrors[c.id]
+                  return (
+                    <div key={c.id} className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="inline-block w-4 h-4 rounded ring-1 ring-stone-200 shrink-0"
+                          style={colorSwatchStyle(c.hex)}
+                          aria-hidden="true"
+                        />
+                        <span className="font-mono text-xs text-stone-500 shrink-0 w-20 truncate">
+                          {c.color_code}
+                        </span>
+                        <input
+                          type="text"
+                          value={value}
+                          onChange={(e) =>
+                            setCustomNames((prev) => ({ ...prev, [c.id]: e.target.value }))
+                          }
+                          spellCheck={false}
+                          autoComplete="off"
+                          className={`flex-1 min-w-0 px-2 py-1 text-sm font-mono border rounded-md bg-white outline-none focus:ring-1 ${
+                            err
+                              ? "border-red-400 focus:border-red-600 focus:ring-red-200"
+                              : "border-stone-200 focus:border-stone-900 focus:ring-stone-900"
+                          }`}
+                          aria-label={`Имя артикула для цвета ${c.color_code}`}
+                          aria-invalid={err ? true : undefined}
+                        />
+                        {isCustom && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setCustomNames((prev) => {
+                                const next = { ...prev }
+                                delete next[c.id]
+                                return next
+                              })
+                            }
+                            className="shrink-0 text-[11px] text-stone-500 hover:text-stone-900 underline underline-offset-2"
+                            title="Вернуть автогенерированное имя"
+                          >
+                            Сбросить
+                          </button>
+                        )}
+                      </div>
+                      {err && (
+                        <div className="pl-[5.25rem] text-[11px] text-red-600">{err}</div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* W10.9 — секция «Размеры». Multi-select из razmery_modeli модели. */}
+          {modelRazmery.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-[11px] uppercase tracking-wider text-stone-500">
+                  Размеры
+                </label>
+                <div className="flex items-center gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRazmery(new Set(modelRazmery))}
+                    disabled={selectedRazmery.size === modelRazmery.length}
+                    className="text-stone-600 hover:text-stone-900 underline underline-offset-2 disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed"
+                  >
+                    Все
+                  </button>
+                  <span className="text-stone-300">·</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRazmery(new Set())}
+                    disabled={selectedRazmery.size === 0}
+                    className="text-stone-600 hover:text-stone-900 underline underline-offset-2 disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed"
+                  >
+                    Очистить
+                  </button>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {modelRazmery.map((r) => {
+                  const checked = selectedRazmery.has(r)
+                  const knownId = razmeryIdByName.get(r) != null
+                  return (
+                    <label
+                      key={r}
+                      className={`flex items-center gap-1.5 px-2 py-1 text-xs rounded-md border cursor-pointer transition-colors ${
+                        checked
+                          ? "border-stone-900 bg-stone-50"
+                          : "border-stone-200 hover:border-stone-400"
+                      } ${!knownId ? "opacity-60" : ""}`}
+                      title={
+                        !knownId
+                          ? "Размер не найден в справочнике razmery — SKU не будет создан"
+                          : undefined
+                      }
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() =>
+                          setSelectedRazmery((prev) => {
+                            const next = new Set(prev)
+                            if (next.has(r)) next.delete(r)
+                            else next.add(r)
+                            return next
+                          })
+                        }
+                        className="shrink-0 accent-stone-900"
+                      />
+                      <span className="font-mono">{r}</span>
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           {error && (
             <div className="px-3 py-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded">
               {error}
@@ -1259,11 +1943,27 @@ function AddArtikulModal({
 
         <div className="px-5 py-3 border-t border-stone-200 flex items-center justify-between shrink-0 bg-stone-50/50">
           <div className="text-xs text-stone-500">
-            Выбрано: <span className="font-medium text-stone-700">{selectedCount}</span>
-            {selectedCount > 0 && (
-              <span className="ml-2">
-                · Артикулы будут созданы со статусом «Запуск»
-              </span>
+            {selectedCount === 0 ? (
+              <>Выбрано: <span className="font-medium text-stone-700">0</span></>
+            ) : (
+              <>
+                Будет создано:{" "}
+                <span className="font-medium text-stone-700">{selectedCount}</span>{" "}
+                {selectedCount === 1 ? "артикул" : "артикула"}
+                {resolvedRazmerCount > 0 && (
+                  <>
+                    {" × "}
+                    <span className="font-medium text-stone-700">{resolvedRazmerCount}</span>{" "}
+                    {resolvedRazmerCount === 1 ? "размер" : "размеров"}
+                    {" = "}
+                    <span className="font-medium text-stone-700">
+                      {selectedCount * resolvedRazmerCount}
+                    </span>{" "}
+                    SKU
+                  </>
+                )}
+                <span className="ml-2 text-stone-400">· статус «Запуск»</span>
+              </>
             )}
           </div>
           <div className="flex items-center gap-2">
@@ -1350,8 +2050,7 @@ function InlineStatusCell({
       await onChange(id)
       setOpen(false)
     } catch (err) {
-      // eslint-disable-next-line no-alert
-      alert(`Не удалось обновить статус: ${(err as Error).message}`)
+      toast.error(translateError(err))
     } finally {
       setSaving(false)
     }
@@ -1444,16 +2143,28 @@ function TabSKU({ m, hexByCvet }: TabContentProps) {
   })
   const razmery: Razmer[] = razmeryQ.data ?? []
 
-  const allSku = m.modeli.flatMap((v) =>
-    v.artikuly.flatMap((a) =>
-      a.tovary.map((t) => ({
-        ...t,
-        variantKod: v.kod,
-        cvet_color_code: a.cvet_color_code,
-        cvet_id: a.cvet_id,
-      })),
-    ),
-  )
+  // W10.29 — стабильная сортировка SKU: variantKod → cvet.color_code → razmer
+  // (physical ladder). Не зависит от статусов: смена статуса не должна менять
+  // порядок строк (избегаем «прыжков» при клике по статус-pill).
+  const allSku = useMemo(() => {
+    const rows = m.modeli.flatMap((v) =>
+      v.artikuly.flatMap((a) =>
+        a.tovary.map((t) => ({
+          ...t,
+          variantKod: v.kod,
+          cvet_color_code: a.cvet_color_code,
+          cvet_id: a.cvet_id,
+        })),
+      ),
+    )
+    return rows.sort((a, b) => {
+      const variantCmp = (a.variantKod ?? "").localeCompare(b.variantKod ?? "", "ru", { numeric: true })
+      if (variantCmp !== 0) return variantCmp
+      const cvetCmp = (a.cvet_color_code ?? "").localeCompare(b.cvet_color_code ?? "", "ru", { numeric: true })
+      if (cvetCmp !== 0) return cvetCmp
+      return compareRazmer(a.razmer_nazvanie ?? null, b.razmer_nazvanie ?? null)
+    })
+  }, [m.modeli])
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["catalog", "model", m.kod] })
@@ -1584,21 +2295,20 @@ function TabSKU({ m, hexByCvet }: TabContentProps) {
           <tbody>
             {allSku.slice(0, 100).map((t) => {
               const hex = t.cvet_id != null ? hexByCvet.get(t.cvet_id) ?? null : null
-              const swatch = hex ?? (t.cvet_color_code ? swatchColor(t.cvet_color_code) : "#E7E5E4")
               return (
                 <tr key={t.id} className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60">
-                  <td className="px-3 py-2 font-mono text-xs text-stone-700">{t.barkod}</td>
-                  <td className="px-3 py-2 font-mono text-xs text-stone-600">{t.variantKod}</td>
+                  <td className="px-3 py-2 font-mono text-xs text-stone-700"><CellText title={t.barkod}>{t.barkod}</CellText></td>
+                  <td className="px-3 py-2 font-mono text-xs text-stone-600"><CellText title={t.variantKod ?? ""}>{t.variantKod}</CellText></td>
                   <td className="px-3 py-2">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 min-w-0">
                       <span
                         className="inline-block w-3.5 h-3.5 rounded ring-1 ring-stone-200 shrink-0"
-                        style={{ background: swatch }}
+                        style={colorSwatchStyle(hex)}
                       />
-                      <span className="font-mono text-xs">{t.cvet_color_code ?? "—"}</span>
+                      <CellText className="font-mono text-xs" title={t.cvet_color_code ?? ""}>{t.cvet_color_code ?? "—"}</CellText>
                     </div>
                   </td>
-                  <td className="px-3 py-2 font-mono text-xs">{t.razmer_nazvanie ?? "—"}</td>
+                  <td className="px-3 py-2 font-mono text-xs"><CellText title={t.razmer_nazvanie ?? ""}>{t.razmer_nazvanie ?? "—"}</CellText></td>
                   <td className="px-3 py-2 border-l border-stone-100">
                     <InlineStatusCell
                       currentStatusId={t.status_id ?? null}
@@ -2150,9 +2860,152 @@ function formatAuditDate(iso: string): string {
   }
 }
 
+// ─── Tab 6: Skleyki ───────────────────────────────────────────────────────
+//
+// W10.19 — список склеек, в которых есть артикулы базовой модели.
+//
+// Источник данных: fetchModelSkleyki(modelOsnovaId) — делает 3 запроса:
+//   1. id артикулов модели (JOIN на modeli по model_osnova_id)
+//   2. junction artikuly_skleyki_wb + artikuly_skleyki_ozon (параллельно)
+//   3. nazvanie склеек из skleyki_wb / skleyki_ozon
+//
+// Render: список карточек.  Левая колонка — chip канала + название.  Правая —
+// «N SKU» (число DISTINCT артикулов модели в этой склейке) + Link «Открыть».
+// Link ведёт на /catalog/skleyki?kanal=X&id=Y (стандартный routing страницы
+// склеек).  Drawer-over-drawer не делаем — это сложнее по z-index, а
+// существующая страница уже корректно открывает SkleykaCard.
+
+function TabSkleyki({ m }: { m: ModelDetail }) {
+  const skleykiQ = useQuery<ModelSkleyka[]>({
+    queryKey: ["catalog", "model-skleyki", m.id],
+    queryFn: () => fetchModelSkleyki(m.id),
+    staleTime: 30 * 1000,
+  })
+
+  if (skleykiQ.isLoading) {
+    return (
+      <Section label="Склейки модели">
+        <div className="flex items-center gap-2 text-sm text-stone-500">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          Загружаем склейки…
+        </div>
+      </Section>
+    )
+  }
+
+  if (skleykiQ.error) {
+    return (
+      <Section label="Склейки модели">
+        <div className="text-sm text-red-600">
+          Не удалось загрузить склейки: {String(skleykiQ.error)}
+        </div>
+      </Section>
+    )
+  }
+
+  const rows = skleykiQ.data ?? []
+
+  if (rows.length === 0) {
+    return (
+      <Section
+        label="Склейки модели"
+        hint="Склейки, в которые входят артикулы этой модели (Wildberries и/или Ozon)."
+      >
+        <div className="text-sm text-stone-400 italic py-6 text-center">
+          Артикулы этой модели пока не входят ни в одну склейку.
+        </div>
+      </Section>
+    )
+  }
+
+  // Суффикс «N SKU» по числу — простая RU-склонялка.
+  const formatSkuCount = (n: number): string => {
+    if (n % 10 === 1 && n % 100 !== 11) return `${n} SKU`
+    if ([2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100)) return `${n} SKU`
+    return `${n} SKU`
+  }
+
+  return (
+    <Section
+      label={`Склейки модели · ${rows.length}`}
+      hint="Склейки, в которые входят артикулы этой модели. Клик «Открыть» — карточка склейки в реестре."
+    >
+      <div className="space-y-1.5">
+        {rows.map((s) => (
+          <div
+            key={`${s.channel}-${s.id}`}
+            className="flex items-center gap-3 px-3 py-2 border border-stone-200 rounded-md bg-stone-50/40 hover:bg-stone-50"
+          >
+            <span
+              className={
+                s.channel === "wb"
+                  ? "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-pink-50 text-pink-700 ring-1 ring-inset ring-pink-600/20 shrink-0"
+                  : "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-600/20 shrink-0"
+              }
+            >
+              {s.channel === "wb" ? "WB" : "OZON"}
+            </span>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm text-stone-900 truncate" title={s.nazvanie}>
+                {s.nazvanie}
+              </div>
+              <div className="text-[11px] text-stone-500 tabular-nums">
+                {formatSkuCount(s.skuCount)} из этой модели
+              </div>
+            </div>
+            <Link
+              to={`/catalog/skleyki?kanal=${s.channel}&id=${s.id}`}
+              className="inline-flex items-center gap-1 px-2 py-1 text-xs text-stone-700 hover:text-stone-900 hover:bg-stone-100 rounded-md shrink-0"
+              title="Открыть карточку склейки"
+            >
+              Открыть
+              <ExternalLink className="w-3 h-3" />
+            </Link>
+          </div>
+        ))}
+      </div>
+    </Section>
+  )
+}
+// W10.12: список table_name'ов, по которым показываем чипы-фильтры.
+// "model" объединяет `modeli_osnova` + `modeli` (это единая бизнес-сущность).
+type HistoryFilter = "all" | "model" | "artikuly" | "tovary"
+
+// W10.13: набор таблиц, для которых поддерживается откат UPDATE-записи.
+// Должен совпадать с ROLLBACK_ALLOWED_TABLES в service.ts.
+const ROLLBACK_TABLES: ReadonlySet<string> = new Set([
+  "modeli",
+  "modeli_osnova",
+  "artikuly",
+  "tovary",
+])
+
+// W10.13: системные поля, которые не имеет смысла откатывать.
+const ROLLBACK_SKIP: ReadonlySet<string> = new Set([
+  "id",
+  "created_at",
+  "updated_at",
+])
+
+// Стабильная ссылка на пустой массив — чтобы useMemo, зависящий от data ?? [],
+// не пересоздавался на каждом рендере во время loading-стейта.
+const EMPTY_AUDIT_ROWS: AuditRowExt[] = []
+
 function TabHistory({ m }: { m: ModelDetail }) {
-  // Параллельно: история по `modeli_osnova` + по каждой вариации `modeli`.
+  // W10.12: расширили скоп — кроме `modeli_osnova` и `modeli` подтягиваем
+  // ещё и `artikuly` + `tovary`, чтобы вся история по модели лежала в одном
+  // месте.
   const variationIds = useMemo(() => m.modeli.map((v) => v.id), [m.modeli])
+  const artikulIds = useMemo(
+    () => m.modeli.flatMap((v) => v.artikuly.map((a) => a.id)),
+    [m.modeli],
+  )
+  const tovarIds = useMemo(
+    () => m.modeli.flatMap((v) => v.artikuly.flatMap((a) => a.tovary.map((t) => t.id))),
+    [m.modeli],
+  )
+
+  // Карты для человекочитаемых лейблов (избегаем N+1 запросов в render-цикле).
   const variationLabelById = useMemo(() => {
     const map = new Map<number, string>()
     for (const v of m.modeli) {
@@ -2161,29 +3014,152 @@ function TabHistory({ m }: { m: ModelDetail }) {
     return map
   }, [m.modeli])
 
-  const auditQ = useQuery<AuditRowExt[]>({
-    queryKey: ["catalog", "audit", m.id, variationIds],
-    queryFn: async () => {
-      const [osnovaRows, ...variationRows] = await Promise.all([
-        fetchAuditFor("modeli_osnova", m.id),
-        ...variationIds.map((vid) => fetchAuditFor("modeli", vid)),
-      ])
-      const out: AuditRowExt[] = []
-      for (const row of osnovaRows) {
-        out.push({ ...row, source_label: "Модель" })
+  const artikulLabelById = useMemo(() => {
+    const map = new Map<number, string>()
+    for (const v of m.modeli) {
+      for (const a of v.artikuly) {
+        map.set(a.id, a.artikul)
       }
-      variationRows.forEach((rows, idx) => {
-        const vid = variationIds[idx]
-        const label = variationLabelById.get(vid) ?? String(vid)
-        for (const row of rows) {
-          out.push({ ...row, source_label: `Вариация (${label})` })
+    }
+    return map
+  }, [m.modeli])
+
+  const tovarLabelById = useMemo(() => {
+    const map = new Map<number, string>()
+    for (const v of m.modeli) {
+      for (const a of v.artikuly) {
+        for (const t of a.tovary) {
+          // Подпись для SKU: артикул + размер (если есть).
+          const sizePart = t.razmer_nazvanie ? `/${t.razmer_nazvanie}` : ""
+          map.set(t.id, `${a.artikul}${sizePart}`)
         }
+      }
+    }
+    return map
+  }, [m.modeli])
+
+  const queryClient = useQueryClient()
+
+  const sourceLabelFor = useCallback(
+    (row: AuditEntry): string => {
+      const rowIdNum = Number(row.row_id)
+      switch (row.table_name) {
+        case "modeli_osnova":
+          return "Модель"
+        case "modeli": {
+          const lbl = variationLabelById.get(rowIdNum)
+          return lbl ? `Вариация (${lbl})` : "Вариация"
+        }
+        case "artikuly": {
+          const lbl = artikulLabelById.get(rowIdNum)
+          return lbl ? `Артикул ${lbl}` : `Артикул #${row.row_id}`
+        }
+        case "tovary": {
+          const lbl = tovarLabelById.get(rowIdNum)
+          return lbl ? `SKU ${lbl}` : `SKU #${row.row_id}`
+        }
+        default:
+          return tableLabel(row.table_name)
+      }
+    },
+    [variationLabelById, artikulLabelById, tovarLabelById],
+  )
+
+  const auditQ = useQuery<AuditRowExt[]>({
+    queryKey: [
+      "catalog",
+      "audit",
+      "model-scope",
+      m.id,
+      // queryKey должен включать дочерние id, чтобы инвалидация после
+      // создания/удаления артикула/SKU подхватила свежие данные.
+      variationIds,
+      artikulIds,
+      tovarIds,
+    ],
+    queryFn: async () => {
+      const rows = await fetchAuditForModel({
+        modelId: m.id,
+        variationIds,
+        artikulIds,
+        tovarIds,
       })
-      out.sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
-      return out
+      return rows.map((r) => ({ ...r, source_label: sourceLabelFor(r) }))
     },
     staleTime: 30 * 1000,
   })
+
+  // W10.12: фильтр по типу сущности. Default "all" — единая timeline.
+  const [filter, setFilter] = useState<HistoryFilter>("all")
+
+  // W10.13: id текущей откатываемой записи (для disable-кнопки во время mutate).
+  const [rollbackingId, setRollbackingId] = useState<number | null>(null)
+
+  const handleRollback = useCallback(
+    async (row: AuditEntry) => {
+      if (row.action !== "UPDATE" || !row.changed) return
+      if (!ROLLBACK_TABLES.has(row.table_name)) return
+
+      const fields = Object.entries(row.changed).filter(
+        ([k]) => !ROLLBACK_SKIP.has(k),
+      )
+      if (fields.length === 0) {
+        toast.warning("Нет полей для отката")
+        return
+      }
+
+      const preview = fields
+        .map(([col, diff]) => `  ${col}: ${formatAuditValue(diff.to)} → ${formatAuditValue(diff.from)}`)
+        .join("\n")
+      const msg =
+        `Откатить изменение от ${formatAuditDate(row.created_at)}?\n\n` +
+        `Поля:\n${preview}\n\n` +
+        `Будет создана новая запись истории.`
+      if (!window.confirm(msg)) return
+
+      try {
+        setRollbackingId(row.id)
+        const n = await rollbackAuditChange(row.id)
+        toast.success(`Откатили ${n} ${n === 1 ? "поле" : "поля"}`)
+        // Освежаем историю + основную карточку модели (поля могли измениться).
+        await queryClient.invalidateQueries({
+          queryKey: ["catalog", "audit", "model-scope", m.id],
+        })
+        await queryClient.invalidateQueries({
+          queryKey: ["catalog", "model", m.kod],
+        })
+      } catch (e) {
+        toast.error(translateError(e))
+      } finally {
+        setRollbackingId(null)
+      }
+    },
+    [queryClient, m.id, m.kod],
+  )
+
+  // ВНИМАНИЕ: все useMemo/useCallback должны быть до первого early-return,
+  // иначе нарушится Rules of Hooks при переходе loading → ready.
+  const allRows = auditQ.data ?? EMPTY_AUDIT_ROWS
+
+  const counts = useMemo(() => {
+    const c = { all: allRows.length, model: 0, artikuly: 0, tovary: 0 }
+    for (const r of allRows) {
+      if (r.table_name === "modeli_osnova" || r.table_name === "modeli") c.model++
+      else if (r.table_name === "artikuly") c.artikuly++
+      else if (r.table_name === "tovary") c.tovary++
+    }
+    return c
+  }, [allRows])
+
+  const rows = useMemo(() => {
+    if (filter === "all") return allRows
+    if (filter === "model") {
+      return allRows.filter(
+        (r) => r.table_name === "modeli_osnova" || r.table_name === "modeli",
+      )
+    }
+    return allRows.filter((r) => r.table_name === filter)
+  }, [allRows, filter])
 
   if (auditQ.isLoading) {
     return (
@@ -2206,13 +3182,44 @@ function TabHistory({ m }: { m: ModelDetail }) {
     )
   }
 
-  const rows = auditQ.data ?? []
+  const filterChips: Array<{ id: HistoryFilter; label: string; count: number }> = [
+    { id: "all", label: "Все", count: counts.all },
+    { id: "model", label: "Модель", count: counts.model },
+    { id: "artikuly", label: "Артикулы", count: counts.artikuly },
+    { id: "tovary", label: "SKU", count: counts.tovary },
+  ]
 
-  if (rows.length === 0) {
+  const filterBar = (
+    <div className="flex items-center gap-1 flex-wrap">
+      {filterChips.map((chip) => {
+        const active = filter === chip.id
+        return (
+          <button
+            key={chip.id}
+            type="button"
+            onClick={() => setFilter(chip.id)}
+            className={
+              "px-2 py-1 rounded-md border text-xs font-medium transition " +
+              (active
+                ? "bg-stone-900 text-white border-stone-900"
+                : "bg-white text-stone-700 border-stone-300 hover:border-stone-500")
+            }
+          >
+            {chip.label}
+            <span className={"ml-1 " + (active ? "text-stone-300" : "text-stone-400")}>
+              {chip.count}
+            </span>
+          </button>
+        )
+      })}
+    </div>
+  )
+
+  if (allRows.length === 0) {
     return (
       <Section
         label="История изменений"
-        hint="Все изменения модели и её вариаций. Журнал ведётся автоматически."
+        hint="Все изменения модели, артикулов и SKU. Журнал ведётся автоматически."
       >
         <div className="text-sm text-stone-400 italic py-6 text-center">
           Изменений пока нет.
@@ -2224,94 +3231,130 @@ function TabHistory({ m }: { m: ModelDetail }) {
   return (
     <Section
       label="История изменений"
-      hint="Все изменения модели и её вариаций. Журнал ведётся автоматически."
+      hint="Все изменения модели, артикулов и SKU. Журнал ведётся автоматически."
+      action={filterBar}
     >
-      <div className="space-y-2">
-        {rows.map((r) => (
-          <div
-            key={r.id}
-            className="border border-stone-200 rounded-md p-3 bg-stone-50"
-          >
-            <div className="flex items-center gap-2 flex-wrap text-xs">
-              <span
-                className={
-                  "px-1.5 py-0.5 rounded border font-medium uppercase tracking-wider " +
-                  actionBadgeClass(r.action)
-                }
+      {rows.length === 0 ? (
+        <div className="text-sm text-stone-400 italic py-4 text-center">
+          В этой группе изменений пока нет.
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {rows.map((r) => {
+            const rollbackable =
+              r.action === "UPDATE" &&
+              ROLLBACK_TABLES.has(r.table_name) &&
+              !!r.changed &&
+              getRollbackableFields(r).length > 0
+            return (
+              <div
+                key={r.id}
+                className="border border-stone-200 rounded-md p-3 bg-stone-50"
               >
-                {r.action}
-              </span>
-              <span className="font-medium text-stone-800">
-                {tableLabel(r.table_name)}
-              </span>
-              <span className="text-stone-400">·</span>
-              <span className="text-stone-600">{r.source_label}</span>
-              <span className="text-stone-400">·</span>
-              <span className="text-stone-500 tabular-nums">
-                {formatAuditDate(r.created_at)}
-              </span>
-              <span className="text-stone-400">·</span>
-              <span
-                className="text-stone-500 font-mono"
-                title={r.user_id ?? "service_role / system"}
-              >
-                {shortUser(r.user_id)}
-              </span>
-            </div>
+                <div className="flex items-center gap-2 flex-wrap text-xs">
+                  <span
+                    className={
+                      "px-1.5 py-0.5 rounded border font-medium uppercase tracking-wider " +
+                      actionBadgeClass(r.action)
+                    }
+                  >
+                    {r.action}
+                  </span>
+                  <span className="font-medium text-stone-800">
+                    {tableLabel(r.table_name)}
+                  </span>
+                  <span className="text-stone-400">·</span>
+                  <span className="text-stone-600">{r.source_label}</span>
+                  <span className="text-stone-400">·</span>
+                  <span className="text-stone-500 tabular-nums">
+                    {formatAuditDate(r.created_at)}
+                  </span>
+                  <span className="text-stone-400">·</span>
+                  <span
+                    className="text-stone-500 font-mono"
+                    title={r.user_id ?? "service_role / system"}
+                  >
+                    {shortUser(r.user_id)}
+                  </span>
 
-            {r.action === "INSERT" && (
-              <div className="mt-2 text-xs text-stone-600">
-                Запись создана (id={r.row_id}).
-              </div>
-            )}
-
-            {r.action === "DELETE" && r.before && (
-              <div className="mt-2 text-xs text-stone-600">
-                <div className="text-stone-500 mb-1">
-                  Удалено. Снимок до удаления:
-                </div>
-                <div className="grid grid-cols-1 gap-0.5 font-mono text-[11px] text-stone-700">
-                  {Object.entries(r.before)
-                    .slice(0, 8)
-                    .map(([k, v]) => (
-                      <div key={k} className="truncate">
-                        <span className="text-stone-500">{k}:</span>{" "}
-                        {formatAuditValue(v)}
-                      </div>
-                    ))}
-                  {Object.keys(r.before).length > 8 && (
-                    <div className="text-stone-400">
-                      … ещё {Object.keys(r.before).length - 8} полей
-                    </div>
+                  {rollbackable && (
+                    <button
+                      type="button"
+                      onClick={() => handleRollback(r)}
+                      disabled={rollbackingId === r.id}
+                      title="Откатить это изменение — создать новую запись с обратным diff"
+                      className={
+                        "ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs font-medium transition " +
+                        (rollbackingId === r.id
+                          ? "bg-stone-100 text-stone-400 border-stone-200 cursor-wait"
+                          : "bg-white text-stone-700 border-stone-300 hover:border-stone-500 hover:bg-stone-50")
+                      }
+                    >
+                      {rollbackingId === r.id ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <Undo2 className="w-3 h-3" />
+                      )}
+                      Откатить
+                    </button>
                   )}
                 </div>
-              </div>
-            )}
 
-            {r.action === "UPDATE" && r.changed && (
-              <div className="mt-2 space-y-1 font-mono text-[11px]">
-                {Object.entries(r.changed).map(([key, diff]) => (
-                  <div key={key} className="flex flex-wrap gap-1 items-baseline">
-                    <span className="text-stone-700 font-medium">{key}:</span>
-                    <span className="text-red-600 line-through">
-                      {formatAuditValue(diff.from)}
-                    </span>
-                    <span className="text-stone-400">→</span>
-                    <span className="text-emerald-700">
-                      {formatAuditValue(diff.to)}
-                    </span>
+                {r.action === "INSERT" && (
+                  <div className="mt-2 text-xs text-stone-600">
+                    Запись создана (id={r.row_id}).
                   </div>
-                ))}
-                {Object.keys(r.changed).length === 0 && (
-                  <div className="text-stone-400 italic">
-                    {actionLabel(r.action)} (без полевых изменений)
+                )}
+
+                {r.action === "DELETE" && r.before && (
+                  <div className="mt-2 text-xs text-stone-600">
+                    <div className="text-stone-500 mb-1">
+                      Удалено. Снимок до удаления:
+                    </div>
+                    <div className="grid grid-cols-1 gap-0.5 font-mono text-[11px] text-stone-700">
+                      {Object.entries(r.before)
+                        .slice(0, 8)
+                        .map(([k, v]) => (
+                          <div key={k} className="truncate">
+                            <span className="text-stone-500">{k}:</span>{" "}
+                            {formatAuditValue(v)}
+                          </div>
+                        ))}
+                      {Object.keys(r.before).length > 8 && (
+                        <div className="text-stone-400">
+                          … ещё {Object.keys(r.before).length - 8} полей
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {r.action === "UPDATE" && r.changed && (
+                  <div className="mt-2 space-y-1 font-mono text-[11px]">
+                    {Object.entries(r.changed).map(([key, diff]) => (
+                      <div key={key} className="flex flex-wrap gap-1 items-baseline">
+                        <span className="text-stone-700 font-medium">{key}:</span>
+                        <span className="text-red-600 line-through">
+                          {formatAuditValue(diff.from)}
+                        </span>
+                        <span className="text-stone-400">→</span>
+                        <span className="text-emerald-700">
+                          {formatAuditValue(diff.to)}
+                        </span>
+                      </div>
+                    ))}
+                    {Object.keys(r.changed).length === 0 && (
+                      <div className="text-stone-400 italic">
+                        {actionLabel(r.action)} (без полевых изменений)
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
-            )}
-          </div>
-        ))}
-      </div>
+            )
+          })}
+        </div>
+      )}
     </Section>
   )
 }
@@ -2541,7 +3584,6 @@ function CardSidebar({
         <div className="flex flex-wrap gap-1.5">
           {cvetaList.slice(0, 24).map((c) => {
             const hex = c.cvetId != null ? hexByCvet.get(c.cvetId) ?? null : null
-            const swatch = hex ?? swatchColor(c.code)
             return (
               <Tooltip key={c.code} text={c.name ? `${c.name} (${c.code})` : c.code}>
                 <button
@@ -2551,7 +3593,7 @@ function CardSidebar({
                 >
                   <span
                     className="inline-block w-4 h-4 rounded ring-1 ring-stone-200 shrink-0"
-                    style={{ background: swatch }}
+                    style={colorSwatchStyle(hex)}
                   />
                   <span className="font-mono text-[10px] text-stone-700">{c.code}</span>
                 </button>
@@ -2742,17 +3784,16 @@ function Header({
     return () => { cancelled = true }
   }, [headerImagePath])
 
-  const swatch = firstCvet
+  const firstHex = firstCvet
     ? (firstCvet.id != null ? hexByCvet.get(firstCvet.id) ?? null : null)
-      ?? swatchColor(firstCvet.code)
-    : "#E7E5E4"
+    : null
 
   return (
     <div className="border-b border-stone-200 bg-white shrink-0 px-6 py-4 flex items-center gap-4">
       {/* Icon */}
       <div
         className="w-14 h-14 rounded-lg ring-1 ring-stone-200 shrink-0 overflow-hidden flex items-center justify-center bg-stone-50"
-        style={!headerSignedUrl ? { background: swatch } : undefined}
+        style={!headerSignedUrl ? colorSwatchStyle(firstHex) : undefined}
       >
         {headerSignedUrl ? (
           <img src={headerSignedUrl} alt="" className="w-full h-full object-cover" />
@@ -2773,7 +3814,7 @@ function Header({
           >
             {m.kod}
           </h1>
-          <StatusBadge statusId={m.status_id ?? 0} />
+          <StatusBadge statusId={m.status_id} />
           <span className="text-sm text-stone-400">·</span>
           <span className="text-sm text-stone-500 truncate">
             {m.nazvanie_etiketka || m.nazvanie_sayt || "без названия"}
@@ -3001,7 +4042,7 @@ export function ModelCard({ kod, onClose }: ModelCardProps) {
         onClick={onClose}
         aria-hidden="true"
       />
-      <div className="relative ml-auto w-full max-w-[min(1280px,98vw)] h-full bg-stone-50 border-l border-stone-200 shadow-2xl flex flex-col overflow-hidden">
+      <div className="relative ml-auto w-full max-w-[min(1280px,98vw)] h-full bg-stone-50 border-l border-stone-200 rounded-l-2xl shadow-[-20px_0_40px_rgba(0,0,0,0.08)] flex flex-col overflow-hidden">
         {isLoading && (
           <div className="flex-1 flex items-center justify-center text-stone-400 text-sm">
             Загрузка модели…
@@ -3043,6 +4084,8 @@ export function ModelCard({ kod, onClose }: ModelCardProps) {
                   label: "SKU",
                   count: model.modeli.flatMap((v) => v.artikuly.flatMap((a) => a.tovary)).length,
                 },
+                // W10.19 — список склеек, в которых есть артикулы этой модели.
+                { id: "skleyki", label: "Склейки" },
                 { id: "content", label: "Контент" },
                 { id: "history", label: "История" },
               ] as Array<{ id: TabId; label: string; count?: number }>).map((t) => (
@@ -3147,6 +4190,7 @@ function TabSwitcher(props: TabContentProps & { tab: TabId }) {
     case "attributes":  return <TabAttributes  {...rest} />
     case "articles":    return <TabArticles    {...rest} />
     case "sku":         return <TabSKU         {...rest} />
+    case "skleyki":     return <TabSkleyki     m={rest.m} />
     case "content":     return <TabContent     {...rest} />
     case "history":     return <TabHistory     m={rest.m} />
     default:            return null

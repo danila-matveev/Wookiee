@@ -28,6 +28,10 @@ TELEMOST_BOT_TOKEN: str = _required("TELEMOST_BOT_TOKEN")
 TELEMOST_BOT_ID: int = int(_required("TELEMOST_BOT_ID"))
 TELEMOST_BOT_USERNAME: str = _required("TELEMOST_BOT_USERNAME")
 TELEMOST_WEBHOOK_SECRET: str = _required("TELEMOST_WEBHOOK_SECRET")
+# Public URL of the API used by Telegram to deliver webhook updates. If unset
+# (e.g. local dev / tests), startup skips automatic webhook registration and
+# the operator is expected to set it manually via Bot API.
+TELEMOST_PUBLIC_URL: str = os.getenv("TELEMOST_PUBLIC_URL", "").rstrip("/")
 
 # Supabase
 SUPABASE_URL: str = _required("SUPABASE_URL")
@@ -57,6 +61,38 @@ RECORDING_HARD_LIMIT_HOURS: int = int(os.getenv("RECORDING_HARD_LIMIT_HOURS", "4
 LLM_POSTPROCESS_MODEL: str = os.getenv("LLM_POSTPROCESS_MODEL", "google/gemini-2.5-flash")
 LLM_POSTPROCESS_TIMEOUT_SECONDS: int = int(os.getenv("LLM_POSTPROCESS_TIMEOUT_SECONDS", "120"))
 LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+
+# HTTP timeouts for external services. Defaults are tuned per-API:
+# - Telegram: 60s — sendDocument с длинным transcript-файлом (до нескольких MB)
+#   и sendMessage с большой клавиатурой может занимать заметное время на стороне
+#   Bot API.
+# - Notion: 30s — обычный REST с пагинацией, иногда блочные PATCH-и медленные.
+# - Bitrix: 15s — calendar.event.get на коротком окне ±2ч, отвечает быстро,
+#   но REST вебхук Bitrix24 нестабилен под нагрузкой.
+# - Supabase Storage: 120s — заливка opus-аудио до сотен MB по медленному
+#   серверному каналу; 5s (httpx default) обрывал заливки длинных встреч.
+TELEGRAM_TIMEOUT_SECONDS: float = float(os.getenv("TELEGRAM_TIMEOUT_SECONDS", "60"))
+NOTION_TIMEOUT_SECONDS: float = float(os.getenv("NOTION_TIMEOUT_SECONDS", "30"))
+BITRIX_TIMEOUT_SECONDS: float = float(os.getenv("BITRIX_TIMEOUT_SECONDS", "15"))
+SUPABASE_STORAGE_TIMEOUT_SECONDS: float = float(
+    os.getenv("SUPABASE_STORAGE_TIMEOUT_SECONDS", "120")
+)
+
+# Bitrix calendar scheduler — auto-queues a recording when a Telemost meeting
+# is about to start. Both vars must be set for the worker to activate; leaving
+# either empty disables it silently (dev / single-user mode).
+#   TELEMOST_SCHEDULER_BITRIX_USER_ID — whose Bitrix calendar to poll
+#   TELEMOST_SCHEDULER_TELEGRAM_ID    — who gets the result DM
+SCHEDULER_BITRIX_USER_ID: str = os.getenv("TELEMOST_SCHEDULER_BITRIX_USER_ID", "").strip()
+_raw_scheduler_tg = os.getenv("TELEMOST_SCHEDULER_TELEGRAM_ID", "").strip()
+SCHEDULER_TELEGRAM_ID: int | None = int(_raw_scheduler_tg) if _raw_scheduler_tg else None
+SCHEDULER_TICK_SECONDS: int = int(os.getenv("TELEMOST_SCHEDULER_TICK_SECONDS", "60"))
+# How early before DATE_FROM we queue the recording. Default 90s — enough for
+# the recorder container to spawn (~30s) and join before participants do.
+SCHEDULER_LEAD_SECONDS: int = int(os.getenv("TELEMOST_SCHEDULER_LEAD_SECONDS", "90"))
+# Grace period: catch a meeting we missed (e.g. worker crashed). Don't queue
+# anything that started more than this many seconds ago.
+SCHEDULER_GRACE_SECONDS: int = int(os.getenv("TELEMOST_SCHEDULER_GRACE_SECONDS", "300"))
 
 # Paths
 DATA_DIR: Path = _PROJECT_ROOT / "data" / "telemost"

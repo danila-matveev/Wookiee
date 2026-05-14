@@ -6,21 +6,31 @@ generic "(без названия)" + Speaker 0/1/2).
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 import httpx
 
-from services.telemost_recorder_api.config import BITRIX24_WEBHOOK_URL
+from services.telemost_recorder_api.config import (
+    BITRIX24_WEBHOOK_URL,
+    BITRIX_TIMEOUT_SECONDS,
+)
 from services.telemost_recorder_api.db import get_pool
 
 logger = logging.getLogger(__name__)
 
 _LOOKUP_WINDOW_HOURS = 4  # ±2 ч от now()
-_HTTP_TIMEOUT = 15.0
+_BITRIX_RETRIES = 3
+_BITRIX_BACKOFF_BASE = 1.0
+# Bitrix returns DATE_FROM as a naive string in the calendar owner's TZ.
+# Wookiee's kabinet is Europe/Moscow — hard-coded here because there's no
+# per-user TZ in the webhook payload we use.
+_BITRIX_TZ = ZoneInfo("Europe/Moscow")
 
 
 def _extract_attendee_ids(codes: list[Any] | None) -> list[int]:
@@ -46,14 +56,20 @@ def _event_mentions_url(ev: dict, url: str) -> bool:
 def _parse_bitrix_date(s: str | None) -> datetime | None:
     """Parse Bitrix DATE_FROM ('13.05.2026 08:30:00') to UTC datetime.
 
-    Bitrix returns dates in user TZ without explicit offset; we use UTC-naive
-    comparison anyway (we just need closeness in minutes, not absolute time).
+    Bitrix returns dates as naive strings in the calendar owner's TZ
+    (Europe/Moscow for Wookiee). Pre-fix we tagged the parsed datetime
+    as UTC, which made every event look 3 hours earlier than it was —
+    enough to make _pick_closest_meeting choose the wrong neighbour.
+
+    We attach Europe/Moscow explicitly, then convert to UTC for
+    storage and comparisons.
     """
     if not s:
         return None
     for fmt in ("%d.%m.%Y %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
         try:
-            return datetime.strptime(s, fmt).replace(tzinfo=timezone.utc)
+            naive = datetime.strptime(s, fmt)
+            return naive.replace(tzinfo=_BITRIX_TZ).astimezone(timezone.utc)
         except ValueError:
             continue
     return None
@@ -115,18 +131,37 @@ async def find_event_by_url(
     base = BITRIX24_WEBHOOK_URL.rstrip("/")
     params = {"type": "user", "ownerId": bitrix_user_id, "from": frm, "to": to}
 
-    try:
-        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as c:
-            resp = await c.get(f"{base}/calendar.event.get.json", params=params)
-    except httpx.HTTPError as e:
-        logger.warning("Bitrix calendar.event.get HTTP error: %s", e)
-        return None
-
-    if not resp.is_success:
+    resp = None
+    for attempt in range(_BITRIX_RETRIES):
+        try:
+            async with httpx.AsyncClient(timeout=BITRIX_TIMEOUT_SECONDS) as c:
+                resp = await c.get(f"{base}/calendar.event.get.json", params=params)
+        except httpx.HTTPError as e:
+            logger.warning(
+                "Bitrix calendar.event.get attempt %d/%d failed: %s",
+                attempt + 1, _BITRIX_RETRIES, e,
+            )
+            resp = None
+            if attempt < _BITRIX_RETRIES - 1:
+                await asyncio.sleep(_BITRIX_BACKOFF_BASE * (2 ** attempt))
+            continue
+        if resp.is_success:
+            break
+        # 4xx is unlikely to succeed on retry — bail out
+        if resp.status_code < 500 and resp.status_code != 429:
+            logger.warning(
+                "Bitrix calendar.event.get failed %d: %s",
+                resp.status_code, resp.text[:200],
+            )
+            return None
         logger.warning(
-            "Bitrix calendar.event.get failed %d: %s",
-            resp.status_code, resp.text[:200],
+            "Bitrix calendar.event.get %d on attempt %d/%d, retrying",
+            resp.status_code, attempt + 1, _BITRIX_RETRIES,
         )
+        if attempt < _BITRIX_RETRIES - 1:
+            await asyncio.sleep(_BITRIX_BACKOFF_BASE * (2 ** attempt))
+
+    if resp is None or not resp.is_success:
         return None
 
     try:

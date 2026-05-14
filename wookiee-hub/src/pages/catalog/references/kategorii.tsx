@@ -22,6 +22,7 @@ import {
   SkeletonTable,
   type RefFieldDef,
 } from "./_shared"
+import { ReferenceDrawer } from "@/pages/catalog/reference-card"
 
 interface KategoriyaRow {
   id: number
@@ -126,23 +127,46 @@ export function KategoriiPage() {
       {ref.list.isLoading ? (
         <SkeletonTable rows={6} cols={4} />
       ) : (
-        <CatalogTable columns={columns} data={filtered} emptyText="Категории не найдены" />
+        <CatalogTable
+          columns={columns}
+          data={filtered}
+          emptyText="Категории не найдены"
+          onRowClick={(r) => setEditing(r)}
+        />
       )}
 
-      {(creating || editing) && (
+      {creating && (
         <RefModal
-          title={editing ? "Редактировать категорию" : "Новая категория"}
+          title="Новая категория"
           fields={FIELDS}
-          initial={
-            editing
-              ? { nazvanie: editing.nazvanie, opisanie: editing.opisanie ?? "" }
-              : undefined
-          }
           onSave={handleSave}
-          onCancel={() => {
-            setEditing(null)
-            setCreating(false)
+          onCancel={() => setCreating(false)}
+        />
+      )}
+
+      {editing && (
+        <ReferenceDrawer
+          kind="Категория"
+          title={editing.nazvanie}
+          fields={FIELDS}
+          initial={{ nazvanie: editing.nazvanie, opisanie: editing.opisanie ?? "" }}
+          onSave={async (vals) => {
+            await handleSave(vals)
           }}
+          onClose={() => setEditing(null)}
+          linkedSections={[
+            {
+              kind: "models",
+              title: "Модели категории",
+              refColumn: "kategoriya_id",
+              refId: editing.id,
+            },
+            {
+              kind: "atributy",
+              title: "Атрибуты категории",
+              kategoriyaId: editing.id,
+            },
+          ]}
         />
       )}
 

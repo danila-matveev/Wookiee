@@ -129,6 +129,12 @@ async def launch_browser() -> AsyncIterator[tuple[Browser, BrowserContext, Page]
         # Mute the fake 440 Hz tone from --use-fake-device-for-media-stream.
         await context.add_init_script(_MEDIA_MUTE_SCRIPT)
         page = await context.new_page()
+        # Default Playwright locator timeout = 30 секунд. Это плохо подходит для
+        # join.py, где is_visible() гоняется в горячем цикле каждые 0.5с —
+        # один зависший selector задерживал детект состояния на половину минуты.
+        # 5 секунд достаточно для самой медленной попытки react-рендера и
+        # совпадает с верхней границей наших explicit timeout=200/300/500 вызовов.
+        page.set_default_timeout(5000)
         try:
             yield browser, context, page
         finally:

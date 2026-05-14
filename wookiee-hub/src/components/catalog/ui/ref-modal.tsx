@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { X } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { translateError } from "@/lib/catalog/error-translator"
 
 export type RefFieldType =
   | "text"
@@ -79,7 +80,7 @@ export function RefModal({
     try {
       await onSave(values)
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Ошибка сохранения")
+      setError(translateError(e))
     } finally {
       setSaving(false)
     }
@@ -156,7 +157,7 @@ interface FieldInputProps {
   onChange: (v: unknown) => void
 }
 
-function FieldInput({ field, value, onChange }: FieldInputProps) {
+export function FieldInput({ field, value, onChange }: FieldInputProps) {
   const labelEl = (
     <label className="block text-[11px] uppercase tracking-wider text-stone-500 mb-1">
       {field.label}

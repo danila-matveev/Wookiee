@@ -18,7 +18,7 @@ from services.telemost_recorder.config import (
 )
 from services.telemost_recorder.speakers import load_speakers, resolve_speakers
 from services.telemost_recorder.state import FailReason, Meeting, MeetingStatus
-from services.telemost_recorder.transcribe import transcribe_audio
+from services.telemost_recorder.transcribe import transcribe_audio_async
 
 _URL_PATTERN = re.compile(
     r"^https?://(telemost\.yandex\.(ru|com)|telemost\.360\.yandex\.ru)/(j|join)/[a-zA-Z0-9_\-]+"
@@ -87,9 +87,39 @@ async def detect_screen_state(page: Page) -> ScreenState:
     return ScreenState.UNKNOWN
 
 
+# Telemost may render the "meeting not found" banner with several variants depending
+# on locale and UI version. Probing all of them keeps the detector resilient to
+# minor copy changes.
+_NOT_FOUND_SELECTORS: tuple[str, ...] = (
+    "[data-testid='error-page']",
+    "text=Встреча не найдена",
+    "text=Такой встречи не существует",
+    "text=Конференция не найдена",
+    "text=Meeting not found",
+)
+
+
+async def _detect_meeting_not_found(page: Page, timeout_seconds: float = 10.0) -> bool:
+    """Return True if Telemost shows a 'meeting not found' banner within timeout.
+
+    Used as a fast-fail signal so the recorder does not wait the full join timeout
+    when the user pasted a stale or broken meeting link.
+    """
+    end_time = time.monotonic() + timeout_seconds
+    while time.monotonic() < end_time:
+        for selector in _NOT_FOUND_SELECTORS:
+            try:
+                if await page.locator(selector).first.is_visible(timeout=300):
+                    return True
+            except Exception:
+                continue
+        await asyncio.sleep(0.5)
+    return False
+
+
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
-async def _wait_for_known_state(page: Page, timeout: float) -> ScreenState:
+async def _poll_known_state(page: Page, timeout: float) -> ScreenState:
     """Poll detect_screen_state until a non-UNKNOWN state is found or timeout expires."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -98,6 +128,44 @@ async def _wait_for_known_state(page: Page, timeout: float) -> ScreenState:
             return state
         await asyncio.sleep(0.5)
     return ScreenState.UNKNOWN
+
+
+async def _wait_for_known_state(page: Page, timeout: float) -> ScreenState:
+    """Wait for a known screen state, racing a short not-found probe against the main poll.
+
+    The not-found probe runs in parallel with a 10s local timeout so that broken
+    meeting links fail fast (~seconds) instead of waiting the full JOIN_TIMEOUT.
+    """
+    not_found_timeout = min(10.0, timeout)
+    state_task = asyncio.create_task(_poll_known_state(page, timeout))
+    notfound_task = asyncio.create_task(
+        _detect_meeting_not_found(page, timeout_seconds=not_found_timeout)
+    )
+    try:
+        done, _pending = await asyncio.wait(
+            {state_task, notfound_task},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        # If not-found fired first with a positive result, short-circuit.
+        if notfound_task in done and notfound_task.result() is True:
+            state_task.cancel()
+            return ScreenState.MEETING_NOT_FOUND
+        # Otherwise wait for the main poll to finish.
+        if state_task in done:
+            notfound_task.cancel()
+            return state_task.result()
+        # not-found finished negative — keep waiting for the main poll.
+        return await state_task
+    finally:
+        for task in (state_task, notfound_task):
+            if not task.done():
+                task.cancel()
+        # Swallow cancellation results so they don't surface as warnings.
+        for task in (state_task, notfound_task):
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
 
 
 async def _wait_for_joined(page: Page, timeout: float) -> ScreenState:
@@ -499,11 +567,18 @@ async def run_session(
             await _execute_join(page, meeting, bot_name, screenshot_dir)
 
             if meeting.status == MeetingStatus.FAILED:
-                _emit({
+                reason_value = meeting.fail_reason.value if meeting.fail_reason else "UNKNOWN"
+                # Human-readable hint for the most common cause — a stale or mistyped link.
+                payload: dict = {
                     "status": "FAILED",
-                    "reason": meeting.fail_reason.value if meeting.fail_reason else "UNKNOWN",
+                    "reason": reason_value,
                     "meeting_id": meeting.meeting_id,
-                })
+                }
+                if meeting.fail_reason == FailReason.MEETING_NOT_FOUND:
+                    payload["message"] = (
+                        "Встреча не найдена. Проверь ссылку — возможно, она устарела или содержит опечатку."
+                    )
+                _emit(payload)
                 return
 
             if meeting.status == MeetingStatus.WAITING_ROOM:
@@ -541,8 +616,14 @@ async def run_session(
                         meeting.participants = await extract_participants(page)
                         participant_tick = 0
 
-                    # Grace period: don't exit for the first 90s so the host has time to join
-                    if elapsed >= 90 and await detect_meeting_ended(page):
+                    # Grace period: 5 минут вместо 90с. Раньше бот выходил, если
+                    # к 90-й секунде хост ещё не подключился и badge_count держался
+                    # на 1 — но реально хост часто приходит в 2-3 минуты после
+                    # старта. 5 минут — компромисс: достаточно чтобы хост успел,
+                    # но без переплаты за полностью пустой звонок.
+                    # Полноценный silence-based детект (анализ аудио-уровня) — TODO,
+                    # тут только raise grace.
+                    if elapsed >= 300 and await detect_meeting_ended(page):
                         _emit({"status": "MEETING_ENDED_DETECTED", "meeting_id": meeting.meeting_id})
                         break
             except (asyncio.CancelledError, KeyboardInterrupt):
@@ -561,7 +642,7 @@ async def run_session(
         return
 
     try:
-        segments = transcribe_audio(audio_path)
+        segments = await transcribe_audio_async(audio_path)
         employees = load_speakers()
         speaker_map = resolve_speakers(segments, meeting.participants, employees)
         for seg in segments:

@@ -1,27 +1,48 @@
 import React, { useMemo, useState, useCallback, useRef, useEffect } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { Search, X, Plus, Loader2 } from "lucide-react"
+import { Search, X, Plus, Loader2, ChevronDown, ChevronRight, Trash2, Download, Link2 } from "lucide-react"
 import {
   fetchTovaryRegistry, fetchStatusy, fetchSkleykiWb, fetchSkleykiOzon,
-  bulkUpdateTovaryStatus, bulkLinkTovaryToSkleyka,
+  fetchRazmery,
+  bulkUpdateTovaryStatus, bulkLinkTovaryToSkleyka, bulkDeleteTovary,
+  updateTovar, updateArtikul,
+  fetchTovarSkleykiBatch,
   getUiPref, setUiPref,
   type TovarRow, type TovarChannel, type SkleykaRow,
+  type RegistryRowSkleyki,
 } from "@/lib/catalog/service"
 import { supabase } from "@/lib/supabase"
 import { StatusBadge } from "@/components/catalog/ui/status-badge"
 import { ColorSwatch } from "@/components/catalog/ui/color-swatch"
-import { ColumnsManager, type ColumnDef } from "@/components/catalog/ui/columns-manager"
+import { ColumnsManager } from "@/components/catalog/ui/columns-manager"
+import { useColumnConfig } from "@/hooks/use-column-config"
+import { TOVARY_COLUMNS_FULL } from "@/lib/catalog/column-catalogs"
 import { BulkActionsBar } from "@/components/catalog/ui/bulk-actions-bar"
 import { SortableHeader } from "@/components/catalog/ui/sortable-header"
 import { Pagination } from "@/components/catalog/ui/pagination"
-import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
+import { EmptyState } from "@/components/catalog/ui/empty-state"
+import { FilterBar } from "@/components/catalog/ui/filter-bar"
+import { CellText } from "@/components/catalog/ui/cell-text"
+import { InlineTextCell } from "@/components/catalog/ui/inline-text-cell"
+import { InlineSelectCell } from "@/components/catalog/ui/inline-select-cell"
+import { relativeDate } from "@/lib/catalog/color-utils"
 import { useResizableColumns } from "@/hooks/use-resizable-columns"
 import { useTableSort, type SortState } from "@/hooks/use-table-sort"
 import { usePagination } from "@/hooks/use-pagination"
+import { useDebouncedValue } from "@/hooks/use-debounced-value"
+import { useCollapsibleGroups } from "@/hooks/use-collapsible-groups"
 import { downloadCsv } from "@/lib/catalog/csv-export"
+import { translateError } from "@/lib/catalog/error-translator"
+import { toast } from "@/lib/catalog/toast"
+import { razmerOrder } from "@/lib/catalog/size-utils"
+// W10.32 — single-click на строку открывает SkuDrawer (карточка SKU). См.
+// sku-card.tsx.
+import { SkuDrawer } from "./sku-card"
+// W10.26 — drawer склейки по клику на чип в новой колонке «Склейка».
+import { SkleykaDrawer } from "./skleyka-drawer"
 
 // W1.5 — Default per-column widths (px) for the SKU registry (Товары) page.
-// Keys must match TOVARY_COLUMNS[i].key.
+// W9.5 — расширено новыми ключами из TOVARY_COLUMNS_FULL (column-catalogs).
 const TOVARY_DEFAULT_WIDTHS: Record<string, number> = {
   barkod: 150,
   artikul: 150,
@@ -40,30 +61,26 @@ const TOVARY_DEFAULT_WIDTHS: Record<string, number> = {
   cena_wb: 110,
   cena_ozon: 110,
   created: 110,
+  // W9.5
+  sku_china_size: 130,
+  ozon_product_id: 150,
+  ozon_fbo_sku_id: 150,
+  lamoda_seller_sku: 160,
+  kollekciya: 140,
+  kategoriya: 130,
+  // W10.26 — колонка «Склейка»: чип канала + укороченное название.
+  skleyka: 180,
 }
 
-// 17 columns; all default-visible per Final Report MINOR fix.
-const TOVARY_COLUMNS: ColumnDef[] = [
-  { key: "barkod",          label: "Баркод",          default: true },
-  { key: "artikul",         label: "Артикул",         default: true },
-  { key: "model",           label: "Модель",          default: true },
-  { key: "cvet",            label: "Цвет",            default: true },
-  { key: "razmer",          label: "Размер",          default: true },
-  { key: "wb_nom",          label: "WB-номенклатура", default: true },
-  { key: "ozon_art",        label: "OZON-артикул",    default: true },
-  { key: "status_wb",       label: "Статус WB",       default: true,  badge: "канал" },
-  { key: "status_ozon",     label: "Статус OZON",     default: true,  badge: "канал" },
-  { key: "status_sayt",     label: "Статус Сайт",     default: true,  badge: "канал" },
-  { key: "status_lamoda",   label: "Статус Lamoda",   default: true,  badge: "канал" },
-  { key: "barkod_gs1",      label: "Баркод GS1",      default: true },
-  { key: "barkod_gs2",      label: "Баркод GS2",      default: true },
-  { key: "barkod_perehod",  label: "Баркод перехода", default: true },
-  { key: "cena_wb",         label: "Цена WB",         default: true },
-  { key: "cena_ozon",       label: "Цена OZON",       default: true },
-  { key: "created",         label: "Дата создания",   default: true },
-]
+// W9.9 — синтетический ключ колонки «Статус» (для одного выбранного канала).
+// В TOVARY_COLUMNS не включаем — он подставляется в effectiveColumns динамически
+// и заменяет 4 раздельные колонки status_<channel> когда выбран конкретный канал.
+const STATUS_CHANNEL_KEY = "status_channel"
+const CHANNEL_STATUS_KEYS = ["status_wb", "status_ozon", "status_sayt", "status_lamoda"] as const
 
-const DEFAULT_COLUMNS = TOVARY_COLUMNS.filter((c) => c.default).map((c) => c.key)
+// W9.5 — каталог колонок переехал в shared `lib/catalog/column-catalogs.ts`.
+// Алиас оставлен для backward-compat локального кода (`labelForColumn` ниже).
+const TOVARY_COLUMNS = TOVARY_COLUMNS_FULL
 
 type StatusGroupFilter = "all" | "active" | "archive" | "no-status"
 type ChannelFilter = "all" | "wb" | "ozon" | "sayt" | "lamoda"
@@ -86,7 +103,8 @@ function getTovarSortValue(t: TovarRow, col: TovarSortKey): unknown {
     case "artikul": return t.artikul ?? ""
     case "model": return t.model_osnova_kod ?? ""
     case "cvet": return t.cvet_color_code ?? ""
-    case "razmer": return t.razmer ?? ""
+    // W10.29 — физический порядок размеров (XS<S<M<L<…), не alpha.
+    case "razmer": return razmerOrder(t.razmer)
     case "wb_nom": return t.nomenklatura_wb ?? null
     case "ozon_art": return t.artikul_ozon ?? ""
     case "status_wb": return t.status_id ?? null
@@ -144,13 +162,14 @@ function InlineStatusCell({
       await onChange(id)
       setOpen(false)
     } catch (err) {
-      // eslint-disable-next-line no-alert
-      alert(`Не удалось обновить статус: ${(err as Error).message}`)
+      toast.error(translateError(err))
     } finally {
       setSaving(false)
     }
   }, [onChange, saving])
 
+  // W9.17 — StatusBadge сам резолвит id через `useStatusyMap` (любой id из БД)
+  // и сам рисует `#N` fallback + `—` для пустого значения.
   return (
     <div className="relative inline-block" ref={ref} onClick={(e) => e.stopPropagation()}>
       <button
@@ -159,9 +178,7 @@ function InlineStatusCell({
         className="hover:ring-1 hover:ring-stone-400 rounded-md transition-all"
         title={`Статус ${channel.toUpperCase()} — кликните чтобы изменить`}
       >
-        {currentStatusId != null
-          ? <StatusBadge statusId={currentStatusId} compact />
-          : <span className="text-[11px] text-stone-400 italic px-1.5 py-px">—</span>}
+        <StatusBadge statusId={currentStatusId} compact placeholder="dash" />
       </button>
       {open && (
         <div className="absolute top-full left-0 mt-1 w-56 bg-white border border-stone-200 rounded-lg shadow-lg z-30">
@@ -207,6 +224,63 @@ interface CellContext {
   onUpdateStatus: (
     barkod: string, statusId: number, channel: TovarChannel,
   ) => Promise<void>
+  /** W9.9 — для синтетической колонки «Статус» (один выбранный канал). */
+  selectedChannel?: TovarChannel
+  /**
+   * W9.10 — inline-edit поля SKU (`tovary`).  Без него ячейки рендерятся в
+   * read-only (CellText) — нужно для редкого `renderCell` без контекста.
+   */
+  onUpdateTovar?: (
+    tovarId: number,
+    patch: {
+      barkod?: string
+      barkod_gs1?: string | null
+      barkod_gs2?: string | null
+      barkod_perehod?: string | null
+      razmer_id?: number
+      sku_china_size?: string | null
+      lamoda_seller_sku?: string | null
+      ozon_product_id?: number | null
+      ozon_fbo_sku_id?: number | null
+    },
+  ) => Promise<void>
+  /**
+   * W9.10 — inline-edit полей родительского artikul-а (artikul_ozon /
+   * nomenklatura_wb).  Эти поля лежат в `artikuly`, но видны в реестре tovary.
+   */
+  onUpdateArtikulField?: (
+    artikulId: number,
+    patch: { nomenklatura_wb?: number | null; artikul_ozon?: string | null },
+  ) => Promise<void>
+  /** W9.10 — справочник размеров для InlineSelectCell. */
+  razmerOptions?: { value: number; label: string }[]
+  /** W10.26 — Map tovar.id → склейки (WB+OZON). null если данные ещё грузятся. */
+  skleykiByTovarId?: Map<number, RegistryRowSkleyki> | null
+  /** W10.26 — клик по чипу склейки → открыть SkleykaDrawer. */
+  onOpenSkleyka?: (channel: "wb" | "ozon", skleykaId: number) => void
+}
+
+function renderChannelStatusCell(t: TovarRow, ctx: CellContext): React.ReactNode {
+  const ch = ctx.selectedChannel
+  if (!ch) return null
+  const onChange = async (id: number) => { await ctx.onUpdateStatus(t.barkod, id, ch) }
+  const currentId =
+    ch === "wb" ? t.status_id
+      : ch === "ozon" ? t.status_ozon_id
+      : ch === "sayt" ? t.status_sayt_id
+      : t.status_lamoda_id
+  const options =
+    ch === "sayt" ? ctx.statusOptions.sayt
+      : ch === "lamoda" ? ctx.statusOptions.lamoda
+      : ctx.statusOptions.product
+  return (
+    <InlineStatusCell
+      currentStatusId={currentId ?? null}
+      channel={ch}
+      options={options}
+      onChange={onChange}
+    />
+  )
 }
 
 function renderCell(
@@ -217,41 +291,112 @@ function renderCell(
   const onUpdate = (channel: TovarChannel) => async (statusId: number) => {
     await ctx.onUpdateStatus(t.barkod, statusId, channel)
   }
+  if (key === STATUS_CHANNEL_KEY) return renderChannelStatusCell(t, ctx)
   switch (key) {
     case "barkod":
-      return <span className="font-mono text-xs text-stone-700">{t.barkod}</span>
+      // W9.10 — inline-edit баркода (UNIQUE constraint в БД ловит дубли).
+      if (ctx.onUpdateTovar) {
+        return (
+          <InlineTextCell
+            value={t.barkod}
+            onCommit={async (next) => {
+              if (next == null || next.trim() === "") {
+                throw new Error("Баркод не может быть пустым")
+              }
+              await ctx.onUpdateTovar!(t.id, { barkod: next })
+            }}
+            className="font-mono text-xs text-stone-700"
+            title={t.barkod}
+            hint="Редактировать баркод"
+          />
+        )
+      }
+      return <CellText className="font-mono text-xs text-stone-700" title={t.barkod}>{t.barkod}</CellText>
     case "artikul":
-      return <span className="font-mono text-[11px] text-stone-600">{t.artikul ?? "—"}</span>
+      // Артикул берётся через FK (artikul_id) → редактируется на /catalog/artikuly.
+      return <CellText className="font-mono text-[11px] text-stone-600" title={t.artikul ?? ""}>{t.artikul ?? "—"}</CellText>
     case "model":
       return (
-        <div className="flex flex-col">
-          <span className="font-mono text-xs font-medium text-stone-900">
+        <div className="flex flex-col min-w-0">
+          <CellText className="font-mono text-xs font-medium text-stone-900" title={t.model_osnova_kod ?? ""}>
             {t.model_osnova_kod ?? "—"}
-          </span>
+          </CellText>
           {t.nazvanie_etiketka && (
-            <span className="text-[11px] text-stone-500">{t.nazvanie_etiketka}</span>
+            <CellText className="text-[11px] text-stone-500" title={t.nazvanie_etiketka}>{t.nazvanie_etiketka}</CellText>
           )}
         </div>
       )
     case "cvet":
+      // W10.5: swatch + код цвета + русское название.
+      // Используем colorSwatchStyle через ColorSwatch — при отсутствии hex
+      // покажет серую штриховку, а не fake hash-цвет.
       return (
-        <div className="flex items-center gap-1.5">
-          <ColorSwatch hex={t.cvet_hex ?? swatchColor(t.cvet_color_code ?? "")} size={14} />
-          <span className="font-mono text-xs text-stone-600">{t.cvet_color_code ?? "—"}</span>
-          {t.cvet_ru && <span className="text-stone-500 text-[11px]">{t.cvet_ru}</span>}
+        <div className="flex items-center gap-2 min-w-0">
+          <ColorSwatch hex={t.cvet_hex} size={14} />
+          <CellText className="text-stone-500 tabular-nums font-mono text-xs" title={t.cvet_color_code ?? ""}>{t.cvet_color_code ?? "—"}</CellText>
+          {t.cvet_ru && <CellText className="text-stone-900 text-xs" title={t.cvet_ru}>{t.cvet_ru}</CellText>}
         </div>
       )
     case "razmer":
-      return <span className="font-mono text-xs">{t.razmer ?? "—"}</span>
+      // W9.10 — inline-edit размера через select-popover (razmer_id).
+      // Используем разные опции, но без фильтра «уже занятые» — здесь SKU уже
+      // существует, просто меняем размерный тег.
+      if (ctx.onUpdateTovar && ctx.razmerOptions) {
+        return (
+          <InlineSelectCell<number>
+            value={t.razmer_id}
+            options={ctx.razmerOptions}
+            popoverLabel="Размер"
+            hint="Редактировать размер"
+            onCommit={(next) => ctx.onUpdateTovar!(t.id, { razmer_id: next })}
+            className="font-mono text-xs"
+          />
+        )
+      }
+      return <CellText className="font-mono text-xs" title={t.razmer ?? ""}>{t.razmer ?? "—"}</CellText>
     case "wb_nom":
+      // W9.10 — поле живёт в `artikuly`, обновляем через artikul_id.
+      if (ctx.onUpdateArtikulField && t.artikul_id != null) {
+        return (
+          <InlineTextCell
+            value={t.nomenklatura_wb}
+            type="number"
+            onCommit={async (next) => {
+              if (next == null) {
+                await ctx.onUpdateArtikulField!(t.artikul_id!, { nomenklatura_wb: null })
+                return
+              }
+              const num = Number(next)
+              if (!Number.isFinite(num) || !Number.isInteger(num) || num < 0) {
+                throw new Error("WB-номенклатура должна быть положительным целым числом")
+              }
+              await ctx.onUpdateArtikulField!(t.artikul_id!, { nomenklatura_wb: num })
+            }}
+            className="font-mono text-[11px] text-stone-500 tabular-nums"
+            hint="Редактировать WB-номенклатуру (в карточке артикула)"
+          />
+        )
+      }
       return (
-        <span className="font-mono text-[11px] text-stone-500 tabular-nums">
+        <CellText className="font-mono text-[11px] text-stone-500 tabular-nums" title={t.nomenklatura_wb != null ? String(t.nomenklatura_wb) : ""}>
           {t.nomenklatura_wb ?? "—"}
-        </span>
+        </CellText>
       )
     case "ozon_art":
+      if (ctx.onUpdateArtikulField && t.artikul_id != null) {
+        return (
+          <InlineTextCell
+            value={t.artikul_ozon}
+            onCommit={async (next) => {
+              await ctx.onUpdateArtikulField!(t.artikul_id!, { artikul_ozon: next })
+            }}
+            className="font-mono text-[11px] text-stone-500"
+            hint="Редактировать OZON-артикул (в карточке артикула)"
+          />
+        )
+      }
       return (
-        <span className="font-mono text-[11px] text-stone-500">{t.artikul_ozon ?? "—"}</span>
+        <CellText className="font-mono text-[11px] text-stone-500" title={t.artikul_ozon ?? ""}>{t.artikul_ozon ?? "—"}</CellText>
       )
     case "status_wb":
       return (
@@ -290,17 +435,171 @@ function renderCell(
         />
       )
     case "barkod_gs1":
-      return <span className="font-mono text-[11px] text-stone-500">{t.barkod_gs1 ?? "—"}</span>
+      if (ctx.onUpdateTovar) {
+        return (
+          <InlineTextCell
+            value={t.barkod_gs1}
+            onCommit={(next) => ctx.onUpdateTovar!(t.id, { barkod_gs1: next })}
+            className="font-mono text-[11px] text-stone-500"
+            hint="Редактировать GS1-баркод"
+          />
+        )
+      }
+      return <CellText className="font-mono text-[11px] text-stone-500" title={t.barkod_gs1 ?? ""}>{t.barkod_gs1 ?? "—"}</CellText>
     case "barkod_gs2":
-      return <span className="font-mono text-[11px] text-stone-500">{t.barkod_gs2 ?? "—"}</span>
+      if (ctx.onUpdateTovar) {
+        return (
+          <InlineTextCell
+            value={t.barkod_gs2}
+            onCommit={(next) => ctx.onUpdateTovar!(t.id, { barkod_gs2: next })}
+            className="font-mono text-[11px] text-stone-500"
+            hint="Редактировать GS2-баркод"
+          />
+        )
+      }
+      return <CellText className="font-mono text-[11px] text-stone-500" title={t.barkod_gs2 ?? ""}>{t.barkod_gs2 ?? "—"}</CellText>
     case "barkod_perehod":
-      return <span className="font-mono text-[11px] text-stone-500">{t.barkod_perehod ?? "—"}</span>
+      if (ctx.onUpdateTovar) {
+        return (
+          <InlineTextCell
+            value={t.barkod_perehod}
+            onCommit={(next) => ctx.onUpdateTovar!(t.id, { barkod_perehod: next })}
+            className="font-mono text-[11px] text-stone-500"
+            hint="Редактировать баркод перехода"
+          />
+        )
+      }
+      return <CellText className="font-mono text-[11px] text-stone-500" title={t.barkod_perehod ?? ""}>{t.barkod_perehod ?? "—"}</CellText>
     case "cena_wb":
       return <span className="text-xs text-stone-400 italic">—</span>
     case "cena_ozon":
       return <span className="text-xs text-stone-400 italic">—</span>
     case "created":
-      return <span className="text-xs text-stone-500">{relativeDate(t.created_at)}</span>
+      return <CellText className="text-xs text-stone-500" title={t.created_at ?? ""}>{relativeDate(t.created_at)}</CellText>
+    // W9.5 — расширения для нового конфигуратора (скрыты по умолчанию).
+    case "sku_china_size":
+      if (ctx.onUpdateTovar) {
+        return (
+          <InlineTextCell
+            value={t.sku_china_size}
+            onCommit={(next) => ctx.onUpdateTovar!(t.id, { sku_china_size: next })}
+            className="font-mono text-[11px] text-stone-500"
+            hint="Редактировать размер SKU Китай"
+          />
+        )
+      }
+      return <CellText className="font-mono text-[11px] text-stone-500" title={t.sku_china_size ?? ""}>{t.sku_china_size ?? "—"}</CellText>
+    case "ozon_product_id":
+      if (ctx.onUpdateTovar) {
+        return (
+          <InlineTextCell
+            value={t.ozon_product_id}
+            type="number"
+            onCommit={async (next) => {
+              if (next == null) {
+                await ctx.onUpdateTovar!(t.id, { ozon_product_id: null })
+                return
+              }
+              const num = Number(next)
+              if (!Number.isFinite(num) || !Number.isInteger(num) || num < 0) {
+                throw new Error("OZON product_id должен быть положительным целым числом")
+              }
+              await ctx.onUpdateTovar!(t.id, { ozon_product_id: num })
+            }}
+            className="font-mono text-[11px] text-stone-500 tabular-nums"
+            hint="Редактировать OZON product_id"
+          />
+        )
+      }
+      return <CellText className="font-mono text-[11px] text-stone-500 tabular-nums" title={t.ozon_product_id != null ? String(t.ozon_product_id) : ""}>{t.ozon_product_id ?? "—"}</CellText>
+    case "ozon_fbo_sku_id":
+      if (ctx.onUpdateTovar) {
+        return (
+          <InlineTextCell
+            value={t.ozon_fbo_sku_id}
+            type="number"
+            onCommit={async (next) => {
+              if (next == null) {
+                await ctx.onUpdateTovar!(t.id, { ozon_fbo_sku_id: null })
+                return
+              }
+              const num = Number(next)
+              if (!Number.isFinite(num) || !Number.isInteger(num) || num < 0) {
+                throw new Error("OZON FBO SKU должен быть положительным целым числом")
+              }
+              await ctx.onUpdateTovar!(t.id, { ozon_fbo_sku_id: num })
+            }}
+            className="font-mono text-[11px] text-stone-500 tabular-nums"
+            hint="Редактировать OZON FBO SKU id"
+          />
+        )
+      }
+      return <CellText className="font-mono text-[11px] text-stone-500 tabular-nums" title={t.ozon_fbo_sku_id != null ? String(t.ozon_fbo_sku_id) : ""}>{t.ozon_fbo_sku_id ?? "—"}</CellText>
+    case "lamoda_seller_sku":
+      if (ctx.onUpdateTovar) {
+        return (
+          <InlineTextCell
+            value={t.lamoda_seller_sku}
+            onCommit={(next) => ctx.onUpdateTovar!(t.id, { lamoda_seller_sku: next })}
+            className="font-mono text-[11px] text-stone-500"
+            hint="Редактировать Lamoda seller SKU"
+          />
+        )
+      }
+      return <CellText className="font-mono text-[11px] text-stone-500" title={t.lamoda_seller_sku ?? ""}>{t.lamoda_seller_sku ?? "—"}</CellText>
+    case "kollekciya":
+      return <CellText className="text-xs text-stone-600" title={t.kollekciya ?? ""}>{t.kollekciya ?? "—"}</CellText>
+    case "kategoriya":
+      return <CellText className="text-xs text-stone-600" title={t.kategoriya ?? ""}>{t.kategoriya ?? "—"}</CellText>
+    case "skleyka": {
+      // W10.26 — чип склейки (WB и/или OZON).  Данные подгружаются отдельным
+      // batched-запросом fetchTovarSkleykiBatch (см. родителя).
+      const map = ctx.skleykiByTovarId ?? null
+      const slot = map ? map.get(t.id) : null
+      if (!map) {
+        return <span className="text-xs text-stone-400 tabular-nums">…</span>
+      }
+      if (!slot || (!slot.wb && !slot.ozon)) {
+        return <span className="text-xs text-stone-400 italic">—</span>
+      }
+      const openSk = ctx.onOpenSkleyka
+      return (
+        <div className="flex flex-col gap-0.5 min-w-0">
+          {slot.wb && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                openSk?.("wb", slot.wb!.id)
+              }}
+              className="inline-flex items-center gap-1 min-w-0 text-left hover:underline"
+              title={`WB · ${slot.wb.nazvanie}`}
+            >
+              <span className="inline-flex items-center px-1 py-px rounded text-[9px] font-medium uppercase tracking-wider bg-pink-50 text-pink-700 ring-1 ring-inset ring-pink-600/20 shrink-0">
+                WB
+              </span>
+              <span className="text-xs text-stone-700 truncate">{slot.wb.nazvanie}</span>
+            </button>
+          )}
+          {slot.ozon && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                openSk?.("ozon", slot.ozon!.id)
+              }}
+              className="inline-flex items-center gap-1 min-w-0 text-left hover:underline"
+              title={`OZON · ${slot.ozon.nazvanie}`}
+            >
+              <span className="inline-flex items-center px-1 py-px rounded text-[9px] font-medium uppercase tracking-wider bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-600/20 shrink-0">
+                OZON
+              </span>
+              <span className="text-xs text-stone-700 truncate">{slot.ozon.nazvanie}</span>
+            </button>
+          )}
+        </div>
+      )
+    }
     default:
       return null
   }
@@ -359,8 +658,7 @@ function LinkSkleykaModal({ channel, onClose, onLink }: LinkSkleykaModalProps) {
       await onLink(id)
       void queryClient.invalidateQueries({ queryKey: ["skleyki", channel] })
     } catch (err) {
-      // eslint-disable-next-line no-alert
-      alert(`Не удалось создать склейку: ${(err as Error).message}`)
+      toast.error(translateError(err))
     } finally {
       setCreating(false)
     }
@@ -397,9 +695,12 @@ function LinkSkleykaModal({ channel, onClose, onLink }: LinkSkleykaModalProps) {
             <div className="px-5 py-6 text-sm text-stone-400">Загрузка склеек…</div>
           )}
           {!isLoading && filtered.length === 0 && (
-            <div className="px-5 py-6 text-sm text-stone-400 italic">
-              {search ? "Ничего не найдено" : "Склеек пока нет"}
-            </div>
+            <EmptyState
+              title={search ? "Ничего не найдено" : "Склеек пока нет"}
+              description={search ? "Попробуйте другой запрос или сбросьте поиск." : "Создайте первую склейку чтобы связать SKU между WB и Ozon."}
+              secondaryCta={search ? { label: "Сбросить поиск", onClick: () => setSearch("") } : undefined}
+              className="px-0"
+            />
           )}
           {filtered.map((s) => (
             <button
@@ -445,49 +746,53 @@ function LinkSkleykaModal({ channel, onClose, onLink }: LinkSkleykaModalProps) {
 
 // ─── Composite search ──────────────────────────────────────────────────────
 
+// W9.3 — все строковые поля SKU, релевантные для поиска (lowercase).
+function tovarSearchFields(t: TovarRow): string[] {
+  return [
+    t.barkod,
+    t.barkod_gs1,
+    t.barkod_gs2,
+    t.barkod_perehod,
+    t.artikul,
+    t.model_osnova_kod,
+    t.model_kod,
+    t.nazvanie_etiketka,
+    t.cvet_color_code,
+    t.cvet_ru,
+    t.color_en,
+    t.razmer,
+    t.razmer_kod,
+    t.kollekciya,
+    t.kategoriya,
+    t.artikul_ozon,
+    t.sku_china_size,
+    t.lamoda_seller_sku,
+    t.nomenklatura_wb != null ? String(t.nomenklatura_wb) : null,
+    t.ozon_product_id != null ? String(t.ozon_product_id) : null,
+    t.ozon_fbo_sku_id != null ? String(t.ozon_fbo_sku_id) : null,
+  ]
+    .filter((v): v is string => typeof v === "string" && v.length > 0)
+    .map((v) => v.toLowerCase())
+}
+
 function matchesCompositeSearch(t: TovarRow, raw: string): boolean {
   if (!raw.trim()) return true
   const tokens = raw.split("/").map((s) => s.trim().toLowerCase()).filter(Boolean)
   if (tokens.length === 0) return true
 
-  // Single token — flexible search across barkod/artikul/model/cvet
+  const fields = tovarSearchFields(t)
+
+  // Single token — flexible OR-search по всем полям SKU.
   if (tokens.length === 1) {
     const q = tokens[0]
-    return (
-      t.barkod.toLowerCase().includes(q) ||
-      (t.artikul ?? "").toLowerCase().includes(q) ||
-      (t.model_osnova_kod ?? "").toLowerCase().includes(q) ||
-      (t.nazvanie_etiketka ?? "").toLowerCase().includes(q) ||
-      (t.cvet_color_code ?? "").toLowerCase().includes(q) ||
-      (t.cvet_ru ?? "").toLowerCase().includes(q) ||
-      (t.color_en ?? "").toLowerCase().includes(q) ||
-      (t.razmer_kod ?? "").toLowerCase().includes(q) ||
-      String(t.nomenklatura_wb ?? "").toLowerCase().includes(q) ||
-      (t.artikul_ozon ?? "").toLowerCase().includes(q)
-    )
+    return fields.some((f) => f.includes(q))
   }
 
-  // Composite tokens: model / color / size — AND-логика
-  const [modelTok, colorTok, sizeTok] = tokens
-
-  if (modelTok) {
-    const okModel =
-      (t.model_osnova_kod ?? "").toLowerCase().includes(modelTok) ||
-      (t.nazvanie_etiketka ?? "").toLowerCase().includes(modelTok)
-    if (!okModel) return false
-  }
-  if (colorTok) {
-    const okColor =
-      (t.cvet_ru ?? "").toLowerCase().includes(colorTok) ||
-      (t.color_en ?? "").toLowerCase().includes(colorTok) ||
-      (t.cvet_color_code ?? "").toLowerCase().includes(colorTok)
-    if (!okColor) return false
-  }
-  if (sizeTok) {
-    const okSize = (t.razmer_kod ?? "").toLowerCase() === sizeTok
-    if (!okSize) return false
-  }
-  return true
+  // Composite tokens (model/color/size) — каждый токен должен
+  // совпасть хотя бы с одним полем (AND между токенами, OR по полям).
+  // Регистр-инвариантно. Это покрывает запросы вроде `Lucky/black`,
+  // `Lucky/чёрный`, `Audrey/red/S`.
+  return tokens.every((tok) => fields.some((f) => f.includes(tok)))
 }
 
 // ─── Status group filter ───────────────────────────────────────────────────
@@ -519,13 +824,36 @@ function applyStatusGroupFilter(
   return rows.filter((t) => hasAnyStatus(t) && !isAllArchive(t, archiveIds))
 }
 
-function applyChannelFilter(rows: TovarRow[], channel: ChannelFilter): TovarRow[] {
+// W9.9 — статусы продукта на канале, означающие «ещё не выведен в продажу»
+// (pre-launch). SKU с таким статусом по каналу не считается продаваемым на нём.
+// Все остальные статусы (Продаётся / Выводим / Архив / Запуск / Скрыт) — это
+// «канал засветился»: active или blocked, но факт продажи был. Это совпадает
+// с поведением WB-кабинета: архивные карточки видны.
+const PRE_LAUNCH_STATUS_NAMES: ReadonlySet<string> = new Set([
+  "План", "Подготовка", "Планирование",
+])
+
+interface StatusLookup {
+  isPreLaunch: (statusId: number | null | undefined) => boolean
+}
+
+function channelStatusField(channel: Exclude<ChannelFilter, "all">): keyof TovarRow {
+  return channel === "wb" ? "status_id"
+    : channel === "ozon" ? "status_ozon_id"
+    : channel === "sayt" ? "status_sayt_id" : "status_lamoda_id"
+}
+
+function applyChannelFilter(
+  rows: TovarRow[], channel: ChannelFilter, lookup: StatusLookup,
+): TovarRow[] {
   if (channel === "all") return rows
-  const field: keyof TovarRow =
-    channel === "wb" ? "status_id"
-      : channel === "ozon" ? "status_ozon_id"
-      : channel === "sayt" ? "status_sayt_id" : "status_lamoda_id"
-  return rows.filter((t) => t[field] != null)
+  const field = channelStatusField(channel)
+  return rows.filter((t) => {
+    const id = t[field] as number | null | undefined
+    if (id == null) return false
+    // active + blocked включаем, pre-launch (План/Подготовка) — исключаем.
+    return !lookup.isPreLaunch(id)
+  })
 }
 
 // ─── Group by ──────────────────────────────────────────────────────────────
@@ -583,7 +911,13 @@ function groupRows(rows: TovarRow[], by: GroupBy): Group[] {
   }
   return Array.from(map.entries())
     .map(([key, items]) => ({ key, label: labelFor(key, items), items }))
-    .sort((a, b) => a.key.localeCompare(b.key))
+    // W10.29 — при groupBy="size" сортируем группы по физическому ладдеру,
+    // остальные группировки — alphanumeric.
+    .sort((a, b) => (
+      by === "size"
+        ? razmerOrder(a.key) - razmerOrder(b.key)
+        : a.key.localeCompare(b.key)
+    ))
 }
 
 // ─── Page ──────────────────────────────────────────────────────────────────
@@ -602,12 +936,26 @@ export function TovaryPage() {
   })
 
   const [search, setSearch] = useState("")
+  // W9.3 — debounce 300мс. tovary-реестр обычно >5k строк; на каждом keystroke
+  // полный scan + render даёт jank, debounce делает поиск отзывчивым.
+  const debouncedSearch = useDebouncedValue(search, 300)
   const [statusGroup, setStatusGroup] = useState<StatusGroupFilter>("all")
   const [channelFilter, setChannelFilter] = useState<ChannelFilter>("all")
+  // W9.4 — multi-select chip-фильтры (модель, цвет, размер, статус по каналам).
+  const [selectedModelKods, setSelectedModelKods] = useState<Set<string>>(new Set())
+  const [selectedColorCodes, setSelectedColorCodes] = useState<Set<string>>(new Set())
+  const [selectedRazmery, setSelectedRazmery] = useState<Set<string>>(new Set())
+  const [selectedChannelStatusIds, setSelectedChannelStatusIds] = useState<Set<number>>(new Set())
   const [groupBy, setGroupBy] = useState<GroupBy>("none")
-  const [columns, setColumns] = useState<string[]>(DEFAULT_COLUMNS)
+  // W9.6 — Notion-style collapsible group headers.
+  const { isCollapsed: isGroupCollapsed, toggle: toggleGroupCollapsed } = useCollapsibleGroups("tovary")
+  // W9.5 — конфигуратор колонок (видимость + порядок + сброс) через единый хук.
+  const columnConfig = useColumnConfig("tovary", TOVARY_COLUMNS)
+  const columns = columnConfig.visibleColumns
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [linkSkleykaChannel, setLinkSkleykaChannel] = useState<"wb" | "ozon" | null>(null)
+  // W10.32 — single-click на строку открывает карточку SKU.
+  const [openTovarId, setOpenTovarId] = useState<number | null>(null)
   // W1.5 — drag-resize колонок + persist. Регистрируем все возможные колонки.
   const { widths: colWidths, bindResizer } = useResizableColumns(
     "tovary",
@@ -645,6 +993,65 @@ export function TovaryPage() {
     }
   }, [statusyData])
 
+  // W9.4 — опции для компактного FilterBar (модель, цвет, размер, статус).
+  const modelOptions = useMemo(() => {
+    const acc = new Map<string, { label: string; count: number }>()
+    for (const t of data ?? []) {
+      const kod = t.model_osnova_kod
+      if (!kod) continue
+      const label = t.nazvanie_etiketka ? `${kod} · ${t.nazvanie_etiketka}` : kod
+      const prev = acc.get(kod)
+      acc.set(kod, { label, count: (prev?.count ?? 0) + 1 })
+    }
+    return Array.from(acc.entries())
+      .sort(([a], [b]) => a.localeCompare(b, "ru"))
+      .map(([value, info]) => ({ value, label: info.label, count: info.count }))
+  }, [data])
+  const colorOptions = useMemo(() => {
+    const acc = new Map<string, { label: string; count: number }>()
+    for (const t of data ?? []) {
+      const code = t.cvet_color_code
+      if (!code) continue
+      const label = t.cvet_ru ? `${code} · ${t.cvet_ru}` : code
+      const prev = acc.get(code)
+      acc.set(code, { label, count: (prev?.count ?? 0) + 1 })
+    }
+    return Array.from(acc.entries())
+      .sort(([a], [b]) => a.localeCompare(b, "ru"))
+      .map(([value, info]) => ({ value, label: info.label, count: info.count }))
+  }, [data])
+  const razmerOptions = useMemo(() => {
+    const acc = new Map<string, number>()
+    for (const t of data ?? []) {
+      const r = t.razmer_kod
+      if (!r) continue
+      acc.set(r, (acc.get(r) ?? 0) + 1)
+    }
+    return Array.from(acc.entries())
+      .sort(([a], [b]) => a.localeCompare(b, "ru", { numeric: true }))
+      .map(([value, count]) => ({ value, label: value, count }))
+  }, [data])
+  // Статусы для multi-select — берём «product» (основной канал WB) +
+  // дополняем sayt/lamoda, чтобы chip покрывал все каналы. Дедупликация по id.
+  const channelStatusOptions = useMemo(() => {
+    const seen = new Map<number, { nazvanie: string; count: number }>()
+    for (const s of statusyData ?? []) {
+      if (s.tip === "product" || s.tip === "sayt" || s.tip === "lamoda") {
+        if (!seen.has(s.id)) seen.set(s.id, { nazvanie: s.nazvanie, count: 0 })
+      }
+    }
+    for (const t of data ?? []) {
+      for (const id of [t.status_id, t.status_ozon_id, t.status_sayt_id, t.status_lamoda_id]) {
+        if (id != null && seen.has(id)) {
+          seen.get(id)!.count += 1
+        }
+      }
+    }
+    return Array.from(seen.entries())
+      .sort(([, a], [, b]) => a.nazvanie.localeCompare(b.nazvanie, "ru"))
+      .map(([id, info]) => ({ value: String(id), label: info.nazvanie, count: info.count }))
+  }, [statusyData, data])
+
   const archiveStatusIds = useMemo(() => {
     const ids = new Set<number>()
     for (const s of statusyData ?? []) {
@@ -652,6 +1059,25 @@ export function TovaryPage() {
     }
     return ids
   }, [statusyData])
+
+  // W9.17 — `statusById`/`resolveStatus` removed: <StatusBadge statusId={…}>
+  // now resolves live through `useStatusyMap()` (shared React Query cache
+  // ["statusy"]), so cells don't need to thread a resolver through props.
+
+  // W9.9 — pre-launch статусы: SKU с таким статусом по каналу считаем «ещё не
+  // в продаже» и отфильтровываем при выборе конкретного канала.
+  const preLaunchStatusIds = useMemo(() => {
+    const ids = new Set<number>()
+    for (const s of statusyData ?? []) {
+      if (PRE_LAUNCH_STATUS_NAMES.has(s.nazvanie)) ids.add(s.id)
+    }
+    return ids
+  }, [statusyData])
+
+  const statusLookup = useMemo<StatusLookup>(
+    () => ({ isPreLaunch: (id) => id != null && preLaunchStatusIds.has(id) }),
+    [preLaunchStatusIds],
+  )
 
   const updateStatusMutation = useMutation({
     mutationFn: async ({ barkod, statusId, channel }: {
@@ -671,16 +1097,75 @@ export function TovaryPage() {
     [updateStatusMutation],
   )
 
+  // W9.10 — справочник размеров для InlineSelectCell.
+  const razmeryQ = useQuery({
+    queryKey: ["catalog", "razmery"],
+    queryFn: fetchRazmery,
+    staleTime: 5 * 60 * 1000,
+  })
+  const razmerEditOptions = useMemo(
+    () =>
+      (razmeryQ.data ?? []).map((r) => ({
+        value: r.id,
+        label: r.nazvanie ?? `#${r.id}`,
+      })),
+    [razmeryQ.data],
+  )
+
+  // W9.10 — inline-edit полей SKU.  Все патчи проходят через updateTovar
+  // (общий service-метод), результат — invalidate tovary-registry.  При
+  // редактировании поля artikul-а (artikul_ozon / nomenklatura_wb) патч
+  // идёт в `artikuly` и затрагивает все SKU этого артикула — invalidate
+  // обеих query-keys.
+  const onUpdateTovarField = useCallback(
+    async (tovarId: number, patch: Parameters<typeof updateTovar>[1]) => {
+      await updateTovar(tovarId, patch)
+      await queryClient.invalidateQueries({ queryKey: ["tovary-registry"] })
+    },
+    [queryClient],
+  )
+  const onUpdateArtikulField = useCallback(
+    async (artikulId: number, patch: { nomenklatura_wb?: number | null; artikul_ozon?: string | null }) => {
+      await updateArtikul(artikulId, patch)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["tovary-registry"] }),
+        queryClient.invalidateQueries({ queryKey: ["artikuly-registry"] }),
+      ])
+    },
+    [queryClient],
+  )
+
   const filtered = useMemo<TovarRow[]>(() => {
     if (!data) return []
     let res: TovarRow[] = data
-    res = applyChannelFilter(res, channelFilter)
+    res = applyChannelFilter(res, channelFilter, statusLookup)
     res = applyStatusGroupFilter(res, statusGroup, archiveStatusIds)
-    if (search.trim()) {
-      res = res.filter((t) => matchesCompositeSearch(t, search))
+    if (selectedModelKods.size > 0) {
+      res = res.filter((t) => t.model_osnova_kod != null && selectedModelKods.has(t.model_osnova_kod))
+    }
+    if (selectedColorCodes.size > 0) {
+      res = res.filter((t) => t.cvet_color_code != null && selectedColorCodes.has(t.cvet_color_code))
+    }
+    if (selectedRazmery.size > 0) {
+      res = res.filter((t) => t.razmer_kod != null && selectedRazmery.has(t.razmer_kod))
+    }
+    if (selectedChannelStatusIds.size > 0) {
+      // W9.4 — статус по каналам: матчим, если хотя бы один из 4 каналов содержит
+      // выбранный статус. Так чип «Статус» работает как multi-OR через все каналы.
+      res = res.filter((t) => {
+        const ids = [t.status_id, t.status_ozon_id, t.status_sayt_id, t.status_lamoda_id]
+        return ids.some((id) => id != null && selectedChannelStatusIds.has(id))
+      })
+    }
+    if (debouncedSearch.trim()) {
+      res = res.filter((t) => matchesCompositeSearch(t, debouncedSearch))
     }
     return res
-  }, [data, channelFilter, statusGroup, archiveStatusIds, search])
+  }, [
+    data, channelFilter, statusLookup, statusGroup, archiveStatusIds,
+    selectedModelKods, selectedColorCodes, selectedRazmery, selectedChannelStatusIds,
+    debouncedSearch,
+  ])
 
   // W8.1 — sort after filter, before group.
   const sortedFiltered = useMemo<TovarRow[]>(
@@ -694,7 +1179,13 @@ export function TovaryPage() {
 
   // W8.2 — pagination kicks in only when groupBy === "none"; when grouped, show
   // every item per group (cap removed — pagination across groups is non-obvious).
-  useEffect(() => { resetPage() }, [search, statusGroup, channelFilter, groupBy, sort.column, sort.direction, resetPage])
+  useEffect(() => {
+    resetPage()
+  }, [
+    debouncedSearch, statusGroup, channelFilter, groupBy, sort.column, sort.direction,
+    selectedModelKods, selectedColorCodes, selectedRazmery, selectedChannelStatusIds,
+    resetPage,
+  ])
   const paginated = useMemo(() => paginate(sortedFiltered), [paginate, sortedFiltered])
   const visibleByGroup = useMemo(() => {
     if (groupBy === "none") {
@@ -729,10 +1220,110 @@ export function TovaryPage() {
     })
   }, [flatVisibleBarkods])
 
-  const cellCtx: CellContext = useMemo(
-    () => ({ statusOptions, onUpdateStatus }),
-    [statusOptions, onUpdateStatus],
+  // W9.9 — когда выбран один канал, прячем 4 колонки status_<channel> и
+  // показываем одну колонку «Статус» (status_channel) на месте первой из них.
+  const selectedChannel: TovarChannel | undefined = useMemo(
+    () => (channelFilter === "all" ? undefined : channelFilter),
+    [channelFilter],
   )
+
+  // W10.26 — drawer склейки по клику на чип.
+  const [openSkleyka, setOpenSkleyka] = useState<{ channel: "wb" | "ozon"; id: number } | null>(null)
+  const onOpenSkleykaCb = useCallback(
+    (ch: "wb" | "ozon", id: number) => setOpenSkleyka({ channel: ch, id }),
+    [],
+  )
+
+  // W10.26 — batch-fetch склейки для видимой страницы. Lazy: только если
+  // колонка «Склейка» включена в конфигураторе.  Учитываем как paginated
+  // (group=none), так и групповой режим (показываем все items внутри групп).
+  const skleykaColumnVisible = columns.includes("skleyka")
+  const visibleTovarIds = useMemo<number[]>(() => {
+    const ids = new Set<number>()
+    for (const g of visibleByGroup) {
+      for (const t of g.visibleItems) ids.add(t.id)
+    }
+    return Array.from(ids).sort((a, b) => a - b)
+  }, [visibleByGroup])
+  const skleykiQ = useQuery({
+    queryKey: ["tovary-skleyki", visibleTovarIds.join(",")],
+    queryFn: () => fetchTovarSkleykiBatch(visibleTovarIds),
+    enabled: skleykaColumnVisible && visibleTovarIds.length > 0,
+    staleTime: 60 * 1000,
+  })
+  const skleykiByTovarId: Map<number, RegistryRowSkleyki> | null =
+    skleykaColumnVisible ? (skleykiQ.data ?? null) : new Map()
+
+  const cellCtx: CellContext = useMemo(
+    () => ({
+      statusOptions, onUpdateStatus, selectedChannel,
+      onUpdateTovar: onUpdateTovarField,
+      onUpdateArtikulField,
+      razmerOptions: razmerEditOptions,
+      skleykiByTovarId,
+      onOpenSkleyka: onOpenSkleykaCb,
+    }),
+    [
+      statusOptions, onUpdateStatus, selectedChannel, onUpdateTovarField,
+      onUpdateArtikulField, razmerEditOptions, skleykiByTovarId, onOpenSkleykaCb,
+    ],
+  )
+
+  // Список ключей колонок, фактически отрисованных в таблице (учитывает фильтр канала).
+  const effectiveColumns = useMemo<string[]>(() => {
+    if (!selectedChannel) return columns
+    const result: string[] = []
+    let inserted = false
+    for (const key of columns) {
+      if ((CHANNEL_STATUS_KEYS as readonly string[]).includes(key)) {
+        if (!inserted) {
+          result.push(STATUS_CHANNEL_KEY)
+          inserted = true
+        }
+        continue
+      }
+      result.push(key)
+    }
+    // Если у пользователя были скрыты все channel-status колонки — всё равно
+    // вставим status_channel перед barkod_gs1, чтобы статус был виден.
+    if (!inserted) {
+      const anchorIdx = result.findIndex((k) => k === "barkod_gs1")
+      if (anchorIdx >= 0) result.splice(anchorIdx, 0, STATUS_CHANNEL_KEY)
+      else result.push(STATUS_CHANNEL_KEY)
+    }
+    return result
+  }, [columns, selectedChannel])
+
+  const channelLabel = (ch: TovarChannel): string =>
+    ch === "wb" ? "WB" : ch === "ozon" ? "OZON" : ch === "sayt" ? "Сайт" : "Lamoda"
+
+  const labelForColumn = useCallback((key: string): string => {
+    if (key === STATUS_CHANNEL_KEY && selectedChannel) {
+      return `Статус ${channelLabel(selectedChannel)}`
+    }
+    return TOVARY_COLUMNS.find((c) => c.key === key)?.label ?? key
+  }, [selectedChannel])
+
+  // Ширина для status_channel — берём из соответствующей канальной колонки.
+  const widthForColumn = useCallback((key: string): number => {
+    if (key === STATUS_CHANNEL_KEY && selectedChannel) {
+      const srcKey = `status_${selectedChannel}` as keyof typeof TOVARY_DEFAULT_WIDTHS
+      return colWidths[srcKey] ?? TOVARY_DEFAULT_WIDTHS[srcKey] ?? 130
+    }
+    return colWidths[key] ?? TOVARY_DEFAULT_WIDTHS[key] ?? 130
+  }, [colWidths, selectedChannel])
+
+  // W10.2 + W10.28 — динамический min-width таблицы = 40px checkbox + сумма ширин
+  // видимых колонок. Пересчитывается при hide/show через ColumnsManager и при
+  // ресайзе. Используется как `style.minWidth` на `<table>` чтобы получить
+  // горизонтальный скролл при недостатке viewport-а.
+  const tableMinWidth = useMemo(() => {
+    return effectiveColumns.reduce((acc, key) => acc + widthForColumn(key), 40)
+  }, [effectiveColumns, widthForColumn])
+
+  // W10.28 — ключ для force-rerender таблицы при изменении набора видимых колонок.
+  // Без него col widths из colgroup-а могут «зависнуть» в DOM после hide.
+  const tableKey = useMemo(() => effectiveColumns.join("|"), [effectiveColumns])
 
   // W7.3 — CSV-экспорт выбранных SKU.  `selected` = Set<barkod>; берём строки
   // из data (не filtered — selection переживает фильтры/группы) и проецируем
@@ -803,13 +1394,25 @@ export function TovaryPage() {
       void queryClient.invalidateQueries({ queryKey: ["skleyki", linkSkleykaChannel] })
       setLinkSkleykaChannel(null)
       setSelected(new Set())
-      // eslint-disable-next-line no-alert
-      alert(`Привязано ${barkods.length} SKU к склейке.`)
+      toast.success(`Привязано ${barkods.length} SKU к склейке.`)
     } catch (err) {
-      // eslint-disable-next-line no-alert
-      alert(`Ошибка: ${(err as Error).message}`)
+      toast.error(translateError(err))
     }
   }, [linkSkleykaChannel, queryClient, selected])
+
+  // W10.11 — bulk-delete SKU. Confirm рисуется BulkActionsBar-ом (type=confirm).
+  const handleBulkDelete = useCallback(async () => {
+    const barkods = Array.from(selected)
+    if (barkods.length === 0) return
+    try {
+      await bulkDeleteTovary(barkods)
+      await queryClient.invalidateQueries({ queryKey: ["tovary-registry"] })
+      setSelected(new Set())
+    } catch (err) {
+      // eslint-disable-next-line no-alert
+      alert(`Не удалось удалить SKU: ${(err as Error).message}`)
+    }
+  }, [queryClient, selected])
 
   if (isLoading) {
     return <div className="px-6 py-8 text-sm text-stone-400">Загрузка SKU…</div>
@@ -839,7 +1442,7 @@ export function TovaryPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Audrey / черный / S — модель / цвет / размер"
+            placeholder="Audrey / black / S — поиск по баркоду, модели, цвету, размеру"
             className="pl-8 pr-7 py-1.5 text-sm border border-stone-200 rounded-md bg-white outline-none focus:border-stone-400 w-96"
           />
           {search && (
@@ -881,14 +1484,42 @@ export function TovaryPage() {
             <option value="collection">По коллекции</option>
             <option value="channel">По каналу</option>
           </select>
-          <ColumnsManager
-            columns={TOVARY_COLUMNS}
-            value={columns}
-            onChange={setColumns}
-            scope="tovary"
-            storageKey="columns"
-          />
+          <ColumnsManager state={columnConfig} />
         </div>
+      </div>
+
+      {/* W9.4 — Filter bar — row 1.5: компактные dropdown-фильтры
+          (модель, цвет, размер, статус по каналам).
+          TODO(W9.4): добавить chip «Бренд» — нужно протащить brand_id/brand
+          через `fetchTovaryRegistry` (modeli_osnova.brand_id), сейчас оно не
+          выбирается. */}
+      <div className="px-6 pb-2 shrink-0">
+        <FilterBar
+          filters={[
+            { key: "model", label: "Модель", options: modelOptions },
+            { key: "cvet", label: "Цвет", options: colorOptions },
+            { key: "razmer", label: "Размер", options: razmerOptions },
+            { key: "status", label: "Статус по каналам", options: channelStatusOptions },
+          ]}
+          values={{
+            model: Array.from(selectedModelKods),
+            cvet: Array.from(selectedColorCodes),
+            razmer: Array.from(selectedRazmery),
+            status: Array.from(selectedChannelStatusIds).map(String),
+          }}
+          onChange={(key, next) => {
+            if (key === "model") setSelectedModelKods(new Set(next))
+            else if (key === "cvet") setSelectedColorCodes(new Set(next))
+            else if (key === "razmer") setSelectedRazmery(new Set(next))
+            else if (key === "status") setSelectedChannelStatusIds(new Set(next.map((v) => Number(v))))
+          }}
+          onResetAll={() => {
+            setSelectedModelKods(new Set())
+            setSelectedColorCodes(new Set())
+            setSelectedRazmery(new Set())
+            setSelectedChannelStatusIds(new Set())
+          }}
+        />
       </div>
 
       {/* Filter bar — row 2: status group */}
@@ -917,17 +1548,21 @@ export function TovaryPage() {
 
       {/* Table */}
       <div className="flex-1 overflow-auto px-6 pb-3">
-        <div className="bg-white rounded-lg border border-stone-200 overflow-hidden">
-          <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
+        <div className="bg-white rounded-lg border border-stone-200 overflow-x-auto">
+          <table
+            key={tableKey}
+            className="w-full text-sm"
+            style={{ tableLayout: "fixed", minWidth: `${tableMinWidth}px` }}
+          >
             <colgroup>
               <col style={{ width: 40 }} />
-              {columns.map((key) => (
-                <col key={key} style={{ width: `${colWidths[key] ?? TOVARY_DEFAULT_WIDTHS[key] ?? 130}px` }} />
+              {effectiveColumns.map((key) => (
+                <col key={key} style={{ width: `${widthForColumn(key)}px` }} />
               ))}
             </colgroup>
             <thead className="bg-stone-50/80 border-b border-stone-200 sticky top-0 z-10">
               <tr className="text-left text-[11px] uppercase tracking-wider text-stone-500">
-                <th className="px-3 py-2.5">
+                <th className="px-3 py-2.5 cat-sticky-col-checkbox cat-sticky-col-head">
                   <input
                     type="checkbox"
                     className="rounded border-stone-300"
@@ -938,9 +1573,17 @@ export function TovaryPage() {
                     onChange={toggleAll}
                   />
                 </th>
-                {columns.map((key) => {
-                  const col = TOVARY_COLUMNS.find((c) => c.key === key)
-                  const baseCls = "relative px-3 py-2.5 font-medium whitespace-nowrap"
+                {effectiveColumns.map((key, idx) => {
+                  const label = labelForColumn(key)
+                  // W9.7 — первая (якорная) data-колонка sticky на left:40 (после checkbox).
+                  const stickyCls = idx === 0 ? " cat-sticky-col cat-sticky-col-offset cat-sticky-col-head" : ""
+                  const baseCls = `relative px-3 py-2.5 font-medium whitespace-nowrap${stickyCls}`
+                  // status_channel — не сортируемая (синтетика). Resizer привязан
+                  // к исходной канальной колонке status_<channel>.
+                  const resizerKey =
+                    key === STATUS_CHANNEL_KEY && selectedChannel
+                      ? `status_${selectedChannel}`
+                      : key
                   if (TOVARY_SORTABLE.has(key)) {
                     const sortKey = key as TovarSortKey
                     return (
@@ -951,43 +1594,62 @@ export function TovaryPage() {
                         onClick={() => toggleSort(sortKey)}
                         className={baseCls}
                       >
-                        {col?.label}
-                        <span {...bindResizer(key)} />
+                        {label}
+                        <span {...bindResizer(resizerKey)} />
                       </SortableHeader>
                     )
                   }
                   return (
                     <th key={key} className={baseCls}>
-                      {col?.label}
-                      <span {...bindResizer(key)} />
+                      {label}
+                      <span {...bindResizer(resizerKey)} />
                     </th>
                   )
                 })}
               </tr>
             </thead>
             <tbody>
-              {visibleByGroup.map((group) => (
+              {visibleByGroup.map((group) => {
+                const collapsed = groupBy !== "none" && isGroupCollapsed(group.key)
+                return (
                 <React.Fragment key={group.key}>
                   {groupBy !== "none" && (
                     <tr className="bg-stone-50 border-b border-stone-200 sticky top-[36px] z-[1]">
-                      <td colSpan={columns.length + 1} className="px-3 py-2">
-                        <div className="flex items-baseline gap-2">
+                      <td colSpan={effectiveColumns.length + 1} className="px-3 py-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleGroupCollapsed(group.key)}
+                          className="flex items-baseline gap-2 w-full text-left hover:opacity-80 transition-opacity"
+                          aria-expanded={!collapsed}
+                          aria-label={collapsed ? `Развернуть группу ${group.label || "—"}` : `Свернуть группу ${group.label || "—"}`}
+                        >
+                          {collapsed
+                            ? <ChevronRight className="w-3.5 h-3.5 text-stone-500 self-center shrink-0" />
+                            : <ChevronDown className="w-3.5 h-3.5 text-stone-500 self-center shrink-0" />}
                           <h3 className="cat-font-serif italic text-base text-stone-800">
                             {group.label || "—"}
                           </h3>
                           <span className="text-[11px] text-stone-400 tabular-nums">
                             {group.items.length} SKU
                           </span>
-                        </div>
+                        </button>
                       </td>
                     </tr>
                   )}
-                  {group.visibleItems.map((t) => (
+                  {!collapsed && group.visibleItems.map((t) => (
                     <tr
                       key={t.id}
-                      className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60"
+                      className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60 cursor-pointer"
+                      // W10.32 — single-click на пустом месте строки открывает
+                      // SkuDrawer.  Inline-cells, status badges и checkbox
+                      // вызывают stopPropagation, чтобы не открывать drawer
+                      // при клике по интерактивным элементам.
+                      onClick={() => setOpenTovarId(t.id)}
                     >
-                      <td className="px-3 py-2.5">
+                      <td
+                        className="px-3 py-2.5 cat-sticky-col-checkbox"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <input
                           type="checkbox"
                           className="rounded border-stone-300"
@@ -995,15 +1657,25 @@ export function TovaryPage() {
                           onChange={() => toggleRow(t.barkod)}
                         />
                       </td>
-                      {columns.map((key) => (
-                        <td key={key} className="px-3 py-2.5 whitespace-nowrap">
-                          {renderCell(key, t, cellCtx)}
-                        </td>
-                      ))}
+                      {effectiveColumns.map((key, idx) => {
+                        // W10.32 — статусы по каналам имеют popover edit;
+                        // single-click по ним не должен открывать drawer.
+                        const isStatusKey = key.startsWith("status_")
+                        return (
+                          <td
+                            key={key}
+                            className={`px-3 py-2.5 whitespace-nowrap${idx === 0 ? " cat-sticky-col cat-sticky-col-offset" : ""}`}
+                            onClick={isStatusKey ? (e) => e.stopPropagation() : undefined}
+                          >
+                            {renderCell(key, t, cellCtx)}
+                          </td>
+                        )
+                      })}
                     </tr>
                   ))}
                 </React.Fragment>
-              ))}
+                )
+              })}
             </tbody>
           </table>
           {groupBy === "none" ? (
@@ -1030,18 +1702,36 @@ export function TovaryPage() {
         actions={[
           {
             id: "link-wb",
+            type: "button",
             label: "Привязать к склейке (WB)",
+            icon: <Link2 className="w-3 h-3" />,
             onClick: () => setLinkSkleykaChannel("wb"),
           },
           {
             id: "link-ozon",
+            type: "button",
             label: "Привязать к склейке (OZON)",
+            icon: <Link2 className="w-3 h-3" />,
             onClick: () => setLinkSkleykaChannel("ozon"),
           },
           {
             id: "export",
+            type: "button",
             label: "Экспорт выбранных",
+            icon: <Download className="w-3 h-3" />,
             onClick: handleBulkExport,
+          },
+          {
+            id: "delete",
+            type: "confirm",
+            label: "Удалить",
+            icon: <Trash2 className="w-3 h-3" />,
+            destructive: true,
+            confirmText: (
+              `Удалить ${selected.size} SKU?\n\n` +
+              `Будут также удалены привязки к склейкам (cascade). Действие необратимо.`
+            ),
+            onClick: () => { void handleBulkDelete() },
           },
         ]}
       />
@@ -1052,6 +1742,23 @@ export function TovaryPage() {
           channel={linkSkleykaChannel}
           onClose={() => setLinkSkleykaChannel(null)}
           onLink={onLinkSkleyka}
+        />
+      )}
+
+      {/* W10.32 — карточка SKU (side-drawer) по single-click на строку. */}
+      {openTovarId != null && (
+        <SkuDrawer
+          tovarId={openTovarId}
+          onClose={() => setOpenTovarId(null)}
+        />
+      )}
+
+      {/* W10.26 — drawer склейки по клику на чип в колонке «Склейка». */}
+      {openSkleyka != null && (
+        <SkleykaDrawer
+          skleykaId={openSkleyka.id}
+          channel={openSkleyka.channel}
+          onClose={() => setOpenSkleyka(null)}
         />
       )}
     </div>

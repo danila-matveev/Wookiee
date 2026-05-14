@@ -22,6 +22,7 @@ import {
   SkeletonTable,
   type RefFieldDef,
 } from "./_shared"
+import { ReferenceDrawer } from "@/pages/catalog/reference-card"
 
 interface KollekciyaRow {
   id: number
@@ -151,27 +152,45 @@ export function KollekciiPage() {
       {ref.list.isLoading ? (
         <SkeletonTable rows={6} cols={5} />
       ) : (
-        <CatalogTable columns={columns} data={filtered} emptyText="Коллекции не найдены" />
+        <CatalogTable
+          columns={columns}
+          data={filtered}
+          emptyText="Коллекции не найдены"
+          onRowClick={(r) => setEditing(r)}
+        />
       )}
 
-      {(creating || editing) && (
+      {creating && (
         <RefModal
-          title={editing ? "Редактировать коллекцию" : "Новая коллекция"}
+          title="Новая коллекция"
           fields={FIELDS}
-          initial={
-            editing
-              ? {
-                  nazvanie: editing.nazvanie,
-                  opisanie: editing.opisanie ?? "",
-                  god_zapuska: editing.god_zapuska ?? null,
-                }
-              : undefined
-          }
           onSave={handleSave}
-          onCancel={() => {
-            setEditing(null)
-            setCreating(false)
+          onCancel={() => setCreating(false)}
+        />
+      )}
+
+      {editing && (
+        <ReferenceDrawer
+          kind="Коллекция"
+          title={editing.nazvanie}
+          fields={FIELDS}
+          initial={{
+            nazvanie: editing.nazvanie,
+            opisanie: editing.opisanie ?? "",
+            god_zapuska: editing.god_zapuska ?? null,
           }}
+          onSave={async (vals) => {
+            await handleSave(vals)
+          }}
+          onClose={() => setEditing(null)}
+          linkedSections={[
+            {
+              kind: "models",
+              title: "Модели коллекции",
+              refColumn: "kollekciya_id",
+              refId: editing.id,
+            },
+          ]}
         />
       )}
 

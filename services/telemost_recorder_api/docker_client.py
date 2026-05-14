@@ -31,6 +31,28 @@ def _get_client() -> docker.DockerClient:
     return _client
 
 
+async def docker_ping() -> bool:
+    """Best-effort docker daemon liveness check. Returns False on any error.
+
+    Run in a thread because docker-py is sync. Timeout 5s so a stalled
+    socket doesn't block the /health endpoint or startup probe.
+
+    Intentionally constructs a fresh client (not the cached one) so a
+    previously bad cached connection doesn't poison the answer — and so
+    the test suite can patch `docker.from_env` directly.
+    """
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(lambda: bool(docker.from_env().ping())),
+            timeout=5.0,
+        )
+    except Exception as e:  # noqa: BLE001
+        # No exc_info=True — /health polls every ~10s, full stacktrace
+        # would spam ~360 entries/hour. Short message is enough to diagnose.
+        logger.warning("Docker ping failed: %s", e)
+        return False
+
+
 # Env vars proxied from API container into spawned recorder container.
 # Recorder needs Yandex SpeechKit creds + bot display name; everything else
 # (DB, Telegram bot token) is API-only.

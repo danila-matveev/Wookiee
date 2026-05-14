@@ -12,7 +12,10 @@ from typing import Any
 from uuid import UUID
 
 from services.telemost_recorder_api.db import get_pool
-from services.telemost_recorder_api.keyboards import meeting_actions
+from services.telemost_recorder_api.keyboards import (
+    empty_meeting_actions,
+    meeting_actions,
+)
 from services.telemost_recorder_api.meetings_repo import (
     build_transcript_text,  # re-export for back-compat
 )
@@ -34,6 +37,11 @@ _DECISION_LIMIT = 12
 _TASK_LIMIT = 20
 _ERROR_PREVIEW_LEN = 500
 _ID_PREFIX_LEN = 8
+# Send transcript as a separate file only for substantial meetings.
+# Short conversations (a few paragraphs) already fit in the summary message,
+# and a 1.8 KB attached file feels like noise. Users still have the
+# "Транскрипт" button to pull it on demand.
+_TRANSCRIPT_FILE_MIN_PARAGRAPHS = 15
 
 
 def _md_escape(s: str) -> str:
@@ -55,16 +63,40 @@ def _fmt_duration(seconds: int | None) -> str:
     return f"{m // 60} ч {m % 60} мин"
 
 
+def _resolve_title(meeting: dict[str, Any]) -> str:
+    """Pick the best available title in priority order.
+
+    1. summary.title — LLM-generated from meeting content. Most descriptive,
+       reflects what was actually discussed.
+    2. meeting.title — set by Bitrix calendar enrichment. Reliable for events
+       in the Bitrix calendar with the meeting URL in LOCATION, but falls
+       through to a time-proximity match (e.g. "Dayli") that may not be
+       what the user actually recorded.
+    3. Fallback to "Встреча".
+    """
+    summary = meeting.get("summary") or {}
+    llm_title = (summary.get("title") or "").strip()
+    if llm_title:
+        return llm_title
+    bitrix_title = (meeting.get("title") or "").strip()
+    if bitrix_title:
+        return bitrix_title
+    return "Встреча"
+
+
 def _header(meeting: dict[str, Any]) -> str:
-    """Build the `📝 *Title* (date · duration)` header — skip parts that are empty."""
-    raw_title = meeting.get("title")
-    title = _md_escape(raw_title) if raw_title else "Встреча"
+    """Build the `📝 *Title* (date · duration · N уч.)` header — skip parts that are empty."""
+    title = _md_escape(_resolve_title(meeting))
     parts: list[str] = []
     if meeting.get("started_at"):
         parts.append(meeting["started_at"].strftime("%d.%m %H:%M"))
     duration_secs = meeting.get("duration_seconds")
     if duration_secs:
         parts.append(_fmt_duration(duration_secs))
+    summary = meeting.get("summary") or {}
+    participants = summary.get("participants") or []
+    if participants:
+        parts.append(f"{len(participants)} уч.")
     suffix = f" ({' · '.join(parts)})" if parts else ""
     return f"*{title}*{suffix}"
 
@@ -76,10 +108,20 @@ def format_summary_message(meeting: dict[str, Any]) -> str:
     if summary.get("empty"):
         return (
             f"📭 {header}\n\n"
-            f"Запись завершена, речь не была распознана (тишина)."
+            f"На встрече никто не говорил — запись пустая. "
+            f"Возможно, никто не подключился, или микрофоны были выключены."
         )
 
     lines = [f"📝 {header}"]
+
+    # partial=True означает: chunked summary прошёл, а paragraphs chunk упал
+    # (см. llm_postprocess._call_paragraphs_chunked fallback). Транскрипт-файл
+    # в этом случае не присылается, и без warning юзер не поймёт почему.
+    if summary.get("partial"):
+        lines.append(
+            "\n⚠ Транскрипт собрать не удалось целиком — "
+            "ниже только итоги встречи."
+        )
 
     participants = summary.get("participants") or []
     if participants:
@@ -181,24 +223,48 @@ async def notify_meeting_result(meeting_id: UUID) -> None:
                 f"❌ Запись {str(meeting_id)[:_ID_PREFIX_LEN]} завершилась ошибкой:\n\n{err[:_ERROR_PREVIEW_LEN]}",
                 parse_mode=None,
             )
-        except TelegramAPIError:
-            logger.exception("Failed to notify failure for %s", meeting_id)
+        except TelegramAPIError as e:
+            if e.error_code in (400, 403):
+                # logger.error (not .warning) so install_telegram_alerts
+                # bubbles it to the operator — when a user blocks the bot
+                # we still need a human signal that their meeting failed
+                # and the failure DM never landed.
+                logger.error(
+                    "Cannot notify failure for %s — user unreachable (Telegram %d): %s",
+                    meeting_id, e.error_code, e,
+                )
+            else:
+                logger.exception("Failed to notify failure for %s", meeting_id)
         return
 
+    summary = meeting.get("summary") or {}
+    is_empty = bool(summary.get("empty"))
     summary_text = format_summary_message(meeting)
     short_id = str(meeting_id)[:_ID_PREFIX_LEN]
     try:
         await tg_send_message(
             triggered_by,
             summary_text,
-            reply_markup=meeting_actions(short_id),
+            reply_markup=empty_meeting_actions(short_id)
+            if is_empty
+            else meeting_actions(short_id),
         )
-    except TelegramAPIError:
-        logger.exception("Failed to send summary for %s", meeting_id)
+    except TelegramAPIError as e:
+        if e.error_code in (400, 403):
+            logger.error(
+                "Cannot send summary for %s — user unreachable (Telegram %d): %s",
+                meeting_id, e.error_code, e,
+            )
+        else:
+            logger.exception("Failed to send summary for %s", meeting_id)
         return
 
     paragraphs = meeting.get("processed_paragraphs") or []
-    if paragraphs:
+    if (
+        paragraphs
+        and not is_empty
+        and len(paragraphs) >= _TRANSCRIPT_FILE_MIN_PARAGRAPHS
+    ):
         transcript = build_transcript_text(paragraphs)
         filename = f"transcript_{str(meeting_id)[:_ID_PREFIX_LEN]}.txt"
         try:
@@ -208,5 +274,11 @@ async def notify_meeting_result(meeting_id: UUID) -> None:
                 filename=filename,
                 caption=f"Полный transcript ({len(paragraphs)} параграфов)",
             )
-        except TelegramAPIError:
-            logger.exception("Failed to send transcript for %s", meeting_id)
+        except TelegramAPIError as e:
+            if e.error_code in (400, 403):
+                logger.error(
+                    "Cannot send transcript for %s — user unreachable (Telegram %d): %s",
+                    meeting_id, e.error_code, e,
+                )
+            else:
+                logger.exception("Failed to send transcript for %s", meeting_id)

@@ -204,6 +204,8 @@ async def test_postprocess_meeting_chunked_for_large_segments():
     assert result["speakers_map"] == {"Speaker 0": "Данила"}
     assert result["tags"] == ["продажи", "маркетинг"]
     assert result["summary"]["topics"][0]["title"] == "Итоги недели"
+    # На успешном chunked-пути флаг partial не должен подниматься
+    assert "partial" not in result["summary"]
 
 
 @pytest.mark.asyncio
@@ -245,6 +247,8 @@ async def test_postprocess_meeting_chunked_paragraphs_failure_returns_summary_on
     assert result["summary"]["topics"][0]["title"] == "Итоги"
     assert result["paragraphs"] == []  # fallback
     assert result["speakers_map"] == {}  # fallback
+    # partial=True позволяет notifier показать «транскрипт не собрался»
+    assert result["summary"].get("partial") is True
 
 
 @pytest.mark.asyncio
@@ -284,6 +288,7 @@ async def test_postprocess_meeting_chunked_paragraphs_http_error_returns_summary
     assert result["summary"]["topics"][0]["title"] == "Бюджет"
     assert result["paragraphs"] == []
     assert result["speakers_map"] == {}
+    assert result["summary"].get("partial") is True
 
 
 @pytest.mark.asyncio

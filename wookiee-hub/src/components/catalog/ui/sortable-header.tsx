@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react"
-import type { ReactNode } from "react"
+import type { CSSProperties, ReactNode } from "react"
 
 interface Props {
   active: boolean
@@ -7,6 +7,8 @@ interface Props {
   onClick: () => void
   children: ReactNode
   className?: string
+  /** W9.5 — позволяет скрыть колонку через `display: none` без рефакторинга tbody. */
+  style?: CSSProperties
 }
 
 /**
@@ -14,11 +16,12 @@ interface Props {
  * cycling is owned by `useTableSort`.  The icon is permanently visible so
  * users discover the affordance without hover.
  */
-export function SortableHeader({ active, direction, onClick, children, className }: Props) {
+export function SortableHeader({ active, direction, onClick, children, className, style }: Props) {
   return (
     <th
       onClick={onClick}
       className={`cursor-pointer select-none hover:bg-stone-100 ${className ?? ""}`}
+      style={style}
     >
       <span className="inline-flex items-center gap-1">
         {children}

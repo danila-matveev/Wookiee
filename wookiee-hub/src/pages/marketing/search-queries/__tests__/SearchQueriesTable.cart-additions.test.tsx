@@ -9,8 +9,8 @@ vi.mock('@/hooks/marketing/use-search-queries', () => ({
   useSearchQueries: () => ({
     data: [{
       unified_id: 'S1', source_id: 1, source_table: 'substitute_articles',
-      group_kind: 'external', query_text: '163151603', artikul_id: 1,
-      nomenklatura_wb: '163151603', ww_code: null, campaign_name: null,
+      entity_type: 'nm_id', group_kind: 'external', query_text: '163151603', artikul_id: 1,
+      nomenklatura_wb: '163151603', sku_label: null, ww_code: null, campaign_name: null,
       purpose: 'yandex', model_hint: 'Wendy', creator_ref: null,
       status: 'active', created_at: '2026-01-01', updated_at: '2026-01-01',
     }],

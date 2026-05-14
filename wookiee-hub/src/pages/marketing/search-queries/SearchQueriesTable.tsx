@@ -2,6 +2,7 @@ import { useMemo, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { Search } from "lucide-react"
 import { useSearchQueries, useSearchQueryStats, useUpdateSearchQueryStatus } from "@/hooks/marketing/use-search-queries"
+import { useChannelLabelLookup } from "@/hooks/marketing/use-channels"
 import { useGroupByPref } from "@/hooks/marketing/use-group-by-pref"
 import { QueryStatusBoundary } from "@/components/crm/ui/QueryStatusBoundary"
 import { Badge } from "@/components/marketing/Badge"
@@ -74,6 +75,7 @@ export function SearchQueriesTable() {
   const updateStatus = useUpdateSearchQueryStatus()
   const onStatusChange = (unifiedId: string, next: StatusUI) =>
     updateStatus.mutate({ unifiedId, status: next })
+  const channelLabel = useChannelLabelLookup()
 
   const statsMap = useMemo(() => {
     const m = new Map<string, SearchQueryStatsAgg>()
@@ -258,6 +260,7 @@ export function SearchQueriesTable() {
                       statsMap={statsMap}
                       onOpen={(unifiedId) => setQ('open', unifiedId)}
                       onStatusChange={onStatusChange}
+                      channelLabel={channelLabel}
                       hideHeader={groupBy === 'none'}
                     />
                   )
@@ -291,12 +294,13 @@ interface SectionGroupProps {
   statsMap: Map<string, SearchQueryStatsAgg>
   onOpen: (unifiedId: string) => void
   onStatusChange: (unifiedId: string, next: StatusUI) => void
+  channelLabel: (slug: string | null | undefined) => string
   hideHeader?: boolean
 }
 
 const COL_COUNT = 13
 
-function SectionGroup({ icon, label, rows, collapsed, onToggle, statsMap, onOpen, onStatusChange, hideHeader }: SectionGroupProps) {
+function SectionGroup({ icon, label, rows, collapsed, onToggle, statsMap, onOpen, onStatusChange, channelLabel, hideHeader }: SectionGroupProps) {
   const showRows = hideHeader || !collapsed
   return (
     <>
@@ -321,7 +325,7 @@ function SectionGroup({ icon, label, rows, collapsed, onToggle, statsMap, onOpen
             <td className="px-2 py-2 text-xs text-muted-foreground truncate">{it.sku_label ?? ''}</td>
             <td className="px-2 py-2">
               {it.purpose
-                ? <Badge color="gray" label={it.purpose} compact />
+                ? <Badge color="gray" label={channelLabel(it.purpose)} compact />
                 : <span className="text-stone-400 text-xs">—</span>}
             </td>
             <td className="px-2 py-2 text-xs text-muted-foreground truncate">{it.campaign_name ?? ''}</td>

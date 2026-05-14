@@ -1,5 +1,7 @@
 export type SearchQueryStatus = 'active' | 'paused' | 'archived'
 export type SearchQueryEntityType = 'brand' | 'nm_id' | 'ww'
+// View v2 group_kind discriminator (additive — code uses entity_type as primary).
+export type SearchQueryGroup = 'brand' | 'external' | 'cr_general' | 'cr_personal'
 
 export interface SearchQueryRow {
   unified_id: string                      // 'B1' | 'S42'
@@ -15,6 +17,10 @@ export interface SearchQueryRow {
   purpose: string                         // Russian: брендированный запрос / Яндекс / Таргет ВК / Adblogger / креаторы / соцсети бренда / блогеры / Telega.in / паблики инст и тг
   model_hint: string | null
   creator_ref: string | null
+  // View v2 (2026-05-13) additive column — optional for backward compat with v1.
+  channel_label?: string | null           // Resolved label from marketing.channels (e.g. «Креаторы» vs slug 'creators')
+  // group_kind from view v2 — present in payloads, used by some test fixtures.
+  group_kind?: SearchQueryGroup
   status: SearchQueryStatus
   created_at: string
   updated_at: string | null

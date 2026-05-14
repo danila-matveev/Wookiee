@@ -1,26 +1,47 @@
 import { useMemo, useState, useCallback, useEffect, useRef } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Plus, Search, X, ChevronDown, Loader2 } from "lucide-react"
+import { Plus, Search, X, ChevronDown, Loader2, ExternalLink, Tag, Download, Factory, Trash2 } from "lucide-react"
 import {
   fetchArtikulyRegistry, fetchStatusy, bulkUpdateArtikulStatus,
+  bulkUpdateArtikulFabrika, bulkDeleteArtikuly, fetchFabriki,
   fetchRazmery, fetchTovaryByArtikul, insertTovar,
+  updateArtikul,
+  fetchArtikulSkleykiBatch,
   getUiPref, setUiPref,
   type ArtikulRow, type ArtikulTovar, type Razmer,
+  type RegistryRowSkleyki,
 } from "@/lib/catalog/service"
 import { StatusBadge } from "@/components/catalog/ui/status-badge"
 import { ColorSwatch } from "@/components/catalog/ui/color-swatch"
 import { ColumnsManager, type ColumnDef } from "@/components/catalog/ui/columns-manager"
+import { BulkActionsBar, type BulkAction } from "@/components/catalog/ui/bulk-actions-bar"
 import { SortableHeader } from "@/components/catalog/ui/sortable-header"
 import { Pagination } from "@/components/catalog/ui/pagination"
+import { EmptyState } from "@/components/catalog/ui/empty-state"
 import { RefModal } from "@/components/catalog/ui/ref-modal"
-import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
+import { CellText } from "@/components/catalog/ui/cell-text"
+import { FilterBar } from "@/components/catalog/ui/filter-bar"
+import { InlineTextCell } from "@/components/catalog/ui/inline-text-cell"
+import { InlineColorCell } from "@/components/catalog/ui/inline-color-cell"
+import { relativeDate } from "@/lib/catalog/color-utils"
 import { useResizableColumns } from "@/hooks/use-resizable-columns"
 import { useTableSort, type SortState } from "@/hooks/use-table-sort"
 import { usePagination } from "@/hooks/use-pagination"
+import { useDebouncedValue } from "@/hooks/use-debounced-value"
+import { useColumnConfig } from "@/hooks/use-column-config"
+import { ARTIKULY_COLUMNS_FULL } from "@/lib/catalog/column-catalogs"
 import { downloadCsv } from "@/lib/catalog/csv-export"
+import { translateError } from "@/lib/catalog/error-translator"
+import { toast } from "@/lib/catalog/toast"
+import { compareRazmer } from "@/lib/catalog/size-utils"
+// W10.6 — single-click на строку открывает ArtikulDrawer (полноценная карточка
+// с вкладками Описание / SKU / История). См. artikul-card.tsx.
+import { ArtikulDrawer } from "./artikul-card"
+// W10.26 — drawer склейки по клику на чип в новой колонке «Склейка».
+import { SkleykaDrawer } from "./skleyka-drawer"
 
 // Default per-column widths (px) for the standalone Артикулы page (W1.5).
-// Keys must match ARTIKULY_COLUMNS[i].key.
+// W9.5 — расширено новыми ключами из ARTIKULY_COLUMNS_FULL (column-catalogs).
 const ARTIKULY_DEFAULT_WIDTHS: Record<string, number> = {
   artikul: 160,
   model: 140,
@@ -33,24 +54,19 @@ const ARTIKULY_DEFAULT_WIDTHS: Record<string, number> = {
   kategoriya: 130,
   kollekciya: 140,
   fabrika: 140,
+  model_kod: 130,
+  nazvanie_etiketka: 180,
+  cvet_ru: 130,
+  cvet_en: 130,
+  cvet_color_code: 110,
+  tovary_cnt: 80,
+  // W10.26 — колонка «Склейка»: чип канала + укороченное название.
+  skleyka: 180,
 }
 
-// 11 columns; all default-visible per Final Report MINOR fix.
-const ARTIKULY_COLUMNS: ColumnDef[] = [
-  { key: "artikul",         label: "Артикул",         default: true },
-  { key: "model",           label: "Модель",          default: true },
-  { key: "cvet",            label: "Цвет",            default: true },
-  { key: "status",          label: "Статус артикула", default: true },
-  { key: "wb_nom",          label: "WB-номенклатура", default: true },
-  { key: "ozon_art",        label: "OZON-артикул",    default: true },
-  { key: "created",         label: "Создан",          default: true },
-  { key: "updated",         label: "Обновлён",        default: true },
-  { key: "kategoriya",      label: "Категория",       default: true },
-  { key: "kollekciya",      label: "Коллекция",       default: true },
-  { key: "fabrika",         label: "Производитель",   default: true },
-]
-
-const DEFAULT_COLUMNS = ARTIKULY_COLUMNS.filter((c) => c.default).map((c) => c.key)
+// W9.5 — каталог колонок переехал в shared `lib/catalog/column-catalogs.ts`.
+// Здесь оставляем алиас для backward compat с локальным кодом ниже.
+const ARTIKULY_COLUMNS = ARTIKULY_COLUMNS_FULL
 
 // W8.1 — sort keys must match column keys above.
 type ArtikulSortKey =
@@ -128,8 +144,7 @@ function InlineArtikulStatusCell({
       await onChange(id)
       setOpen(false)
     } catch (err) {
-      // eslint-disable-next-line no-alert
-      alert(`Не удалось обновить статус: ${(err as Error).message}`)
+      toast.error(translateError(err))
     } finally {
       setSaving(false)
     }
@@ -210,7 +225,12 @@ function ArtikulDrillDown({ row, statusyData, onClose }: ArtikulDrillDownProps) 
     queryFn: () => fetchTovaryByArtikul(row.id),
     staleTime: 30 * 1000,
   })
-  const tovary: ArtikulTovar[] = tovaryQ.data ?? []
+  // W10.29 — стабильный физический порядок SKU внутри артикула (по razmer).
+  // Не зависит от статусов — клик по статус-pill не должен менять порядок.
+  const tovary: ArtikulTovar[] = useMemo(() => {
+    const rows = tovaryQ.data ?? []
+    return [...rows].sort((a, b) => compareRazmer(a.razmer_nazvanie ?? null, b.razmer_nazvanie ?? null))
+  }, [tovaryQ.data])
 
   // Размеры — для select-поля в RefModal «+ SKU».
   const razmeryQ = useQuery({
@@ -276,7 +296,9 @@ function ArtikulDrillDown({ row, statusyData, onClose }: ArtikulDrillDownProps) 
     )
   }
 
-  const swatch = row.cvet_hex ?? swatchColor(row.cvet_color_code ?? "")
+  // swatch — берём только реальный hex; компонент сам нарисует серый placeholder,
+  // если hex отсутствует или невалиден.
+  const swatchHex = row.cvet_hex
   const artikulStatus = row.status_id != null ? statusById.get(row.status_id) : null
 
   return (
@@ -309,7 +331,7 @@ function ArtikulDrillDown({ row, statusyData, onClose }: ArtikulDrillDownProps) 
               </div>
               <div className="mt-2 flex items-center gap-4 flex-wrap text-xs text-stone-600">
                 <div className="flex items-center gap-1.5">
-                  <ColorSwatch hex={swatch} size={14} />
+                  <ColorSwatch hex={swatchHex} size={14} />
                   <span className="font-mono">{row.cvet_color_code ?? "—"}</span>
                   {row.cvet_nazvanie && (
                     <span className="text-stone-500">· {row.cvet_nazvanie}</span>
@@ -391,15 +413,19 @@ function ArtikulDrillDown({ row, statusyData, onClose }: ArtikulDrillDownProps) 
                     )}
                     {!tovaryQ.isLoading && tovary.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="px-3 py-8 text-center text-sm text-stone-400 italic">
-                          Нет SKU для этого артикула
+                        <td colSpan={6} className="px-0 py-0">
+                          <EmptyState
+                            title="Нет SKU для этого артикула"
+                            description="SKU создаются автоматически по размерному ряду модели."
+                            className="py-10"
+                          />
                         </td>
                       </tr>
                     )}
                     {!tovaryQ.isLoading && tovary.map((t) => (
                       <tr key={t.id} className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60">
-                        <td className="px-3 py-2 font-mono text-xs text-stone-700">{t.barkod}</td>
-                        <td className="px-3 py-2 font-mono text-xs">{t.razmer_nazvanie ?? "—"}</td>
+                        <td className="px-3 py-2 font-mono text-xs text-stone-700"><CellText title={t.barkod}>{t.barkod}</CellText></td>
+                        <td className="px-3 py-2 font-mono text-xs"><CellText title={t.razmer_nazvanie ?? ""}>{t.razmer_nazvanie ?? "—"}</CellText></td>
                         <td className="px-3 py-2 border-l border-stone-100">{renderSkuStatus(t.status_id)}</td>
                         <td className="px-3 py-2">{renderSkuStatus(t.status_ozon_id)}</td>
                         <td className="px-3 py-2">{renderSkuStatus(t.status_sayt_id)}</td>
@@ -447,51 +473,198 @@ function ArtikulDrillDown({ row, statusyData, onClose }: ArtikulDrillDownProps) 
   )
 }
 
-function renderCell(key: string, a: ArtikulRow): React.ReactNode {
+/**
+ * W9.10 — контекст inline-edit для renderCell.
+ *
+ * Сами хендлеры коммитят в БД через service.updateArtikul; родитель отвечает за
+ * invalidate query-key "artikuly-registry" — оба коммита идут через mutation.
+ */
+interface ArtikulCellCtx {
+  /** Изменить произвольное поле артикула (artikul/wb_nom/ozon_art). */
+  onUpdate: (id: number, patch: { artikul?: string; nomenklatura_wb?: number | null; artikul_ozon?: string | null }) => Promise<void>
+  /** Изменить цвет (cvet_id). */
+  onUpdateColor: (id: number, cvetId: number) => Promise<void>
+  /** W10.26 — Map artikul_id → склейки (WB+OZON). null если данные ещё грузятся. */
+  skleykiByArtikulId?: Map<number, RegistryRowSkleyki> | null
+  /** W10.26 — клик по чипу склейки → открыть SkleykaDrawer. */
+  onOpenSkleyka?: (channel: "wb" | "ozon", skleykaId: number) => void
+}
+
+function renderCell(key: string, a: ArtikulRow, ctx?: ArtikulCellCtx): React.ReactNode {
   switch (key) {
     case "artikul":
-      return <span className="font-mono text-xs text-stone-900">{a.artikul}</span>
+      // W9.10 — inline-edit имени/кода артикула.  Уникальность на уровне БД
+      // (constraint), на UI просто бросаем translateError при 23505.
+      if (ctx) {
+        return (
+          <InlineTextCell
+            value={a.artikul}
+            onCommit={async (next) => {
+              if (next == null || next.trim() === "") {
+                throw new Error("Артикул не может быть пустым")
+              }
+              await ctx.onUpdate(a.id, { artikul: next })
+            }}
+            className="font-mono text-xs text-stone-900"
+            title={a.artikul}
+            hint="Редактировать код/имя артикула"
+          />
+        )
+      }
+      return <CellText className="font-mono text-xs text-stone-900" title={a.artikul}>{a.artikul}</CellText>
     case "model":
       return (
-        <div className="flex flex-col">
-          <span className="font-mono text-xs font-medium text-stone-900">
+        <div className="flex flex-col min-w-0">
+          <CellText className="font-mono text-xs font-medium text-stone-900" title={a.model_osnova_kod ?? ""}>
             {a.model_osnova_kod ?? "—"}
-          </span>
+          </CellText>
           {a.nazvanie_etiketka && (
-            <span className="text-[11px] text-stone-500">{a.nazvanie_etiketka}</span>
+            <CellText className="text-[11px] text-stone-500" title={a.nazvanie_etiketka}>{a.nazvanie_etiketka}</CellText>
           )}
         </div>
       )
     case "cvet":
+      // W9.10 — inline-edit цвета: ColorPicker (single) с фильтром по
+      // kategoriya_id модели (W9.12).
+      if (ctx) {
+        return (
+          <InlineColorCell
+            currentCvetId={a.cvet_id}
+            currentColorCode={a.cvet_color_code}
+            currentColorName={a.cvet_nazvanie}
+            currentHex={a.cvet_hex}
+            categoryId={a.kategoriya_id}
+            onCommit={(cvetId) => ctx.onUpdateColor(a.id, cvetId)}
+          />
+        )
+      }
       return (
-        <div className="flex items-center gap-1.5">
-          <ColorSwatch hex={a.cvet_hex ?? swatchColor(a.cvet_color_code ?? "")} size={14} />
-          <span className="font-mono text-xs text-stone-700">{a.cvet_color_code ?? "—"}</span>
-          {a.cvet_nazvanie && <span className="text-stone-500 text-xs">{a.cvet_nazvanie}</span>}
+        <div className="flex items-center gap-1.5 min-w-0">
+          <ColorSwatch hex={a.cvet_hex} size={14} />
+          <CellText className="font-mono text-xs text-stone-700" title={a.cvet_color_code ?? ""}>{a.cvet_color_code ?? "—"}</CellText>
+          {a.cvet_nazvanie && <CellText className="text-stone-500 text-xs" title={a.cvet_nazvanie}>{a.cvet_nazvanie}</CellText>}
         </div>
       )
     case "status":
       return <StatusBadge statusId={a.status_id ?? 0} compact />
     case "wb_nom":
+      if (ctx) {
+        return (
+          <InlineTextCell
+            value={a.nomenklatura_wb}
+            type="number"
+            onCommit={async (next) => {
+              if (next == null) {
+                await ctx.onUpdate(a.id, { nomenklatura_wb: null })
+                return
+              }
+              const num = Number(next)
+              if (!Number.isFinite(num) || !Number.isInteger(num) || num < 0) {
+                throw new Error("WB-номенклатура должна быть положительным целым числом")
+              }
+              await ctx.onUpdate(a.id, { nomenklatura_wb: num })
+            }}
+            className="font-mono text-[11px] text-stone-600 tabular-nums"
+            title={a.nomenklatura_wb != null ? String(a.nomenklatura_wb) : ""}
+            hint="Редактировать WB-номенклатуру"
+          />
+        )
+      }
       return (
-        <span className="font-mono text-[11px] text-stone-600 tabular-nums">
+        <CellText className="font-mono text-[11px] text-stone-600 tabular-nums" title={a.nomenklatura_wb != null ? String(a.nomenklatura_wb) : ""}>
           {a.nomenklatura_wb ?? "—"}
-        </span>
+        </CellText>
       )
     case "ozon_art":
+      if (ctx) {
+        return (
+          <InlineTextCell
+            value={a.artikul_ozon}
+            onCommit={async (next) => {
+              await ctx.onUpdate(a.id, { artikul_ozon: next })
+            }}
+            className="font-mono text-[11px] text-stone-600"
+            title={a.artikul_ozon ?? ""}
+            hint="Редактировать OZON-артикул"
+          />
+        )
+      }
       return (
-        <span className="font-mono text-[11px] text-stone-600">{a.artikul_ozon ?? "—"}</span>
+        <CellText className="font-mono text-[11px] text-stone-600" title={a.artikul_ozon ?? ""}>{a.artikul_ozon ?? "—"}</CellText>
       )
     case "created":
-      return <span className="text-xs text-stone-500">{relativeDate(a.created_at)}</span>
+      return <CellText className="text-xs text-stone-500" title={a.created_at ?? ""}>{relativeDate(a.created_at)}</CellText>
     case "updated":
-      return <span className="text-xs text-stone-500">{relativeDate(a.updated_at)}</span>
+      return <CellText className="text-xs text-stone-500" title={a.updated_at ?? ""}>{relativeDate(a.updated_at)}</CellText>
     case "kategoriya":
-      return <span className="text-xs text-stone-600">{a.kategoriya ?? "—"}</span>
+      return <CellText className="text-xs text-stone-600" title={a.kategoriya ?? ""}>{a.kategoriya ?? "—"}</CellText>
     case "kollekciya":
-      return <span className="text-xs text-stone-600">{a.kollekciya ?? "—"}</span>
+      return <CellText className="text-xs text-stone-600" title={a.kollekciya ?? ""}>{a.kollekciya ?? "—"}</CellText>
     case "fabrika":
-      return <span className="text-xs text-stone-600">{a.fabrika ?? "—"}</span>
+      return <CellText className="text-xs text-stone-600" title={a.fabrika ?? ""}>{a.fabrika ?? "—"}</CellText>
+    // W9.5 — расширения для нового конфигуратора (скрыты по умолчанию).
+    case "model_kod":
+      return <CellText className="font-mono text-[11px] text-stone-600" title={a.model_kod ?? ""}>{a.model_kod ?? "—"}</CellText>
+    case "nazvanie_etiketka":
+      return <CellText className="text-xs text-stone-600" title={a.nazvanie_etiketka ?? ""}>{a.nazvanie_etiketka ?? "—"}</CellText>
+    case "cvet_ru":
+      return <CellText className="text-xs text-stone-600" title={a.cvet_nazvanie ?? ""}>{a.cvet_nazvanie ?? "—"}</CellText>
+    case "cvet_en":
+      return <CellText className="text-xs text-stone-600" title={a.color_en ?? ""}>{a.color_en ?? "—"}</CellText>
+    case "cvet_color_code":
+      return <CellText className="font-mono text-xs text-stone-700" title={a.cvet_color_code ?? ""}>{a.cvet_color_code ?? "—"}</CellText>
+    case "tovary_cnt":
+      return <span className="text-xs text-stone-700 tabular-nums">{a.tovary_cnt}</span>
+    case "skleyka": {
+      // W10.26 — рендер чипа склейки (WB и/или OZON).  Данные подгружаются
+      // отдельным batched-запросом fetchArtikulSkleykiBatch (см. родителя).
+      // Если карта ещё не пришла или артикул не в склейке — показываем «—».
+      const map = ctx?.skleykiByArtikulId ?? null
+      const slot = map ? map.get(a.id) : null
+      if (!map) {
+        return <span className="text-xs text-stone-400 tabular-nums">…</span>
+      }
+      if (!slot || (!slot.wb && !slot.ozon)) {
+        return <span className="text-xs text-stone-400 italic">—</span>
+      }
+      const openSk = ctx?.onOpenSkleyka
+      return (
+        <div className="flex flex-col gap-0.5 min-w-0">
+          {slot.wb && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                openSk?.("wb", slot.wb!.id)
+              }}
+              className="inline-flex items-center gap-1 min-w-0 text-left hover:underline"
+              title={`WB · ${slot.wb.nazvanie}`}
+            >
+              <span className="inline-flex items-center px-1 py-px rounded text-[9px] font-medium uppercase tracking-wider bg-pink-50 text-pink-700 ring-1 ring-inset ring-pink-600/20 shrink-0">
+                WB
+              </span>
+              <span className="text-xs text-stone-700 truncate">{slot.wb.nazvanie}</span>
+            </button>
+          )}
+          {slot.ozon && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                openSk?.("ozon", slot.ozon!.id)
+              }}
+              className="inline-flex items-center gap-1 min-w-0 text-left hover:underline"
+              title={`OZON · ${slot.ozon.nazvanie}`}
+            >
+              <span className="inline-flex items-center px-1 py-px rounded text-[9px] font-medium uppercase tracking-wider bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-600/20 shrink-0">
+                OZON
+              </span>
+              <span className="text-xs text-stone-700 truncate">{slot.ozon.nazvanie}</span>
+            </button>
+          )}
+        </div>
+      )
+    }
     default:
       return null
   }
@@ -511,19 +684,50 @@ export function ArtikulyPage() {
   })
 
   const [search, setSearch] = useState("")
-  const [statusFilter, setStatusFilter] = useState<"all" | number>("all")
-  const [columns, setColumns] = useState<string[]>(DEFAULT_COLUMNS)
+  // W9.3 — дебаунс ввода поиска.
+  const debouncedSearch = useDebouncedValue(search, 300)
+  // W9.4 — multi-select фильтры (раньше был single `"all" | number`).
+  const [selectedStatusIds, setSelectedStatusIds] = useState<Set<number>>(new Set())
+  const [selectedModelKods, setSelectedModelKods] = useState<Set<string>>(new Set())
+  const [selectedColorCodes, setSelectedColorCodes] = useState<Set<string>>(new Set())
+  // W9.5 — конфигуратор колонок (видимость + порядок + сброс) через единый хук.
+  const columnConfig = useColumnConfig("artikuly", ARTIKULY_COLUMNS)
+  const columns = columnConfig.visibleColumns
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [bulkStatusOpen, setBulkStatusOpen] = useState(false)
-  const bulkStatusRef = useRef<HTMLDivElement | null>(null)
   // W8.4 — drill-down overlay (клик по ячейке `artikul`).
   const [drillDown, setDrillDown] = useState<ArtikulRow | null>(null)
+  // W10.6 — single-click на строку открывает полноценную карточку артикула.
+  const [openArtikulId, setOpenArtikulId] = useState<number | null>(null)
+  // W10.26 — открыть drawer склейки по клику на чип в колонке «Склейка».
+  const [openSkleyka, setOpenSkleyka] = useState<{ channel: "wb" | "ozon"; id: number } | null>(null)
+
+  // W10.11 — fabriki для bulk-fabrika dropdown.
+  const { data: fabrikiData } = useQuery({
+    queryKey: ["catalog", "fabriki"],
+    queryFn: fetchFabriki,
+    staleTime: 5 * 60 * 1000,
+  })
   // W1.5 — drag-resize колонок + persist через ui_preferences. Регистрируем все
   // возможные колонки (visibility управляется ColumnsManager-ом отдельно).
   const { widths: colWidths, bindResizer } = useResizableColumns(
     "artikuly",
     ARTIKULY_COLUMNS.map((c) => ({ id: c.key, defaultWidth: ARTIKULY_DEFAULT_WIDTHS[c.key] ?? 140 })),
   )
+
+  // W10.2 + W10.28 — динамический min-width таблицы = 40px checkbox + сумма ширин
+  // видимых колонок. Пересчитывается при hide/show через ColumnsManager и при
+  // ресайзе. Используется как `min-w-[NNNN]px` на `<table>` чтобы получить
+  // горизонтальный скролл при недостатке viewport-а.
+  const tableMinWidth = useMemo(() => {
+    return columns.reduce(
+      (acc, key) => acc + (colWidths[key] ?? ARTIKULY_DEFAULT_WIDTHS[key] ?? 140),
+      40, // checkbox col
+    )
+  }, [columns, colWidths])
+
+  // W10.28 — ключ для force-rerender таблицы при изменении набора видимых колонок.
+  // Без него col widths из colgroup-а могут «зависнуть» в DOM после hide.
+  const tableKey = useMemo(() => columns.join("|"), [columns])
 
   // W8.1 — sort + ui_preferences persist (scope: "artikuly", key: "sort").
   const { sort, toggleSort, setSortState, sortRows } = useTableSort<ArtikulSortKey>()
@@ -558,30 +762,73 @@ export function ArtikulyPage() {
     return acc
   }, [data])
 
+  // W9.4 — список моделей и цветов для FilterBar.
+  const modelOptions = useMemo(() => {
+    const acc = new Map<string, { label: string; count: number }>()
+    for (const a of data ?? []) {
+      const kod = a.model_osnova_kod
+      if (!kod) continue
+      const label = a.nazvanie_etiketka ? `${kod} · ${a.nazvanie_etiketka}` : kod
+      const prev = acc.get(kod)
+      acc.set(kod, { label, count: (prev?.count ?? 0) + 1 })
+    }
+    return Array.from(acc.entries())
+      .sort(([a], [b]) => a.localeCompare(b, "ru"))
+      .map(([value, info]) => ({ value, label: info.label, count: info.count }))
+  }, [data])
+  const colorOptions = useMemo(() => {
+    const acc = new Map<string, { label: string; count: number }>()
+    for (const a of data ?? []) {
+      const code = a.cvet_color_code
+      if (!code) continue
+      const label = a.cvet_nazvanie ? `${code} · ${a.cvet_nazvanie}` : code
+      const prev = acc.get(code)
+      acc.set(code, { label, count: (prev?.count ?? 0) + 1 })
+    }
+    return Array.from(acc.entries())
+      .sort(([a], [b]) => a.localeCompare(b, "ru"))
+      .map(([value, info]) => ({ value, label: info.label, count: info.count }))
+  }, [data])
+
   const filtered = useMemo<ArtikulRow[]>(() => {
     if (!data) return []
     let res = data
-    if (statusFilter !== "all") {
-      res = res.filter((a) => a.status_id === statusFilter)
+    if (selectedStatusIds.size > 0) {
+      res = res.filter((a) => a.status_id != null && selectedStatusIds.has(a.status_id))
     }
-    if (search.trim()) {
-      const q = search.trim().toLowerCase()
+    if (selectedModelKods.size > 0) {
+      res = res.filter((a) => a.model_osnova_kod != null && selectedModelKods.has(a.model_osnova_kod))
+    }
+    if (selectedColorCodes.size > 0) {
+      res = res.filter((a) => a.cvet_color_code != null && selectedColorCodes.has(a.cvet_color_code))
+    }
+    if (debouncedSearch.trim()) {
+      // W9.3 — расширенный набор полей + регистр-инвариантно.
+      // TODO(W9.3-followup): включить баркоды SKU в поиск по артикулу
+      // (требует доп. join tovary в fetchArtikulyRegistry).
+      const q = debouncedSearch.trim().toLowerCase()
       res = res.filter((a) => {
-        return (
-          a.artikul.toLowerCase().includes(q) ||
-          (a.model_osnova_kod ?? "").toLowerCase().includes(q) ||
-          (a.model_kod ?? "").toLowerCase().includes(q) ||
-          (a.nazvanie_etiketka ?? "").toLowerCase().includes(q) ||
-          (a.cvet_nazvanie ?? "").toLowerCase().includes(q) ||
-          (a.color_en ?? "").toLowerCase().includes(q) ||
-          (a.cvet_color_code ?? "").toLowerCase().includes(q) ||
-          String(a.nomenklatura_wb ?? "").toLowerCase().includes(q) ||
-          (a.artikul_ozon ?? "").toLowerCase().includes(q)
+        const fields = [
+          a.artikul,
+          a.model_osnova_kod,
+          a.model_kod,
+          a.nazvanie_etiketka,
+          a.cvet_nazvanie,
+          a.color_en,
+          a.cvet_color_code,
+          a.kategoriya,
+          a.kollekciya,
+          a.fabrika,
+          a.artikul_ozon,
+          a.nomenklatura_wb != null ? String(a.nomenklatura_wb) : null,
+        ]
+        return fields.some(
+          (f) => typeof f === "string" && f.length > 0 && f.toLowerCase().includes(q),
         )
       })
     }
     return res
-  }, [data, statusFilter, search])
+  }, [data, selectedStatusIds, selectedModelKods, selectedColorCodes, debouncedSearch])
 
   // W8.1 — sort sits between filter and pagination.
   const sortedFiltered = useMemo<ArtikulRow[]>(
@@ -592,9 +839,24 @@ export function ArtikulyPage() {
     [filtered, sortRows],
   )
   // Reset to page 1 when filters/sort change.
-  useEffect(() => { resetPage() }, [search, statusFilter, sort.column, sort.direction, resetPage])
+  useEffect(() => { resetPage() }, [debouncedSearch, selectedStatusIds, selectedModelKods, selectedColorCodes, sort.column, sort.direction, resetPage])
   const paginated = useMemo(() => paginate(sortedFiltered), [paginate, sortedFiltered])
   const visible = paginated.slice
+
+  // W10.26 — batch-fetch склейки для текущей видимой страницы. Запрос идёт
+  // только если колонка «Склейка» включена в конфигураторе.  Ключ запроса
+  // включает id'шники видимых артикулов, поэтому смена страницы / фильтра
+  // приводит к новому fetch.
+  const skleykaColumnVisible = columns.includes("skleyka")
+  const visibleArtikulIds = useMemo(() => visible.map((r) => r.id).sort((a, b) => a - b), [visible])
+  const skleykiQ = useQuery({
+    queryKey: ["artikuly-skleyki", visibleArtikulIds.join(",")],
+    queryFn: () => fetchArtikulSkleykiBatch(visibleArtikulIds),
+    enabled: skleykaColumnVisible && visibleArtikulIds.length > 0,
+    staleTime: 60 * 1000,
+  })
+  const skleykiByArtikulId: Map<number, RegistryRowSkleyki> | null =
+    skleykaColumnVisible ? (skleykiQ.data ?? null) : new Map()
 
   const toggleRow = useCallback((artikul: string) => {
     setSelected((prev) => {
@@ -628,15 +890,97 @@ export function ArtikulyPage() {
     return ids
   }, [data, selected])
 
+  // Resolve selected artikul rows → unique model_osnova_id (для bulk-fabrika,
+  // которая хранится на modeli_osnova). Если выбранные артикулы принадлежат
+  // N моделям, обновим fabrika_id у всех N моделей одним запросом.
+  const selectedModelOsnovaIds = useMemo<number[]>(() => {
+    if (!data || selected.size === 0) return []
+    const ids = new Set<number>()
+    for (const a of data) {
+      if (selected.has(a.artikul) && a.model_osnova_id != null) ids.add(a.model_osnova_id)
+    }
+    return Array.from(ids)
+  }, [data, selected])
+
   const handleBulkSetStatus = useCallback(async (statusId: number) => {
     if (selectedIds.length === 0) return
     try {
       await bulkUpdateArtikulStatus(selectedIds, statusId)
       await queryClient.invalidateQueries({ queryKey: ["artikuly-registry"] })
       setSelected(new Set())
-      setBulkStatusOpen(false)
     } catch (err) {
-      window.alert(`Не удалось обновить статус: ${(err as Error).message}`)
+      toast.error(translateError(err))
+    }
+  }, [selectedIds, queryClient])
+
+  // W9.10 — inline-edit обработчики (artikul/wb_nom/ozon_art + cvet_id).
+  // Каждый коммит — single-row UPDATE; ошибка пробрасывается в Inline*Cell,
+  // который сам показывает alert через translateError и оставляет input открытым.
+  const onUpdateArtikul = useCallback(
+    async (id: number, patch: { artikul?: string; nomenklatura_wb?: number | null; artikul_ozon?: string | null }) => {
+      await updateArtikul(id, patch)
+      await queryClient.invalidateQueries({ queryKey: ["artikuly-registry"] })
+    },
+    [queryClient],
+  )
+  const onUpdateArtikulColor = useCallback(
+    async (id: number, cvetId: number) => {
+      await updateArtikul(id, { cvet_id: cvetId })
+      await queryClient.invalidateQueries({ queryKey: ["artikuly-registry"] })
+    },
+    [queryClient],
+  )
+  const onOpenSkleykaCb = useCallback(
+    (channel: "wb" | "ozon", id: number) => setOpenSkleyka({ channel, id }),
+    [],
+  )
+  const cellCtx = useMemo<ArtikulCellCtx>(
+    () => ({
+      onUpdate: onUpdateArtikul,
+      onUpdateColor: onUpdateArtikulColor,
+      skleykiByArtikulId,
+      onOpenSkleyka: onOpenSkleykaCb,
+    }),
+    [onUpdateArtikul, onUpdateArtikulColor, skleykiByArtikulId, onOpenSkleykaCb],
+  )
+
+  // W10.11 — bulk-смена fabrika. Артикул напрямую не имеет fabrika_id —
+  // поле живёт на modeli_osnova. Поэтому функция обновляет модели, к которым
+  // относятся выбранные артикулы.  Это значит: если выбраны 3 артикула одной
+  // модели, изменение применится ко ВСЕМ артикулам этой модели.  В confirm-е
+  // подсказываем число затронутых моделей.
+  const handleBulkSetFabrika = useCallback(async (fabrikaId: number) => {
+    if (selectedModelOsnovaIds.length === 0) return
+    const modelsCount = selectedModelOsnovaIds.length
+    const msg = (
+      `Сменить фабрику для ${modelsCount} ` +
+      `модел${modelsCount === 1 ? "и" : "ей"}?\n\n` +
+      `Внимание: фабрика хранится на модели, поэтому изменение применится ` +
+      `ко всем артикулам этих моделей (не только выбранным).`
+    )
+    // eslint-disable-next-line no-alert
+    if (!window.confirm(msg)) return
+    try {
+      await bulkUpdateArtikulFabrika(selectedIds, fabrikaId)
+      await queryClient.invalidateQueries({ queryKey: ["artikuly-registry"] })
+      // Также инвалидируем matrix (modeli_osnova) — она может использоваться рядом.
+      await queryClient.invalidateQueries({ queryKey: ["matrix"] })
+      setSelected(new Set())
+    } catch (err) {
+      window.alert(`Не удалось сменить фабрику: ${(err as Error).message}`)
+    }
+  }, [selectedIds, selectedModelOsnovaIds, queryClient])
+
+  // W10.11 — bulk-delete артикулов. Confirm рисуется самим BulkActionsBar
+  // (type: "confirm"), здесь только выполнение и обновление кэша.
+  const handleBulkDelete = useCallback(async () => {
+    if (selectedIds.length === 0) return
+    try {
+      await bulkDeleteArtikuly(selectedIds)
+      await queryClient.invalidateQueries({ queryKey: ["artikuly-registry"] })
+      setSelected(new Set())
+    } catch (err) {
+      window.alert(`Не удалось удалить артикулы: ${(err as Error).message}`)
     }
   }, [selectedIds, queryClient])
 
@@ -693,23 +1037,71 @@ export function ArtikulyPage() {
     })
   }, [data, selected, statusNameById])
 
-  // Close popover on outside click / Escape.
-  useEffect(() => {
-    if (!bulkStatusOpen) return
-    function onDocDown(e: MouseEvent) {
-      if (!bulkStatusRef.current) return
-      if (!bulkStatusRef.current.contains(e.target as Node)) setBulkStatusOpen(false)
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setBulkStatusOpen(false)
-    }
-    document.addEventListener("mousedown", onDocDown)
-    document.addEventListener("keydown", onKey)
-    return () => {
-      document.removeEventListener("mousedown", onDocDown)
-      document.removeEventListener("keydown", onKey)
-    }
-  }, [bulkStatusOpen])
+  // W10.11/W10.33 — unified BulkActionsBar actions.
+  // Порядок: status (dropdown) → fabrika (dropdown) → export (button) → delete (confirm).
+  const bulkActions = useMemo<BulkAction[]>(() => {
+    const fabrikiList = fabrikiData ?? []
+    const n = selected.size
+    // Plural artikul-ending: 1 → "", 2-4 → "а", 5+/0 → "ов".
+    const ending = n === 1 ? "" : (n >= 2 && n <= 4 ? "а" : "ов")
+    return [
+      {
+        id: "status",
+        type: "dropdown",
+        label: "Изменить статус",
+        icon: <Tag className="w-3 h-3" />,
+        popoverTitle: "Статус артикула",
+        emptyText: "Нет статусов",
+        options: artikulStatuses.map((s) => ({
+          id: s.id,
+          label: (
+            <StatusBadge
+              status={{ nazvanie: s.nazvanie, color: s.color }}
+              compact
+              size="sm"
+            />
+          ),
+        })),
+        onSelect: (id) => { void handleBulkSetStatus(Number(id)) },
+      },
+      {
+        id: "fabrika",
+        type: "dropdown",
+        label: "Сменить фабрику",
+        icon: <Factory className="w-3 h-3" />,
+        popoverTitle: "Производитель (модели)",
+        emptyText: "Нет фабрик в справочнике",
+        disabled: selectedModelOsnovaIds.length === 0,
+        options: fabrikiList.map((f) => ({
+          id: f.id,
+          label: <span className="text-xs text-stone-700">{f.nazvanie}</span>,
+        })),
+        onSelect: (id) => { void handleBulkSetFabrika(Number(id)) },
+      },
+      {
+        id: "export",
+        type: "button",
+        label: "Экспорт выбранных",
+        icon: <Download className="w-3 h-3" />,
+        onClick: handleBulkExport,
+      },
+      {
+        id: "delete",
+        type: "confirm",
+        label: "Удалить",
+        icon: <Trash2 className="w-3 h-3" />,
+        destructive: true,
+        confirmText: (
+          `Удалить ${n} артикул${ending}?\n\n` +
+          `Это также удалит все SKU этих артикулов (cascade). Действие необратимо.`
+        ),
+        onClick: () => { void handleBulkDelete() },
+      },
+    ]
+  }, [
+    artikulStatuses, fabrikiData, selectedModelOsnovaIds.length, selected.size,
+    handleBulkSetStatus, handleBulkSetFabrika, handleBulkExport, handleBulkDelete,
+  ])
 
   if (isLoading) {
     return <div className="px-6 py-8 text-sm text-stone-400">Загрузка артикулов…</div>
@@ -750,47 +1142,56 @@ export function ArtikulyPage() {
           )}
         </div>
         <div className="h-5 w-px bg-stone-200 mx-1" />
-        <span className="text-[10px] uppercase tracking-wider text-stone-400">Статус:</span>
-        <button
-          onClick={() => setStatusFilter("all")}
-          className={`px-2 py-1 text-xs rounded-md transition-colors ${
-            statusFilter === "all" ? "bg-stone-900 text-white" : "text-stone-600 hover:bg-stone-100"
-          }`}
-        >
-          Все <span className="text-[10px] opacity-70 ml-1 tabular-nums">{data?.length ?? 0}</span>
-        </button>
-        {artikulStatuses.map((s) => (
-          <button
-            key={s.id}
-            onClick={() => setStatusFilter(s.id)}
-            className={`px-2 py-1 text-xs rounded-md transition-colors ${
-              statusFilter === s.id ? "bg-stone-900 text-white" : "text-stone-600 hover:bg-stone-100"
-            }`}
-          >
-            {s.nazvanie}
-            <span className="text-[10px] opacity-70 ml-1 tabular-nums">
-              {statusCounts[s.id] ?? 0}
-            </span>
-          </button>
-        ))}
+        {/* W9.4 — компактный FilterBar (модель, цвет, статус, бренд).
+            TODO(W9.4): добавить chip «Бренд» — для этого нужно протащить
+            brand_id/brand в `fetchArtikulyRegistry` (сейчас оно не
+            выбирается из modeli_osnova). */}
+        <FilterBar
+          filters={[
+            { key: "model", label: "Модель", options: modelOptions },
+            { key: "cvet", label: "Цвет", options: colorOptions },
+            {
+              key: "status",
+              label: "Статус",
+              options: artikulStatuses.map((s) => ({
+                value: String(s.id),
+                label: s.nazvanie,
+                count: statusCounts[s.id] ?? 0,
+              })),
+            },
+          ]}
+          values={{
+            model: Array.from(selectedModelKods),
+            cvet: Array.from(selectedColorCodes),
+            status: Array.from(selectedStatusIds).map(String),
+          }}
+          onChange={(key, next) => {
+            if (key === "model") setSelectedModelKods(new Set(next))
+            else if (key === "cvet") setSelectedColorCodes(new Set(next))
+            else if (key === "status") setSelectedStatusIds(new Set(next.map((v) => Number(v))))
+          }}
+          onResetAll={() => {
+            setSelectedModelKods(new Set())
+            setSelectedColorCodes(new Set())
+            setSelectedStatusIds(new Set())
+          }}
+        />
         <div className="ml-auto flex items-center gap-2">
           <div className="text-xs text-stone-500 tabular-nums">
             {filtered.length} из {data?.length ?? 0}
           </div>
-          <ColumnsManager
-            columns={ARTIKULY_COLUMNS}
-            value={columns}
-            onChange={setColumns}
-            scope="artikuly"
-            storageKey="columns"
-          />
+          <ColumnsManager state={columnConfig} />
         </div>
       </div>
 
       {/* Table */}
       <div className="flex-1 overflow-auto px-6 pb-3">
-        <div className="bg-white rounded-lg border border-stone-200 overflow-hidden">
-          <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
+        <div className="bg-white rounded-lg border border-stone-200 overflow-x-auto">
+          <table
+            key={tableKey}
+            className="w-full text-sm"
+            style={{ tableLayout: "fixed", minWidth: `${tableMinWidth}px` }}
+          >
             <colgroup>
               <col style={{ width: 40 }} />
               {columns.map((key) => (
@@ -799,7 +1200,7 @@ export function ArtikulyPage() {
             </colgroup>
             <thead className="bg-stone-50/80 border-b border-stone-200 sticky top-0 z-10">
               <tr className="text-left text-[11px] uppercase tracking-wider text-stone-500">
-                <th className="px-3 py-2.5">
+                <th className="px-3 py-2.5 cat-sticky-col-checkbox cat-sticky-col-head">
                   <input
                     type="checkbox"
                     className="rounded border-stone-300"
@@ -809,9 +1210,11 @@ export function ArtikulyPage() {
                     onChange={toggleAll}
                   />
                 </th>
-                {columns.map((key) => {
+                {columns.map((key, idx) => {
                   const col = ARTIKULY_COLUMNS.find((c) => c.key === key)
-                  const baseCls = "relative px-3 py-2.5 font-medium whitespace-nowrap"
+                  // W9.7 — первая (якорная) data-колонка sticky на left:40 (после checkbox).
+                  const stickyCls = idx === 0 ? " cat-sticky-col cat-sticky-col-offset cat-sticky-col-head" : ""
+                  const baseCls = `relative px-3 py-2.5 font-medium whitespace-nowrap${stickyCls}`
                   if (ARTIKULY_SORTABLE.has(key)) {
                     const sortKey = key as ArtikulSortKey
                     return (
@@ -840,9 +1243,18 @@ export function ArtikulyPage() {
               {visible.map((a) => (
                 <tr
                   key={a.id}
-                  className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60"
+                  className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60 cursor-pointer"
+                  // W10.6 — single-click на пустом месте строки открывает
+                  // карточку артикула. Inline-cells, checkbox и кнопки
+                  // ниже сами вызывают stopPropagation, чтобы клик по ним
+                  // не открывал drawer. Inline-edit активируется dbl-click
+                  // (см. inline-text-cell.tsx и связанные).
+                  onClick={() => setOpenArtikulId(a.id)}
                 >
-                  <td className="px-3 py-2.5">
+                  <td
+                    className="px-3 py-2.5 cat-sticky-col-checkbox"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <input
                       type="checkbox"
                       className="rounded border-stone-300"
@@ -850,27 +1262,50 @@ export function ArtikulyPage() {
                       onChange={() => toggleRow(a.artikul)}
                     />
                   </td>
-                  {columns.map((key) => (
-                    <td key={key} className="px-3 py-2.5 whitespace-nowrap">
+                  {columns.map((key, idx) => (
+                    <td
+                      key={key}
+                      className={`px-3 py-2.5 whitespace-nowrap${idx === 0 ? " cat-sticky-col cat-sticky-col-offset" : ""}`}
+                    >
                       {key === "artikul" ? (
-                        <button
-                          type="button"
-                          onClick={() => setDrillDown(a)}
-                          className="font-mono text-xs text-stone-900 hover:text-stone-600 hover:underline underline-offset-2 cursor-pointer"
-                          title="Открыть карточку артикула с SKU"
-                        >
-                          {a.artikul}
-                        </button>
+                        // W9.10 — inline-edit имени артикула + side-button для drill-down.
+                        // Кликабельная зона разделена: текст = edit, иконка = открыть карточку.
+                        <div className="flex items-center gap-1 min-w-0">
+                          <div
+                            className="flex-1 min-w-0"
+                            // W10.6 — InlineTextCell слушает dbl-click для edit;
+                            // single-click пусть всплывает к row для открытия
+                            // drawer.  Не stopPropagation здесь.
+                          >
+                            {renderCell(key, a, cellCtx)}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setDrillDown(a)
+                            }}
+                            className="p-0.5 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded shrink-0"
+                            title="Открыть карточку артикула с SKU"
+                            aria-label="Карточка артикула"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                          </button>
+                        </div>
                       ) : key === "status" ? (
-                        <InlineArtikulStatusCell
-                          currentStatusId={a.status_id ?? null}
-                          statusOptions={artikulStatuses}
-                          onChange={async (newId) => {
-                            await bulkUpdateArtikulStatus([a.id], newId)
-                            await queryClient.invalidateQueries({ queryKey: ["artikuly-registry"] })
-                          }}
-                        />
-                      ) : renderCell(key, a)}
+                        // W10.6 — клик по статус-пилюле должен открывать popover
+                        // выбора статуса, не drawer.
+                        <div onClick={(e) => e.stopPropagation()}>
+                          <InlineArtikulStatusCell
+                            currentStatusId={a.status_id ?? null}
+                            statusOptions={artikulStatuses}
+                            onChange={async (newId) => {
+                              await bulkUpdateArtikulStatus([a.id], newId)
+                              await queryClient.invalidateQueries({ queryKey: ["artikuly-registry"] })
+                            }}
+                          />
+                        </div>
+                      ) : renderCell(key, a, cellCtx)}
                     </td>
                   ))}
                 </tr>
@@ -888,65 +1323,12 @@ export function ArtikulyPage() {
         </div>
       </div>
 
-      {/* Bulk actions — кастомный бар, т.к. atomic BulkActionsBar не поддерживает
-          submenu/popover. Стилистика — copy от matrix.tsx BulkBar. */}
-      {selected.size > 0 && (
-        <div
-          className="border-t border-stone-200 bg-white px-6 py-3 flex items-center gap-3 shrink-0 shadow-[0_-4px_16px_-8px_rgba(0,0,0,0.08)]"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <span className="text-sm">
-            Выбрано: <span className="font-medium tabular-nums">{selected.size}</span>
-          </span>
-          <div className="h-5 w-px bg-stone-200" />
-          <div className="relative" ref={bulkStatusRef}>
-            <button
-              type="button"
-              onClick={() => setBulkStatusOpen((v) => !v)}
-              className="px-3 py-1 text-xs text-stone-700 hover:bg-stone-100 rounded-md flex items-center gap-1.5"
-            >
-              Изменить статус
-              <ChevronDown className="w-3 h-3" />
-            </button>
-            {bulkStatusOpen && (
-              <div className="absolute bottom-9 left-0 z-50 w-48 bg-white border border-stone-200 rounded-md shadow-lg py-1">
-                {artikulStatuses.length === 0 ? (
-                  <div className="px-3 py-2 text-xs text-stone-400 italic">Нет статусов</div>
-                ) : (
-                  artikulStatuses.map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => handleBulkSetStatus(s.id)}
-                      className="w-full text-left px-3 py-1.5 text-xs hover:bg-stone-50 flex items-center gap-2"
-                    >
-                      <StatusBadge
-                        status={{ nazvanie: s.nazvanie, color: s.color }}
-                        compact
-                        size="sm"
-                      />
-                    </button>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={handleBulkExport}
-            className="px-3 py-1 text-xs text-stone-700 hover:bg-stone-100 rounded-md"
-          >
-            Экспорт выбранных
-          </button>
-          <button
-            type="button"
-            onClick={() => { setSelected(new Set()); setBulkStatusOpen(false) }}
-            className="ml-auto px-3 py-1 text-xs text-stone-500 hover:bg-stone-100 rounded-md flex items-center gap-1.5"
-          >
-            <X className="w-3 h-3" /> Очистить
-          </button>
-        </div>
-      )}
+      {/* Bulk actions — единый BulkActionsBar (W10.33). */}
+      <BulkActionsBar
+        selectedCount={selected.size}
+        onClear={() => setSelected(new Set())}
+        actions={bulkActions}
+      />
 
       {/* W8.4 — drill-down overlay по клику на ячейку артикула. */}
       {drillDown && (
@@ -954,6 +1336,23 @@ export function ArtikulyPage() {
           row={drillDown}
           statusyData={statusyData}
           onClose={() => setDrillDown(null)}
+        />
+      )}
+
+      {/* W10.6 — карточка артикула (side-drawer) по single-click на строку. */}
+      {openArtikulId != null && (
+        <ArtikulDrawer
+          artikulId={openArtikulId}
+          onClose={() => setOpenArtikulId(null)}
+        />
+      )}
+
+      {/* W10.26 — drawer склейки по клику на чип в колонке «Склейка». */}
+      {openSkleyka != null && (
+        <SkleykaDrawer
+          skleykaId={openSkleyka.id}
+          channel={openSkleyka.channel}
+          onClose={() => setOpenSkleyka(null)}
         />
       )}
     </div>

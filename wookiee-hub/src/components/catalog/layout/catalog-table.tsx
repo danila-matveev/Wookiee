@@ -12,12 +12,18 @@ interface CatalogTableProps<T extends { id: number }> {
   columns: TableColumn<T>[]
   data: T[]
   emptyText?: string
+  /**
+   * W10.14 — клик по строке открывает ReferenceDrawer на reference-страницах.
+   * Не вызывается при клике на интерактивные элементы внутри ячеек (button/a/input/select).
+   */
+  onRowClick?: (row: T) => void
 }
 
 export function CatalogTable<T extends { id: number }>({
   columns,
   data,
   emptyText = "Нет данных",
+  onRowClick,
 }: CatalogTableProps<T>) {
   return (
     <div className="bg-white rounded-lg border border-stone-200 overflow-hidden">
@@ -45,7 +51,23 @@ export function CatalogTable<T extends { id: number }>({
           {data.map((row) => (
             <tr
               key={row.id}
-              className="group border-b border-stone-100 last:border-0 hover:bg-stone-50/60 transition-colors"
+              onClick={
+                onRowClick
+                  ? (e) => {
+                      // Игнорируем клики по интерактивным элементам внутри ячеек
+                      // (RowActions, ссылки, кнопки), чтобы не открывать drawer
+                      // одновременно с действием.
+                      const target = e.target as HTMLElement
+                      if (target.closest("button, a, input, select, textarea, [data-no-row-click]")) {
+                        return
+                      }
+                      onRowClick(row)
+                    }
+                  : undefined
+              }
+              className={`group border-b border-stone-100 last:border-0 hover:bg-stone-50/60 transition-colors ${
+                onRowClick ? "cursor-pointer" : ""
+              }`}
             >
               {columns.map((col) => (
                 <td

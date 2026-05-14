@@ -1,26 +1,43 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { AlertCircle, Archive, Building2, ChevronDown, ChevronRight, Copy, Download, Edit3, Info, MoreHorizontal, Plus, Search } from "lucide-react"
-import { archiveModel, bulkUpdateModelStatus, duplicateModel, fetchArtikulyRegistry, fetchBrendy, fetchKategorii, fetchKollekcii, fetchMatrixList, fetchStatusy, fetchTovaryRegistry, getUiPref, setUiPref } from "@/lib/catalog/service"
+import { AlertCircle, Archive, Building2, ChevronDown, ChevronRight, Copy, Download, Edit3, Info, MoreHorizontal, Package, Plus, Search } from "lucide-react"
+import { archiveModel, bulkReplaceModelSertifikaty, bulkUpdateModelFabrika, bulkUpdateModelStatus, duplicateModel, fetchArtikulyRegistry, fetchBrendy, fetchFabriki, fetchKategorii, fetchKollekcii, fetchMatrixList, fetchSertifikaty, fetchStatusy, fetchTovaryRegistry, getUiPref, setUiPref } from "@/lib/catalog/service"
 import type { ArtikulRow, Brend, MatrixRow, TovarRow } from "@/lib/catalog/service"
 import { StatusBadge, CATALOG_STATUSES } from "@/components/catalog/ui/status-badge"
 import { CompletenessRing } from "@/components/catalog/ui/completeness-ring"
 import { Tooltip } from "@/components/catalog/ui/tooltip"
+import { CellText } from "@/components/catalog/ui/cell-text"
 import { NewModelModal } from "@/components/catalog/ui/new-model-modal"
 import { SortableHeader } from "@/components/catalog/ui/sortable-header"
 import { Pagination } from "@/components/catalog/ui/pagination"
-import { swatchColor, relativeDate } from "@/lib/catalog/color-utils"
+import { FilterBar } from "@/components/catalog/ui/filter-bar"
+import { colorSwatchStyle, relativeDate } from "@/lib/catalog/color-utils"
 import { useResizableColumns, type ResizerBindings } from "@/hooks/use-resizable-columns"
 import { useTableSort, type SortState } from "@/hooks/use-table-sort"
 import { usePagination } from "@/hooks/use-pagination"
+import { useDebouncedValue } from "@/hooks/use-debounced-value"
+import { useCollapsibleGroups } from "@/hooks/use-collapsible-groups"
+import { useColumnConfig } from "@/hooks/use-column-config"
+import { MATRIX_COLUMNS } from "@/lib/catalog/column-catalogs"
+import { ColumnsManager } from "@/components/catalog/ui/columns-manager"
+import { EmptyState } from "@/components/catalog/ui/empty-state"
 import { downloadCsv } from "@/lib/catalog/csv-export"
-// Standard razmer chip-pill ladder used in the table.
-const RAZMER_LADDER = ["XS", "S", "M", "L", "XL", "XXL"] as const
+import { translateError } from "@/lib/catalog/error-translator"
+import { toast } from "@/lib/catalog/toast"
+import { RAZMER_LADDER, razmerOrder } from "@/lib/catalog/size-utils"
+
+const RAZMER_DISPLAY_CHIPS = ["XS", "S", "M", "L", "XL", "XXL"] as const
 // ─── Shared helpers ────────────────────────────────────────────────────────
-function ColorSwatch({ colorCode, size = 16 }: { colorCode: string | null; size?: number }) {
-  if (!colorCode) return <div className="rounded-full bg-stone-200" style={{ width: size, height: size }} />
-  return <div className="rounded-full ring-1 ring-stone-200 shrink-0" style={{ width: size, height: size, background: swatchColor(colorCode) }} />
+function ColorSwatch({ hex, size = 16 }: { hex: string | null | undefined; size?: number }) {
+  // `colorSwatchStyle` нормализует hex (#RRGGBB/без #/rgb/rgba) и рендерит
+  // серую штриховку для null/пустого/невалидного значения вместо hash fallback.
+  return (
+    <div
+      className="rounded-full ring-1 ring-stone-200 shrink-0"
+      style={{ ...colorSwatchStyle(hex), width: size, height: size }}
+    />
+  )
 }
 function SearchBox({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
   return (
@@ -36,26 +53,9 @@ function toggleSet<T>(set: Set<T>, value: T): Set<T> {
   else next.add(value)
   return next
 }
-type ChipValue = string | number
-type ChipItem<T extends ChipValue> = { key: string; value: T; label: string; count?: number }
-function FilterChips<T extends ChipValue>({ title, items, selected, onChange, className = "mb-2" }: { title: string; items: ChipItem<T>[]; selected: Set<T>; onChange: (next: Set<T>) => void; className?: string }) {
-  if (items.length === 0) return null
-  return (
-    <div className={`flex items-center gap-1.5 ${className} flex-wrap`}>
-      <span className="text-[10px] uppercase tracking-wider text-stone-400 mr-1">{title}</span>
-      {items.map((item) => {
-        const active = selected.has(item.value)
-        return (
-          <button key={item.key} onClick={() => onChange(toggleSet(selected, item.value))} className={`px-2.5 py-1 text-xs rounded-md transition-colors ${item.count == null ? "" : "flex items-center gap-1.5"} ${active ? "bg-stone-900 text-white" : "text-stone-600 hover:bg-stone-100 border border-stone-200"}`}>
-            <span>{item.label}</span>
-            {item.count != null && <span className={`text-[10px] tabular-nums ${active ? "text-stone-300" : "text-stone-400"}`}>{item.count}</span>}
-          </button>
-        )
-      })}
-      {selected.size > 0 && <button onClick={() => onChange(new Set())} className="text-[11px] text-stone-500 hover:text-stone-800 underline ml-1">сбросить</button>}
-    </div>
-  )
-}
+// W9.4 — старый компонент `FilterChips` (всегда открытые ряды чипов по одному
+// измерению) заменён компактным `FilterBar` (см. import выше). Сохраняем только
+// `toggleSet` и тривиальные типы, которые могут пригодиться в других местах.
 // ─── Matrix list view (Базовые модели) — Wave 2 B1 ─────────────────────────
 type GroupBy = "none" | "brand" | "kategoriya" | "kollekciya" | "fabrika" | "status"
 type ListTab = "modeli_osnova" | "artikuly" | "tovary"
@@ -73,19 +73,56 @@ const GROUP_BY_OPTIONS: { value: GroupBy; label: string }[] = [
 type ModeliOsnovaSortKey =
   | "nazvanie" | "brand" | "kategoriya" | "kollekciya" | "fabrika"
   | "status" | "completeness" | "cv_art_sku" | "obnovleno"
-const MODEL_COLUMNS: readonly (readonly [string, string?, ModeliOsnovaSortKey?])[] = [
-  ["Название", undefined, "nazvanie"],
-  ["Бренд", undefined, "brand"],
-  ["Категория", undefined, "kategoriya"],
-  ["Коллекция", undefined, "kollekciya"],
-  ["Фабрика", undefined, "fabrika"],
-  ["Статус", undefined, "status"],
-  ["Размеры"],
-  ["Цвета"],
-  ["Заполн.", undefined, "completeness"],
-  ["Цв / Арт / SKU", "text-right", "cv_art_sku"],
-  ["Обновлено", undefined, "obnovleno"],
+// W10.1 — render-таблица для колонок матрицы.  Каждая запись — каталог-ключ
+// → метаданные + render-функции для основной строки модели и для строки
+// вариации (когда модель развёрнута стрелкой).  Хедер/тело строится через
+// `columnConfig.visibleColumns.filter(k => MATRIX_RENDER_COLUMNS[k])`, чтобы
+// порядок и видимость из ColumnsManager реально применялись к DOM.
+const MATRIX_RENDER_KEYS = [
+  "nazvanie", "brand", "kategoriya", "kollekciya", "fabrika",
+  "status", "razmery", "cveta", "completeness", "cv_art_sku", "obnovleno",
 ] as const
+type MatrixRenderKey = typeof MATRIX_RENDER_KEYS[number]
+const MATRIX_RENDER_SORT_KEYS: Partial<Record<MatrixRenderKey, ModeliOsnovaSortKey>> = {
+  nazvanie: "nazvanie",
+  brand: "brand",
+  kategoriya: "kategoriya",
+  kollekciya: "kollekciya",
+  fabrika: "fabrika",
+  status: "status",
+  completeness: "completeness",
+  cv_art_sku: "cv_art_sku",
+  obnovleno: "obnovleno",
+}
+const MATRIX_RENDER_LABELS: Record<MatrixRenderKey, string> = {
+  nazvanie: "Название",
+  brand: "Бренд",
+  kategoriya: "Категория",
+  kollekciya: "Коллекция",
+  fabrika: "Фабрика",
+  status: "Статус",
+  razmery: "Размеры",
+  cveta: "Цвета",
+  completeness: "Заполн.",
+  cv_art_sku: "Цв / Арт / SKU",
+  obnovleno: "Обновлено",
+}
+const MATRIX_RENDER_HEADER_CLS: Partial<Record<MatrixRenderKey, string>> = {
+  cv_art_sku: "text-right",
+}
+const MATRIX_RENDER_DEFAULT_WIDTHS: Record<MatrixRenderKey, number> = {
+  nazvanie: 240,
+  brand: 110,
+  kategoriya: 140,
+  kollekciya: 160,
+  fabrika: 140,
+  status: 140,
+  razmery: 170,
+  cveta: 170,
+  completeness: 80,
+  cv_art_sku: 130,
+  obnovleno: 110,
+}
 // W7.3 — Колонки для CSV-экспорта матрицы.  Метки берём из MODEL_COLUMNS,
 // плюс две вспомогательные (kod / artikul_modeli) для машинной идентификации.
 const MATRIX_EXPORT_COLUMNS: { key: string; label: string }[] = [
@@ -118,20 +155,13 @@ function matrixRowToExport(r: MatrixRow, statusNameById: Map<number, string>): R
     updated_at: r.updated_at ?? "",
   }
 }
-// Column IDs + default widths for useResizableColumns (W1.5). Order must match MODEL_COLUMNS.
-const MODEL_COLUMN_IDS = [
-  { id: "nazvanie", defaultWidth: 240 },
-  { id: "brand", defaultWidth: 110 },
-  { id: "kategoriya", defaultWidth: 140 },
-  { id: "kollekciya", defaultWidth: 160 },
-  { id: "fabrika", defaultWidth: 140 },
-  { id: "status", defaultWidth: 140 },
-  { id: "razmery", defaultWidth: 170 },
-  { id: "cveta", defaultWidth: 170 },
-  { id: "zapoln", defaultWidth: 80 },
-  { id: "cv_art_sku", defaultWidth: 130 },
-  { id: "obnovleno", defaultWidth: 110 },
-] as const
+// Column IDs + default widths for useResizableColumns (W1.5). Регистрируем все
+// возможные render-колонки матрицы.  Ключ resizer-а = render-ключ из
+// MATRIX_RENDER_KEYS (не legacy "zapoln" — единый словарь во всём коде).
+const MODEL_COLUMN_IDS = MATRIX_RENDER_KEYS.map((k) => ({
+  id: k,
+  defaultWidth: MATRIX_RENDER_DEFAULT_WIDTHS[k],
+}))
 function getGroupKey(row: MatrixRow, groupBy: GroupBy, statusNameById: Map<number, string>): string {
   switch (groupBy) {
     case "brand": return row.brand ?? "Без бренда"
@@ -142,12 +172,27 @@ function getGroupKey(row: MatrixRow, groupBy: GroupBy, statusNameById: Map<numbe
     default: return ""
   }
 }
+// W9.3 — расширенный поиск: бренд, категория, коллекция, фабрика,
+// nazvanie_etiketka, плюс все артикулы вариаций. Регистр-инвариантно.
 function modelMatches(row: MatrixRow, query: string) {
-  if (row.kod.toLowerCase().includes(query) || (row.nazvanie_sayt ?? "").toLowerCase().includes(query)) return true
+  const q = query.toLowerCase()
+  if (!q) return true
+  const headerFields = [
+    row.kod,
+    row.nazvanie_sayt,
+    row.nazvanie_etiketka,
+    row.brand,
+    row.kategoriya,
+    row.kollekciya,
+    row.fabrika,
+  ]
+  for (const f of headerFields) {
+    if (f && f.toLowerCase().includes(q)) return true
+  }
   return row.modeli.some((v) =>
-    (v.kod ?? "").toLowerCase().includes(query) ||
-    (v.nazvanie ?? "").toLowerCase().includes(query) ||
-    (v.artikul_modeli ?? "").toLowerCase().includes(query)
+    (v.kod ?? "").toLowerCase().includes(q) ||
+    (v.nazvanie ?? "").toLowerCase().includes(q) ||
+    (v.artikul_modeli ?? "").toLowerCase().includes(q)
   )
 }
 // W8.3 — собирает текст tooltip-а для CompletenessRing.
@@ -162,10 +207,30 @@ function buildCompletenessTooltip(row: MatrixRow): string {
   const moreSuffix = tail > 0 ? ` · и ещё ${tail}` : ""
   return `Заполненность ${pct}%. Не заполнено: ${lines}${moreSuffix}`
 }
-function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, onOpen, onRegisterExport }: { rows: MatrixRow[]; brendy: Brend[]; kategorii: { id: number; nazvanie: string }[]; kollekcii: { id: number; nazvanie: string }[]; modelStatuses: StatusOption[]; onOpen: (kod: string) => void; onRegisterExport?: (fn: (() => void) | null) => void }) {
+function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, fabriki, sertifikaty, modelStatuses, onOpen, onRegisterExport }: { rows: MatrixRow[]; brendy: Brend[]; kategorii: { id: number; nazvanie: string }[]; kollekcii: { id: number; nazvanie: string }[]; fabriki: { id: number; nazvanie: string }[]; sertifikaty: { id: number; nazvanie: string }[]; modelStatuses: StatusOption[]; onOpen: (kod: string) => void; onRegisterExport?: (fn: (() => void) | null) => void }) {
   const queryClient = useQueryClient()
   const { widths: colWidths, bindResizer } = useResizableColumns("matrix.modeli", [...MODEL_COLUMN_IDS])
+  // W9.5 — конфигуратор колонок матрицы. Видимость управляет рендер-ключами
+  // MODEL_COLUMN_IDS; для полей из БД, не имеющих рендерера, тоггл активирует
+  // их в каталоге, но в таблице они пока не отрисовываются (TODO ниже).
+  const columnConfig = useColumnConfig("matrix", MATRIX_COLUMNS)
+  // W10.1 — ordered+visible список render-ключей.  Берём из columnConfig.order
+  // (хранится в localStorage, изменяется drag-and-drop'ом в ColumnsManager),
+  // фильтруем по `visibility` И по тому, что у render-ключа есть код-рендерер.
+  // Расширенные каталог-ключи (sku_china, ves_kg, …) пока без рендера и
+  // молча отсекаются — их можно будет включать позднее, добавив запись в
+  // MATRIX_RENDER_KEYS + рендеры в renderModelCell / renderVariationCell.
+  const renderColumns = useMemo<MatrixRenderKey[]>(() => {
+    const allowed = new Set<string>(MATRIX_RENDER_KEYS as readonly string[])
+    return columnConfig.order.filter(
+      (k) => allowed.has(k) && columnConfig.visibility[k] !== false,
+    ) as MatrixRenderKey[]
+  }, [columnConfig.order, columnConfig.visibility])
   const [search, setSearch] = useState("")
+  // W9.3 — дебаунс 300мс. Фильтрация по тысячам моделей на каждом keystroke
+  // даёт заметные подвисания на больших каталогах; debounced value читается
+  // в `filtered`/`useMemo`-деп.
+  const debouncedSearch = useDebouncedValue(search, 300)
   // W3.2 — brand chip filter.
   const [selectedBrandIds, setSelectedBrandIds] = useState<Set<number>>(new Set())
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<Set<number>>(new Set())
@@ -173,10 +238,16 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
   const [selectedStatusIds, setSelectedStatusIds] = useState<Set<number>>(new Set())
   const [incompleteOnly, setIncompleteOnly] = useState(false)
   const [groupBy, setGroupBy] = useState<GroupBy>("none")
+  // W9.6 — Notion-style collapsible group headers.
+  const { isCollapsed: isGroupCollapsed, toggle: toggleGroupCollapsed } = useCollapsibleGroups("matrix-modeli")
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set())
   const [selectedKods, setSelectedKods] = useState<Set<string>>(new Set())
   const [openMenuKod, setOpenMenuKod] = useState<string | null>(null)
   const [bulkStatusOpen, setBulkStatusOpen] = useState(false)
+  // W9.20 — состояние дополнительных bulk-меню (фабрика / сертификаты).
+  const [bulkFabrikaOpen, setBulkFabrikaOpen] = useState(false)
+  const [bulkSertifikatyOpen, setBulkSertifikatyOpen] = useState(false)
+  const [bulkSertifikatyDraft, setBulkSertifikatyDraft] = useState<Set<number>>(new Set())
   const groupByLoadedRef = useRef(false)
   // W8.1 — sort state + persist via ui_preferences.
   const { sort, toggleSort, setSortState, sortRows } = useTableSort<ModeliOsnovaSortKey>()
@@ -206,13 +277,19 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
     if (!sortLoadedRef.current) return
     setUiPref("matrix.modeli", "sort", sort).catch(() => { /* non-fatal */ })
   }, [sort])
-  // Close more-menu / bulk-status dropdown when clicking elsewhere
+  // Close more-menu / bulk dropdowns when clicking elsewhere.
+  // W9.20 — bulk-fabrika / bulk-sertifikaty также закрываются по клику вне.
   useEffect(() => {
-    if (!openMenuKod && !bulkStatusOpen) return
-    const onDocClick = () => { setOpenMenuKod(null); setBulkStatusOpen(false) }
+    if (!openMenuKod && !bulkStatusOpen && !bulkFabrikaOpen && !bulkSertifikatyOpen) return
+    const onDocClick = () => {
+      setOpenMenuKod(null)
+      setBulkStatusOpen(false)
+      setBulkFabrikaOpen(false)
+      setBulkSertifikatyOpen(false)
+    }
     document.addEventListener("click", onDocClick)
     return () => document.removeEventListener("click", onDocClick)
-  }, [openMenuKod, bulkStatusOpen])
+  }, [openMenuKod, bulkStatusOpen, bulkFabrikaOpen, bulkSertifikatyOpen])
   const statusNameById = useMemo(() => new Map(modelStatuses.map((s) => [s.id, s.nazvanie])), [modelStatuses])
   // Live status lookup by id — used to render <StatusBadge> for both parent
   // modeli_osnova rows (status_ids 20–26) and variation modeli rows. The
@@ -231,15 +308,39 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
     for (const r of rows) if (r.brand_id != null) acc.set(r.brand_id, (acc.get(r.brand_id) ?? 0) + 1)
     return acc
   }, [rows])
+  // W9.4 — category / collection / season counts (used for chip badges).
+  const categoryCounts = useMemo(() => {
+    const acc = new Map<number, number>()
+    for (const r of rows) if (r.kategoriya_id != null) acc.set(r.kategoriya_id, (acc.get(r.kategoriya_id) ?? 0) + 1)
+    return acc
+  }, [rows])
+  const collectionCounts = useMemo(() => {
+    const acc = new Map<string, number>()
+    for (const r of rows) if (r.kollekciya) acc.set(r.kollekciya, (acc.get(r.kollekciya) ?? 0) + 1)
+    return acc
+  }, [rows])
+  // W9.4 — season (tip_kollekcii) options derived from rows.
+  const [selectedSeasons, setSelectedSeasons] = useState<Set<string>>(new Set())
+  const seasonOptions = useMemo(() => {
+    const acc = new Map<string, number>()
+    for (const r of rows) {
+      const s = (r.tip_kollekcii ?? "").trim()
+      if (s) acc.set(s, (acc.get(s) ?? 0) + 1)
+    }
+    return Array.from(acc.entries())
+      .sort(([a], [b]) => a.localeCompare(b, "ru"))
+      .map(([value, count]) => ({ value, label: value, count }))
+  }, [rows])
   const filtered = useMemo(() => {
     let res = rows
     if (selectedBrandIds.size > 0) res = res.filter((r) => r.brand_id != null && selectedBrandIds.has(r.brand_id))
     if (selectedStatusIds.size > 0) res = res.filter((r) => r.status_id != null && selectedStatusIds.has(r.status_id))
     if (selectedCategoryIds.size > 0) res = res.filter((r) => r.kategoriya_id != null && selectedCategoryIds.has(r.kategoriya_id))
     if (selectedCollectionNames.size > 0) res = res.filter((r) => r.kollekciya != null && selectedCollectionNames.has(r.kollekciya))
+    if (selectedSeasons.size > 0) res = res.filter((r) => r.tip_kollekcii != null && selectedSeasons.has(r.tip_kollekcii))
     if (incompleteOnly) res = res.filter((r) => r.completeness < 0.5)
-    return search.trim() ? res.filter((r) => modelMatches(r, search.trim().toLowerCase())) : res
-  }, [rows, selectedBrandIds, selectedStatusIds, selectedCategoryIds, selectedCollectionNames, incompleteOnly, search])
+    return debouncedSearch.trim() ? res.filter((r) => modelMatches(r, debouncedSearch.trim().toLowerCase())) : res
+  }, [rows, selectedBrandIds, selectedStatusIds, selectedCategoryIds, selectedCollectionNames, selectedSeasons, incompleteOnly, debouncedSearch])
   // W8.1 — apply sort AFTER filters.  Computed value resolver for keys that
   // aren't 1-to-1 with MatrixRow fields.
   const sortedFiltered = useMemo<MatrixRow[]>(() => {
@@ -275,7 +376,7 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
   useEffect(() => {
     resetPage()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, selectedBrandIds, selectedCategoryIds, selectedCollectionNames, selectedStatusIds, incompleteOnly, groupBy, sort.column, sort.direction])
+  }, [search, selectedBrandIds, selectedCategoryIds, selectedCollectionNames, selectedSeasons, selectedStatusIds, incompleteOnly, groupBy, sort.column, sort.direction])
   // Pagination only kicks in when groupBy === "none" (otherwise we render full
   // groups — pagination across groups is non-obvious UX).
   const paginated = useMemo(() => paginate(sortedFiltered), [paginate, sortedFiltered])
@@ -301,7 +402,7 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
       await bulkUpdateModelStatus(kods, statusId)
       await queryClient.invalidateQueries({ queryKey: ["matrix-list"] })
       setSelectedKods(new Set()); setBulkStatusOpen(false)
-    } catch (err) { window.alert(`Не удалось обновить статус: ${(err as Error).message}`) }
+    } catch (err) { toast.error(translateError(err)) }
   }, [selectedKods, queryClient])
   const handleBulkDuplicate = useCallback(async () => {
     const kods = Array.from(selectedKods)
@@ -309,7 +410,7 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
     for (const srcKod of kods) {
       const newKod = window.prompt(`Дублировать «${srcKod}»: введите новый kod`, `${srcKod}_copy`)
       if (!newKod) continue
-      try { await duplicateModel(srcKod, newKod.trim()) } catch (err) { window.alert(`Не удалось дублировать ${srcKod}: ${(err as Error).message}`) }
+      try { await duplicateModel(srcKod, newKod.trim()) } catch (err) { toast.error(translateError(err)) }
     }
     await queryClient.invalidateQueries({ queryKey: ["matrix-list"] })
     setSelectedKods(new Set())
@@ -318,11 +419,36 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
     const kods = Array.from(selectedKods)
     if (kods.length === 0 || !window.confirm(`Архивировать ${kods.length} модель(и) и все связанные вариации/артикулы/SKU?`)) return
     for (const kod of kods) {
-      try { await archiveModel(kod) } catch (err) { window.alert(`Не удалось архивировать ${kod}: ${(err as Error).message}`) }
+      try { await archiveModel(kod) } catch (err) { toast.error(translateError(err)) }
     }
     await queryClient.invalidateQueries({ queryKey: ["matrix-list"] })
     setSelectedKods(new Set())
   }, [selectedKods, queryClient])
+  // W9.20 — bulk-set фабрики выбранным моделям (single-select).
+  const handleBulkSetFabrika = useCallback(async (fabrikaId: number | null) => {
+    const kods = Array.from(selectedKods)
+    if (kods.length === 0) return
+    try {
+      await bulkUpdateModelFabrika(kods, fabrikaId)
+      await queryClient.invalidateQueries({ queryKey: ["matrix-list"] })
+      setSelectedKods(new Set()); setBulkFabrikaOpen(false)
+      toast.success(`Фабрика обновлена для ${kods.length} модель(ей)`)
+    } catch (err) { toast.error(translateError(err)) }
+  }, [selectedKods, queryClient])
+  // W9.20 — bulk-replace сертификатов (multi-select; draft подтверждается кнопкой).
+  const handleBulkApplySertifikaty = useCallback(async () => {
+    const kods = Array.from(selectedKods)
+    if (kods.length === 0) return
+    const ids = Array.from(bulkSertifikatyDraft)
+    try {
+      await bulkReplaceModelSertifikaty(kods, ids)
+      await queryClient.invalidateQueries({ queryKey: ["matrix-list"] })
+      setSelectedKods(new Set())
+      setBulkSertifikatyOpen(false)
+      setBulkSertifikatyDraft(new Set())
+      toast.success(`Сертификаты обновлены для ${kods.length} модель(ей)`)
+    } catch (err) { toast.error(translateError(err)) }
+  }, [selectedKods, bulkSertifikatyDraft, queryClient])
   // Single-row actions
   const handleRowDuplicate = useCallback(async (srcKod: string) => {
     const newKod = window.prompt(`Дублировать «${srcKod}»: введите новый kod`, `${srcKod}_copy`)
@@ -330,14 +456,14 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
     try {
       await duplicateModel(srcKod, newKod.trim())
       await queryClient.invalidateQueries({ queryKey: ["matrix-list"] })
-    } catch (err) { window.alert(`Не удалось дублировать: ${(err as Error).message}`) }
+    } catch (err) { toast.error(translateError(err)) }
   }, [queryClient])
   const handleRowArchive = useCallback(async (kod: string) => {
     if (!window.confirm(`Архивировать «${kod}» и все связанные вариации/артикулы/SKU?`)) return
     try {
       await archiveModel(kod)
       await queryClient.invalidateQueries({ queryKey: ["matrix-list"] })
-    } catch (err) { window.alert(`Не удалось архивировать: ${(err as Error).message}`) }
+    } catch (err) { toast.error(translateError(err)) }
   }, [queryClient])
   const allVisibleSelected = filtered.length > 0 && filtered.every((r) => selectedKods.has(r.kod))
   // W7.3 — CSV-экспорт выбранных моделей через bulk-bar.
@@ -380,25 +506,84 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
             <select value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)} className="px-2.5 py-1 text-xs border border-stone-200 rounded-md bg-white outline-none">
               {GROUP_BY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
+            <ColumnsManager state={columnConfig} />
             <span className="text-xs text-stone-500 tabular-nums">{filtered.length} из {rows.length}</span>
           </div>
         </div>
-        {/* W3.2 — Brand chips (placed first — бренд = главная ось каталога) */}
-        <FilterChips title="Бренды:" items={brendy.map((b) => ({ key: String(b.id), value: b.id, label: b.nazvanie, count: brandCounts.get(b.id) ?? 0 }))} selected={selectedBrandIds} onChange={setSelectedBrandIds} />
-        {/* Category chips */}
-        <FilterChips title="Категории:" items={kategorii.map((k) => ({ key: String(k.id), value: k.id, label: k.nazvanie }))} selected={selectedCategoryIds} onChange={setSelectedCategoryIds} />
-        {/* Collection chips */}
-        <FilterChips title="Коллекции:" items={kollekcii.map((k) => ({ key: String(k.id), value: k.nazvanie, label: k.nazvanie }))} selected={selectedCollectionNames} onChange={setSelectedCollectionNames} />
-        {/* Status chips with counts */}
-        <FilterChips title="Статусы:" items={modelStatuses.map((s) => ({ key: String(s.id), value: s.id, label: s.nazvanie, count: statusCounts.get(s.id) ?? 0 }))} selected={selectedStatusIds} onChange={setSelectedStatusIds} className="mb-3" />
+        {/* W9.4 + W9.16 — compact Notion-style dropdown FilterBar.
+            Объединяет бренд, категорию, коллекцию, сезон и статус в одну строку chip-ов. */}
+        <div className="mb-3">
+          <FilterBar
+            filters={[
+              {
+                key: "brand",
+                label: "Бренд",
+                options: brendy.map((b) => ({ value: String(b.id), label: b.nazvanie, count: brandCounts.get(b.id) ?? 0 })),
+              },
+              {
+                key: "kategoriya",
+                label: "Категория",
+                options: kategorii.map((k) => ({ value: String(k.id), label: k.nazvanie, count: categoryCounts.get(k.id) ?? 0 })),
+              },
+              {
+                key: "status",
+                label: "Статус",
+                options: modelStatuses.map((s) => ({ value: String(s.id), label: s.nazvanie, count: statusCounts.get(s.id) ?? 0 })),
+              },
+              {
+                key: "kollekciya",
+                label: "Коллекция",
+                options: kollekcii.map((k) => ({ value: k.nazvanie, label: k.nazvanie, count: collectionCounts.get(k.nazvanie) ?? 0 })),
+              },
+              {
+                key: "season",
+                label: "Сезон / тип коллекции",
+                options: seasonOptions,
+              },
+            ]}
+            values={{
+              brand: Array.from(selectedBrandIds).map(String),
+              kategoriya: Array.from(selectedCategoryIds).map(String),
+              status: Array.from(selectedStatusIds).map(String),
+              kollekciya: Array.from(selectedCollectionNames),
+              season: Array.from(selectedSeasons),
+            }}
+            onChange={(key, next) => {
+              if (key === "brand") setSelectedBrandIds(new Set(next.map((v) => Number(v))))
+              else if (key === "kategoriya") setSelectedCategoryIds(new Set(next.map((v) => Number(v))))
+              else if (key === "status") setSelectedStatusIds(new Set(next.map((v) => Number(v))))
+              else if (key === "kollekciya") setSelectedCollectionNames(new Set(next))
+              else if (key === "season") setSelectedSeasons(new Set(next))
+            }}
+            onResetAll={() => {
+              setSelectedBrandIds(new Set())
+              setSelectedCategoryIds(new Set())
+              setSelectedStatusIds(new Set())
+              setSelectedCollectionNames(new Set())
+              setSelectedSeasons(new Set())
+            }}
+          />
+        </div>
         {/* Table */}
         <div className="bg-white rounded-lg border border-stone-200 overflow-x-auto">
-          <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
+          {/* W10.1 — `key` форсит React пересоздать таблицу при изменении
+              набора/порядка видимых колонок: иначе при `table-layout: fixed`
+              старые ширины в colgroup могут залипнуть в DOM. */}
+          <table
+            key={renderColumns.join("|")}
+            className="w-full text-sm"
+            style={{ tableLayout: "fixed" }}
+          >
             <colgroup>
               <col style={{ width: 32 }} />
               <col style={{ width: 40 }} />
-              {MODEL_COLUMN_IDS.map((c) => (
-                <col key={c.id} style={{ width: `${colWidths[c.id] ?? c.defaultWidth}px` }} />
+              {renderColumns.map((k) => (
+                <col
+                  key={k}
+                  style={{
+                    width: `${colWidths[k] ?? MATRIX_RENDER_DEFAULT_WIDTHS[k]}px`,
+                  }}
+                />
               ))}
               <col style={{ width: 40 }} />
             </colgroup>
@@ -406,27 +591,31 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
               <tr className="text-left text-[11px] uppercase tracking-wider text-stone-500">
                 <th className="px-2 py-2.5" />
                 <th className="px-3 py-2.5"><input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAllVisible} style={{ accentColor: "#1C1917" }} className="rounded border-stone-300" aria-label="Выбрать все" /></th>
-                {MODEL_COLUMNS.map(([label, cls, sortKey], idx) => {
-                  const colId = MODEL_COLUMN_IDS[idx].id
-                  const baseCls = `relative px-3 py-2.5 font-medium ${cls ?? ""}`
+                {renderColumns.map((k, idx) => {
+                  const label = MATRIX_RENDER_LABELS[k]
+                  const sortKey = MATRIX_RENDER_SORT_KEYS[k]
+                  const headerCls = MATRIX_RENDER_HEADER_CLS[k]
+                  // W9.7 — первая (якорная) data-колонка — sticky.
+                  const stickyCls = idx === 0 ? " cat-sticky-col cat-sticky-col-head" : ""
+                  const baseCls = `relative px-3 py-2.5 font-medium ${headerCls ?? ""}${stickyCls}`
                   if (sortKey) {
                     return (
                       <SortableHeader
-                        key={label}
+                        key={k}
                         active={sort.column === sortKey}
                         direction={sort.column === sortKey ? sort.direction : null}
                         onClick={() => toggleSort(sortKey)}
                         className={baseCls}
                       >
                         {label}
-                        <span {...bindResizer(colId)} />
+                        <span {...bindResizer(k)} />
                       </SortableHeader>
                     )
                   }
                   return (
-                    <th key={label} className={baseCls}>
+                    <th key={k} className={baseCls}>
                       {label}
-                      <span {...bindResizer(colId)} />
+                      <span {...bindResizer(k)} />
                     </th>
                   )
                 })}
@@ -434,23 +623,82 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
               </tr>
             </thead>
             <tbody>
-              {pagedGrouped.map((group) => (
+              {/* W9.19 — EmptyState когда таблица пустая.
+                  hasActiveFilters различает «совсем нет данных» vs «фильтры спрятали всё». */}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={renderColumns.length + 3} className="px-0 py-0">
+                    {(() => {
+                      const hasActiveFilters =
+                        selectedBrandIds.size > 0 ||
+                        selectedCategoryIds.size > 0 ||
+                        selectedCollectionNames.size > 0 ||
+                        selectedSeasons.size > 0 ||
+                        selectedStatusIds.size > 0 ||
+                        incompleteOnly ||
+                        debouncedSearch.trim().length > 0
+                      const resetAll = () => {
+                        setSelectedBrandIds(new Set())
+                        setSelectedCategoryIds(new Set())
+                        setSelectedCollectionNames(new Set())
+                        setSelectedSeasons(new Set())
+                        setSelectedStatusIds(new Set())
+                        setIncompleteOnly(false)
+                        setSearch("")
+                      }
+                      return (
+                        <EmptyState
+                          icon={<Package className="w-12 h-12" />}
+                          title={hasActiveFilters ? "Ничего не найдено" : "Нет моделей"}
+                          description={
+                            hasActiveFilters
+                              ? "Попробуйте смягчить фильтры или очистить поиск."
+                              : "Создайте первую модель, чтобы начать наполнять каталог."
+                          }
+                          secondaryCta={
+                            hasActiveFilters
+                              ? { label: "Сбросить фильтры", onClick: resetAll }
+                              : undefined
+                          }
+                        />
+                      )
+                    })()}
+                  </td>
+                </tr>
+              )}
+              {pagedGrouped.map((group) => {
+                const collapsed = groupBy !== "none" && isGroupCollapsed(group.key)
+                return (
                 <Fragment key={`group-${group.key}`}>
                   {groupBy !== "none" && (
                     <tr className="bg-stone-100/60 border-b border-stone-200">
-                      <td colSpan={14} className="px-3 py-2"><div className="flex items-center gap-2"><span className="text-sm font-medium text-stone-800">{group.label}</span><span className="text-xs text-stone-500 tabular-nums">· {group.items.length}</span></div></td>
+                      <td colSpan={renderColumns.length + 3} className="px-3 py-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleGroupCollapsed(group.key)}
+                          className="flex items-center gap-2 w-full text-left hover:opacity-80 transition-opacity"
+                          aria-expanded={!collapsed}
+                          aria-label={collapsed ? `Развернуть группу ${group.label}` : `Свернуть группу ${group.label}`}
+                        >
+                          {collapsed ? <ChevronRight className="w-3.5 h-3.5 text-stone-500 shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 text-stone-500 shrink-0" />}
+                          <span className="text-sm font-medium text-stone-800">{group.label}</span>
+                          <span className="text-xs text-stone-500 tabular-nums">· {group.items.length}</span>
+                        </button>
+                      </td>
                     </tr>
                   )}
-                  {group.items.map((m) => {
+                  {!collapsed && group.items.map((m) => {
                     const canExpand = m.modeli.length >= 2
                     const isExpanded = expandedRows.has(m.id)
                     const checked = selectedKods.has(m.kod)
-                    const variantSizes = new Set<string>()
-                    // Razmery: derive from variant rossiyskiy_razmer values that match the standard ladder.
-                    for (const v of m.modeli) {
-                      const ru = (v.rossiyskiy_razmer ?? "").toUpperCase().trim()
-                      if ((RAZMER_LADDER as readonly string[]).includes(ru)) variantSizes.add(ru)
-                    }
+                    // W9.8 — Размеры берём из канонического `modeli_osnova.razmery_modeli`
+                    // (то же поле, что редактируется в карточке модели). Раньше агрегатор
+                    // собирал union по `modeli.rossiyskiy_razmer`, что было неверно: это
+                    // российский numeric-код вариации, а не lettered ladder.
+                    const variantSizes = new Set<string>(
+                      m.razmery.map((s) => s.toUpperCase().trim()).filter(Boolean)
+                    )
+                    const displaySizes = RAZMER_DISPLAY_CHIPS
                     return (
                       <Fragment key={`${m.kod}-row`}>
                         <tr className="border-b border-stone-100 hover:bg-stone-50/60 group">
@@ -464,27 +712,53 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
                             )}
                           </td>
                           <td className="px-3 py-3"><input type="checkbox" checked={checked} onChange={() => toggleSelect(m.kod)} onClick={(e) => e.stopPropagation()} style={{ accentColor: "#1C1917" }} className="rounded border-stone-300" aria-label={`Выбрать ${m.kod}`} /></td>
-                          <td className="px-3 py-3 cursor-pointer" onClick={() => onOpen(m.kod)}>
-                            <div className="font-medium text-stone-900 hover:underline font-mono">{m.kod}</div>
-                            <div className="text-xs text-stone-500 truncate max-w-[220px]">{m.nazvanie_sayt || <span className="italic text-stone-400">без названия</span>}</div>
-                          </td>
-                          {/* W3.2 — Бренд */}
-                          <td className="px-3 py-3 text-stone-700">{m.brand ?? <span className="text-stone-300">—</span>}</td>
-                          <td className="px-3 py-3 text-stone-700">{m.kategoriya ?? "—"}</td>
-                          <td className="px-3 py-3"><div className="text-stone-700">{m.kollekciya ?? "—"}</div><div className="text-[11px] text-stone-400">{m.tip_kollekcii ?? ""}</div></td>
-                          <td className="px-3 py-3 text-stone-700">{m.fabrika ?? "—"}</td>
-                          <td className="px-3 py-3"><StatusBadge status={m.status_id != null ? statusById.get(m.status_id) ?? null : null} /></td>
-                          <td className="px-3 py-3"><div className="flex items-center gap-0.5">{RAZMER_LADDER.map((sz) => <span key={sz} className={`text-[10px] px-1 py-0.5 rounded ${variantSizes.has(sz) ? "bg-stone-900 text-white" : "bg-stone-50 text-stone-300 ring-1 ring-inset ring-stone-200"}`}>{sz}</span>)}</div></td>
-                          <td className="px-3 py-3"><ColorChips modelKod={m.kod} count={m.cveta_cnt} /></td>
-                          <td className="px-3 py-3"><Tooltip text={buildCompletenessTooltip(m)}><CompletenessRing value={m.completeness} size={16} hideLabel /></Tooltip></td>
-                          <td className="px-3 py-3 text-right tabular-nums text-stone-600">
-                            <Tooltip text={`Цвета (привязанные к артикулам): ${m.cveta_cnt} · Артикулы: ${m.artikuly_cnt} · SKU: ${m.tovary_cnt}`}>
-                              <span>
-                                <span className="text-stone-900 font-medium">{m.cveta_cnt}</span><span className="text-stone-300 mx-1">/</span><span>{m.artikuly_cnt}</span><span className="text-stone-300 mx-1">/</span><span>{m.tovary_cnt}</span>
-                              </span>
-                            </Tooltip>
-                          </td>
-                          <td className="px-3 py-3 text-stone-500 text-xs">{relativeDate(m.updated_at)}</td>
+                          {renderColumns.map((key, colIdx) => {
+                            const stickyCls = colIdx === 0 ? " cat-sticky-col" : ""
+                            switch (key) {
+                              case "nazvanie":
+                                return (
+                                  <td key={key} className={`px-3 py-3 cursor-pointer${stickyCls}`} onClick={() => onOpen(m.kod)}>
+                                    <CellText className="font-medium text-stone-900 hover:underline font-mono" title={m.kod}>{m.kod}</CellText>
+                                    <CellText className="text-xs text-stone-500" title={m.nazvanie_sayt ?? ""}>{m.nazvanie_sayt || <span className="italic text-stone-400">без названия</span>}</CellText>
+                                  </td>
+                                )
+                              case "brand":
+                                return <td key={key} className={`px-3 py-3 text-stone-700${stickyCls}`}><CellText title={m.brand ?? ""}>{m.brand ?? <span className="text-stone-300">—</span>}</CellText></td>
+                              case "kategoriya":
+                                return <td key={key} className={`px-3 py-3 text-stone-700${stickyCls}`}><CellText title={m.kategoriya ?? ""}>{m.kategoriya ?? "—"}</CellText></td>
+                              case "kollekciya":
+                                return (
+                                  <td key={key} className={`px-3 py-3${stickyCls}`}>
+                                    <CellText className="text-stone-700" title={m.kollekciya ?? ""}>{m.kollekciya ?? "—"}</CellText>
+                                    <CellText className="text-[11px] text-stone-400" title={m.tip_kollekcii ?? ""}>{m.tip_kollekcii ?? ""}</CellText>
+                                  </td>
+                                )
+                              case "fabrika":
+                                return <td key={key} className={`px-3 py-3 text-stone-700${stickyCls}`}><CellText title={m.fabrika ?? ""}>{m.fabrika ?? "—"}</CellText></td>
+                              case "status":
+                                return <td key={key} className={`px-3 py-3${stickyCls}`}><StatusBadge status={m.status_id != null ? statusById.get(m.status_id) ?? null : null} /></td>
+                              case "razmery":
+                                return <td key={key} className={`px-3 py-3${stickyCls}`}><div className="flex items-center gap-0.5">{displaySizes.map((sz) => <span key={sz} className={`text-[10px] px-1 py-0.5 rounded ${variantSizes.has(sz) ? "bg-stone-900 text-white" : "bg-stone-50 text-stone-300 ring-1 ring-inset ring-stone-200"}`}>{sz}</span>)}</div></td>
+                              case "cveta":
+                                return <td key={key} className={`px-3 py-3${stickyCls}`}><ColorChips modelKod={m.kod} count={m.cveta_cnt} /></td>
+                              case "completeness":
+                                return <td key={key} className={`px-3 py-3${stickyCls}`}><Tooltip text={buildCompletenessTooltip(m)}><CompletenessRing value={m.completeness} size={16} hideLabel /></Tooltip></td>
+                              case "cv_art_sku":
+                                return (
+                                  <td key={key} className={`px-3 py-3 text-right tabular-nums text-stone-600${stickyCls}`}>
+                                    <Tooltip text={`Цвета (привязанные к артикулам): ${m.cveta_cnt} · Артикулы: ${m.artikuly_cnt} · SKU: ${m.tovary_cnt}`}>
+                                      <span>
+                                        <span className="text-stone-900 font-medium">{m.cveta_cnt}</span><span className="text-stone-300 mx-1">/</span><span>{m.artikuly_cnt}</span><span className="text-stone-300 mx-1">/</span><span>{m.tovary_cnt}</span>
+                                      </span>
+                                    </Tooltip>
+                                  </td>
+                                )
+                              case "obnovleno":
+                                return <td key={key} className={`px-3 py-3 text-stone-500 text-xs${stickyCls}`}>{relativeDate(m.updated_at)}</td>
+                              default:
+                                return <td key={key} className={`px-3 py-3 text-stone-300${stickyCls}`}>—</td>
+                            }
+                          })}
                           <td className="px-2 py-3 relative">
                             <button className="p-1 hover:bg-stone-100 rounded opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => { e.stopPropagation(); setOpenMenuKod((cur) => (cur === m.kod ? null : m.kod)) }} aria-label="Действия">
                               <MoreHorizontal className="w-3.5 h-3.5 text-stone-500" />
@@ -499,20 +773,46 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
                           </td>
                         </tr>
                         {isExpanded && m.modeli.map((v) => (
-                          <tr key={`v-${v.id}`} className="bg-stone-50/40 border-b border-stone-100 text-xs">
+                          <tr key={`v-${v.id}`} className="cat-sticky-row-alt bg-stone-50/40 border-b border-stone-100 text-xs">
                             <td colSpan={2} />
-                            <td className="pl-3 py-2 pr-3"><div className="flex items-center gap-2"><div className="w-4 h-px bg-stone-300" /><span className="font-medium text-stone-800 font-mono">{v.kod}</span></div><div className="text-[11px] text-stone-500 ml-6 mt-0.5 truncate max-w-[200px]">{v.nazvanie}</div></td>
-                            {/* W3.2 — Бренд (наследуется от модели — здесь пусто) */}
-                            <td className="px-3 py-2 text-stone-300">—</td>
-                            <td className="px-3 py-2 text-stone-400">—</td>
-                            <td className="px-3 py-2"><div className="flex items-center gap-1 text-stone-500"><Building2 className="w-3 h-3 text-stone-400" />{v.importer_short ?? "—"}</div></td>
-                            <td className="px-3 py-2 font-mono text-[11px] text-stone-500">{v.artikul_modeli ?? "—"}</td>
-                            <td className="px-3 py-2"><StatusBadge status={v.status_id != null ? statusById.get(v.status_id) ?? null : null} compact /></td>
-                            <td className="px-3 py-2 text-stone-400 text-[10px]">RU: {v.rossiyskiy_razmer ?? "—"}</td>
-                            <td />
-                            <td />
-                            <td className="px-3 py-2 text-right tabular-nums text-stone-600"><span className="text-stone-300">—</span><span className="text-stone-300 mx-1">/</span><span className="text-stone-700 font-medium">{v.artikuly_cnt}</span><span className="text-stone-300 mx-1">/</span><span>{v.tovary_cnt}</span></td>
-                            <td className="px-3 py-2 text-stone-400">—</td>
+                            {renderColumns.map((key, colIdx) => {
+                              const stickyCls = colIdx === 0 ? " cat-sticky-col" : ""
+                              switch (key) {
+                                case "nazvanie":
+                                  return (
+                                    <td key={key} className={`pl-3 py-2 pr-3${stickyCls}`}>
+                                      <div className="flex items-center gap-2 min-w-0"><div className="w-4 h-px bg-stone-300 shrink-0" /><CellText className="font-medium text-stone-800 font-mono" title={v.kod}>{v.kod}</CellText></div>
+                                      <CellText className="text-[11px] text-stone-500 ml-6 mt-0.5" title={v.nazvanie ?? ""}>{v.nazvanie}</CellText>
+                                    </td>
+                                  )
+                                case "brand":
+                                  return <td key={key} className={`px-3 py-2 text-stone-300${stickyCls}`}>—</td>
+                                case "kategoriya":
+                                  return <td key={key} className={`px-3 py-2 text-stone-400${stickyCls}`}>—</td>
+                                case "kollekciya":
+                                  return (
+                                    <td key={key} className={`px-3 py-2${stickyCls}`}>
+                                      <div className="flex items-center gap-1 text-stone-500 min-w-0"><Building2 className="w-3 h-3 text-stone-400 shrink-0" /><CellText title={v.importer_short ?? ""}>{v.importer_short ?? "—"}</CellText></div>
+                                    </td>
+                                  )
+                                case "fabrika":
+                                  return <td key={key} className={`px-3 py-2 font-mono text-[11px] text-stone-500${stickyCls}`}><CellText title={v.artikul_modeli ?? ""}>{v.artikul_modeli ?? "—"}</CellText></td>
+                                case "status":
+                                  return <td key={key} className={`px-3 py-2${stickyCls}`}><StatusBadge status={v.status_id != null ? statusById.get(v.status_id) ?? null : null} compact /></td>
+                                case "razmery":
+                                  return <td key={key} className={`px-3 py-2 text-stone-400 text-[10px]${stickyCls}`}>RU: {v.rossiyskiy_razmer ?? "—"}</td>
+                                case "cveta":
+                                  return <td key={key} className={stickyCls.trim() || undefined} />
+                                case "completeness":
+                                  return <td key={key} className={stickyCls.trim() || undefined} />
+                                case "cv_art_sku":
+                                  return <td key={key} className={`px-3 py-2 text-right tabular-nums text-stone-600${stickyCls}`}><span className="text-stone-300">—</span><span className="text-stone-300 mx-1">/</span><span className="text-stone-700 font-medium">{v.artikuly_cnt}</span><span className="text-stone-300 mx-1">/</span><span>{v.tovary_cnt}</span></td>
+                                case "obnovleno":
+                                  return <td key={key} className={`px-3 py-2 text-stone-400${stickyCls}`}>—</td>
+                                default:
+                                  return <td key={key} className={stickyCls.trim() || undefined} />
+                              }
+                            })}
                             <td />
                           </tr>
                         ))}
@@ -520,7 +820,8 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
                     )
                   })}
                 </Fragment>
-              ))}
+                )
+              })}
             </tbody>
           </table>
           {groupBy === "none" && (
@@ -540,24 +841,93 @@ function ModeliOsnovaTable({ rows, brendy, kategorii, kollekcii, modelStatuses, 
         <BulkBar
           selectedCount={selectedKods.size}
           modelStatuses={modelStatuses}
+          fabriki={fabriki}
+          sertifikaty={sertifikaty}
           bulkStatusOpen={bulkStatusOpen}
-          onToggleBulkStatus={() => setBulkStatusOpen((v) => !v)}
+          bulkFabrikaOpen={bulkFabrikaOpen}
+          bulkSertifikatyOpen={bulkSertifikatyOpen}
+          sertifikatyDraft={bulkSertifikatyDraft}
+          onToggleBulkStatus={() => {
+            setBulkStatusOpen((v) => !v)
+            setBulkFabrikaOpen(false)
+            setBulkSertifikatyOpen(false)
+          }}
+          onToggleBulkFabrika={() => {
+            setBulkFabrikaOpen((v) => !v)
+            setBulkStatusOpen(false)
+            setBulkSertifikatyOpen(false)
+          }}
+          onToggleBulkSertifikaty={() => {
+            setBulkSertifikatyOpen((v) => !v)
+            setBulkStatusOpen(false)
+            setBulkFabrikaOpen(false)
+          }}
           onPickStatus={handleBulkSetStatus}
+          onPickFabrika={handleBulkSetFabrika}
+          onToggleSertifikat={(id) => {
+            setBulkSertifikatyDraft((prev) => {
+              const next = new Set(prev)
+              if (next.has(id)) next.delete(id)
+              else next.add(id)
+              return next
+            })
+          }}
+          onApplySertifikaty={handleBulkApplySertifikaty}
           onDuplicate={handleBulkDuplicate}
           onExport={handleBulkExport}
           onArchive={handleBulkArchive}
-          onClear={() => { setSelectedKods(new Set()); setBulkStatusOpen(false) }}
+          onClear={() => {
+            setSelectedKods(new Set())
+            setBulkStatusOpen(false)
+            setBulkFabrikaOpen(false)
+            setBulkSertifikatyOpen(false)
+            setBulkSertifikatyDraft(new Set())
+          }}
         />
       )}
     </>
   )
 }
 /**
- * BulkBar — обёртка над atomic BulkActionsBar с дополнительной выпадашкой
- * статусов. atomic BulkActionsBar не поддерживает submenu из коробки, поэтому
- * рисуем контейнер сами и переиспользуем стилистику.
+ * BulkBar — обёртка над atomic BulkActionsBar с дополнительными выпадашками
+ * (статусы / фабрика / сертификаты). atomic BulkActionsBar не поддерживает
+ * submenu из коробки, поэтому рисуем контейнер сами.
+ *
+ * W9.20 — добавлены три новых действия:
+ *   - «Изменить фабрику» — single-select по `fabriki` (FK modeli_osnova.fabrika_id).
+ *   - «Изменить сертификаты» — multi-select по `sertifikaty` (M:N через
+ *     modeli_osnova_sertifikaty).  При apply делается полная замена набора.
+ *   - «Каналы продаж» в схеме на уровне модели отсутствуют (хранятся per-SKU
+ *     через status_<channel>_id), поэтому в bulk-баре они опущены — bulk-edit
+ *     по каналам уже доступен в реестре SKU (см. /catalog/tovary).
  */
-function BulkBar({ selectedCount, modelStatuses, bulkStatusOpen, onToggleBulkStatus, onPickStatus, onDuplicate, onExport, onArchive, onClear }: { selectedCount: number; modelStatuses: StatusOption[]; bulkStatusOpen: boolean; onToggleBulkStatus: () => void; onPickStatus: (id: number) => void; onDuplicate: () => void; onExport: () => void; onArchive: () => void; onClear: () => void }) {
+function BulkBar({
+  selectedCount, modelStatuses, fabriki, sertifikaty,
+  bulkStatusOpen, bulkFabrikaOpen, bulkSertifikatyOpen, sertifikatyDraft,
+  onToggleBulkStatus, onToggleBulkFabrika, onToggleBulkSertifikaty,
+  onPickStatus, onPickFabrika, onToggleSertifikat, onApplySertifikaty,
+  onDuplicate, onExport, onArchive, onClear,
+}: {
+  selectedCount: number
+  modelStatuses: StatusOption[]
+  fabriki: { id: number; nazvanie: string }[]
+  sertifikaty: { id: number; nazvanie: string }[]
+  bulkStatusOpen: boolean
+  bulkFabrikaOpen: boolean
+  bulkSertifikatyOpen: boolean
+  sertifikatyDraft: Set<number>
+  onToggleBulkStatus: () => void
+  onToggleBulkFabrika: () => void
+  onToggleBulkSertifikaty: () => void
+  onPickStatus: (id: number) => void
+  onPickFabrika: (id: number | null) => void
+  onToggleSertifikat: (id: number) => void
+  onApplySertifikaty: () => void
+  onDuplicate: () => void
+  onExport: () => void
+  onArchive: () => void
+  onClear: () => void
+}) {
   return (
     <div className="catalog-scope fixed bottom-0 left-0 right-0 z-40 border-t border-stone-200 bg-white px-6 py-3 flex items-center gap-3 shrink-0 shadow-[0_-4px_16px_-8px_rgba(0,0,0,0.08)]" onClick={(e) => e.stopPropagation()}>
       <span className="text-sm">Выбрано: <span className="font-medium tabular-nums">{selectedCount}</span></span>
@@ -574,6 +944,73 @@ function BulkBar({ selectedCount, modelStatuses, bulkStatusOpen, onToggleBulkSta
           </div>
         )}
       </div>
+      {/* W9.20 — фабрика (single-select). */}
+      <div className="relative">
+        <button type="button" onClick={onToggleBulkFabrika} className="px-3 py-1 text-xs text-stone-700 hover:bg-stone-100 rounded-md flex items-center gap-1.5">Изменить фабрику<ChevronDown className="w-3 h-3" /></button>
+        {bulkFabrikaOpen && (
+          <div className="absolute bottom-9 left-0 z-50 w-56 max-h-64 overflow-y-auto bg-white border border-stone-200 rounded-md shadow-lg py-1">
+            <button type="button" onClick={() => onPickFabrika(null)} className="w-full text-left px-3 py-1.5 text-xs hover:bg-stone-50 text-stone-500 italic">
+              Сбросить (без фабрики)
+            </button>
+            <div className="h-px bg-stone-100 my-1" />
+            {fabriki.length === 0 && (
+              <div className="px-3 py-1.5 text-xs text-stone-400">Список фабрик пуст</div>
+            )}
+            {fabriki.map((f) => (
+              <button key={f.id} type="button" onClick={() => onPickFabrika(f.id)} className="w-full text-left px-3 py-1.5 text-xs hover:bg-stone-50">
+                {f.nazvanie}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      {/* W9.20 — сертификаты (multi-select; apply кнопкой). */}
+      <div className="relative">
+        <button type="button" onClick={onToggleBulkSertifikaty} className="px-3 py-1 text-xs text-stone-700 hover:bg-stone-100 rounded-md flex items-center gap-1.5">
+          Изменить сертификаты
+          {sertifikatyDraft.size > 0 && (
+            <span className="tabular-nums text-stone-500">· {sertifikatyDraft.size}</span>
+          )}
+          <ChevronDown className="w-3 h-3" />
+        </button>
+        {bulkSertifikatyOpen && (
+          <div className="absolute bottom-9 left-0 z-50 w-72 max-h-72 overflow-y-auto bg-white border border-stone-200 rounded-md shadow-lg py-1">
+            {sertifikaty.length === 0 && (
+              <div className="px-3 py-1.5 text-xs text-stone-400">Список сертификатов пуст</div>
+            )}
+            {sertifikaty.map((s) => {
+              const checked = sertifikatyDraft.has(s.id)
+              return (
+                <label key={s.id} className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-stone-50 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => onToggleSertifikat(s.id)}
+                    style={{ accentColor: "#1C1917" }}
+                    className="rounded border-stone-300"
+                  />
+                  <span className="truncate">{s.nazvanie}</span>
+                </label>
+              )
+            })}
+            {sertifikaty.length > 0 && (
+              <>
+                <div className="h-px bg-stone-100 my-1" />
+                <div className="px-2 py-1 flex items-center justify-between gap-2">
+                  <span className="text-[11px] text-stone-500 px-1">Замена набора (полная)</span>
+                  <button
+                    type="button"
+                    onClick={onApplySertifikaty}
+                    className="px-2.5 py-1 text-xs text-white bg-stone-900 hover:bg-stone-800 rounded-md"
+                  >
+                    Применить
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
       <button type="button" onClick={onDuplicate} className="px-3 py-1 text-xs text-stone-700 hover:bg-stone-100 rounded-md flex items-center gap-1.5"><Copy className="w-3 h-3" /> Дублировать</button>
       <button type="button" onClick={onExport} className="px-3 py-1 text-xs text-stone-700 hover:bg-stone-100 rounded-md flex items-center gap-1.5"><Download className="w-3 h-3" /> Экспорт выбранного</button>
       <button type="button" onClick={onArchive} className="px-3 py-1 text-xs text-red-600 hover:bg-red-50 rounded-md flex items-center gap-1.5"><Archive className="w-3 h-3" /> Архивировать</button>
@@ -583,16 +1020,16 @@ function BulkBar({ selectedCount, modelStatuses, bulkStatusOpen, onToggleBulkSta
 }
 /**
  * ColorChips — placeholder swatches для матрицы. MatrixRow не несёт реальные
- * color codes (только cveta_cnt) — рендерим N стилизованных кружочков из
- * deterministic hash-based swatchColor(modelKod#i). При раскрытии в карточке
+ * color codes (только cveta_cnt) — рендерим N нейтральных placeholder-кружочков.
+ * При раскрытии в карточке
  * пользователь увидит реальные цвета.
  */
-function ColorChips({ modelKod, count }: { modelKod: string; count: number }) {
+function ColorChips({ count }: { modelKod: string; count: number }) {
   if (count === 0) return <span className="text-stone-300 text-xs">—</span>
   const visible = Math.min(count, 6)
   return (
     <div className="flex items-center gap-0.5">
-      {Array.from({ length: visible }).map((_, i) => <span key={i} className="rounded-full ring-1 ring-stone-200" style={{ width: 12, height: 12, background: swatchColor(`${modelKod}#${i}`) }} />)}
+      {Array.from({ length: visible }).map((_, i) => <span key={i} className="rounded-full ring-1 ring-stone-200" style={{ ...colorSwatchStyle(null), width: 12, height: 12 }} />)}
       {count > 6 && <span className="text-[10px] text-stone-400 ml-1 tabular-nums">+{count - 6}</span>}
     </div>
   )
@@ -604,6 +1041,7 @@ function ArtikulyTable({ onRegisterExport }: { onRegisterExport?: (fn: (() => vo
   const { data, isLoading } = useQuery({ queryKey: ["artikuly-registry"], queryFn: fetchArtikulyRegistry, staleTime: 5 * 60 * 1000 })
   const { widths: artWidths, bindResizer: bindArt } = useResizableColumns("matrix.artikuly", [...MATRIX_ARTIKULY_COLS])
   const [search, setSearch] = useState("")
+  const debouncedSearch = useDebouncedValue(search, 300)
   // W8.1 — sort state + ui_preferences persist.
   const { sort, toggleSort, setSortState, sortRows } = useTableSort<MatrixArtikulSortKey>()
   const sortLoadedRef = useRef(false)
@@ -620,11 +1058,32 @@ function ArtikulyTable({ onRegisterExport }: { onRegisterExport?: (fn: (() => vo
   }, [sort])
   // W8.2 — pagination.
   const { page, setPage, pageSize, setPageSize, paginate, resetPage } = usePagination(50)
+  // W9.3 — расширенный поиск (артикул, модель, вариация, цвет RU/EN/код,
+  // категория, коллекция, фабрика, WB ном., OZON артикул).
   const filtered = useMemo(() => {
     if (!data) return []
-    const q = search.trim().toLowerCase()
-    return q ? data.filter((a) => a.artikul.toLowerCase().includes(q) || (a.model_osnova_kod ?? "").toLowerCase().includes(q) || (a.cvet_color_code ?? "").toLowerCase().includes(q)) : data
-  }, [data, search])
+    const q = debouncedSearch.trim().toLowerCase()
+    if (!q) return data
+    return data.filter((a) => {
+      const fields = [
+        a.artikul,
+        a.model_osnova_kod,
+        a.model_kod,
+        a.nazvanie_etiketka,
+        a.cvet_color_code,
+        a.cvet_nazvanie,
+        a.color_en,
+        a.kategoriya,
+        a.kollekciya,
+        a.fabrika,
+        a.artikul_ozon,
+        a.nomenklatura_wb != null ? String(a.nomenklatura_wb) : null,
+      ]
+      return fields.some(
+        (f) => typeof f === "string" && f.length > 0 && f.toLowerCase().includes(q),
+      )
+    })
+  }, [data, debouncedSearch])
   const sortedFiltered = useMemo(() => sortRows(
     filtered as unknown as Record<string, unknown>[],
     (row, col) => {
@@ -697,17 +1156,45 @@ function ArtikulyTable({ onRegisterExport }: { onRegisterExport?: (fn: (() => vo
             sortColumn={sort.column}
             sortDirection={sort.direction}
             onSort={(k) => toggleSort(k as MatrixArtikulSortKey)}
+            stickyFirst
           />
           <tbody>
+            {/* W9.19 — EmptyState для пустого реестра артикулов. */}
+            {filtered.length === 0 && (
+              <tr>
+                <td colSpan={MATRIX_ARTIKULY_COLS.length} className="px-0 py-0">
+                  <EmptyState
+                    icon={<Package className="w-12 h-12" />}
+                    title={debouncedSearch.trim().length > 0 ? "Ничего не найдено" : "Нет артикулов"}
+                    description={
+                      debouncedSearch.trim().length > 0
+                        ? "Попробуйте смягчить поиск."
+                        : "Артикулы создаются из карточки модели."
+                    }
+                    secondaryCta={
+                      debouncedSearch.trim().length > 0
+                        ? { label: "Сбросить поиск", onClick: () => setSearch("") }
+                        : undefined
+                    }
+                  />
+                </td>
+              </tr>
+            )}
             {paginated.slice.map((a) => (
               <tr key={a.id} className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60">
-                <td className="px-3 py-2.5 font-mono text-xs text-stone-900">{a.artikul}</td>
-                <td className="px-3 py-2.5 font-medium text-stone-900 font-mono text-xs">{a.model_osnova_kod ?? "—"}</td>
-                <td className="px-3 py-2.5 font-mono text-xs text-stone-600">{a.model_kod ?? "—"}</td>
-                <td className="px-3 py-2.5"><div className="flex items-center gap-1.5"><ColorSwatch colorCode={a.cvet_color_code} size={14} /><span className="font-mono text-xs text-stone-700">{a.cvet_color_code ?? "—"}</span><span className="text-stone-500 text-xs">{a.cvet_nazvanie}</span></div></td>
+                <td className="px-3 py-2.5 font-mono text-xs text-stone-900 cat-sticky-col"><CellText title={a.artikul}>{a.artikul}</CellText></td>
+                <td className="px-3 py-2.5 font-medium text-stone-900 font-mono text-xs"><CellText title={a.model_osnova_kod ?? ""}>{a.model_osnova_kod ?? "—"}</CellText></td>
+                <td className="px-3 py-2.5 font-mono text-xs text-stone-600"><CellText title={a.model_kod ?? ""}>{a.model_kod ?? "—"}</CellText></td>
+                <td className="px-3 py-2.5">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <ColorSwatch hex={a.cvet_hex} size={14} />
+                    <CellText className="font-mono text-xs text-stone-700" title={a.cvet_color_code ?? ""}>{a.cvet_color_code ?? "—"}</CellText>
+                    <CellText className="text-stone-500 text-xs" title={a.cvet_nazvanie ?? ""}>{a.cvet_nazvanie}</CellText>
+                  </div>
+                </td>
                 <td className="px-3 py-2.5"><StatusBadge statusId={a.status_id ?? 0} compact /></td>
-                <td className="px-3 py-2.5 font-mono text-[11px] text-stone-500 tabular-nums">{a.nomenklatura_wb ?? "—"}</td>
-                <td className="px-3 py-2.5 font-mono text-[11px] text-stone-500">{a.artikul_ozon ?? "—"}</td>
+                <td className="px-3 py-2.5 font-mono text-[11px] text-stone-500 tabular-nums"><CellText title={a.nomenklatura_wb != null ? String(a.nomenklatura_wb) : ""}>{a.nomenklatura_wb ?? "—"}</CellText></td>
+                <td className="px-3 py-2.5 font-mono text-[11px] text-stone-500"><CellText title={a.artikul_ozon ?? ""}>{a.artikul_ozon ?? "—"}</CellText></td>
                 <td className="px-3 py-2.5 text-right tabular-nums text-stone-700">{a.tovary_cnt}</td>
               </tr>
             ))}
@@ -735,6 +1222,7 @@ function TovaryTable({ onRegisterExport }: { onRegisterExport?: (fn: (() => void
   const { data, isLoading } = useQuery({ queryKey: ["tovary-registry"], queryFn: fetchTovaryRegistry, staleTime: 5 * 60 * 1000 })
   const { widths: tovWidths, bindResizer: bindTov } = useResizableColumns("matrix.tovary", [...MATRIX_TOVARY_COLS])
   const [search, setSearch] = useState("")
+  const debouncedSearch = useDebouncedValue(search, 300)
   const [channelFilter, setChannelFilter] = useState<(typeof CHANNELS)[number]["id"]>("all")
   const [statusFilter, setStatusFilter] = useState<"all" | number>("all")
   const productStatuses = CATALOG_STATUSES.filter((s) => s.tip === "product")
@@ -762,9 +1250,35 @@ function TovaryTable({ onRegisterExport }: { onRegisterExport?: (fn: (() => void
     else if (channelFilter === "sayt") res = res.filter((t) => t.status_sayt_id !== null)
     else if (channelFilter === "lamoda") res = res.filter((t) => t.status_lamoda_id !== null)
     if (statusFilter !== "all") res = res.filter((t) => t.status_id === statusFilter || t.status_ozon_id === statusFilter || t.status_sayt_id === statusFilter || t.status_lamoda_id === statusFilter)
-    const q = search.trim().toLowerCase()
-    return q ? res.filter((t) => t.barkod.includes(q) || (t.model_osnova_kod ?? "").toLowerCase().includes(q) || (t.artikul ?? "").toLowerCase().includes(q)) : res
-  }, [data, channelFilter, statusFilter, search])
+    const q = debouncedSearch.trim().toLowerCase()
+    if (!q) return res
+    // W9.3 — расширенный поиск по баркоду (+gs1/gs2/переход), артикулу,
+    // моделям, цвету (RU/EN/код), размеру, WB ном., OZON, коллекции, категории.
+    return res.filter((t) => {
+      const fields = [
+        t.barkod,
+        t.barkod_gs1,
+        t.barkod_gs2,
+        t.barkod_perehod,
+        t.artikul,
+        t.model_osnova_kod,
+        t.model_kod,
+        t.nazvanie_etiketka,
+        t.cvet_color_code,
+        t.cvet_ru,
+        t.color_en,
+        t.razmer,
+        t.razmer_kod,
+        t.kollekciya,
+        t.kategoriya,
+        t.artikul_ozon,
+        t.nomenklatura_wb != null ? String(t.nomenklatura_wb) : null,
+      ]
+      return fields.some(
+        (f) => typeof f === "string" && f.length > 0 && f.toLowerCase().includes(q),
+      )
+    })
+  }, [data, channelFilter, statusFilter, debouncedSearch])
   const sortedFiltered = useMemo(() => sortRows(
     filtered as unknown as Record<string, unknown>[],
     (row, col) => {
@@ -774,7 +1288,8 @@ function TovaryTable({ onRegisterExport }: { onRegisterExport?: (fn: (() => void
         case "model": return t.model_osnova_kod ?? ""
         case "variation": return t.model_kod ?? ""
         case "cvet": return t.cvet_color_code ?? ""
-        case "razmer": return t.razmer ?? ""
+        // W10.29 — физический порядок размеров (XS<S<M<L<…), не alpha.
+        case "razmer": return razmerOrder(t.razmer)
         case "wb": return t.status_id ?? null
         case "ozon": return t.status_ozon_id ?? null
         case "sayt": return t.status_sayt_id ?? null
@@ -850,15 +1365,58 @@ function TovaryTable({ onRegisterExport }: { onRegisterExport?: (fn: (() => void
             sortColumn={sort.column}
             sortDirection={sort.direction}
             onSort={(k) => toggleSort(k as MatrixTovarSortKey)}
+            stickyFirst
           />
           <tbody>
+            {/* W9.19 — EmptyState для пустого реестра SKU. */}
+            {filtered.length === 0 && (
+              <tr>
+                <td colSpan={MATRIX_TOVARY_COLS.length} className="px-0 py-0">
+                  {(() => {
+                    const hasActive =
+                      channelFilter !== "all" ||
+                      statusFilter !== "all" ||
+                      debouncedSearch.trim().length > 0
+                    return (
+                      <EmptyState
+                        icon={<Package className="w-12 h-12" />}
+                        title={hasActive ? "Ничего не найдено" : "Нет SKU"}
+                        description={
+                          hasActive
+                            ? "Попробуйте смягчить фильтры или очистить поиск."
+                            : "SKU создаются автоматически из артикулов и размеров модели."
+                        }
+                        secondaryCta={
+                          hasActive
+                            ? {
+                                label: "Сбросить фильтры",
+                                onClick: () => {
+                                  setChannelFilter("all")
+                                  setStatusFilter("all")
+                                  setSearch("")
+                                },
+                              }
+                            : undefined
+                        }
+                      />
+                    )
+                  })()}
+                </td>
+              </tr>
+            )}
             {paginated.slice.map((t) => (
               <tr key={t.id} className="border-b border-stone-100 last:border-0 hover:bg-stone-50/60">
-                <td className="px-3 py-2.5 font-mono text-xs text-stone-700">{t.barkod}</td>
-                <td className="px-3 py-2.5 font-medium text-stone-900 font-mono text-xs">{t.model_osnova_kod ?? "—"}</td>
-                <td className="px-3 py-2.5 font-mono text-xs text-stone-600">{t.model_kod ?? "—"}</td>
-                <td className="px-3 py-2.5"><div className="flex items-center gap-1.5"><ColorSwatch colorCode={t.cvet_color_code} size={14} /><span className="font-mono text-xs">{t.cvet_color_code ?? "—"}</span></div></td>
-                <td className="px-3 py-2.5 font-mono text-xs">{t.razmer ?? "—"}</td>
+                <td className="px-3 py-2.5 font-mono text-xs text-stone-700 cat-sticky-col"><CellText title={t.barkod}>{t.barkod}</CellText></td>
+                <td className="px-3 py-2.5 font-medium text-stone-900 font-mono text-xs"><CellText title={t.model_osnova_kod ?? ""}>{t.model_osnova_kod ?? "—"}</CellText></td>
+                <td className="px-3 py-2.5 font-mono text-xs text-stone-600"><CellText title={t.model_kod ?? ""}>{t.model_kod ?? "—"}</CellText></td>
+                <td className="px-3 py-2.5">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <ColorSwatch hex={t.cvet_hex} size={14} />
+                    <CellText className="font-mono text-xs text-stone-600" title={t.cvet_color_code ?? ""}>{t.cvet_color_code ?? "—"}</CellText>
+                    {t.cvet_ru && <CellText className="text-stone-500 text-xs" title={t.cvet_ru}>{t.cvet_ru}</CellText>}
+                  </div>
+                </td>
+                <td className="px-3 py-2.5 font-mono text-xs"><CellText title={t.razmer ?? ""}>{t.razmer ?? "—"}</CellText></td>
                 <td className="px-3 py-2.5 border-l border-stone-100"><StatusBadge statusId={t.status_id ?? 0} compact /></td>
                 <td className="px-3 py-2.5"><StatusBadge statusId={t.status_ozon_id ?? 0} compact /></td>
                 <td className="px-3 py-2.5"><StatusBadge statusId={t.status_sayt_id ?? 0} compact /></td>
@@ -889,7 +1447,7 @@ function RegistryTop({ search, setSearch, placeholder, count, total }: { search:
 }
 function RegistryHead({
   labels, rightLabel, borderedLabel, columnIds, bindResizer,
-  sortKeys, sortColumn, sortDirection, onSort,
+  sortKeys, sortColumn, sortDirection, onSort, stickyFirst,
 }: {
   labels: string[]
   rightLabel?: string
@@ -901,6 +1459,8 @@ function RegistryHead({
   sortColumn?: string | null
   sortDirection?: "asc" | "desc" | null
   onSort?: (key: string) => void
+  /** W9.7 — pin the first header cell to `left: 0`. */
+  stickyFirst?: boolean
 }) {
   return (
     <thead className="bg-stone-50/80 border-b border-stone-200">
@@ -908,7 +1468,8 @@ function RegistryHead({
         {labels.map((label, idx) => {
           const colId = columnIds?.[idx]
           const sortKey = sortKeys?.[idx] ?? null
-          const baseCls = `relative px-3 py-2.5 font-medium ${label === rightLabel ? "text-right" : ""} ${label === borderedLabel ? "border-l border-stone-200" : ""}`
+          const stickyCls = stickyFirst && idx === 0 ? " cat-sticky-col cat-sticky-col-head" : ""
+          const baseCls = `relative px-3 py-2.5 font-medium ${label === rightLabel ? "text-right" : ""} ${label === borderedLabel ? "border-l border-stone-200" : ""}${stickyCls}`
           if (sortKey && onSort) {
             return (
               <SortableHeader
@@ -967,6 +1528,9 @@ export function MatrixPage() {
   const kategoriiQ = useQuery({ queryKey: ["kategorii"], queryFn: fetchKategorii, staleTime: 10 * 60 * 1000 })
   const kollekciiQ = useQuery({ queryKey: ["kollekcii"], queryFn: fetchKollekcii, staleTime: 10 * 60 * 1000 })
   const statusyQ = useQuery({ queryKey: ["statusy"], queryFn: fetchStatusy, staleTime: 30 * 60 * 1000 })
+  // W9.20 — справочники для bulk-edit фабрики и сертификатов.
+  const fabrikiQ = useQuery({ queryKey: ["fabriki"], queryFn: fetchFabriki, staleTime: 10 * 60 * 1000 })
+  const sertifikatyQ = useQuery({ queryKey: ["sertifikaty"], queryFn: fetchSertifikaty, staleTime: 10 * 60 * 1000 })
   const openModel = useCallback((kod: string) => {
     const next = new URLSearchParams(searchParams)
     next.set("model", kod)
@@ -997,7 +1561,7 @@ export function MatrixPage() {
     if (exportRef.current) {
       exportRef.current()
     } else {
-      window.alert("Экспорт недоступен для текущей вкладки")
+      toast.warning("Экспорт недоступен для текущей вкладки")
     }
   }, [])
   // ?model=KOD opens B3's <ModelCardModal /> as overlay from CatalogLayout.
@@ -1005,6 +1569,8 @@ export function MatrixPage() {
   const brendy = brendyQ.data ?? []
   const kategorii = kategoriiQ.data ?? []
   const kollekcii = kollekciiQ.data ?? []
+  const fabriki = fabrikiQ.data ?? []
+  const sertifikaty = sertifikatyQ.data ?? []
   const modelStatuses = (statusyQ.data ?? []).filter((s) => s.tip === "model")
   const totalVariations = rows.reduce((s, r) => s + r.modeli_cnt, 0)
   const totalArts = rows.reduce((s, r) => s + r.artikuly_cnt, 0)
@@ -1046,7 +1612,7 @@ export function MatrixPage() {
         {matrixQ.isLoading && listTab === "modeli_osnova" && <div className="px-6 py-8 text-sm text-stone-400">Загрузка…</div>}
         {matrixQ.error && <div className="px-6 py-8 text-sm text-red-500">Ошибка загрузки: {String(matrixQ.error)}</div>}
         {listTab === "modeli_osnova" && !matrixQ.isLoading && !matrixQ.error && (
-          <ModeliOsnovaTable rows={rows} brendy={brendy} kategorii={kategorii} kollekcii={kollekcii} modelStatuses={modelStatuses} onOpen={openModel} onRegisterExport={registerExport} />
+          <ModeliOsnovaTable rows={rows} brendy={brendy} kategorii={kategorii} kollekcii={kollekcii} fabriki={fabriki} sertifikaty={sertifikaty} modelStatuses={modelStatuses} onOpen={openModel} onRegisterExport={registerExport} />
         )}
         {listTab === "artikuly" && <ArtikulyTable onRegisterExport={registerExport} />}
         {listTab === "tovary" && <TovaryTable onRegisterExport={registerExport} />}

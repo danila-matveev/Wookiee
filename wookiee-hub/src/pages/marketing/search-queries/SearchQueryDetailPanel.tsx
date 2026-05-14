@@ -92,8 +92,8 @@ export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose }:
           {updateStatus.isError && (
             <span className="text-xs text-danger">Не удалось сохранить статус</span>
           )}
-          {item.purpose && (
-            <Badge color="gray" label={item.purpose} compact />
+          {(item.channel_label || item.purpose) && (
+            <Badge color="gray" label={(item.channel_label || item.purpose)!} compact />
           )}
           {item.campaign_name && <Badge color="blue" label={item.campaign_name} compact />}
         </div>
