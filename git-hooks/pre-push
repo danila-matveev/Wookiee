@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Wookiee Workflow Guard — pre-push hook
+# Blocks direct push to main from any client (mac terminal, IDE, CI runner, etc.)
+# Bypass: open .git/hooks/pre-push manually and edit, OR git push --no-verify (requires user awareness)
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [[ "$remote_ref" == "refs/heads/main" ]]; then
+    echo "" >&2
+    echo "ZABLOKIROVANO Wookiee Workflow Guard: прямой push в main запрещён." >&2
+    echo "" >&2
+    echo "Используй PR: создай feature-ветку и оформи Pull Request на GitHub." >&2
+    echo "Из Claude — /ship создаст PR с auto-merge." >&2
+    echo "Подробнее: AGENTS.md, секция «Workflow Guard»." >&2
+    echo "" >&2
+    exit 1
+  fi
+done
+exit 0

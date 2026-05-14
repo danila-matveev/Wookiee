@@ -197,6 +197,14 @@ test-results/
 # Git Worktrees (for isolated feature development)
 # ============================================================================
 .worktrees/
+.claude/worktrees/
+
+# ============================================================================
+# Wookiee Workflow Guard — runtime state (not tracked)
+# ============================================================================
+.claude/session-registry/
+.claude/logs/
+.claude/state/
 
 # ============================================================================
 # Refactor v3 phase 1 hardening

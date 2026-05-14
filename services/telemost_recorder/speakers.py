@@ -2,7 +2,6 @@ import json
 import os
 import urllib.request
 from datetime import UTC, datetime
-from pathlib import Path
 
 import yaml
 

@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import logging
 
-import psycopg2.extras
 
 from services.sheets_etl.loader import get_conn
 

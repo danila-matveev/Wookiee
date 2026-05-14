@@ -8,7 +8,6 @@ is unset, the route returns 503 — not enabled in production by default.
 """
 from __future__ import annotations
 
-import json
 import logging
 import os
 from typing import Optional
