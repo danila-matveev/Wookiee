@@ -63,10 +63,24 @@ function _syncUrl(path: string): string {
   return new URL(path, base).toString()
 }
 
+/**
+ * Auth headers for analytics_api: prefer Supabase session JWT (Hub flow),
+ * fall back to X-API-Key when VITE_ANALYTICS_API_KEY is set (cron / smoke).
+ * Backend accepts either via services/analytics_api/auth.py:verify_auth.
+ */
+async function _authHeaders(): Promise<HeadersInit> {
+  const headers: Record<string, string> = {}
+  const { data } = await supabase.auth.getSession()
+  const token = data.session?.access_token
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  if (ANALYTICS_API_KEY) headers['X-API-Key'] = ANALYTICS_API_KEY
+  return headers
+}
+
 export async function triggerSync(job: SyncJobName): Promise<TriggerSyncResponse> {
   const r = await fetch(_syncUrl(`/api/marketing/sync/${job}`), {
     method: 'POST',
-    headers: { 'X-API-Key': ANALYTICS_API_KEY },
+    headers: await _authHeaders(),
   })
   if (!r.ok) {
     const text = await r.text().catch(() => r.statusText)
@@ -77,7 +91,7 @@ export async function triggerSync(job: SyncJobName): Promise<TriggerSyncResponse
 
 export async function fetchSyncStatus(job: SyncJobName): Promise<SyncStatusResponse> {
   const r = await fetch(_syncUrl(`/api/marketing/sync/${job}/status`), {
-    headers: { 'X-API-Key': ANALYTICS_API_KEY },
+    headers: await _authHeaders(),
   })
   if (!r.ok) {
     const text = await r.text().catch(() => r.statusText)

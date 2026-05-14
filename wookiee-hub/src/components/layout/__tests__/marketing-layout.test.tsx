@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest'
 import { MarketingLayout } from '../marketing-layout'
 
 describe('MarketingLayout', () => {
-  it('renders sub-sidebar with МАРКЕТИНГ heading and 2 nav items', () => {
+  it('renders Outlet content without sub-sidebar', () => {
     render(
       <MemoryRouter initialEntries={['/marketing/search-queries']}>
         <Routes>
@@ -14,10 +14,11 @@ describe('MarketingLayout', () => {
         </Routes>
       </MemoryRouter>
     )
-    expect(screen.getByText('МАРКЕТИНГ')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /Промокоды/i })).toHaveAttribute('href', '/marketing/promo-codes')
-    expect(screen.getByRole('link', { name: /Поисковые запросы/i })).toHaveAttribute('href', '/marketing/search-queries')
     expect(screen.getByText('Search Page')).toBeInTheDocument()
+    // Section sidebar removed: МАРКЕТИНГ heading and nav links should not be present
+    expect(screen.queryByText('МАРКЕТИНГ')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Промокоды/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Поисковые запросы/i })).not.toBeInTheDocument()
   })
 
   it('sets data-section="marketing" on root element', () => {

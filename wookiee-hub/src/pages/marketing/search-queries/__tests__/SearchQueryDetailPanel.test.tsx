@@ -14,6 +14,8 @@ let weeklyFixture: SearchQueryWeeklyStat[] = []
 vi.mock('@/hooks/marketing/use-search-queries', () => ({
   useSearchQueries: () => ({ data: ROWS_FIXTURE, isLoading: false }),
   useSearchQueryWeekly: () => ({ data: weeklyFixture, isLoading: false, error: null }),
+  useSearchQueryWeeklyByWord: () => ({ data: weeklyFixture, isLoading: false, error: null }),
+  useSearchQueryProductBreakdown: () => ({ data: [], isLoading: false, error: null }),
   useUpdateSearchQueryStatus: () => ({
     mutate: mutateMock,
     isPending: false,
@@ -26,10 +28,12 @@ const ROWS_FIXTURE: SearchQueryRow[] = [
     unified_id: 'S101',
     source_id: 101,
     source_table: 'substitute_articles',
+    entity_type: 'ww',
     group_kind: 'external',
     query_text: 'WW123',
     artikul_id: 555,
     nomenklatura_wb: '11111111',
+    sku_label: null,
     ww_code: 'WW123',
     campaign_name: null,
     purpose: 'bloggers',
@@ -43,13 +47,15 @@ const ROWS_FIXTURE: SearchQueryRow[] = [
     unified_id: 'B202',
     source_id: 202,
     source_table: 'branded_queries',
+    entity_type: 'brand',
     group_kind: 'brand',
     query_text: 'wooki',
     artikul_id: null,
     nomenklatura_wb: null,
+    sku_label: null,
     ww_code: null,
     campaign_name: null,
-    purpose: null,
+    purpose: '',
     model_hint: null,
     creator_ref: null,
     status: 'active',
@@ -71,7 +77,7 @@ const ROWS_FIXTURE: SearchQueryRow[] = [
     model_hint: 'wendy',
     creator_ref: null,
     channel_label: 'Креаторы',
-    entity_type: 'ww_code',
+    entity_type: 'ww',
     sku_label: 'wendy/777',
     status: 'active',
     created_at: '2026-05-01T00:00:00Z',
@@ -100,7 +106,6 @@ describe('SearchQueryDetailPanel — status editor wiring', () => {
         dateFrom="2026-04-01"
         dateTo="2026-05-12"
         onClose={() => {}}
-        mode="inline"
       />,
       { wrapper },
     )
@@ -116,7 +121,6 @@ describe('SearchQueryDetailPanel — status editor wiring', () => {
         dateFrom="2026-04-01"
         dateTo="2026-05-12"
         onClose={() => {}}
-        mode="inline"
       />,
       { wrapper },
     )
@@ -162,7 +166,6 @@ describe('SearchQueryDetailPanel — funnel block', () => {
         dateFrom="2026-04-01"
         dateTo="2026-05-12"
         onClose={() => {}}
-        mode="inline"
       />,
       { wrapper },
     )
@@ -201,7 +204,6 @@ describe('SearchQueryDetailPanel — funnel block', () => {
         dateFrom="2026-04-01"
         dateTo="2026-05-12"
         onClose={() => {}}
-        mode="inline"
       />,
       { wrapper },
     )
@@ -237,7 +239,6 @@ describe('SearchQueryDetailPanel — view v2 fields (channel_label, sku_label)',
         dateFrom="2026-04-01"
         dateTo="2026-05-12"
         onClose={() => {}}
-        mode="inline"
       />,
       { wrapper },
     )
@@ -253,7 +254,6 @@ describe('SearchQueryDetailPanel — view v2 fields (channel_label, sku_label)',
         dateFrom="2026-04-01"
         dateTo="2026-05-12"
         onClose={() => {}}
-        mode="inline"
       />,
       { wrapper },
     )
@@ -268,7 +268,6 @@ describe('SearchQueryDetailPanel — view v2 fields (channel_label, sku_label)',
         dateFrom="2026-04-01"
         dateTo="2026-05-12"
         onClose={() => {}}
-        mode="inline"
       />,
       { wrapper },
     )
@@ -286,7 +285,6 @@ describe('SearchQueryDetailPanel — view v2 fields (channel_label, sku_label)',
         dateFrom="2026-04-01"
         dateTo="2026-05-12"
         onClose={() => {}}
-        mode="inline"
       />,
       { wrapper },
     )
@@ -301,7 +299,9 @@ describe('SearchQueryDetailPanel — weekly stats toggle', () => {
     weeklyFixture = []
   })
 
-  it('shows brand empty state "Метрики появятся после Phase 2B" when row is a brand', () => {
+  it('shows unified "Нет данных за этот период" empty state for brands when no weekly rows', () => {
+    // After Phase 2B: brands use the same search_queries_weekly source as nm_id/WW
+    // (see fetchSearchQueryWeeklyByWord) — no special "Phase 2B placeholder" branch.
     weeklyFixture = []
     render(
       <SearchQueryDetailPanel
@@ -309,12 +309,11 @@ describe('SearchQueryDetailPanel — weekly stats toggle', () => {
         dateFrom="2026-04-01"
         dateTo="2026-05-12"
         onClose={() => {}}
-        mode="inline"
       />,
       { wrapper },
     )
     const weekly = screen.getByTestId('weekly-block')
-    expect(within(weekly).getByText('Метрики появятся после Phase 2B')).toBeInTheDocument()
+    expect(within(weekly).getByText('Нет данных за этот период')).toBeInTheDocument()
   })
 
   it('renders period/all toggle and switches view when clicking "Все"', async () => {
@@ -345,7 +344,6 @@ describe('SearchQueryDetailPanel — weekly stats toggle', () => {
         dateFrom="2026-04-01"
         dateTo="2026-05-12"
         onClose={() => {}}
-        mode="inline"
       />,
       { wrapper },
     )

@@ -5,6 +5,8 @@ import {
   fetchSearchQueries,
   fetchSearchQueryStats,
   fetchSearchQueryWeekly,
+  fetchSearchQueryWeeklyByWord,
+  fetchSearchQueryProductBreakdown,
   updateSearchQueryStatus,
   type BrandQueryCreate,
   type SubstituteArticleCreate,
@@ -18,6 +20,10 @@ export const searchQueriesKeys = {
   list:   () => [...searchQueriesKeys.all, 'list'] as const,
   stats:  (from: string, to: string) => [...searchQueriesKeys.all, 'stats', from, to] as const,
   weekly: (id: number) => [...searchQueriesKeys.all, 'weekly', id] as const,
+  weeklyByWord: (sw: string, nm: string | null) =>
+    [...searchQueriesKeys.all, 'weekly-by-word', sw, nm ?? ''] as const,
+  productBreakdown: (sw: string, from: string, to: string) =>
+    [...searchQueriesKeys.all, 'product-breakdown', sw, from, to] as const,
 }
 
 export function useSearchQueries() {
@@ -40,6 +46,29 @@ export function useSearchQueryWeekly(substituteArticleId: number | null) {
   })
 }
 
+/**
+ * Weekly stats by raw WB Analytics search_word — works uniformly for brands,
+ * nm_ids and WW-codes. Mirrors the JOIN of search_query_stats_aggregated v3.
+ */
+export function useSearchQueryWeeklyByWord(searchWord: string | null, nomenklaturaWb: string | null) {
+  return useQuery({
+    queryKey: searchQueriesKeys.weeklyByWord(searchWord ?? '', nomenklaturaWb),
+    queryFn: () => fetchSearchQueryWeeklyByWord(searchWord!, nomenklaturaWb),
+    staleTime: 60_000,
+    enabled: Boolean(searchWord),
+  })
+}
+
+/** Per-product breakdown for a search query (brand word, nm_id, or WW-code). */
+export function useSearchQueryProductBreakdown(searchWord: string | null, from: string, to: string) {
+  return useQuery({
+    queryKey: searchQueriesKeys.productBreakdown(searchWord ?? '', from, to),
+    queryFn: () => fetchSearchQueryProductBreakdown(searchWord!, from, to),
+    staleTime: 60_000,
+    enabled: Boolean(searchWord && from && to),
+  })
+}
+
 export function useCreateBrandQuery() {
   const qc = useQueryClient()
   return useMutation({
@@ -51,14 +80,15 @@ export function useCreateBrandQuery() {
         unified_id: 'B-' + Date.now(),
         source_id: -Date.now(),
         source_table: 'branded_queries',
-        group_kind: 'brand',
+        entity_type: 'brand',
         query_text: input.query.trim(),
         model_hint: input.canonical_brand.trim().toLowerCase(),
         artikul_id: null,
         nomenklatura_wb: null,
+        sku_label: null,
         ww_code: null,
         campaign_name: null,
-        purpose: null,
+        purpose: 'брендированный запрос',
         creator_ref: null,
         status: 'active',
         created_at: new Date().toISOString(),
@@ -95,14 +125,13 @@ export function useUpdateSearchQueryStatus() {
   })
 }
 
-function deriveGroupKind(purpose: string, campaign_name?: string | null): SearchQueryRow['group_kind'] {
-  if (purpose === 'creators' && /^креатор[_ ]/i.test(campaign_name ?? '')) return 'cr_personal'
-  if (purpose === 'creators') return 'cr_general'
-  return 'external'
+function deriveEntityType(code: string): 'nm_id' | 'ww' {
+  if (/^WW\d+/i.test(code)) return 'ww'
+  return 'nm_id'
 }
 
 function deriveCreatorRef(purpose: string, campaign_name?: string | null): string | null {
-  if (purpose === 'creators' && campaign_name) {
+  if (purpose === 'креаторы' && campaign_name) {
     const m = campaign_name.match(/^креатор[_ ](.+)$/i)
     return m ? m[1].trim() : null
   }
@@ -117,15 +146,17 @@ export function useCreateSubstituteArticle() {
       await qc.cancelQueries({ queryKey: searchQueriesKeys.list() })
       const prev = qc.getQueryData<SearchQueryRow[]>(searchQueriesKeys.list()) ?? []
       const code = input.code.trim()
+      const entityType = deriveEntityType(code)
       const optimistic: SearchQueryRow = {
         unified_id: 'S-' + Date.now(),
         source_id: -Date.now(),
         source_table: 'substitute_articles',
-        group_kind: deriveGroupKind(input.purpose, input.campaign_name),
+        entity_type: entityType,
         query_text: code,
         artikul_id: input.artikul_id,
-        nomenklatura_wb: input.nomenklatura_wb ?? null,
-        ww_code: code.startsWith('WW') ? code : null,
+        nomenklatura_wb: input.nomenklatura_wb ?? (entityType === 'nm_id' ? code : null),
+        sku_label: input.sku_label ?? null,
+        ww_code: entityType === 'ww' ? code : null,
         campaign_name: input.campaign_name?.trim() ?? null,
         purpose: input.purpose,
         model_hint: null,

@@ -1,12 +1,10 @@
 import { useMemo, useState } from "react"
-import { X } from "lucide-react"
 import { Drawer } from "@/components/crm/ui/Drawer"
 import { Badge } from "@/components/marketing/Badge"
 import { EmptyState } from "@/components/crm/ui/EmptyState"
 import { StatusEditor } from "@/components/marketing/StatusEditor"
-import { useSearchQueries, useSearchQueryWeekly, useUpdateSearchQueryStatus } from "@/hooks/marketing/use-search-queries"
-import { parseUnifiedId } from "@/lib/marketing-helpers"
-import type { SearchQueryRow, SearchQueryWeeklyStat, StatusUI } from "@/types/marketing"
+import { useSearchQueries, useSearchQueryWeeklyByWord, useUpdateSearchQueryStatus, useSearchQueryProductBreakdown } from "@/hooks/marketing/use-search-queries"
+import type { SearchQueryRow, SearchQueryWeeklyStat, SearchQueryProductBreakdownAgg, StatusUI } from "@/types/marketing"
 import { STATUS_DB_TO_UI } from "@/types/marketing"
 
 interface SearchQueryDetailPanelProps {
@@ -14,8 +12,6 @@ interface SearchQueryDetailPanelProps {
   dateFrom: string
   dateTo: string
   onClose: () => void
-  /** 'inline' renders bare content for split-pane host; 'drawer' (default) wraps in Drawer. */
-  mode?: 'drawer' | 'inline'
 }
 
 const fmt = (n: number) => n.toLocaleString('ru-RU')
@@ -31,18 +27,44 @@ const fmtWeek = (iso: string) => {
   return `${dd}.${mm}`
 }
 
-export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose, mode = 'drawer' }: SearchQueryDetailPanelProps) {
+export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose }: SearchQueryDetailPanelProps) {
   const { data: items = [], isLoading: itemsLoading } = useSearchQueries()
   const item: SearchQueryRow | undefined = items.find((i) => i.unified_id === unifiedId)
   const updateStatus = useUpdateSearchQueryStatus()
 
-  let parsed: { source: 'branded_queries' | 'substitute_articles'; id: number } | null = null
-  try { parsed = parseUnifiedId(unifiedId) } catch { parsed = null }
+  // Unified weekly source: same JOIN key as RPC v3
+  // (search_word = query_text OR nomenklatura_wb) — works for brands,
+  // nm_id substitutes and WW-codes alike, no entity_type branching needed.
+  const searchWord = item?.query_text ?? null
+  const nomenklaturaWb = item?.nomenklatura_wb ?? null
 
-  const isSubstitute = parsed?.source === 'substitute_articles'
-  const substituteId = isSubstitute ? parsed!.id : null
+  const { data: weekly = [], isLoading: weeklyLoading, error: weeklyError } =
+    useSearchQueryWeeklyByWord(searchWord, nomenklaturaWb)
 
-  const { data: weekly = [], isLoading: weeklyLoading, error: weeklyError } = useSearchQueryWeekly(substituteId)
+  // Per-product breakdown — какие WB-карточки открывали/покупали в результате этого запроса/WW-кода.
+  // Источник: marketing.search_query_product_breakdown (search_word matches query_text).
+  const { data: breakdownRows = [], isLoading: breakdownLoading } =
+    useSearchQueryProductBreakdown(item?.query_text ?? null, dateFrom, dateTo)
+
+  const breakdownAgg: SearchQueryProductBreakdownAgg[] = useMemo(() => {
+    if (breakdownRows.length === 0) return []
+    const map = new Map<number, SearchQueryProductBreakdownAgg>()
+    for (const r of breakdownRows) {
+      const cur = map.get(r.nm_id) ?? {
+        nm_id: r.nm_id,
+        sku_label: r.sku_label,
+        model_code: r.model_code,
+        open_card: 0,
+        add_to_cart: 0,
+        orders: 0,
+      }
+      cur.open_card += r.open_card
+      cur.add_to_cart += r.add_to_cart
+      cur.orders += r.orders
+      map.set(r.nm_id, cur)
+    }
+    return Array.from(map.values()).sort((a, b) => b.orders - a.orders || b.open_card - a.open_card)
+  }, [breakdownRows])
 
   const [weeklyMode, setWeeklyMode] = useState<'period' | 'all'>('period')
   const rangeWeeks = useMemo(
@@ -52,7 +74,6 @@ export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose, m
   const sliced = weeklyMode === 'all' ? weekly : rangeWeeks
   const total    = useMemo(() => aggregate(rangeWeeks), [rangeWeeks])
   const allTotal = useMemo(() => aggregate(weekly), [weekly])
-  const isBrand = item?.group_kind === 'brand'
 
   const body = (
     itemsLoading ? (
@@ -63,7 +84,7 @@ export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose, m
       <div className="flex flex-col gap-4">
         <div className="flex items-center gap-1.5 flex-wrap">
           <StatusEditor
-            status={STATUS_DB_TO_UI[item.status]}
+            status={STATUS_DB_TO_UI[item.status] ?? 'archive'}
             onChange={(next: StatusUI) =>
               updateStatus.mutate({ unifiedId: item.unified_id, status: next })
             }
@@ -174,13 +195,7 @@ export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose, m
           ) : sliced.length === 0 ? (
             <div className="py-6 flex flex-col items-center gap-2">
               <p className="text-xs text-stone-400 italic">
-                {isBrand
-                  ? 'Метрики появятся после Phase 2B'
-                  : !isSubstitute
-                    ? 'Метрики появятся после Phase 2B'
-                    : weeklyMode === 'period'
-                      ? 'Нет данных за этот период'
-                      : 'Нет данных'}
+                {weeklyMode === 'period' ? 'Нет данных за этот период' : 'Нет данных'}
               </p>
             </div>
           ) : (
@@ -212,31 +227,57 @@ export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose, m
             </div>
           )}
         </div>
+
+        {/* По товарам — какие WB карточки открывали/покупали по этому запросу */}
+        <div className="border-t border-stone-200 pt-3" data-testid="product-breakdown-block">
+          <div className="text-[10px] uppercase tracking-wider text-stone-400 mb-3">
+            По товарам (за выбранный период)
+          </div>
+          {breakdownLoading ? (
+            <div className="text-sm text-muted-foreground">Загрузка…</div>
+          ) : breakdownAgg.length === 0 ? (
+            <div className="py-3 text-xs text-stone-400 italic">Нет данных за этот период</div>
+          ) : (
+            <div className="overflow-y-auto max-h-[320px]">
+              <table className="w-full text-xs" aria-label="Разбивка по товарам">
+                <thead className="sticky top-0 bg-stone-50/90 backdrop-blur-sm">
+                  <tr className="border-b border-stone-200">
+                    <th className="px-1 py-1 text-left  text-[10px] uppercase text-stone-400 font-medium">Артикул</th>
+                    <th className="px-1 py-1 text-left  text-[10px] uppercase text-stone-400 font-medium">Модель</th>
+                    <th className="px-1 py-1 text-right text-[10px] uppercase text-stone-400 font-medium">Откр.</th>
+                    <th className="px-1 py-1 text-right text-[10px] uppercase text-stone-400 font-medium">Корз.</th>
+                    <th className="px-1 py-1 text-right text-[10px] uppercase text-stone-400 font-medium">Зак.</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-stone-50">
+                  {breakdownAgg.map((p) => (
+                    <tr key={p.nm_id} className="hover:bg-stone-50/60">
+                      <td className="px-1 py-1 truncate text-stone-700" title={p.sku_label}>{p.sku_label}</td>
+                      <td className="px-1 py-1 text-stone-500">{p.model_code ?? '—'}</td>
+                      <td className="px-1 py-1 text-right tabular-nums text-stone-600">{fmt(p.open_card)}</td>
+                      <td className="px-1 py-1 text-right tabular-nums text-stone-500">{fmt(p.add_to_cart)}</td>
+                      <td className="px-1 py-1 text-right tabular-nums text-stone-900 font-medium">{fmt(p.orders)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t border-stone-200">
+                    <td colSpan={2} className="px-1 py-1 text-[10px] text-stone-400">Итого по {breakdownAgg.length} товарам</td>
+                    <td className="px-1 py-1 text-right tabular-nums text-[11px] text-stone-600">{fmt(breakdownAgg.reduce((s, r) => s + r.open_card, 0))}</td>
+                    <td className="px-1 py-1 text-right tabular-nums text-[11px] text-stone-500">{fmt(breakdownAgg.reduce((s, r) => s + r.add_to_cart, 0))}</td>
+                    <td className="px-1 py-1 text-right tabular-nums text-[11px] font-medium text-stone-900">{fmt(breakdownAgg.reduce((s, r) => s + r.orders, 0))}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
     )
   )
 
-  if (mode === 'inline') {
-    return (
-      <div className="flex flex-col h-full">
-        <header className="px-6 py-4 border-b border-border flex items-center justify-between shrink-0">
-          <h2 className="font-semibold text-lg text-fg truncate">{item?.query_text ?? 'Запрос'}</h2>
-          <button
-            type="button"
-            aria-label="Закрыть"
-            className="p-2 rounded-md hover:bg-primary-light cursor-pointer"
-            onClick={onClose}
-          >
-            <X size={18} />
-          </button>
-        </header>
-        <div className="flex-1 overflow-y-auto px-6 py-4">{body}</div>
-      </div>
-    )
-  }
-
   return (
-    <Drawer open={true} onClose={onClose} title={item?.query_text ?? 'Запрос'}>
+    <Drawer open={true} onClose={onClose} title={item?.query_text ?? 'Запрос'} width="lg">
       {body}
     </Drawer>
   )

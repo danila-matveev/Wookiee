@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { X } from 'lucide-react'
 import { Drawer } from '@/components/crm/ui/Drawer'
 import { Button } from '@/components/crm/ui/Button'
 import { Input } from '@/components/crm/ui/Input'
@@ -7,11 +6,9 @@ import { useCreateBrandQuery } from '@/hooks/marketing/use-search-queries'
 
 interface AddBrandQueryPanelProps {
   onClose: () => void
-  /** 'inline' renders bare content for split-pane host; 'drawer' (default) wraps in Drawer. */
-  mode?: 'drawer' | 'inline'
 }
 
-export function AddBrandQueryPanel({ onClose, mode = 'drawer' }: AddBrandQueryPanelProps) {
+export function AddBrandQueryPanel({ onClose }: AddBrandQueryPanelProps) {
   const create = useCreateBrandQuery()
 
   const [query, setQuery] = useState('')
@@ -27,15 +24,16 @@ export function AddBrandQueryPanel({ onClose, mode = 'drawer' }: AddBrandQueryPa
       setError('Поисковый запрос обязателен')
       return
     }
-    if (!canonicalBrand.trim()) {
-      setError('Каноническое название бренда обязательно')
-      return
-    }
+
+    // Default canonical brand to the query itself (lowercased) if user left it blank.
+    // Most запросы где запрос === бренд (например "wooki" → "wooki"). Для алиасов
+    // юзер может явно прописать каноническое имя ("шарлот" → "charlotte").
+    const canonical = canonicalBrand.trim() || query.trim().toLowerCase()
 
     try {
       await create.mutateAsync({
         query,
-        canonical_brand: canonicalBrand,
+        canonical_brand: canonical,
         notes: notes.trim() || undefined,
       })
       onClose()
@@ -64,19 +62,29 @@ export function AddBrandQueryPanel({ onClose, mode = 'drawer' }: AddBrandQueryPa
         />
       </div>
 
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="bq-canonical" className="text-sm font-medium text-fg">
-          Канонический бренд <span className="text-danger">*</span>
-        </label>
-        <Input
-          id="bq-canonical"
-          value={canonicalBrand}
-          onChange={(e) => setCanonicalBrand(e.target.value)}
-          placeholder="wookiee"
-          autoComplete="off"
-        />
-        <p className="text-xs text-muted-foreground">Каноническое название бренда (lowercase, для группировки)</p>
-      </div>
+      <details className="group rounded-md border border-border bg-card/50 px-3 py-2">
+        <summary className="cursor-pointer text-sm font-medium text-fg list-none flex items-center justify-between select-none">
+          <span>Алиас бренда (опционально)</span>
+          <span className="text-xs text-muted-foreground group-open:hidden">показать</span>
+          <span className="text-xs text-muted-foreground hidden group-open:inline">скрыть</span>
+        </summary>
+        <div className="flex flex-col gap-1.5 mt-3">
+          <label htmlFor="bq-canonical" className="text-xs text-muted-foreground">
+            Канонический бренд
+          </label>
+          <Input
+            id="bq-canonical"
+            value={canonicalBrand}
+            onChange={(e) => setCanonicalBrand(e.target.value)}
+            placeholder={query.trim() ? query.trim().toLowerCase() : 'оставь пустым — возьмём запрос'}
+            autoComplete="off"
+          />
+          <p className="text-xs text-muted-foreground">
+            Если «вуки» — это другое написание «wookiee», укажи canonical = <span className="font-mono">wookiee</span>.
+            Тогда «вуки» сгруппируется с другими формами этого же бренда. Если запрос уже на латинице — оставь пустым.
+          </p>
+        </div>
+      </details>
 
       <div className="flex flex-col gap-1.5">
         <label htmlFor="bq-notes" className="text-sm font-medium text-fg">
@@ -114,28 +122,6 @@ export function AddBrandQueryPanel({ onClose, mode = 'drawer' }: AddBrandQueryPa
       </Button>
     </>
   )
-
-  if (mode === 'inline') {
-    return (
-      <div className="flex flex-col h-full">
-        <header className="px-6 py-4 border-b border-border flex items-center justify-between shrink-0">
-          <h2 className="font-semibold text-lg text-fg">Новый брендированный запрос</h2>
-          <button
-            type="button"
-            aria-label="Закрыть"
-            className="p-2 rounded-md hover:bg-primary-light cursor-pointer"
-            onClick={onClose}
-          >
-            <X size={18} />
-          </button>
-        </header>
-        <div className="flex-1 overflow-y-auto px-6 py-4">{formBody}</div>
-        <footer className="px-6 py-4 border-t border-border flex justify-end gap-2 shrink-0">
-          {footer}
-        </footer>
-      </div>
-    )
-  }
 
   return (
     <Drawer

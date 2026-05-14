@@ -1,6 +1,5 @@
 import { useSearchParams } from "react-router-dom"
 import { Button } from "@/components/crm/ui/Button"
-import { useMediaQuery } from "@/hooks/use-media-query"
 import { PromoCodesTable } from "./promo-codes/PromoCodesTable"
 import { AddPromoPanel } from "./promo-codes/AddPromoPanel"
 import { PromoDetailPanel } from "./promo-codes/PromoDetailPanel"
@@ -16,7 +15,6 @@ export function PromoCodesPage() {
   const openRaw  = params.get('open')
   const openId   = openRaw ? Number(openRaw) : null
   const detailId = openId != null && Number.isFinite(openId) && openId > 0 ? openId : null
-  const isWide   = useMediaQuery('(min-width: 1024px)')
 
   const openAdd     = () => setParams((p) => { p.set('add', '1'); return p })
   const closeAdd    = () => setParams((p) => { p.delete('add');  return p })
@@ -28,10 +26,12 @@ export function PromoCodesPage() {
     detailId != null    ? { kind: 'detail', promoId: detailId } :
     null
 
-  const renderPanel = (mode: 'drawer' | 'inline') => {
+  // All panels (Add + Detail) render as overlay Drawer — keeps the table behind at full width.
+  // Previous split-pane (560px) caused the right table columns to clip on viewport ≤ 1600.
+  const renderPanel = () => {
     if (!active) return null
-    if (active.kind === 'add') return <AddPromoPanel onClose={closeAdd} mode={mode} />
-    return <PromoDetailPanel promoId={active.promoId} onClose={closeDetail} mode={mode} />
+    if (active.kind === 'add') return <AddPromoPanel onClose={closeAdd} />
+    return <PromoDetailPanel promoId={active.promoId} onClose={closeDetail} />
   }
 
   return (
@@ -56,13 +56,7 @@ export function PromoCodesPage() {
         <PromoCodesTable />
       </div>
 
-      {/* Split-pane on lg+ (≥1024px), Drawer fallback below. */}
-      {isWide && active && (
-        <aside className="w-[400px] shrink-0 border-l border-border bg-card flex flex-col h-full overflow-hidden">
-          {renderPanel('inline')}
-        </aside>
-      )}
-      {!isWide && active && renderPanel('drawer')}
+      {renderPanel()}
     </div>
   )
 }
