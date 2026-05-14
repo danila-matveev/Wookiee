@@ -13,6 +13,7 @@ COPY shared/ /app/shared/
 COPY services/__init__.py /app/services/__init__.py
 COPY services/analytics_api/ /app/services/analytics_api/
 COPY services/sheets_sync/ /app/services/sheets_sync/
+COPY services/sheets_etl/ /app/services/sheets_etl/
 COPY agents/__init__.py /app/agents/__init__.py
 COPY scripts/ /app/scripts/
 
