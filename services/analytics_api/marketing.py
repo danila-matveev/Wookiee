@@ -9,14 +9,15 @@ project-wide pattern); no separate supabase Python client is needed.
 from __future__ import annotations
 
 import logging
-import os
 import re
 import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+
+from services.analytics_api.auth import require_auth
 
 logger = logging.getLogger(__name__)
 
@@ -52,21 +53,6 @@ _ROWS_PATTERNS = [
 def _project_root() -> Path:
     """Return absolute path to project root (parent of services/)."""
     return Path(__file__).resolve().parent.parent.parent
-
-
-def _require_api_key(
-    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
-) -> None:
-    """Reuse the simple X-API-Key check (same key as the rest of analytics_api).
-
-    Bearer JWT auth (used by the GET endpoints in app.py) is not enabled for
-    these mutating endpoints — they are intended for cron / hub-internal use.
-    """
-    expected = os.getenv("ANALYTICS_API_KEY", "")
-    if not expected:
-        raise HTTPException(500, "ANALYTICS_API_KEY not configured")
-    if x_api_key != expected:
-        raise HTTPException(401, "Invalid API key")
 
 
 def _now_iso() -> str:
@@ -208,7 +194,7 @@ def run_sync_subprocess(job_name: str, sync_log_id: int) -> None:
             logger.exception("Failed to mark sync_log %d as failed: %s", sync_log_id, e)
 
 
-@router.post("/sync/{job_name}", dependencies=[Depends(_require_api_key)])
+@router.post("/sync/{job_name}", dependencies=[Depends(require_auth)])
 async def trigger_sync(job_name: str, bg: BackgroundTasks) -> dict:
     """Start a marketing sync job in the background.
 
@@ -234,7 +220,7 @@ async def trigger_sync(job_name: str, bg: BackgroundTasks) -> dict:
     }
 
 
-@router.get("/sync/{job_name}/status", dependencies=[Depends(_require_api_key)])
+@router.get("/sync/{job_name}/status", dependencies=[Depends(require_auth)])
 async def sync_status(job_name: str) -> dict:
     """Return the latest sync_log row for the given job."""
     if job_name not in JOB_SCRIPTS:
