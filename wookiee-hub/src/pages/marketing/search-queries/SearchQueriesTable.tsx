@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { Search } from "lucide-react"
-import { useSearchQueries, useSearchQueryStats } from "@/hooks/marketing/use-search-queries"
+import { useSearchQueries, useSearchQueryStats, useUpdateSearchQueryStatus } from "@/hooks/marketing/use-search-queries"
 import { useGroupByPref } from "@/hooks/marketing/use-group-by-pref"
 import { QueryStatusBoundary } from "@/components/crm/ui/QueryStatusBoundary"
 import { Badge } from "@/components/marketing/Badge"
@@ -9,6 +9,13 @@ import { SectionHeader } from "@/components/marketing/SectionHeader"
 import { GroupBySelector } from "@/components/marketing/GroupBySelector"
 import { DateRange } from "@/components/marketing/DateRange"
 import { UpdateBar } from "@/components/marketing/UpdateBar"
+import { StatusEditor } from "@/components/marketing/StatusEditor"
+import {
+  STATUS_DB_TO_UI,
+  STATUS_UI_TO_DB,
+  STATUS_LABELS,
+  type StatusUI,
+} from "@/types/marketing"
 import type { SearchQueryRow, SearchQueryStatsAgg, SearchQueryEntityType } from "@/types/marketing"
 
 const FIRST = '2025-07-28'
@@ -50,6 +57,7 @@ export function SearchQueriesTable() {
   const search   = params.get('q')       ?? ''
   const modelF   = params.get('model')   ?? 'all'
   const channelF = params.get('channel') ?? 'all'
+  const statusF  = params.get('status')  ?? 'all'
   const dateFrom = params.get('from')    ?? '2026-03-30'
   const dateTo   = params.get('to')      ?? LAST
 
@@ -60,6 +68,9 @@ export function SearchQueriesTable() {
 
   const { data: items = [], isLoading: lq, error: eq } = useSearchQueries()
   const { data: statsRows = [], isLoading: ls, error: es } = useSearchQueryStats(dateFrom, dateTo)
+  const updateStatus = useUpdateSearchQueryStatus()
+  const onStatusChange = (unifiedId: string, next: StatusUI) =>
+    updateStatus.mutate({ unifiedId, status: next })
 
   const statsMap = useMemo(() => {
     const m = new Map<string, SearchQueryStatsAgg>()
@@ -83,6 +94,10 @@ export function SearchQueriesTable() {
     let list: SearchQueryRow[] = items
     if (modelF !== 'all')   list = list.filter((i) => i.model_hint === modelF)
     if (channelF !== 'all') list = list.filter((i) => i.purpose === channelF)
+    if (statusF !== 'all') {
+      const dbStatus = STATUS_UI_TO_DB[statusF as StatusUI]
+      list = list.filter((i) => i.status === dbStatus)
+    }
     if (search.trim()) {
       const q = search.trim().toLowerCase()
       list = list.filter((i) =>
@@ -94,7 +109,7 @@ export function SearchQueriesTable() {
       )
     }
     return list
-  }, [items, modelF, channelF, search])
+  }, [items, modelF, channelF, statusF, search])
 
   const grouped = useMemo(() => {
     const sortByOrders = (rows: SearchQueryRow[]) =>
@@ -162,6 +177,19 @@ export function SearchQueriesTable() {
               </button>
             ))}
           </div>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[11px] text-muted-foreground mr-0.5">Статус:</span>
+            {(['all', 'active', 'free', 'archive'] as const).map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setQ('status', s === 'all' ? null : s)}
+                className={`px-2.5 py-1 rounded-full text-[12px] font-medium transition-colors ${statusF === s ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}
+              >
+                {s === 'all' ? 'Все' : STATUS_LABELS[s]}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="px-6 py-2 border-b border-border flex items-center gap-3 bg-card flex-wrap">
@@ -189,6 +217,7 @@ export function SearchQueriesTable() {
                 <col className="w-[160px]" />
                 <col className="w-[120px]" />
                 <col className="w-[130px]" />
+                <col className="w-[120px]" />
                 <col className="w-[80px]"  />
                 <col className="w-[80px]"  />
                 <col className="w-[70px]"  />
@@ -204,6 +233,7 @@ export function SearchQueriesTable() {
                   <th className={TH}>Артикул</th>
                   <th className={TH}>Назначение</th>
                   <th className={TH}>Кампания</th>
+                  <th className={TH}>Статус</th>
                   <th className={THR}>Частота</th>
                   <th className={THR}>Перех.</th>
                   <th className={THR}>CR→корз</th>
@@ -226,6 +256,7 @@ export function SearchQueriesTable() {
                       onToggle={() => toggle(g.key)}
                       statsMap={statsMap}
                       onOpen={(unifiedId) => setQ('open', unifiedId)}
+                      onStatusChange={onStatusChange}
                       hideHeader={groupBy === 'none'}
                     />
                   )
@@ -233,7 +264,7 @@ export function SearchQueriesTable() {
               </tbody>
               <tfoot className="sticky bottom-0 bg-muted/95 backdrop-blur-sm border-t-2 border-border z-10">
                 <tr>
-                  <td className="px-2 py-2 text-xs font-medium text-foreground" colSpan={5}>Итого · {filtered.length} запросов</td>
+                  <td className="px-2 py-2 text-xs font-medium text-foreground" colSpan={6}>Итого · {filtered.length} запросов</td>
                   <td className="px-2 py-2 text-right tabular-nums text-sm font-medium text-foreground">{fmt(totals.f)}</td>
                   <td className="px-2 py-2 text-right tabular-nums text-sm font-medium text-foreground">{fmt(totals.t)}</td>
                   <td className="px-2 py-2 text-right tabular-nums text-[11px] font-medium text-foreground/80">{pct(totals.a, totals.t)}</td>
@@ -258,12 +289,13 @@ interface SectionGroupProps {
   onToggle: () => void
   statsMap: Map<string, SearchQueryStatsAgg>
   onOpen: (unifiedId: string) => void
+  onStatusChange: (unifiedId: string, next: StatusUI) => void
   hideHeader?: boolean
 }
 
-const COL_COUNT = 12
+const COL_COUNT = 13
 
-function SectionGroup({ icon, label, rows, collapsed, onToggle, statsMap, onOpen, hideHeader }: SectionGroupProps) {
+function SectionGroup({ icon, label, rows, collapsed, onToggle, statsMap, onOpen, onStatusChange, hideHeader }: SectionGroupProps) {
   const showRows = hideHeader || !collapsed
   return (
     <>
@@ -292,6 +324,16 @@ function SectionGroup({ icon, label, rows, collapsed, onToggle, statsMap, onOpen
                 : <span className="text-stone-400 text-xs">—</span>}
             </td>
             <td className="px-2 py-2 text-xs text-muted-foreground truncate">{it.campaign_name ?? ''}</td>
+            <td
+              className="px-2 py-2"
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+            >
+              <StatusEditor
+                status={STATUS_DB_TO_UI[it.status]}
+                onChange={(next) => onStatusChange(it.unified_id, next)}
+              />
+            </td>
             <td className="px-2 py-2 text-right tabular-nums text-sm text-foreground/80">{s.frequency > 0 ? fmt(s.frequency) : ''}</td>
             <td className="px-2 py-2 text-right tabular-nums text-sm text-foreground/80">{s.transitions > 0 ? fmt(s.transitions) : ''}</td>
             <td className="px-2 py-2 text-right tabular-nums text-[11px] text-muted-foreground">{pct(s.additions, s.transitions)}</td>

@@ -23,6 +23,10 @@ vi.mock('@/hooks/marketing/use-search-queries', () => ({
     isLoading: false,
     error: null,
   }),
+  useUpdateSearchQueryStatus: () => ({
+    mutate: () => {},
+    isError: false,
+  }),
 }))
 
 vi.mock('@/hooks/marketing/use-channels', () => ({
