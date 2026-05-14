@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { CatalogTable, type TableColumn } from "@/components/catalog/layout/catalog-table"
+import { SyncMirrorButton } from "@/components/catalog/sync-mirror-button"
 import { useReferenceCrud } from "./_use-reference"
 import { supabase } from "@/lib/supabase"
 import {
@@ -145,7 +146,7 @@ export function KollekciiPage() {
         subtitle="Коллекции продуктов по году/тематике"
         count={ref.list.data?.length ?? 0}
         isLoading={ref.list.isLoading}
-        actions={<AddButton onClick={() => setCreating(true)} />}
+        actions={<><SyncMirrorButton /><AddButton onClick={() => setCreating(true)} /></>}
       />
       <SearchBox value={search} onChange={setSearch} placeholder="Поиск по названию и описанию…" />
       {ref.list.error && <ErrorBlock message={ref.list.error.message} />}
