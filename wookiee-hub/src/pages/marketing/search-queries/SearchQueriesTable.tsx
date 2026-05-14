@@ -7,6 +7,7 @@ import { QueryStatusBoundary } from "@/components/crm/ui/QueryStatusBoundary"
 import { Badge } from "@/components/marketing/Badge"
 import { SectionHeader } from "@/components/marketing/SectionHeader"
 import { GroupBySelector } from "@/components/marketing/GroupBySelector"
+import { SelectMenu } from "@/components/marketing/SelectMenu"
 import { DateRange } from "@/components/marketing/DateRange"
 import { UpdateBar } from "@/components/marketing/UpdateBar"
 import { StatusEditor } from "@/components/marketing/StatusEditor"
@@ -153,34 +154,32 @@ export function SearchQueriesTable() {
         <UpdateBar job="search-queries" />
 
         <div className="px-6 pt-3 pb-2 flex flex-col gap-2 border-b border-border bg-card">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[11px] text-muted-foreground mr-0.5">Модель:</span>
-            {(['all', ...uniqueModels] as const).map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setQ('model', m === 'all' ? null : m)}
-                className={`px-2.5 py-1 rounded-full text-[12px] font-medium transition-colors ${modelF === m ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}
-              >
-                {m === 'all' ? 'Все' : m}
-              </button>
-            ))}
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] uppercase tracking-wider text-stone-500">Модель:</span>
+              <div className="w-[180px]">
+                <SelectMenu
+                  value={modelF === 'all' ? '' : modelF}
+                  options={uniqueModels.map((m) => ({ value: m, label: m }))}
+                  onChange={(v) => setQ('model', v || null)}
+                  placeholder="Все"
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] uppercase tracking-wider text-stone-500">Назначение:</span>
+              <div className="w-[200px]">
+                <SelectMenu
+                  value={channelF === 'all' ? '' : channelF}
+                  options={uniqueChannels.map((c) => ({ value: c, label: c }))}
+                  onChange={(v) => setQ('channel', v || null)}
+                  placeholder="Все"
+                />
+              </div>
+            </div>
           </div>
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[11px] text-muted-foreground mr-0.5">Назначение:</span>
-            {(['all', ...uniqueChannels] as const).map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => setQ('channel', c === 'all' ? null : c)}
-                className={`px-2.5 py-1 rounded-full text-[12px] font-medium transition-colors ${channelF === c ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}
-              >
-                {c === 'all' ? 'Все' : c}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[11px] text-muted-foreground mr-0.5">Статус:</span>
+            <span className="text-[11px] uppercase tracking-wider text-stone-500 mr-0.5">Статус:</span>
             {(['all', 'active', 'free', 'archive'] as const).map((s) => (
               <button
                 key={s}
