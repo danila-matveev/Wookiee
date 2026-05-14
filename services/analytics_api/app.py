@@ -35,8 +35,10 @@ app.add_middleware(
 
 from services.analytics_api.auth import verify_auth as _verify_auth  # noqa: E402
 from services.analytics_api.marketing import router as marketing_router  # noqa: E402
+from services.analytics_api.catalog_sync import router as catalog_sync_router  # noqa: E402
 
 app.include_router(marketing_router)
+app.include_router(catalog_sync_router)
 
 logging.basicConfig(
     level=logging.INFO,
