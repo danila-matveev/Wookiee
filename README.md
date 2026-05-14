@@ -49,7 +49,8 @@ python -m services.wb_localization.run_localization --dry-run
 uvicorn services.wb_logistics_api.app:app --host 0.0.0.0 --port 8000
 
 # Sheets sync
-python -m services.sheets_sync.runner
+python -m services.sheets_sync.runner --list
+python -m services.sheets_sync.runner fin_data_new --prod --start 14.03.2026 --end 13.05.2026
 
 # WB tariffs daily collector
 python -m services.logistics_audit.etl.tariff_collector --cabinet OOO

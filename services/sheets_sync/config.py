@@ -3,6 +3,8 @@ from __future__ import annotations
 """Configuration for wb_sheets_sync module."""
 
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -69,11 +71,30 @@ def set_active_spreadsheet_id(sid: str | None) -> None:
 
 # --- Test mode: write to *_TEST sheets ---
 TEST_MODE = os.getenv("SYNC_TEST_MODE", "true").lower() == "true"
+_test_mode_override: bool | None = None
 
 # --- Logging ---
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 
 
+def is_test_mode() -> bool:
+    """Return effective test mode, including temporary runtime override."""
+    return TEST_MODE if _test_mode_override is None else _test_mode_override
+
+
+@contextmanager
+def test_mode_override(value: bool | None) -> Iterator[None]:
+    """Temporarily override TEST_MODE for one sync run."""
+    global _test_mode_override
+    previous = _test_mode_override
+    if value is not None:
+        _test_mode_override = value
+    try:
+        yield
+    finally:
+        _test_mode_override = previous
+
+
 def get_sheet_name(base_name: str) -> str:
-    """Return sheet name with _TEST suffix if TEST_MODE is on."""
-    return f"{base_name}_TEST" if TEST_MODE else base_name
+    """Return sheet name with _TEST suffix if effective test mode is on."""
+    return f"{base_name}_TEST" if is_test_mode() else base_name

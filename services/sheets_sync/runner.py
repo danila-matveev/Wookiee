@@ -20,7 +20,8 @@ import sys
 import time
 from dataclasses import dataclass
 
-from services.sheets_sync.config import LOG_LEVEL, TEST_MODE, SPREADSHEET_IDS, set_active_spreadsheet_id
+from services.sheets_sync import config
+from services.sheets_sync.config import LOG_LEVEL, SPREADSHEET_IDS, set_active_spreadsheet_id
 
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL, logging.INFO),
@@ -40,6 +41,7 @@ class SyncResult:
     rows: int
     duration_sec: float
     error: str
+    test_mode: bool | None = None
 
 
 # Registry of available sync scripts
@@ -102,12 +104,26 @@ SYNC_REGISTRY: dict[str, dict] = {
 }
 
 
-def run_sync(name: str, start_date: str | None = None, end_date: str | None = None,
-             spreadsheet_id: str | None = None) -> SyncResult:
+def run_sync(
+    name: str,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    spreadsheet_id: str | None = None,
+    test_mode: bool | None = None,
+) -> SyncResult:
     """Run a single sync by name, optionally targeting a specific spreadsheet."""
+    effective_test_mode = config.is_test_mode() if test_mode is None else test_mode
     info = SYNC_REGISTRY.get(name)
     if not info:
-        return SyncResult(name=name, sheet_name="", status="error", rows=0, duration_sec=0, error=f"Unknown sync: {name}")
+        return SyncResult(
+            name=name,
+            sheet_name="",
+            status="error",
+            rows=0,
+            duration_sec=0,
+            error=f"Unknown sync: {name}",
+            test_mode=effective_test_mode,
+        )
 
     module_path = info["module"]
     sheet = info["sheet"]
@@ -120,36 +136,63 @@ def run_sync(name: str, start_date: str | None = None, end_date: str | None = No
         set_active_spreadsheet_id(spreadsheet_id)
 
     try:
-        mod = __import__(module_path, fromlist=["sync"])
-        sync_fn = mod.sync
+        with config.test_mode_override(test_mode):
+            mod = __import__(module_path, fromlist=["sync"])
+            sync_fn = mod.sync
 
-        # Pass date arguments for scripts that support period selection
-        if name in ("fin_data", "fin_data_new", "wb_feedbacks") and (start_date or end_date):
-            rows = sync_fn(start_date=start_date, end_date=end_date)
-        else:
-            rows = sync_fn()
+            # Pass date arguments for scripts that support period selection
+            if name in ("fin_data", "fin_data_new", "wb_feedbacks") and (start_date or end_date):
+                rows = sync_fn(start_date=start_date, end_date=end_date)
+            else:
+                rows = sync_fn()
 
         duration = time.time() - t0
-        return SyncResult(name=name, sheet_name=sheet, status="ok", rows=rows, duration_sec=round(duration, 1), error="")
+        return SyncResult(
+            name=name,
+            sheet_name=sheet,
+            status="ok",
+            rows=rows,
+            duration_sec=round(duration, 1),
+            error="",
+            test_mode=effective_test_mode,
+        )
 
     except Exception as e:
         duration = time.time() - t0
         logger.exception("Sync %s failed", name)
-        return SyncResult(name=name, sheet_name=sheet, status="error", rows=0, duration_sec=round(duration, 1), error=str(e))
+        return SyncResult(
+            name=name,
+            sheet_name=sheet,
+            status="error",
+            rows=0,
+            duration_sec=round(duration, 1),
+            error=str(e),
+            test_mode=effective_test_mode,
+        )
 
     finally:
         if spreadsheet_id:
             set_active_spreadsheet_id(None)
 
 
-def run_all(start_date: str | None = None, end_date: str | None = None) -> list[SyncResult]:
+def run_all(
+    start_date: str | None = None,
+    end_date: str | None = None,
+    test_mode: bool | None = None,
+) -> list[SyncResult]:
     """Run all syncs sequentially for every configured spreadsheet."""
     results = []
     for sid in SPREADSHEET_IDS:
         short_id = sid[:8]
         logger.info("Running all syncs for spreadsheet %s...", short_id)
         for name in SYNC_REGISTRY:
-            result = run_sync(name, start_date=start_date, end_date=end_date, spreadsheet_id=sid)
+            result = run_sync(
+                name,
+                start_date=start_date,
+                end_date=end_date,
+                spreadsheet_id=sid,
+                test_mode=test_mode,
+            )
             results.append(result)
             logger.info("  [%s] %s: %s (%d rows, %.1fs)", short_id, result.name, result.status, result.rows, result.duration_sec)
     return results
@@ -160,16 +203,20 @@ def main():
     parser = argparse.ArgumentParser(description="Run sync scripts for WB/OZON/MoySklad -> Google Sheets")
     parser.add_argument("sync_name", nargs="?", help="Sync name or 'all'")
     parser.add_argument("--list", action="store_true", help="List available syncs")
-    parser.add_argument("--test", action="store_true", help="Force test mode")
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument("--test", action="store_true", help="Force test mode (_TEST sheets)")
+    mode_group.add_argument("--prod", action="store_true", help="Force production mode (base sheets)")
     parser.add_argument("--start", help="Start date DD.MM.YYYY (for fin_data, wb_feedbacks)")
     parser.add_argument("--end", help="End date DD.MM.YYYY (for fin_data, wb_feedbacks)")
 
     args = parser.parse_args()
+    mode_override = True if args.test else False if args.prod else None
+    effective_test_mode = config.is_test_mode() if mode_override is None else mode_override
 
     if args.list:
-        print(f"\nAvailable syncs (TEST_MODE={'ON' if TEST_MODE else 'OFF'}):\n")
+        print(f"\nAvailable syncs (TEST_MODE={'ON' if effective_test_mode else 'OFF'}):\n")
         for name, info in SYNC_REGISTRY.items():
-            suffix = "_TEST" if TEST_MODE else ""
+            suffix = "_TEST" if effective_test_mode else ""
             print(f"  {name:<20} -> {info['sheet']}{suffix}")
             print(f"  {'':20}    {info['description']}")
         print("\nUsage: python -m services.sheets_sync.runner <name|all>")
@@ -179,7 +226,7 @@ def main():
         parser.print_help()
         sys.exit(1)
 
-    mode_str = "TEST" if TEST_MODE else "PRODUCTION"
+    mode_str = "TEST" if effective_test_mode else "PRODUCTION"
     print(f"\nMode: {mode_str}")
     print(f"{'=' * 50}")
 
@@ -192,7 +239,7 @@ def main():
         _tl, _run_id = None, None
 
     if args.sync_name == "all":
-        results = run_all(start_date=args.start, end_date=args.end)
+        results = run_all(start_date=args.start, end_date=args.end, test_mode=mode_override)
         print(f"\n{'=' * 50}")
         print(f"{'Sync':<20} {'Status':<8} {'Rows':<8} {'Time':<8}")
         print(f"{'-' * 50}")
@@ -213,7 +260,12 @@ def main():
             print("Use --list to see available syncs")
             sys.exit(1)
 
-        result = run_sync(args.sync_name, start_date=args.start, end_date=args.end)
+        result = run_sync(
+            args.sync_name,
+            start_date=args.start,
+            end_date=args.end,
+            test_mode=mode_override,
+        )
         print(f"\nResult: {result.status} | {result.rows} rows | {result.duration_sec:.1f}s")
         if result.error:
             print(f"Error: {result.error}")

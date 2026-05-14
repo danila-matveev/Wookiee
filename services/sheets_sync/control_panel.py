@@ -13,8 +13,9 @@ import argparse
 import logging
 import time
 
+from services.sheets_sync import config
 from services.sheets_sync.clients.sheets_client import get_client, get_moscow_now
-from services.sheets_sync.config import GOOGLE_SA_FILE, LOG_LEVEL, SPREADSHEET_IDS, get_sheet_name
+from services.sheets_sync.config import GOOGLE_SA_FILE, LOG_LEVEL, SPREADSHEET_IDS
 from services.sheets_sync.runner import run_all, run_sync
 from services.sheets_sync.status import update_status
 
@@ -43,6 +44,43 @@ SHEET_TO_SYNC = {
 }
 
 
+def _sheet_candidates(base_name: str) -> list[tuple[str, bool]]:
+    """Return sheet names to poll with the test mode each name implies."""
+    prod = (base_name, False)
+    test = (f"{base_name}_TEST", True)
+    return [test, prod] if config.TEST_MODE else [prod, test]
+
+
+def _has_data_rows(ws, key_col: int = 1, start_row: int = 3) -> bool:
+    """Return True if a worksheet has non-empty data values below headers."""
+    try:
+        values = ws.col_values(key_col)
+    except Exception:
+        return False
+    return any(str(value).strip() for value in values[start_row - 1:])
+
+
+def _resolve_trigger_sheet(spreadsheet, base_name: str, sheet_name: str, ws, test_mode: bool, sync_name: str):
+    """Map a checkbox trigger to the worksheet/mode that should actually run."""
+    if sync_name != "fin_data_new" or not test_mode or _has_data_rows(ws):
+        return sheet_name, ws, test_mode
+
+    try:
+        prod_ws = spreadsheet.worksheet(base_name)
+    except Exception:
+        return sheet_name, ws, test_mode
+
+    if not _has_data_rows(prod_ws):
+        return sheet_name, ws, test_mode
+
+    logger.warning(
+        "Checkbox fired on empty '%s'; redirecting fin_data_new to production sheet '%s'",
+        sheet_name,
+        base_name,
+    )
+    return base_name, prod_ws, False
+
+
 def check_data_sheet_checkboxes() -> list:
     """Check checkbox on each data sheet across all configured spreadsheets.
 
@@ -64,7 +102,7 @@ def check_data_sheet_checkboxes() -> list:
             logger.error("Cannot open spreadsheet %s for checkbox check: %s", sid[:8], e)
             continue
 
-        already_run = set()  # avoid running wb_feedbacks twice (ООО + ИП) per spreadsheet
+        already_run = set()  # avoid running wb_feedbacks twice (ООО + ИП) per spreadsheet/mode
 
         for base_name, entry in SHEET_TO_SYNC.items():
             # Support both str and dict formats
@@ -75,57 +113,74 @@ def check_data_sheet_checkboxes() -> list:
                 sync_name = entry
                 checkbox_cell = "C1"
 
-            sheet_name = get_sheet_name(base_name)
-            try:
-                ws = spreadsheet.worksheet(sheet_name)
-            except Exception:
-                continue  # sheet doesn't exist yet
-
-            try:
-                cb_val = str(ws.acell(checkbox_cell).value or "").strip().upper()
-            except Exception:
-                continue
-
-            if cb_val != "TRUE":
-                continue
-
-            # Reset checkbox immediately
-            try:
-                ws.update_acell(checkbox_cell, "FALSE")
-            except Exception:
-                pass
-
-            if sync_name in already_run:
-                continue
-            already_run.add(sync_name)
-
-            # Read dates from configured cells (fin_data: B1/C1, feedbacks: A5/B5)
-            start_date = None
-            end_date = None
-            if sync_name in ("fin_data", "fin_data_new"):
+            for sheet_name, sheet_test_mode in _sheet_candidates(base_name):
                 try:
-                    b1 = (ws.acell("B1").value or "").strip()
-                    c1 = (ws.acell("C1").value or "").strip()
-                    if b1 and c1:
-                        start_date = b1
-                        end_date = c1
+                    ws = spreadsheet.worksheet(sheet_name)
                 except Exception:
-                    pass
-            elif isinstance(entry, dict) and "date_cells" in entry:
+                    continue  # sheet doesn't exist yet
+
                 try:
-                    cell_start, cell_end = entry["date_cells"]
-                    v_start = (ws.acell(cell_start).value or "").strip()
-                    v_end = (ws.acell(cell_end).value or "").strip()
-                    if v_start:
-                        start_date = v_start
-                    if v_end:
-                        end_date = v_end
+                    cb_val = str(ws.acell(checkbox_cell).value or "").strip().upper()
+                except Exception:
+                    continue
+
+                if cb_val != "TRUE":
+                    continue
+
+                # Reset checkbox immediately on the sheet that fired.
+                try:
+                    ws.update_acell(checkbox_cell, "FALSE")
                 except Exception:
                     pass
 
-            logger.info("Checkbox triggered on sheet '%s' [%s] -> running %s", sheet_name, sid[:8], sync_name)
-            result = run_sync(sync_name, start_date=start_date, end_date=end_date, spreadsheet_id=sid)
-            results.append(result)
+                run_sheet_name, run_ws, run_test_mode = _resolve_trigger_sheet(
+                    spreadsheet, base_name, sheet_name, ws, sheet_test_mode, sync_name
+                )
+
+                run_key = (sync_name, run_test_mode)
+                if run_key in already_run:
+                    continue
+                already_run.add(run_key)
+
+                # Read dates from configured cells (fin_data: B1/C1, feedbacks: A5/B5)
+                start_date = None
+                end_date = None
+                if sync_name in ("fin_data", "fin_data_new"):
+                    try:
+                        b1 = (run_ws.acell("B1").value or "").strip()
+                        c1 = (run_ws.acell("C1").value or "").strip()
+                        if b1 and c1:
+                            start_date = b1
+                            end_date = c1
+                    except Exception:
+                        pass
+                elif isinstance(entry, dict) and "date_cells" in entry:
+                    try:
+                        cell_start, cell_end = entry["date_cells"]
+                        v_start = (run_ws.acell(cell_start).value or "").strip()
+                        v_end = (run_ws.acell(cell_end).value or "").strip()
+                        if v_start:
+                            start_date = v_start
+                        if v_end:
+                            end_date = v_end
+                    except Exception:
+                        pass
+
+                logger.info(
+                    "Checkbox triggered on sheet '%s' [%s] -> running %s (%s)",
+                    run_sheet_name,
+                    sid[:8],
+                    sync_name,
+                    "TEST" if run_test_mode else "PROD",
+                )
+                result = run_sync(
+                    sync_name,
+                    start_date=start_date,
+                    end_date=end_date,
+                    spreadsheet_id=sid,
+                    test_mode=run_test_mode,
+                )
+                results.append(result)
 
     if results:
         try:

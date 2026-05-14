@@ -31,6 +31,7 @@
 - **Чекбокс запуска:** ячейка `D1` — скрипт стартует только если значение `true`, после завершения сбрасывает в `false`.
 - **Дата начала:** ячейка `B1`
 - **Дата окончания:** ячейка `C1`
+- **Режим запуска:** кнопка обновляет тот лист, на котором нажата (`Фин данные NEW` или `Фин данные NEW_TEST`). `control_panel.py` запускает sync в prod/test режиме по фактическому листу-триггеру, даже если процесс запущен с другим `SYNC_TEST_MODE`.
 
 ---
 
@@ -113,6 +114,6 @@ mapping   = get_barcode_mapping()
 
 | Среда | Файл |
 |---|---|
-| Google Apps Script (устаревший) | `Обновление Фин данные NEW.js` |
-| Python (актуальный) | `services/sheets_sync/sync_fin_data_new.py` |
-| Python (устаревший, не использовать) | `services/sheets_sync/sync_fin_data.py` |
+| Google Apps Script (кнопка) | `Обновление Фин данные NEW.js` |
+| Python (актуальный) | `services/sheets_sync/sync/sync_fin_data_new.py` |
+| Python (устаревший, не использовать) | `services/sheets_sync/sync/sync_fin_data.py` |
