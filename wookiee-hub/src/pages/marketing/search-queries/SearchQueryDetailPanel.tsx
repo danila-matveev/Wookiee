@@ -85,7 +85,7 @@ export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose }:
       <div className="flex flex-col gap-4">
         <div className="flex items-center gap-1.5 flex-wrap">
           <StatusEditor
-            status={STATUS_DB_TO_UI[item.status]}
+            status={STATUS_DB_TO_UI[item.status] ?? 'archive'}
             onChange={(next: StatusUI) =>
               updateStatus.mutate({ unifiedId: item.unified_id, status: next })
             }

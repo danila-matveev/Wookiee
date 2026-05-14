@@ -20,6 +20,7 @@ import type { SearchQueryRow, SearchQueryStatsAgg, SearchQueryEntityType } from 
 
 const FIRST = '2025-07-28'
 const LAST  = new Date().toISOString().slice(0, 10)
+const STATUS_FILTER_KEYS = new Set<string>(['all', 'active', 'free', 'archive'])
 
 type SqGroupBy = "entity_type" | "none"
 
@@ -57,7 +58,8 @@ export function SearchQueriesTable() {
   const search   = params.get('q')       ?? ''
   const modelF   = params.get('model')   ?? 'all'
   const channelF = params.get('channel') ?? 'all'
-  const statusF  = params.get('status')  ?? 'all'
+  const rawStatus = params.get('status') ?? 'all'
+  const statusF  = STATUS_FILTER_KEYS.has(rawStatus) ? rawStatus : 'all'
   const dateFrom = params.get('from')    ?? '2026-03-30'
   const dateTo   = params.get('to')      ?? LAST
 
@@ -330,7 +332,7 @@ function SectionGroup({ icon, label, rows, collapsed, onToggle, statsMap, onOpen
               onKeyDown={(e) => e.stopPropagation()}
             >
               <StatusEditor
-                status={STATUS_DB_TO_UI[it.status]}
+                status={STATUS_DB_TO_UI[it.status] ?? 'archive'}
                 onChange={(next) => onStatusChange(it.unified_id, next)}
               />
             </td>
