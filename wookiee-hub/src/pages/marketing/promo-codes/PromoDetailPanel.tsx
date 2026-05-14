@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { X, Edit3 } from "lucide-react"
+import { Edit3 } from "lucide-react"
 import { Drawer } from "@/components/crm/ui/Drawer"
 import { EmptyState } from "@/components/crm/ui/EmptyState"
 import { Badge } from "@/components/marketing/Badge"
@@ -15,8 +15,8 @@ import type { PromoCodeRow, PromoProductBreakdownAgg, PromoStatWeekly } from "@/
 interface PromoDetailPanelProps {
   promoId: number
   onClose: () => void
-  /** 'inline' renders bare content for split-pane host; 'drawer' (default) wraps in Drawer. */
-  mode?: 'drawer' | 'inline'
+  /** Kept for API compatibility — only 'drawer' is rendered (split-pane removed). */
+  mode?: 'drawer'
 }
 
 const fmt  = (n: number) => n.toLocaleString('ru-RU')
@@ -49,7 +49,7 @@ const toForm = (p: PromoCodeRow): FormState => ({
   valid_until: p.valid_until ?? '',
 })
 
-export function PromoDetailPanel({ promoId, onClose, mode = 'drawer' }: PromoDetailPanelProps) {
+export function PromoDetailPanel({ promoId, onClose }: PromoDetailPanelProps) {
   const { data: promos = [], isLoading: promosLoading } = usePromoCodes()
   const { data: weekly = [], isLoading: weeklyLoading, error: weeklyError } = useQuery<PromoStatWeekly[]>({
     queryKey: ['marketing', 'promo-codes', 'for-code', promoId],
@@ -129,11 +129,13 @@ export function PromoDetailPanel({ promoId, onClose, mode = 'drawer' }: PromoDet
     ) : !promo ? (
       <EmptyState title="Промокод не найден" description="Возможно, он удалён или ID неверен." />
     ) : (
-      <div className="flex flex-col h-full">
-        {/* Header: code + status + channel + actions */}
-        <div className="flex items-start justify-between px-5 py-4 border-b border-stone-200 shrink-0">
+      // The Drawer wrapper already supplies its own header (with code as title + ✕ close)
+      // and an outer scrollable container. We render only secondary metadata (status badge,
+      // channel chip, UUID, edit button) and the data sections here.
+      <div className="flex flex-col -mx-6 -my-4">
+        {/* Meta toolbar: status + channel + UUID + edit */}
+        <div className="flex items-start justify-between px-5 py-3 border-b border-stone-200 shrink-0">
           <div className="flex-1 min-w-0 mr-3">
-            <div className="font-mono text-xs text-stone-400 mb-1 break-all">{promo.code}</div>
             <div className="flex items-center gap-1.5 flex-wrap">
               {statusBadge && <Badge color={statusBadge.color} label={statusBadge.label} />}
               {promo.channel && (
@@ -159,18 +161,10 @@ export function PromoDetailPanel({ promoId, onClose, mode = 'drawer' }: PromoDet
                 <Edit3 className="w-3.5 h-3.5" />
               </button>
             )}
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Закрыть"
-              className="p-1.5 rounded-md text-stone-400 hover:bg-stone-100"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
+        <div>
           {/* Fields block (view/edit) */}
           <div className="px-5 py-4 border-b border-stone-200 space-y-3">
             <div>
@@ -351,12 +345,8 @@ export function PromoDetailPanel({ promoId, onClose, mode = 'drawer' }: PromoDet
     )
   )
 
-  if (mode === 'inline') {
-    return body
-  }
-
   return (
-    <Drawer open={true} onClose={onClose} title={promo?.code ?? 'Промокод'}>
+    <Drawer open={true} onClose={onClose} title={promo?.code ?? 'Промокод'} width="lg">
       {body}
     </Drawer>
   )

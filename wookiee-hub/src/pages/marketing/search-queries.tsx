@@ -2,7 +2,6 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
 import { ChevronDown, Plus } from "lucide-react"
 import { useSearchParams } from "react-router-dom"
 import { Button } from "@/components/crm/ui/Button"
-import { useMediaQuery } from "@/hooks/use-media-query"
 import { SearchQueriesTable } from "./search-queries/SearchQueriesTable"
 import { AddBrandQueryPanel } from "./search-queries/AddBrandQueryPanel"
 import { AddWWPanel } from "./search-queries/AddWWPanel"
@@ -69,7 +68,6 @@ export function SearchQueriesPage() {
   const openParam = params.get('open')  // unified_id | null
   const dateFrom  = params.get('from') ?? '2026-03-30'
   const dateTo    = params.get('to')   ?? LAST
-  const isWide    = useMediaQuery('(min-width: 1024px)')
 
   const closeAdd    = () => setParams((p) => { p.delete('add');  return p })
   const closeDetail = () => setParams((p) => { p.delete('open'); return p })
@@ -81,8 +79,10 @@ export function SearchQueriesPage() {
     openParam            ? { kind: 'detail', unifiedId: openParam } :
     null
 
-  // Add forms always use modal Drawer (Save button reliably visible). Detail = split-pane.
-  const renderPanel = (mode: 'drawer' | 'inline') => {
+  // All panels (Add + Detail) render as overlay Drawer so the table behind never shrinks.
+  // Previously detail used a 560px split-pane on lg+, which clipped the right 4 columns
+  // (CR корз / Корз / CR зак / Заказы / CRV) at viewport ≤ 1600.
+  const renderPanel = () => {
     if (!active) return null
     if (active.kind === 'add-brand') return <AddBrandQueryPanel onClose={closeAdd} mode="drawer" />
     if (active.kind === 'add-nm')    return <AddNomenclaturePanel onClose={closeAdd} />
@@ -93,7 +93,7 @@ export function SearchQueriesPage() {
         dateFrom={dateFrom}
         dateTo={dateTo}
         onClose={closeDetail}
-        mode={mode}
+        mode="drawer"
       />
     )
   }
@@ -118,14 +118,7 @@ export function SearchQueriesPage() {
         <SearchQueriesTable />
       </div>
 
-      {/* Add = always Drawer modal. Detail = split-pane on lg+. */}
-      {(active?.kind === 'add-brand' || active?.kind === 'add-nm' || active?.kind === 'add-ww') && renderPanel('drawer')}
-      {active?.kind === 'detail' && isWide && (
-        <aside className="w-[560px] shrink-0 border-l border-border bg-card flex flex-col h-full overflow-hidden">
-          {renderPanel('inline')}
-        </aside>
-      )}
-      {active?.kind === 'detail' && !isWide && renderPanel('drawer')}
+      {renderPanel()}
     </div>
   )
 }

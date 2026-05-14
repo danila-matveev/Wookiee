@@ -100,7 +100,7 @@ describe('SearchQueryDetailPanel — status editor wiring', () => {
         dateFrom="2026-04-01"
         dateTo="2026-05-12"
         onClose={() => {}}
-        mode="inline"
+        mode="drawer"
       />,
       { wrapper },
     )
@@ -116,7 +116,7 @@ describe('SearchQueryDetailPanel — status editor wiring', () => {
         dateFrom="2026-04-01"
         dateTo="2026-05-12"
         onClose={() => {}}
-        mode="inline"
+        mode="drawer"
       />,
       { wrapper },
     )
@@ -162,7 +162,7 @@ describe('SearchQueryDetailPanel — funnel block', () => {
         dateFrom="2026-04-01"
         dateTo="2026-05-12"
         onClose={() => {}}
-        mode="inline"
+        mode="drawer"
       />,
       { wrapper },
     )
@@ -201,7 +201,7 @@ describe('SearchQueryDetailPanel — funnel block', () => {
         dateFrom="2026-04-01"
         dateTo="2026-05-12"
         onClose={() => {}}
-        mode="inline"
+        mode="drawer"
       />,
       { wrapper },
     )
@@ -237,7 +237,7 @@ describe('SearchQueryDetailPanel — view v2 fields (channel_label, sku_label)',
         dateFrom="2026-04-01"
         dateTo="2026-05-12"
         onClose={() => {}}
-        mode="inline"
+        mode="drawer"
       />,
       { wrapper },
     )
@@ -253,7 +253,7 @@ describe('SearchQueryDetailPanel — view v2 fields (channel_label, sku_label)',
         dateFrom="2026-04-01"
         dateTo="2026-05-12"
         onClose={() => {}}
-        mode="inline"
+        mode="drawer"
       />,
       { wrapper },
     )
@@ -268,7 +268,7 @@ describe('SearchQueryDetailPanel — view v2 fields (channel_label, sku_label)',
         dateFrom="2026-04-01"
         dateTo="2026-05-12"
         onClose={() => {}}
-        mode="inline"
+        mode="drawer"
       />,
       { wrapper },
     )
@@ -286,7 +286,7 @@ describe('SearchQueryDetailPanel — view v2 fields (channel_label, sku_label)',
         dateFrom="2026-04-01"
         dateTo="2026-05-12"
         onClose={() => {}}
-        mode="inline"
+        mode="drawer"
       />,
       { wrapper },
     )
@@ -309,7 +309,7 @@ describe('SearchQueryDetailPanel — weekly stats toggle', () => {
         dateFrom="2026-04-01"
         dateTo="2026-05-12"
         onClose={() => {}}
-        mode="inline"
+        mode="drawer"
       />,
       { wrapper },
     )
@@ -345,7 +345,7 @@ describe('SearchQueryDetailPanel — weekly stats toggle', () => {
         dateFrom="2026-04-01"
         dateTo="2026-05-12"
         onClose={() => {}}
-        mode="inline"
+        mode="drawer"
       />,
       { wrapper },
     )

@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react"
-import { X } from "lucide-react"
 import { Drawer } from "@/components/crm/ui/Drawer"
 import { Badge } from "@/components/marketing/Badge"
 import { EmptyState } from "@/components/crm/ui/EmptyState"
@@ -14,8 +13,8 @@ interface SearchQueryDetailPanelProps {
   dateFrom: string
   dateTo: string
   onClose: () => void
-  /** 'inline' renders bare content for split-pane host; 'drawer' (default) wraps in Drawer. */
-  mode?: 'drawer' | 'inline'
+  /** Kept for API compatibility — only 'drawer' is rendered (split-pane removed). */
+  mode?: 'drawer'
 }
 
 const fmt = (n: number) => n.toLocaleString('ru-RU')
@@ -31,7 +30,7 @@ const fmtWeek = (iso: string) => {
   return `${dd}.${mm}`
 }
 
-export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose, mode = 'drawer' }: SearchQueryDetailPanelProps) {
+export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose }: SearchQueryDetailPanelProps) {
   const { data: items = [], isLoading: itemsLoading } = useSearchQueries()
   const item: SearchQueryRow | undefined = items.find((i) => i.unified_id === unifiedId)
   const updateStatus = useUpdateSearchQueryStatus()
@@ -286,27 +285,8 @@ export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose, m
     )
   )
 
-  if (mode === 'inline') {
-    return (
-      <div className="flex flex-col h-full">
-        <header className="px-6 py-4 border-b border-border flex items-center justify-between shrink-0">
-          <h2 className="font-semibold text-lg text-fg truncate">{item?.query_text ?? 'Запрос'}</h2>
-          <button
-            type="button"
-            aria-label="Закрыть"
-            className="p-2 rounded-md hover:bg-primary-light cursor-pointer"
-            onClick={onClose}
-          >
-            <X size={18} />
-          </button>
-        </header>
-        <div className="flex-1 overflow-y-auto px-6 py-4">{body}</div>
-      </div>
-    )
-  }
-
   return (
-    <Drawer open={true} onClose={onClose} title={item?.query_text ?? 'Запрос'}>
+    <Drawer open={true} onClose={onClose} title={item?.query_text ?? 'Запрос'} width="lg">
       {body}
     </Drawer>
   )
