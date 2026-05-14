@@ -62,22 +62,29 @@ export function AddBrandQueryPanel({ onClose }: AddBrandQueryPanelProps) {
         />
       </div>
 
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="bq-canonical" className="text-sm font-medium text-fg">
-          Канонический бренд
-        </label>
-        <Input
-          id="bq-canonical"
-          value={canonicalBrand}
-          onChange={(e) => setCanonicalBrand(e.target.value)}
-          placeholder={query.trim() ? query.trim().toLowerCase() : 'оставь пустым — возьмём запрос'}
-          autoComplete="off"
-        />
-        <p className="text-xs text-muted-foreground">
-          Опционально. Нужно только для алиасов — например «шарлот» → <span className="font-mono">charlotte</span>,
-          «вуки» → <span className="font-mono">wookiee</span>. Если запрос уже на латинице — оставь пустым.
-        </p>
-      </div>
+      <details className="group rounded-md border border-border bg-card/50 px-3 py-2">
+        <summary className="cursor-pointer text-sm font-medium text-fg list-none flex items-center justify-between select-none">
+          <span>Алиас бренда (опционально)</span>
+          <span className="text-xs text-muted-foreground group-open:hidden">показать</span>
+          <span className="text-xs text-muted-foreground hidden group-open:inline">скрыть</span>
+        </summary>
+        <div className="flex flex-col gap-1.5 mt-3">
+          <label htmlFor="bq-canonical" className="text-xs text-muted-foreground">
+            Канонический бренд
+          </label>
+          <Input
+            id="bq-canonical"
+            value={canonicalBrand}
+            onChange={(e) => setCanonicalBrand(e.target.value)}
+            placeholder={query.trim() ? query.trim().toLowerCase() : 'оставь пустым — возьмём запрос'}
+            autoComplete="off"
+          />
+          <p className="text-xs text-muted-foreground">
+            Если «вуки» — это другое написание «wookiee», укажи canonical = <span className="font-mono">wookiee</span>.
+            Тогда «вуки» сгруппируется с другими формами этого же бренда. Если запрос уже на латинице — оставь пустым.
+          </p>
+        </div>
+      </details>
 
       <div className="flex flex-col gap-1.5">
         <label htmlFor="bq-notes" className="text-sm font-medium text-fg">
