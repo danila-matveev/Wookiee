@@ -4,7 +4,14 @@ import { renderHook, waitFor, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 vi.mock('@/lib/supabase', () => ({
-  supabase: { schema: () => ({ from: () => ({}) }) },
+  supabase: {
+    schema: () => ({ from: () => ({}) }),
+    auth: {
+      getSession: vi.fn(async () => ({
+        data: { session: { access_token: 'test-jwt-token' } },
+      })),
+    },
+  },
 }))
 
 import { useTriggerSync, useSyncStatus } from '../use-sync-log'
@@ -34,7 +41,7 @@ afterEach(() => {
 })
 
 describe('useTriggerSync', () => {
-  it('POSTs to /api/marketing/sync/{job} with X-API-Key and returns sync_log_id', async () => {
+  it('POSTs to /api/marketing/sync/{job} with Bearer JWT and returns sync_log_id', async () => {
     ;(fetchMock as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       ok: true,
       json: async () => ({
@@ -58,7 +65,7 @@ describe('useTriggerSync', () => {
     expect(String(url)).toContain('/api/marketing/sync/search-queries')
     expect((init as RequestInit).method).toBe('POST')
     const headers = (init as RequestInit).headers as Record<string, string>
-    expect('X-API-Key' in headers).toBe(true)
+    expect(headers.Authorization).toBe('Bearer test-jwt-token')
 
     expect(mutationResult).toMatchObject({ sync_log_id: 42, status: 'running' })
   })
@@ -99,7 +106,7 @@ describe('useSyncStatus', () => {
     const [url, init] = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls[0]
     expect(String(url)).toContain('/api/marketing/sync/search-queries/status')
     const headers = (init as RequestInit).headers as Record<string, string>
-    expect('X-API-Key' in headers).toBe(true)
+    expect(headers.Authorization).toBe('Bearer test-jwt-token')
 
     expect(result.current.data?.status).toBe('success')
     expect(result.current.data?.rows_processed).toBe(1396)
