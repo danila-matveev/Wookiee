@@ -1,0 +1,18 @@
+# Память ночного агента: какие решения уже принял владелец.
+#
+# Структура одной записи:
+#   - decision_id: dec-YYYY-MM-DD-<краткое-имя>
+#     decided_at: ISO-8601 timestamp (UTC)
+#     decided_by: "owner-via-hygiene-resolve" | "auto-expire"
+#     category: orphan-docs | orphan-imports | unused-dep | dead-code | ...
+#     file_glob: glob-маска или конкретный путь (например "docs/finance-v2-*.md")
+#     pattern: опционально — substring, который должен встретиться (для unused-dep удобно)
+#     answer: archive | keep | delete | skip | <любой из options>
+#     rationale_ru: одно предложение на простом русском — почему так решили
+#     expires_at: ISO-8601 или null (null = навсегда)
+#
+# Файл НЕ очищается автоматически. Растёт линейно (~365 записей в год — терпимо).
+# Если станет слишком тяжело — раз в квартал переносить старые записи в архив.
+
+version: 1
+decisions: []

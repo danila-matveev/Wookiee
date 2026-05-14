@@ -262,3 +262,11 @@ _scratch/
 
 # Codex CLI local config (contains MCP secrets)
 .codex/config.toml
+
+# Nighttime DevOps agent reports — JSON files regenerated nightly, not tracked.
+# .gitkeep preserves the folder so the agent can write into it on fresh clones.
+# Whitelist .hygiene/reports/ (above generic "reports/" rule on line 183 catches it otherwise).
+!.hygiene/reports/
+!.hygiene/reports/.gitkeep
+.hygiene/reports/*.json
+.hygiene/codex_logs/

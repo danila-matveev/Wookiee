@@ -1,0 +1,23 @@
+# Очередь вопросов, на которые ждёт ответа человек.
+#
+# Сюда ночной агент кладёт каждое NEEDS_HUMAN-находку. Команда /hygiene-resolve
+# читает этот файл и проходит по очереди вопрос за вопросом.
+#
+# Структура одной записи:
+#   - id: hygiene-<краткое-имя>          # должно совпадать с finding.id из JSON-отчёта
+#     source_report: .hygiene/reports/hygiene-YYYY-MM-DD.json
+#     enqueued_at: ISO-8601 timestamp (UTC)
+#     expires_at: ISO-8601 (обычно enqueued_at + 7 дней)
+#     category: orphan-docs | dead-code | ...
+#     files: [<paths>]
+#     question_ru: "вопрос на простом русском"
+#     options: ["archive", "keep", "delete"]
+#     default_after_7d: "archive"        # что применить, если человек не ответил за 7 дней
+#     times_surfaced: 1                  # сколько раз попадало в Telegram-дайджест
+#     last_surfaced_at: ISO-8601
+#
+# Истечение срока: scripts/nightly/queue_ops.expire_old_items() применяет default_after_7d
+# и записывает в decisions.yaml с decided_by="auto-expire".
+
+version: 1
+items: []
