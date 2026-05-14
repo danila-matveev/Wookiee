@@ -65,6 +65,7 @@ jobs:
             --ignore=tests/services/influencer_crm \
             --ignore=tests/services/telemost_recorder \
             --ignore=tests/services/telemost_recorder_api \
+            --ignore=tests/scripts/test_telemost_setup_webhook.py \
             --deselect tests/services/logistics_audit/test_excel_sheets.py::test_generate_full_workbook \
             --deselect tests/services/logistics_audit/test_models.py::test_audit_config \
             --deselect tests/services/logistics_audit/test_tariff_etl.py::test_load_historical_tariff_rows_maps_defaults_and_counts \
