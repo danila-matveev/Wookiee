@@ -5,6 +5,7 @@ import {
   fetchSearchQueries,
   fetchSearchQueryStats,
   fetchSearchQueryWeekly,
+  fetchSearchQueryWeeklyByWord,
   fetchSearchQueryProductBreakdown,
   updateSearchQueryStatus,
   type BrandQueryCreate,
@@ -19,6 +20,8 @@ export const searchQueriesKeys = {
   list:   () => [...searchQueriesKeys.all, 'list'] as const,
   stats:  (from: string, to: string) => [...searchQueriesKeys.all, 'stats', from, to] as const,
   weekly: (id: number) => [...searchQueriesKeys.all, 'weekly', id] as const,
+  weeklyByWord: (sw: string, nm: string | null) =>
+    [...searchQueriesKeys.all, 'weekly-by-word', sw, nm ?? ''] as const,
   productBreakdown: (sw: string, from: string, to: string) =>
     [...searchQueriesKeys.all, 'product-breakdown', sw, from, to] as const,
 }
@@ -40,6 +43,19 @@ export function useSearchQueryWeekly(substituteArticleId: number | null) {
     queryFn: () => fetchSearchQueryWeekly(substituteArticleId!),
     staleTime: 60_000,
     enabled: substituteArticleId != null,
+  })
+}
+
+/**
+ * Weekly stats by raw WB Analytics search_word — works uniformly for brands,
+ * nm_ids and WW-codes. Mirrors the JOIN of search_query_stats_aggregated v3.
+ */
+export function useSearchQueryWeeklyByWord(searchWord: string | null, nomenklaturaWb: string | null) {
+  return useQuery({
+    queryKey: searchQueriesKeys.weeklyByWord(searchWord ?? '', nomenklaturaWb),
+    queryFn: () => fetchSearchQueryWeeklyByWord(searchWord!, nomenklaturaWb),
+    staleTime: 60_000,
+    enabled: Boolean(searchWord),
   })
 }
 

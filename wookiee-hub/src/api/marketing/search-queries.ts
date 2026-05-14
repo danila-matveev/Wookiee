@@ -115,6 +115,38 @@ export async function fetchSearchQueryWeekly(substituteArticleId: number): Promi
   return (data ?? []) as SearchQueryWeeklyStat[]
 }
 
+/**
+ * Weekly stats keyed by raw WB Analytics search_word.
+ * Mirrors the JOIN logic of marketing.search_query_stats_aggregated v3
+ * (search_word = query_text OR nomenklatura_wb), giving brands, nm_ids and
+ * WW-codes a single unified source of weekly metrics.
+ *
+ * Field rename: open_card → transitions, add_to_cart → additions
+ * to match the SearchQueryWeeklyStat shape used by the UI.
+ */
+export async function fetchSearchQueryWeeklyByWord(
+  searchWord: string,
+  nomenklaturaWb: string | null,
+): Promise<SearchQueryWeeklyStat[]> {
+  const orFilter = nomenklaturaWb
+    ? `search_word.eq.${searchWord},search_word.eq.${nomenklaturaWb}`
+    : `search_word.eq.${searchWord}`
+  const { data, error } = await supabase
+    .schema('marketing').from('search_queries_weekly')
+    .select('search_word, week_start, frequency, open_card, add_to_cart, orders')
+    .or(orFilter)
+    .order('week_start', { ascending: true })
+  if (error) throw error
+  return ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+    search_query_id: -1, // not applicable when aggregating by raw search_word
+    week_start: r.week_start as string,
+    frequency: Number(r.frequency ?? 0),
+    transitions: Number(r.open_card ?? 0),
+    additions: Number(r.add_to_cart ?? 0),
+    orders: Number(r.orders ?? 0),
+  }))
+}
+
 export async function updateSearchQueryStatus(
   source: 'branded_queries' | 'substitute_articles',
   id: number,

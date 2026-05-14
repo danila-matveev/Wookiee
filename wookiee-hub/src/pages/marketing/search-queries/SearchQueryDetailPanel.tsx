@@ -3,8 +3,7 @@ import { Drawer } from "@/components/crm/ui/Drawer"
 import { Badge } from "@/components/marketing/Badge"
 import { EmptyState } from "@/components/crm/ui/EmptyState"
 import { StatusEditor } from "@/components/marketing/StatusEditor"
-import { useSearchQueries, useSearchQueryWeekly, useUpdateSearchQueryStatus, useSearchQueryProductBreakdown } from "@/hooks/marketing/use-search-queries"
-import { parseUnifiedId } from "@/lib/marketing-helpers"
+import { useSearchQueries, useSearchQueryWeeklyByWord, useUpdateSearchQueryStatus, useSearchQueryProductBreakdown } from "@/hooks/marketing/use-search-queries"
 import type { SearchQueryRow, SearchQueryWeeklyStat, SearchQueryProductBreakdownAgg, StatusUI } from "@/types/marketing"
 import { STATUS_DB_TO_UI } from "@/types/marketing"
 
@@ -33,13 +32,14 @@ export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose }:
   const item: SearchQueryRow | undefined = items.find((i) => i.unified_id === unifiedId)
   const updateStatus = useUpdateSearchQueryStatus()
 
-  let parsed: { source: 'branded_queries' | 'substitute_articles'; id: number } | null = null
-  try { parsed = parseUnifiedId(unifiedId) } catch { parsed = null }
+  // Unified weekly source: same JOIN key as RPC v3
+  // (search_word = query_text OR nomenklatura_wb) — works for brands,
+  // nm_id substitutes and WW-codes alike, no entity_type branching needed.
+  const searchWord = item?.query_text ?? null
+  const nomenklaturaWb = item?.nomenklatura_wb ?? null
 
-  const isSubstitute = parsed?.source === 'substitute_articles'
-  const substituteId = isSubstitute ? parsed!.id : null
-
-  const { data: weekly = [], isLoading: weeklyLoading, error: weeklyError } = useSearchQueryWeekly(substituteId)
+  const { data: weekly = [], isLoading: weeklyLoading, error: weeklyError } =
+    useSearchQueryWeeklyByWord(searchWord, nomenklaturaWb)
 
   // Per-product breakdown — какие WB-карточки открывали/покупали в результате этого запроса/WW-кода.
   // Источник: marketing.search_query_product_breakdown (search_word matches query_text).
@@ -74,7 +74,6 @@ export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose }:
   const sliced = weeklyMode === 'all' ? weekly : rangeWeeks
   const total    = useMemo(() => aggregate(rangeWeeks), [rangeWeeks])
   const allTotal = useMemo(() => aggregate(weekly), [weekly])
-  const isBrand = item?.entity_type === 'brand'
 
   const body = (
     itemsLoading ? (
@@ -196,13 +195,7 @@ export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose }:
           ) : sliced.length === 0 ? (
             <div className="py-6 flex flex-col items-center gap-2">
               <p className="text-xs text-stone-400 italic">
-                {isBrand
-                  ? 'Метрики появятся после Phase 2B'
-                  : !isSubstitute
-                    ? 'Метрики появятся после Phase 2B'
-                    : weeklyMode === 'period'
-                      ? 'Нет данных за этот период'
-                      : 'Нет данных'}
+                {weeklyMode === 'period' ? 'Нет данных за этот период' : 'Нет данных'}
               </p>
             </div>
           ) : (

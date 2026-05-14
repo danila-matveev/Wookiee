@@ -14,6 +14,8 @@ let weeklyFixture: SearchQueryWeeklyStat[] = []
 vi.mock('@/hooks/marketing/use-search-queries', () => ({
   useSearchQueries: () => ({ data: ROWS_FIXTURE, isLoading: false }),
   useSearchQueryWeekly: () => ({ data: weeklyFixture, isLoading: false, error: null }),
+  useSearchQueryWeeklyByWord: () => ({ data: weeklyFixture, isLoading: false, error: null }),
+  useSearchQueryProductBreakdown: () => ({ data: [], isLoading: false, error: null }),
   useUpdateSearchQueryStatus: () => ({
     mutate: mutateMock,
     isPending: false,
@@ -293,7 +295,9 @@ describe('SearchQueryDetailPanel — weekly stats toggle', () => {
     weeklyFixture = []
   })
 
-  it('shows brand empty state "Метрики появятся после Phase 2B" when row is a brand', () => {
+  it('shows unified "Нет данных за этот период" empty state for brands when no weekly rows', () => {
+    // After Phase 2B: brands use the same search_queries_weekly source as nm_id/WW
+    // (see fetchSearchQueryWeeklyByWord) — no special "Phase 2B placeholder" branch.
     weeklyFixture = []
     render(
       <SearchQueryDetailPanel
@@ -305,7 +309,7 @@ describe('SearchQueryDetailPanel — weekly stats toggle', () => {
       { wrapper },
     )
     const weekly = screen.getByTestId('weekly-block')
-    expect(within(weekly).getByText('Метрики появятся после Phase 2B')).toBeInTheDocument()
+    expect(within(weekly).getByText('Нет данных за этот период')).toBeInTheDocument()
   })
 
   it('renders period/all toggle and switches view when clicking "Все"', async () => {
