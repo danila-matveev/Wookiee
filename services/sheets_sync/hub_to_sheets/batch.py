@@ -76,8 +76,15 @@ class SheetsBatchWriter:
     def read_sheet(self, sheet_name: str) -> tuple[list[str], list[list[str]]]:
         """Return (header, data_rows) for a single tab.
 
-        Header is the first row. Data rows are everything below it, normalised
-        to the header's width (shorter rows padded with "").
+        Header is the first row. Every subsequent row is returned in its
+        original sheet position — including fully blank rows — so that the
+        index in the returned list maps 1-to-1 to a physical sheet row
+        (row_index = header_row + 1 + list_offset). Blank rows are still
+        skipped at the anchor-index level (see anchor.build_anchor_index),
+        so they don't generate phantom updates.
+
+        Rows are normalised to the header's width (shorter rows are padded
+        with "" and longer rows are truncated).
         """
         ws = self.spreadsheet.worksheet(sheet_name)
         all_values = ws.get_all_values()
@@ -87,8 +94,6 @@ class SheetsBatchWriter:
         width = len(header)
         rows: list[list[str]] = []
         for row in all_values[1:]:
-            if not any(cell.strip() for cell in row):
-                continue
             if len(row) < width:
                 row = row + [""] * (width - len(row))
             rows.append(row[:width])

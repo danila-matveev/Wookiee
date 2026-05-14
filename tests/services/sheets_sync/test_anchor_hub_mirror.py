@@ -78,3 +78,21 @@ def test_anchor_index_respects_header_row_offset() -> None:
     # If the header is actually on row 2 of the sheet, the data row is row 3.
     idx = build_anchor_index(cols, rows, ["Артикул"], header_row=2)
     assert idx == {("wendy/black",): 3}
+
+
+def test_blank_row_between_records_preserves_offsets() -> None:
+    """Codex P2 regression: a blank row in the middle of a sheet must not
+    shift subsequent row numbers in the anchor index. read_sheet now keeps
+    placeholders for blank rows; build_anchor_index already skips them by
+    anchor-emptiness, so the row that follows still maps to its real row."""
+    cols = ["Артикул", "Модель"]
+    rows = [
+        ["wendy/black", "Wendy"],
+        ["", ""],                 # blank row between two records
+        ["wendy/white", "Wendy"],
+    ]
+    idx = build_anchor_index(cols, rows, ["Артикул"])
+    assert idx == {
+        ("wendy/black",): 2,
+        ("wendy/white",): 4,      # would be 3 if the blank were dropped
+    }
