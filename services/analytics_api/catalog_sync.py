@@ -12,7 +12,6 @@ from __future__ import annotations
 import logging
 import time
 import uuid
-from datetime import datetime, timezone
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -29,7 +28,7 @@ router = APIRouter(prefix="/api/catalog", tags=["catalog"])
 TOOL_SLUG = "catalog-sheets-mirror"
 
 VALID_SHEETS = {s.sheet_name for s in SHEET_SPECS}
-ALL_TOKEN = "all"
+ALL_TOKEN = "all"  # noqa: S105 — sheet selector, not a credential
 
 
 class SyncMirrorRequest(BaseModel):
