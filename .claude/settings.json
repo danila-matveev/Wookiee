@@ -1,4 +1,5 @@
 {
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "permissions": {
     "allow": [
       "Edit(/.claude/**)",
@@ -11,6 +12,17 @@
       "Edit(/Users/danilamatveev/Desktop/Документы/Cursor/Wookiee/.claude/**)",
       "Edit(/.claude/skills/abc-audit/**)"
     ],
+    "deny": [
+      "Bash(rm -rf /)",
+      "Bash(rm -rf ~)",
+      "Bash(sudo rm -rf*)",
+      "Write(**/.env)",
+      "Write(**/.env.*)",
+      "Write(**/*.pem)",
+      "Write(**/*.key)",
+      "Write(**/id_rsa*)",
+      "Write(**/credentials.json)"
+    ],
     "additionalDirectories": [
       "/Users/danilamatveev/Desktop/Документы/Cursor/Wookiee/.claude/skills",
       "/Users/danilamatveev/Desktop/Документы/Cursor/Wookiee/.claude",
@@ -18,5 +30,35 @@
       "/Users/danilamatveev/Desktop/Документы/Cursor/Matveev OS/matveev_os/.claude/agents"
     ]
   },
-  "hooks": {}
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|clear|compact",
+        "hooks": [
+          {"type": "command", "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/hooks/session-start.sh", "timeout": 5}
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {"type": "command", "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/hooks/git-firewall.sh", "timeout": 3}
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {"type": "command", "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/hooks/fs-firewall.sh", "timeout": 3}
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {"type": "command", "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/hooks/session-stop.sh", "timeout": 3}
+        ]
+      }
+    ]
+  }
 }
