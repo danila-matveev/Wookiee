@@ -1,29 +1,36 @@
 import { supabase } from '@/lib/supabase'
-import type { SearchQueryRow, SearchQueryStatsAgg, SearchQueryWeeklyStat } from '@/types/marketing'
+import type {
+  SearchQueryRow,
+  SearchQueryStatsAgg,
+  SearchQueryWeeklyStat,
+  SearchQueryProductBreakdownRow,
+} from '@/types/marketing'
 import { STATUS_UI_TO_DB, type StatusUI } from '@/types/marketing'
 
 export interface SubstituteArticleCreate {
   code: string
   artikul_id: number
-  purpose: string                       // channel slug (validated against marketing.channels)
+  purpose: string                       // Russian "Назначение" from Sheets (Яндекс/Таргет ВК/Adblogger/креаторы/соцсети бренда/блогеры/Telega.in/паблики инст и тг)
   nomenklatura_wb?: string | null
+  sku_label?: string | null             // denormalized article name (Wendy/white)
   campaign_name?: string | null         // creator_ref auto-derived by trigger
 }
 
 export async function createSubstituteArticle(input: SubstituteArticleCreate): Promise<void> {
-  // Soft-validate channel slug
-  const { data: ch, error: chErr } = await supabase
-    .schema('marketing').from('channels')
-    .select('slug').eq('slug', input.purpose).maybeSingle()
-  if (chErr) throw chErr
-  if (!ch) throw new Error(`Неизвестный канал: ${input.purpose}. Добавьте через справочник каналов.`)
+  const code = input.code.trim()
+  const entityType = /^WW\d+/i.test(code) ? 'ww' : 'nm_id'
+  const wwCode = entityType === 'ww' ? code : null
 
   const { error } = await supabase.schema('crm').from('substitute_articles').insert({
-    code: input.code.trim(),
+    code,
+    query_text: code,
+    ww_code: wwCode,
     artikul_id: input.artikul_id,
     purpose: input.purpose,
-    nomenklatura_wb: input.nomenklatura_wb ?? null,
+    nomenklatura_wb: input.nomenklatura_wb ?? (entityType === 'nm_id' ? code : null),
+    sku_label: input.sku_label ?? null,
     campaign_name: input.campaign_name?.trim() || null,
+    entity_type: entityType,
     status: 'active',
   })
   if (error) throw error
@@ -61,6 +68,42 @@ export async function fetchSearchQueryStats(from: string, to: string): Promise<S
     .schema('marketing').rpc('search_query_stats_aggregated', { p_from: from, p_to: to })
   if (error) throw error
   return (data ?? []) as SearchQueryStatsAgg[]
+}
+
+/**
+ * Per-product breakdown: which WB nm_ids were opened/added-to-cart/ordered when users
+ * searched for a given query (brand word, nm_id, or WW-code).
+ * Source: marketing.search_query_product_breakdown (filled by ETL from WB analytics).
+ *
+ * For each entity_type we filter by different search_word value:
+ * - brand: query_text (the brand keyword)
+ * - nm_id: query_text (the nm_id as text matches search_word)
+ * - ww: query_text (WW-code as it appears in WB substitution analytics)
+ */
+export async function fetchSearchQueryProductBreakdown(
+  searchWord: string,
+  from: string,
+  to: string,
+): Promise<SearchQueryProductBreakdownRow[]> {
+  const { data, error } = await supabase
+    .schema('marketing').from('search_query_product_breakdown')
+    .select('*')
+    .eq('search_word', searchWord)
+    .gte('week_start', from)
+    .lte('week_start', to)
+    .order('week_start', { ascending: true })
+  if (error) throw error
+  return ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+    week_start: r.week_start as string,
+    search_word: r.search_word as string,
+    nm_id: r.nm_id as number,
+    artikul_id: r.artikul_id == null ? null : (r.artikul_id as number),
+    sku_label: r.sku_label as string,
+    model_code: r.model_code == null ? null : (r.model_code as string),
+    open_card: Number(r.open_card ?? 0),
+    add_to_cart: Number(r.add_to_cart ?? 0),
+    orders: Number(r.orders ?? 0),
+  }))
 }
 
 export async function fetchSearchQueryWeekly(substituteArticleId: number): Promise<SearchQueryWeeklyStat[]> {

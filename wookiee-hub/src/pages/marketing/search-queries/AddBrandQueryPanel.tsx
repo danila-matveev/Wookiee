@@ -27,15 +27,16 @@ export function AddBrandQueryPanel({ onClose, mode = 'drawer' }: AddBrandQueryPa
       setError('Поисковый запрос обязателен')
       return
     }
-    if (!canonicalBrand.trim()) {
-      setError('Каноническое название бренда обязательно')
-      return
-    }
+
+    // Default canonical brand to the query itself (lowercased) if user left it blank.
+    // Most запросы где запрос === бренд (например "wooki" → "wooki"). Для алиасов
+    // юзер может явно прописать каноническое имя ("шарлот" → "charlotte").
+    const canonical = canonicalBrand.trim() || query.trim().toLowerCase()
 
     try {
       await create.mutateAsync({
         query,
-        canonical_brand: canonicalBrand,
+        canonical_brand: canonical,
         notes: notes.trim() || undefined,
       })
       onClose()
@@ -66,16 +67,19 @@ export function AddBrandQueryPanel({ onClose, mode = 'drawer' }: AddBrandQueryPa
 
       <div className="flex flex-col gap-1.5">
         <label htmlFor="bq-canonical" className="text-sm font-medium text-fg">
-          Канонический бренд <span className="text-danger">*</span>
+          Канонический бренд
         </label>
         <Input
           id="bq-canonical"
           value={canonicalBrand}
           onChange={(e) => setCanonicalBrand(e.target.value)}
-          placeholder="wookiee"
+          placeholder={query.trim() ? query.trim().toLowerCase() : 'оставь пустым — возьмём запрос'}
           autoComplete="off"
         />
-        <p className="text-xs text-muted-foreground">Каноническое название бренда (lowercase, для группировки)</p>
+        <p className="text-xs text-muted-foreground">
+          Опционально. Нужно только для алиасов — например «шарлот» → <span className="font-mono">charlotte</span>,
+          «вуки» → <span className="font-mono">wookiee</span>. Если запрос уже на латинице — оставь пустым.
+        </p>
       </div>
 
       <div className="flex flex-col gap-1.5">

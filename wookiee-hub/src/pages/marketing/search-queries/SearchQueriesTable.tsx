@@ -2,7 +2,6 @@ import { useMemo, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { Search } from "lucide-react"
 import { useSearchQueries, useSearchQueryStats } from "@/hooks/marketing/use-search-queries"
-import { useChannelLabelLookup } from "@/hooks/marketing/use-channels"
 import { useGroupByPref } from "@/hooks/marketing/use-group-by-pref"
 import { QueryStatusBoundary } from "@/components/crm/ui/QueryStatusBoundary"
 import { Badge } from "@/components/marketing/Badge"
@@ -10,44 +9,26 @@ import { SectionHeader } from "@/components/marketing/SectionHeader"
 import { GroupBySelector } from "@/components/marketing/GroupBySelector"
 import { DateRange } from "@/components/marketing/DateRange"
 import { UpdateBar } from "@/components/marketing/UpdateBar"
-import type { SearchQueryRow, SearchQueryStatsAgg } from "@/types/marketing"
+import type { SearchQueryRow, SearchQueryStatsAgg, SearchQueryEntityType } from "@/types/marketing"
 
 const FIRST = '2025-07-28'
 const LAST  = new Date().toISOString().slice(0, 10)
 
-type SqGroupBy = "direction" | "entity_type" | "none"
+type SqGroupBy = "entity_type" | "none"
 
 const SQ_GROUP_BY_OPTIONS = [
-  { value: "direction" as const,   label: "По направлению" },
   { value: "entity_type" as const, label: "По типу сущности" },
   { value: "none" as const,        label: "Без группировки" },
 ] as const
 
-const GROUP_LABELS_DIRECTION: Record<string, { icon: string; label: string }> = {
-  brand:       { icon: "🔤", label: "Брендированные запросы" },
-  external:    { icon: "📦", label: "Артикулы (внешний лид)" },
-  cr_general:  { icon: "👥", label: "Креаторы общие" },
-  cr_personal: { icon: "👤", label: "Креаторы личные" },
-}
-
-const GROUP_LABELS_ENTITY: Record<string, { icon: string; label: string }> = {
-  brand:        { icon: "🔤", label: "Брендированные запросы" },
-  nomenclature: { icon: "🏷️", label: "Номенклатуры" },
-  ww_code:      { icon: "🔗", label: "Подменные артикулы" },
-  other:        { icon: "❔", label: "Прочее" },
+const GROUP_LABELS_ENTITY: Record<SearchQueryEntityType, { icon: string; label: string; order: number }> = {
+  brand: { icon: "🔤", label: "Брендированные запросы",       order: 0 },
+  nm_id: { icon: "🏷️", label: "Артикулы (номенклатура WB)",   order: 1 },
+  ww:    { icon: "🔗", label: "Подменные артикулы (WW)",       order: 2 },
 }
 
 function getGroupKey(row: SearchQueryRow, mode: SqGroupBy): string {
-  if (mode === "direction") return row.group_kind ?? "external"
-  if (mode === "entity_type") {
-    // entity_type is added by view v2 (Phase 2B). Until then derive from row shape.
-    const entityType = (row as unknown as { entity_type?: string }).entity_type
-    if (entityType) return entityType
-    if (row.group_kind === "brand") return "brand"
-    if (row.ww_code) return "ww_code"
-    if (row.nomenklatura_wb) return "nomenclature"
-    return "other"
-  }
+  if (mode === "entity_type") return row.entity_type
   return "_all"
 }
 
@@ -75,11 +56,10 @@ export function SearchQueriesTable() {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const toggle = (g: string) => setCollapsed((c) => ({ ...c, [g]: !c[g] }))
 
-  const { value: groupBy, setValue: setGroupBy } = useGroupByPref<SqGroupBy>('marketing.search-queries', 'direction')
+  const { value: groupBy, setValue: setGroupBy } = useGroupByPref<SqGroupBy>('marketing.search-queries', 'entity_type')
 
   const { data: items = [], isLoading: lq, error: eq } = useSearchQueries()
   const { data: statsRows = [], isLoading: ls, error: es } = useSearchQueryStats(dateFrom, dateTo)
-  const channelLabel = useChannelLabelLookup()
 
   const statsMap = useMemo(() => {
     const m = new Map<string, SearchQueryStatsAgg>()
@@ -94,9 +74,9 @@ export function SearchQueriesTable() {
     [items],
   )
   const uniqueChannels = useMemo(
-    () => Array.from(new Set(items.map((i) => i.purpose).filter((c): c is string => !!c)))
-      .sort((a, b) => channelLabel(a).localeCompare(channelLabel(b), 'ru')),
-    [items, channelLabel],
+    () => Array.from(new Set(items.map((i) => i.purpose).filter((c): c is string => !!c && c !== 'брендированный запрос')))
+      .sort((a, b) => a.localeCompare(b, 'ru')),
+    [items],
   )
 
   const filtered = useMemo(() => {
@@ -132,11 +112,12 @@ export function SearchQueriesTable() {
     }
     for (const arr of map.values()) sortByOrders(arr)
 
-    const labelMap = groupBy === 'direction' ? GROUP_LABELS_DIRECTION : GROUP_LABELS_ENTITY
     return Array.from(map.entries())
-      .sort(([a], [b]) => a.localeCompare(b, 'ru'))
+      .sort(([a], [b]) =>
+        (GROUP_LABELS_ENTITY[a as SearchQueryEntityType]?.order ?? 99)
+        - (GROUP_LABELS_ENTITY[b as SearchQueryEntityType]?.order ?? 99))
       .map(([key, items]) => {
-        const meta = labelMap[key] ?? { icon: '', label: key }
+        const meta = GROUP_LABELS_ENTITY[key as SearchQueryEntityType] ?? { icon: '', label: key }
         return { key, icon: meta.icon, label: meta.label, items }
       })
   }, [filtered, statsMap, groupBy])
@@ -169,7 +150,7 @@ export function SearchQueriesTable() {
             ))}
           </div>
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[11px] text-muted-foreground mr-0.5">Канал:</span>
+            <span className="text-[11px] text-muted-foreground mr-0.5">Назначение:</span>
             {(['all', ...uniqueChannels] as const).map((c) => (
               <button
                 key={c}
@@ -177,7 +158,7 @@ export function SearchQueriesTable() {
                 onClick={() => setQ('channel', c === 'all' ? null : c)}
                 className={`px-2.5 py-1 rounded-full text-[12px] font-medium transition-colors ${channelF === c ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}
               >
-                {c === 'all' ? 'Все' : channelLabel(c)}
+                {c === 'all' ? 'Все' : c}
               </button>
             ))}
           </div>
@@ -201,13 +182,13 @@ export function SearchQueriesTable() {
         </div>
 
         <div className="flex-1 overflow-auto">
-          <div className="overflow-x-auto">
-            <table className="min-w-[1100px] table-fixed tabular-nums w-full">
+          <table className="min-w-[1200px] table-fixed tabular-nums w-full">
               <colgroup>
-                <col className="w-[140px]" />
-                <col className="w-[140px]" />
-                <col className="w-[100px]" />
+                <col className="w-[130px]" />
+                <col className="w-[110px]" />
+                <col className="w-[160px]" />
                 <col className="w-[120px]" />
+                <col className="w-[130px]" />
                 <col className="w-[80px]"  />
                 <col className="w-[80px]"  />
                 <col className="w-[70px]"  />
@@ -219,8 +200,9 @@ export function SearchQueriesTable() {
               <thead className="sticky top-0 bg-muted/95 backdrop-blur-sm border-b border-border z-20">
                 <tr>
                   <th className={TH}>Запрос</th>
+                  <th className={TH}>Нуменклатура</th>
                   <th className={TH}>Артикул</th>
-                  <th className={TH}>Канал</th>
+                  <th className={TH}>Назначение</th>
                   <th className={TH}>Кампания</th>
                   <th className={THR}>Частота</th>
                   <th className={THR}>Перех.</th>
@@ -243,7 +225,6 @@ export function SearchQueriesTable() {
                       collapsed={isCol}
                       onToggle={() => toggle(g.key)}
                       statsMap={statsMap}
-                      channelLabel={channelLabel}
                       onOpen={(unifiedId) => setQ('open', unifiedId)}
                       hideHeader={groupBy === 'none'}
                     />
@@ -252,7 +233,7 @@ export function SearchQueriesTable() {
               </tbody>
               <tfoot className="sticky bottom-0 bg-muted/95 backdrop-blur-sm border-t-2 border-border z-10">
                 <tr>
-                  <td className="px-2 py-2 text-xs font-medium text-foreground" colSpan={4}>Итого · {filtered.length} запросов</td>
+                  <td className="px-2 py-2 text-xs font-medium text-foreground" colSpan={5}>Итого · {filtered.length} запросов</td>
                   <td className="px-2 py-2 text-right tabular-nums text-sm font-medium text-foreground">{fmt(totals.f)}</td>
                   <td className="px-2 py-2 text-right tabular-nums text-sm font-medium text-foreground">{fmt(totals.t)}</td>
                   <td className="px-2 py-2 text-right tabular-nums text-[11px] font-medium text-foreground/80">{pct(totals.a, totals.t)}</td>
@@ -263,7 +244,6 @@ export function SearchQueriesTable() {
                 </tr>
               </tfoot>
             </table>
-          </div>
         </div>
       </div>
     </QueryStatusBoundary>
@@ -277,21 +257,22 @@ interface SectionGroupProps {
   collapsed: boolean
   onToggle: () => void
   statsMap: Map<string, SearchQueryStatsAgg>
-  channelLabel: (slug: string | null | undefined) => string
   onOpen: (unifiedId: string) => void
   hideHeader?: boolean
 }
 
-function SectionGroup({ icon, label, rows, collapsed, onToggle, statsMap, channelLabel, onOpen, hideHeader }: SectionGroupProps) {
+const COL_COUNT = 12
+
+function SectionGroup({ icon, label, rows, collapsed, onToggle, statsMap, onOpen, hideHeader }: SectionGroupProps) {
   const showRows = hideHeader || !collapsed
   return (
     <>
       {!hideHeader && (
-        <SectionHeader icon={icon} label={label} count={rows.length} collapsed={collapsed} onToggle={onToggle} colSpan={11} />
+        <SectionHeader icon={icon} label={label} count={rows.length} collapsed={collapsed} onToggle={onToggle} colSpan={COL_COUNT} />
       )}
       {showRows && rows.length === 0 && (
         <tr>
-          <td colSpan={11} className="px-3 py-6 text-center text-[11px] text-muted-foreground">Нет данных</td>
+          <td colSpan={COL_COUNT} className="px-3 py-6 text-center text-[11px] text-muted-foreground">Нет данных</td>
         </tr>
       )}
       {showRows && rows.map((it) => {
@@ -303,10 +284,11 @@ function SectionGroup({ icon, label, rows, collapsed, onToggle, statsMap, channe
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(it.unified_id) } }}
               className="cursor-pointer transition-colors border-b border-border/50 hover:bg-muted/50 focus:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset">
             <td className="px-2 py-2"><span className="font-mono text-xs text-foreground">{it.query_text}</span></td>
-            <td className="px-2 py-2 text-xs text-muted-foreground truncate">{it.ww_code ?? it.nomenklatura_wb ?? ''}</td>
+            <td className="px-2 py-2 font-mono text-xs text-muted-foreground truncate">{it.nomenklatura_wb ?? ''}</td>
+            <td className="px-2 py-2 text-xs text-muted-foreground truncate">{it.sku_label ?? ''}</td>
             <td className="px-2 py-2">
               {it.purpose
-                ? <Badge color="gray" label={channelLabel(it.purpose)} compact />
+                ? <Badge color="gray" label={it.purpose} compact />
                 : <span className="text-stone-400 text-xs">—</span>}
             </td>
             <td className="px-2 py-2 text-xs text-muted-foreground truncate">{it.campaign_name ?? ''}</td>

@@ -1,24 +1,20 @@
-export type SearchQueryGroup = 'brand' | 'external' | 'cr_general' | 'cr_personal'
 export type SearchQueryStatus = 'active' | 'paused' | 'archived'
-export type SearchQueryEntityType = 'brand' | 'nomenclature' | 'ww_code' | 'other'
+export type SearchQueryEntityType = 'brand' | 'nm_id' | 'ww'
 
 export interface SearchQueryRow {
   unified_id: string                      // 'B1' | 'S42'
   source_id: number
   source_table: 'branded_queries' | 'substitute_articles'
-  group_kind: SearchQueryGroup
-  query_text: string
-  artikul_id: number | null
+  entity_type: SearchQueryEntityType
+  query_text: string                      // brand word / nm_id string / WW-code
   nomenklatura_wb: string | null
+  sku_label: string | null                // article slug (Wendy/white)
+  artikul_id: number | null
   ww_code: string | null
   campaign_name: string | null
-  purpose: string | null
+  purpose: string                         // Russian: брендированный запрос / Яндекс / Таргет ВК / Adblogger / креаторы / соцсети бренда / блогеры / Telega.in / паблики инст и тг
   model_hint: string | null
-  creator_ref: string | null              // Phase 1: always null. Phase 2 will populate.
-  // View v2 (2026-05-13) additive columns — optional for backward compat with v1.
-  channel_label?: string | null           // Resolved label from marketing.channels (e.g. «Креаторы» vs slug 'creators')
-  entity_type?: SearchQueryEntityType | null
-  sku_label?: string | null               // Human-readable artikul string (vs numeric artikul_id)
+  creator_ref: string | null
   status: SearchQueryStatus
   created_at: string
   updated_at: string | null
@@ -29,6 +25,28 @@ export interface SearchQueryStatsAgg {
   frequency: number
   transitions: number
   additions: number
+  orders: number
+}
+
+/** Per-product breakdown row from marketing.search_query_product_breakdown */
+export interface SearchQueryProductBreakdownRow {
+  week_start: string
+  search_word: string
+  nm_id: number
+  artikul_id: number | null
+  sku_label: string
+  model_code: string | null
+  open_card: number
+  add_to_cart: number
+  orders: number
+}
+
+export interface SearchQueryProductBreakdownAgg {
+  nm_id: number
+  sku_label: string
+  model_code: string | null
+  open_card: number
+  add_to_cart: number
   orders: number
 }
 

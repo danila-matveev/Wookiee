@@ -6,6 +6,7 @@ import { useMediaQuery } from "@/hooks/use-media-query"
 import { SearchQueriesTable } from "./search-queries/SearchQueriesTable"
 import { AddBrandQueryPanel } from "./search-queries/AddBrandQueryPanel"
 import { AddWWPanel } from "./search-queries/AddWWPanel"
+import { AddNomenclaturePanel } from "./search-queries/AddNomenclaturePanel"
 import { SearchQueryDetailPanel } from "./search-queries/SearchQueryDetailPanel"
 
 const LAST = new Date().toISOString().slice(0, 10)
@@ -13,11 +14,8 @@ const LAST = new Date().toISOString().slice(0, 10)
 function AddMenu() {
   const [, setParams] = useSearchParams()
 
-  const openBrand = () =>
-    setParams((p) => { p.set('add', 'brand'); return p })
-
-  const openWW = () =>
-    setParams((p) => { p.set('add', 'ww'); return p })
+  const open = (kind: 'brand' | 'nm' | 'ww') =>
+    setParams((p) => { p.set('add', kind); return p })
 
   return (
     <DropdownMenu.Root>
@@ -32,19 +30,25 @@ function AddMenu() {
         <DropdownMenu.Content
           align="end"
           sideOffset={4}
-          className="z-50 bg-popover border border-border rounded-lg shadow-md py-1 min-w-[200px]"
+          className="z-50 bg-popover border border-border rounded-lg shadow-md py-1 min-w-[220px]"
         >
           <DropdownMenu.Item
-            onSelect={openBrand}
+            onSelect={() => open('brand')}
             className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted cursor-pointer outline-none data-[highlighted]:bg-muted"
           >
             Брендированный запрос
           </DropdownMenu.Item>
           <DropdownMenu.Item
-            onSelect={openWW}
+            onSelect={() => open('nm')}
             className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted cursor-pointer outline-none data-[highlighted]:bg-muted"
           >
-            WW-код
+            Артикул WB (номенклатура)
+          </DropdownMenu.Item>
+          <DropdownMenu.Item
+            onSelect={() => open('ww')}
+            className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted cursor-pointer outline-none data-[highlighted]:bg-muted"
+          >
+            Подменка WW
           </DropdownMenu.Item>
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
@@ -54,13 +58,14 @@ function AddMenu() {
 
 type ActivePanel =
   | { kind: 'add-brand' }
+  | { kind: 'add-nm' }
   | { kind: 'add-ww' }
   | { kind: 'detail'; unifiedId: string }
   | null
 
 export function SearchQueriesPage() {
   const [params, setParams] = useSearchParams()
-  const addParam  = params.get('add')   // 'brand' | 'ww' | null
+  const addParam  = params.get('add')   // 'brand' | 'nm' | 'ww' | null
   const openParam = params.get('open')  // unified_id | null
   const dateFrom  = params.get('from') ?? '2026-03-30'
   const dateTo    = params.get('to')   ?? LAST
@@ -69,17 +74,19 @@ export function SearchQueriesPage() {
   const closeAdd    = () => setParams((p) => { p.delete('add');  return p })
   const closeDetail = () => setParams((p) => { p.delete('open'); return p })
 
-  // Add takes precedence over detail when both URL params are set (user just clicked Add).
   const active: ActivePanel =
-    addParam === 'brand'      ? { kind: 'add-brand' } :
-    addParam === 'ww'         ? { kind: 'add-ww' } :
-    openParam                 ? { kind: 'detail', unifiedId: openParam } :
+    addParam === 'brand' ? { kind: 'add-brand' } :
+    addParam === 'nm'    ? { kind: 'add-nm' } :
+    addParam === 'ww'    ? { kind: 'add-ww' } :
+    openParam            ? { kind: 'detail', unifiedId: openParam } :
     null
 
+  // Add forms always use modal Drawer (Save button reliably visible). Detail = split-pane.
   const renderPanel = (mode: 'drawer' | 'inline') => {
     if (!active) return null
-    if (active.kind === 'add-brand') return <AddBrandQueryPanel onClose={closeAdd} mode={mode} />
-    if (active.kind === 'add-ww')    return <AddWWPanel onClose={closeAdd} mode={mode} />
+    if (active.kind === 'add-brand') return <AddBrandQueryPanel onClose={closeAdd} mode="drawer" />
+    if (active.kind === 'add-nm')    return <AddNomenclaturePanel onClose={closeAdd} />
+    if (active.kind === 'add-ww')    return <AddWWPanel onClose={closeAdd} mode="drawer" />
     return (
       <SearchQueryDetailPanel
         unifiedId={active.unifiedId}
@@ -111,13 +118,14 @@ export function SearchQueriesPage() {
         <SearchQueriesTable />
       </div>
 
-      {/* Split-pane on lg+ (≥1024px), Drawer fallback below. */}
-      {isWide && active && (
-        <aside className="w-[420px] shrink-0 border-l border-border bg-card flex flex-col h-full overflow-hidden">
+      {/* Add = always Drawer modal. Detail = split-pane on lg+. */}
+      {(active?.kind === 'add-brand' || active?.kind === 'add-nm' || active?.kind === 'add-ww') && renderPanel('drawer')}
+      {active?.kind === 'detail' && isWide && (
+        <aside className="w-[560px] shrink-0 border-l border-border bg-card flex flex-col h-full overflow-hidden">
           {renderPanel('inline')}
         </aside>
       )}
-      {!isWide && active && renderPanel('drawer')}
+      {active?.kind === 'detail' && !isWide && renderPanel('drawer')}
     </div>
   )
 }

@@ -28,9 +28,11 @@ export function PromoCodesPage() {
     detailId != null    ? { kind: 'detail', promoId: detailId } :
     null
 
+  // Add forms always use modal Drawer (sticky footer with Save button reliably visible regardless
+  // of parent height cascade). Detail panels use split-pane on wide screens for context preservation.
   const renderPanel = (mode: 'drawer' | 'inline') => {
     if (!active) return null
-    if (active.kind === 'add') return <AddPromoPanel onClose={closeAdd} mode={mode} />
+    if (active.kind === 'add') return <AddPromoPanel onClose={closeAdd} mode="drawer" />
     return <PromoDetailPanel promoId={active.promoId} onClose={closeDetail} mode={mode} />
   }
 
@@ -56,13 +58,14 @@ export function PromoCodesPage() {
         <PromoCodesTable />
       </div>
 
-      {/* Split-pane on lg+ (≥1024px), Drawer fallback below. */}
-      {isWide && active && (
-        <aside className="w-[400px] shrink-0 border-l border-border bg-card flex flex-col h-full overflow-hidden">
+      {/* Detail = split-pane on lg+ (preserves table context). Add = always Drawer modal. */}
+      {active?.kind === 'add' && renderPanel('drawer')}
+      {active?.kind === 'detail' && isWide && (
+        <aside className="w-[560px] shrink-0 border-l border-border bg-card flex flex-col h-full overflow-hidden">
           {renderPanel('inline')}
         </aside>
       )}
-      {!isWide && active && renderPanel('drawer')}
+      {active?.kind === 'detail' && !isWide && renderPanel('drawer')}
     </div>
   )
 }
