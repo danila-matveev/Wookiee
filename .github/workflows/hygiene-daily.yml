@@ -43,6 +43,31 @@ jobs:
       - name: Install wrangler
         run: npm i -g wrangler
 
+      - name: Wookiee Workflow Guard — smoke test
+        # Verifies that hook scripts respond as expected (deny on push to main,
+        # allow on safe ops). Failure here means a session broke the hooks —
+        # send Telegram alert so it can be fixed before someone pushes to main.
+        env:
+          CLAUDE_PROJECT_DIR: ${{ github.workspace }}
+          TELEGRAM_ALERTS_BOT_TOKEN: ${{ secrets.TELEGRAM_ALERTS_BOT_TOKEN }}
+          HYGIENE_TELEGRAM_CHAT_ID: ${{ secrets.HYGIENE_TELEGRAM_CHAT_ID }}
+        run: |
+          set +e
+          bash .claude/hooks/smoke-test.sh
+          rc=$?
+          if [ "$rc" -ne 0 ]; then
+            echo "Workflow Guard smoke-test FAILED (exit $rc)"
+            if [ -n "$TELEGRAM_ALERTS_BOT_TOKEN" ] && [ -n "$HYGIENE_TELEGRAM_CHAT_ID" ]; then
+              curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_ALERTS_BOT_TOKEN}/sendMessage" \
+                -d "chat_id=${HYGIENE_TELEGRAM_CHAT_ID}" \
+                -d "text=Wookiee Workflow Guard smoke-test FAILED — хуки сломаны, защита main не работает. См. .claude/hooks/ и https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+                > /dev/null
+            fi
+            # Не валим весь hygiene job — alert уйдёт, hygiene продолжит работу
+          else
+            echo "Workflow Guard smoke-test passed"
+          fi
+
       - name: Run /hygiene via Claude Code action
         uses: anthropics/claude-code-action@v1
         with:
