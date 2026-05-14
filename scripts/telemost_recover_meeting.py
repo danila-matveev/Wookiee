@@ -13,7 +13,6 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
-from pathlib import Path
 
 from services.telemost_recorder_api.config import DATA_DIR
 from services.telemost_recorder_api.db import get_pool
