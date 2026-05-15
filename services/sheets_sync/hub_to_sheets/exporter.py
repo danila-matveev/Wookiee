@@ -43,7 +43,12 @@ def fetch_view(view_name: str) -> tuple[list[str], list[list[str]]]:
 
 
 def _to_cell(value: object) -> str:
-    """Convert a DB value to its Sheets representation (string)."""
+    """Convert a DB value to its Sheets representation (string).
+
+    Multi-line text (\\n, \\r\\n, \\r) is collapsed to a single space — Sheets
+    renders \\n as a soft line break, which blows up row height for long-form
+    fields like "Описание для сайта".
+    """
     if value is None:
         return ""
     if isinstance(value, bool):
@@ -52,7 +57,10 @@ def _to_cell(value: object) -> str:
         if value.is_integer():
             return str(int(value))
         return str(value)
-    return str(value)
+    s = str(value)
+    s = s.replace("\r\n", "\n").replace("\r", "\n")
+    s = " ".join(part.strip() for part in s.split("\n") if part.strip())
+    return s
 
 
 def fetch_views(view_names: Sequence[str]) -> dict[str, tuple[list[str], list[list[str]]]]:
