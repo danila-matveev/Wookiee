@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 import threading
 import time
 import traceback
@@ -121,12 +122,23 @@ class TelegramAlertHandler(logging.Handler):
             pass
 
 
-def install_telegram_alerts(service: str = "telemost-api") -> bool:
+def install_telegram_alerts(service: str = "telemost-api", *, force: bool = False) -> bool:
     """Attach a Telegram alert handler to the root logger.
 
     Returns True if installed, False if env not configured (no-op, logs hint).
     Safe to call multiple times — won't double-install.
+
+    No-op under pytest unless `force=True`. `app.py` calls this at import time,
+    so any test that imports from the API package would otherwise leave the
+    handler on the root logger for the whole pytest session and turn every
+    mocked `logger.error(...)` into a real Telegram alert. Detect via
+    `sys.modules` (works at import time) and `PYTEST_CURRENT_TEST` (set
+    during execution). Tests that want to exercise install behaviour pass
+    force=True explicitly.
     """
+    if not force and ("pytest" in sys.modules or "PYTEST_CURRENT_TEST" in os.environ):
+        return False
+
     root = logging.getLogger()
     for h in root.handlers:
         if isinstance(h, TelegramAlertHandler):

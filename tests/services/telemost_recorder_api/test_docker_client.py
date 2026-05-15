@@ -94,6 +94,112 @@ async def test_monitor_handles_timeout():
     assert result["timed_out"] is True
 
 
+def test_spawn_mounts_storage_state_when_path_exists(tmp_path):
+    """When TELEMOST_STORAGE_STATE_PATH points to an existing file, the recorder
+    container gets a read-only mount + the env var pointing at the in-container
+    path, so Playwright loads it as authenticated context."""
+    storage_state_file = tmp_path / "storage_state.json"
+    storage_state_file.write_text('{"cookies": [], "origins": []}', encoding="utf-8")
+
+    captured: dict = {}
+
+    def fake_run(image, **kwargs):
+        captured["kwargs"] = kwargs
+        m = MagicMock()
+        m.id = "container_with_state"
+        return m
+
+    fake_client = MagicMock()
+    fake_client.containers.run = fake_run
+
+    with patch(
+        "services.telemost_recorder_api.docker_client._get_client",
+        return_value=fake_client,
+    ), patch(
+        "services.telemost_recorder_api.docker_client.TELEMOST_STORAGE_STATE_PATH",
+        str(storage_state_file),
+    ):
+        spawn_recorder_container(
+            meeting_id=uuid4(),
+            meeting_url="https://telemost.yandex.ru/j/abc",
+            data_dir="/app/data/telemost",
+        )
+
+    volumes = captured["kwargs"]["volumes"]
+    assert str(storage_state_file) in volumes, "storage_state file must be bind-mounted"
+    bind_info = volumes[str(storage_state_file)]
+    assert bind_info["mode"] == "ro", "storage_state must be read-only"
+    assert bind_info["bind"] == "/app/data/telemost_storage_state.json"
+    env = captured["kwargs"]["environment"]
+    assert env["TELEMOST_STORAGE_STATE_PATH"] == "/app/data/telemost_storage_state.json"
+
+
+def test_spawn_falls_back_to_guest_when_storage_state_missing(tmp_path, caplog):
+    """Configured path that doesn't exist must log a warning and fall back to
+    guest mode (no mount, no env). A half-rotated cookie must not silently kill
+    all recordings."""
+    missing_file = tmp_path / "does_not_exist.json"
+    captured: dict = {}
+
+    def fake_run(image, **kwargs):
+        captured["kwargs"] = kwargs
+        m = MagicMock()
+        m.id = "container_guest"
+        return m
+
+    fake_client = MagicMock()
+    fake_client.containers.run = fake_run
+
+    with patch(
+        "services.telemost_recorder_api.docker_client._get_client",
+        return_value=fake_client,
+    ), patch(
+        "services.telemost_recorder_api.docker_client.TELEMOST_STORAGE_STATE_PATH",
+        str(missing_file),
+    ), caplog.at_level("WARNING"):
+        spawn_recorder_container(
+            meeting_id=uuid4(),
+            meeting_url="https://telemost.yandex.ru/j/abc",
+            data_dir="/app/data/telemost",
+        )
+
+    volumes = captured["kwargs"]["volumes"]
+    assert str(missing_file) not in volumes
+    env = captured["kwargs"]["environment"]
+    assert "TELEMOST_STORAGE_STATE_PATH" not in env
+    assert any("falling back to guest mode" in r.message for r in caplog.records)
+
+
+def test_spawn_guest_mode_when_storage_state_unset():
+    """No env var set = pure guest mode (legacy behaviour preserved)."""
+    captured: dict = {}
+
+    def fake_run(image, **kwargs):
+        captured["kwargs"] = kwargs
+        m = MagicMock()
+        m.id = "container_guest"
+        return m
+
+    fake_client = MagicMock()
+    fake_client.containers.run = fake_run
+
+    with patch(
+        "services.telemost_recorder_api.docker_client._get_client",
+        return_value=fake_client,
+    ), patch(
+        "services.telemost_recorder_api.docker_client.TELEMOST_STORAGE_STATE_PATH",
+        "",
+    ):
+        spawn_recorder_container(
+            meeting_id=uuid4(),
+            meeting_url="https://telemost.yandex.ru/j/abc",
+            data_dir="/app/data/telemost",
+        )
+
+    env = captured["kwargs"]["environment"]
+    assert "TELEMOST_STORAGE_STATE_PATH" not in env
+
+
 def test_list_orphan_containers():
     c1 = MagicMock()
     c1.id = "container_1"

@@ -48,7 +48,9 @@ def test_install_skips_when_env_missing(monkeypatch):
         if isinstance(h, TelegramAlertHandler):
             root.removeHandler(h)
     try:
-        assert install_telegram_alerts() is False
+        # force=True bypasses the pytest no-op gate so this test can verify
+        # the missing-env branch.
+        assert install_telegram_alerts(force=True) is False
         installed = [h for h in root.handlers if isinstance(h, TelegramAlertHandler)]
         assert installed == []
     finally:
@@ -65,12 +67,32 @@ def test_install_attaches_handler_when_env_present(monkeypatch):
         if isinstance(h, TelegramAlertHandler):
             root.removeHandler(h)
     try:
-        assert install_telegram_alerts(service="test-svc") is True
+        assert install_telegram_alerts(service="test-svc", force=True) is True
         installed = [h for h in root.handlers if isinstance(h, TelegramAlertHandler)]
         assert len(installed) == 1
         # Idempotent
-        assert install_telegram_alerts(service="test-svc") is True
+        assert install_telegram_alerts(service="test-svc", force=True) is True
         assert len([h for h in root.handlers if isinstance(h, TelegramAlertHandler)]) == 1
+    finally:
+        for h in list(root.handlers):
+            if isinstance(h, TelegramAlertHandler):
+                root.removeHandler(h)
+
+
+def test_install_is_noop_under_pytest_without_force(monkeypatch):
+    """Default call from app.py at import time must not install the handler
+    when pytest is imported — otherwise every test that triggers an
+    ERROR-level log would fire a real Telegram message."""
+    monkeypatch.setenv("TELEGRAM_ALERTS_BOT_TOKEN", "tok")
+    monkeypatch.setenv("ADMIN_CHAT_ID", "42")
+    root = logging.getLogger()
+    for h in list(root.handlers):
+        if isinstance(h, TelegramAlertHandler):
+            root.removeHandler(h)
+    try:
+        assert install_telegram_alerts(service="test-svc") is False
+        installed = [h for h in root.handlers if isinstance(h, TelegramAlertHandler)]
+        assert installed == []
     finally:
         for h in list(root.handlers):
             if isinstance(h, TelegramAlertHandler):
