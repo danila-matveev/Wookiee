@@ -15,10 +15,17 @@ from uuid import UUID
 import docker
 from docker.errors import NotFound
 
+from services.telemost_recorder_api.config import TELEMOST_STORAGE_STATE_PATH
+
 logger = logging.getLogger(__name__)
 
 _RECORDER_IMAGE = "telemost_recorder:latest"
 _NETWORK = os.getenv("TELEMOST_RECORDER_NETWORK", "n8n-docker-caddy_default")
+
+# Path inside the recorder container where the host storage_state.json gets
+# bind-mounted. Kept in /app/data so it shares the same writable volume root
+# as the rest of the recorder's runtime files.
+_RECORDER_STORAGE_STATE_PATH = "/app/data/telemost_storage_state.json"
 
 _client: Optional[docker.DockerClient] = None
 
@@ -85,6 +92,28 @@ def spawn_recorder_container(
         f"/app/data/telemost/{meeting_id}",
     ]
 
+    volumes: dict = {
+        data_dir: {"bind": "/app/data/telemost", "mode": "rw"},
+    }
+    extra_env: dict[str, str] = {}
+    # Mount Yandex 360 Business storage_state read-only so the recorder joins
+    # Telemost as an authenticated participant. Missing/blank var = guest mode
+    # (legacy behaviour). Missing file logs a warning and falls back to guest
+    # so a half-rotated cookie doesn't silently take down all recordings.
+    if TELEMOST_STORAGE_STATE_PATH:
+        if os.path.isfile(TELEMOST_STORAGE_STATE_PATH):
+            volumes[TELEMOST_STORAGE_STATE_PATH] = {
+                "bind": _RECORDER_STORAGE_STATE_PATH,
+                "mode": "ro",
+            }
+            extra_env["TELEMOST_STORAGE_STATE_PATH"] = _RECORDER_STORAGE_STATE_PATH
+        else:
+            logger.warning(
+                "TELEMOST_STORAGE_STATE_PATH=%s is set but file is missing — "
+                "falling back to guest mode. Re-run scripts/telemost_export_cookies.py.",
+                TELEMOST_STORAGE_STATE_PATH,
+            )
+
     container = client.containers.run(
         _RECORDER_IMAGE,
         command=cmd,
@@ -93,12 +122,11 @@ def spawn_recorder_container(
             "telemost.meeting_id": str(meeting_id),
             "telemost.role": "recorder",
         },
-        volumes={
-            data_dir: {"bind": "/app/data/telemost", "mode": "rw"},
-        },
+        volumes=volumes,
         environment={
             "TELEMOST_HEADLESS": "true" if headless else "false",
             **{k: os.environ[k] for k in _RECORDER_ENV_KEYS if k in os.environ},
+            **extra_env,
         },
         network=_NETWORK,
         remove=False,

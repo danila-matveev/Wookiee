@@ -14,6 +14,14 @@ SCREENSHOT_INTERVAL: int = int(os.getenv("TELEMOST_SCREENSHOT_INTERVAL", "30"))
 # Set TELEMOST_HEADLESS=false only for local debugging where you need to see the browser.
 HEADLESS: bool = os.getenv("TELEMOST_HEADLESS", "true").lower() != "false"
 
+# Path to a Playwright storage_state JSON (cookies + localStorage) for a
+# pre-authenticated Yandex 360 Business user. When set, the recorder joins
+# Telemost as that authenticated participant instead of an anonymous guest —
+# Yandex does not subject authenticated participants to the guest anti-bot
+# kick (~30-300s redirect to homepage) that was breaking recordings.
+# Empty/unset = legacy guest mode (kept for tests and local debugging).
+STORAGE_STATE_PATH: str = os.getenv("TELEMOST_STORAGE_STATE_PATH", "")
+
 # Phase 2 — audio + transcription
 SPEECHKIT_API_KEY: str = os.getenv("SPEECHKIT_API_KEY", "")
 YANDEX_FOLDER_ID: str = os.getenv("YANDEX_FOLDER_ID", "")

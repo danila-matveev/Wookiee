@@ -7,7 +7,7 @@ from typing import Optional
 
 from playwright.async_api import Browser, BrowserContext, Page, async_playwright
 
-from services.telemost_recorder.config import BROWSER_FLAGS, HEADLESS
+from services.telemost_recorder.config import BROWSER_FLAGS, HEADLESS, STORAGE_STATE_PATH
 
 # Injected into every page before any site script runs.
 # Intercepts all three ways JS can navigate to a custom protocol URL.
@@ -119,7 +119,15 @@ async def launch_browser() -> AsyncIterator[tuple[Browser, BrowserContext, Page]
             env=env,
             args=BROWSER_FLAGS,
         )
-        context = await browser.new_context()
+        # When STORAGE_STATE_PATH points to a Playwright storage_state JSON,
+        # the context inherits cookies + localStorage of a real Yandex 360
+        # Business user. Telemost then treats us as an authenticated participant
+        # and skips the guest anti-bot kick. Missing file → fall back to guest
+        # mode (legacy behaviour; mainly for tests and local dev).
+        context_kwargs: dict = {}
+        if STORAGE_STATE_PATH and os.path.exists(STORAGE_STATE_PATH):
+            context_kwargs["storage_state"] = STORAGE_STATE_PATH
+        context = await browser.new_context(**context_kwargs)
         # Block btn:// protocol navigations before any page script runs.
         # Telemost automatically does window.location.href='btn://...' on load to
         # try opening the native app — this triggers a macOS/Linux OS dialog.

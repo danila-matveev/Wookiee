@@ -289,6 +289,15 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ../data/telemost:/app/data/telemost
+      # Bind-mount the Yandex 360 Business storage_state at the same path
+      # inside the API container as on the host. The API both reads the file
+      # (os.path.isfile check) AND passes its path through docker.sock to
+      # spawned recorder containers — they bind-mount it from the host using
+      # the same path. One env var (TELEMOST_STORAGE_STATE_PATH in .env)
+      # serves both layers as long as host and container paths match.
+      # Skip the line below if no storage_state has been deployed yet —
+      # recorder falls back to guest mode and logs a warning.
+      - /opt/wookiee/secrets:/opt/wookiee/secrets:ro
 
     networks:
       - n8n-docker-caddy_default

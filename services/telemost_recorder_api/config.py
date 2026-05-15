@@ -103,3 +103,12 @@ DATA_DIR: Path = _PROJECT_ROOT / "data" / "telemost"
 # TELEMOST_HOST_DATA_DIR=/home/danila/projects/wookiee/data/telemost.
 HOST_DATA_DIR: Path = Path(os.getenv("TELEMOST_HOST_DATA_DIR", str(DATA_DIR)))
 ASSETS_DIR: Path = Path(__file__).resolve().parent / "assets"
+
+# Playwright storage_state JSON for a pre-authenticated Yandex 360 Business
+# user (e.g. recorder@wookiee.shop). When set, the API mounts this file
+# read-only into each spawned recorder container so the bot joins Telemost
+# as that authenticated participant — bypassing the guest anti-bot kick.
+# Empty/unset = legacy guest mode. Path is a *host* path (must be readable
+# by the host docker daemon when bind-mounting into recorder containers).
+# Generate via scripts/telemost_export_cookies.py, then copy to the server.
+TELEMOST_STORAGE_STATE_PATH: str = os.getenv("TELEMOST_STORAGE_STATE_PATH", "").strip()
