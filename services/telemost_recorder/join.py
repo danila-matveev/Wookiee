@@ -36,6 +36,7 @@ def validate_url(url: str) -> bool:
 class ScreenState(str, Enum):
     CONTINUE_IN_BROWSER = "CONTINUE_IN_BROWSER"
     NAME_FORM = "NAME_FORM"
+    AUTH_PRE_JOIN = "AUTH_PRE_JOIN"
     WAITING_ROOM = "WAITING_ROOM"
     IN_MEETING = "IN_MEETING"
     MEETING_NOT_FOUND = "MEETING_NOT_FOUND"
@@ -66,6 +67,15 @@ _STATE_SELECTORS: dict[ScreenState, list[str]] = {
         "input[placeholder*='имя']",
         "input[placeholder*='name']",
         "input[type='text']",
+    ],
+    # Authenticated pre-join: Yandex 360 user logged in via storage_state lands
+    # on a screen with their avatar/name/email and a single "Подключиться"
+    # button — no name input. Detect by the e-mail row + Подключиться button
+    # combo, so guests on NAME_FORM (which also has a Подключиться submit) are
+    # not misclassified.
+    ScreenState.AUTH_PRE_JOIN: [
+        "text=recorder@wookiee.shop",
+        "text=@wookiee.shop",
     ],
     ScreenState.CONTINUE_IN_BROWSER: [
         "[data-testid='continue-button']",
@@ -451,6 +461,22 @@ async def _execute_join(
         # Use _wait_for_joined instead of _wait_for_known_state: the name input
         # stays visible in the DOM while the waiting-room overlay appears on top,
         # so a generic poll would return NAME_FORM immediately and miss WAITING_ROOM.
+        state = await _wait_for_joined(page, timeout=JOIN_TIMEOUT)
+
+    if state == ScreenState.AUTH_PRE_JOIN:
+        # Authenticated Yandex 360 user — Telemost skips the name input and
+        # shows a single "Подключиться" button under the user's avatar.
+        # Just click it; selectors mirror NAME_FORM since the submit button
+        # carries the same labels.
+        join_btn = page.locator(
+            "[data-testid='enter-conference-button'], "
+            "[data-testid='join-button'], "
+            "button:has-text('Подключиться'), "
+            "button:has-text('Присоединиться'), "
+            "button:has-text('Войти'), "
+            "button:has-text('Join')"
+        ).first
+        await join_btn.click()
         state = await _wait_for_joined(page, timeout=JOIN_TIMEOUT)
 
     if state == ScreenState.WAITING_ROOM:
