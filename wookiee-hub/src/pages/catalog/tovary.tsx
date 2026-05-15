@@ -40,6 +40,7 @@ import { razmerOrder } from "@/lib/catalog/size-utils"
 import { SkuDrawer } from "./sku-card"
 // W10.26 — drawer склейки по клику на чип в новой колонке «Склейка».
 import { SkleykaDrawer } from "./skleyka-drawer"
+import { SyncMirrorButton } from "@/components/catalog/sync-mirror-button"
 
 // W1.5 — Default per-column widths (px) for the SKU registry (Товары) page.
 // W9.5 — расширено новыми ключами из TOVARY_COLUMNS_FULL (column-catalogs).
@@ -1427,11 +1428,16 @@ export function TovaryPage() {
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Header */}
       <div className="px-6 pt-6 pb-3 shrink-0">
-        <div className="text-[11px] uppercase tracking-wider text-stone-400 mb-1">Каталог</div>
-        <h1 className="text-3xl text-stone-900 cat-font-serif">SKU / Товары</h1>
-        <div className="text-sm text-stone-500 mt-1">
-          {data?.length ?? 0} SKU
-          {groupBy !== "none" && ` · ${groups.length} групп`}
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <div className="text-[11px] uppercase tracking-wider text-stone-400 mb-1">Каталог</div>
+            <h1 className="text-3xl text-stone-900 cat-font-serif">SKU / Товары</h1>
+            <div className="text-sm text-stone-500 mt-1">
+              {data?.length ?? 0} SKU
+              {groupBy !== "none" && ` · ${groups.length} групп`}
+            </div>
+          </div>
+          <SyncMirrorButton />
         </div>
       </div>
 

@@ -1,13 +1,12 @@
--- Migration 030: fix_log table for Nighttime DevOps Agent
+-- Migration 031: fix_log table for Nighttime DevOps Agent
 --
 -- Wave B5 of Nighttime DevOps Agent (Wave E2 will write to this table,
 -- rollback-test.yml will read from it).
 --
 -- Plan: docs/superpowers/plans/2026-05-14-nighttime-devops-agent-impl.md §4.1
--- Plan originally named this 014_fix_log.sql in database/sku/migrations/,
--- but the canonical SQL migration path in this repo is database/migrations/
--- with sequentially numbered files. Current latest is 029_audit_on_dictionaries.sql,
--- so this is 030.
+-- Renumbered from 030 → 031 because PR #137 (catalog_export_views) merged
+-- to main and claimed 030 first. Same DDL, table already applied as 031
+-- to production Supabase 2026-05-14.
 --
 -- Purpose: every fix the night agent applies is logged here with the exact
 -- rollback command. The weekly rollback-test.yml workflow verifies that those

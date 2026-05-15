@@ -18,6 +18,7 @@ import { FilterBar } from "@/components/catalog/ui/filter-bar"
 import { resolveSwatch } from "@/lib/catalog/color-utils"
 import { ColorCard } from "./color-card"
 import { CvetEditModal } from "./colors-edit"
+import { SyncMirrorButton } from "@/components/catalog/sync-mirror-button"
 
 // ─── Hooks ───────────────────────────────────────────────────────────────
 
@@ -302,12 +303,15 @@ function ColorsView({ onOpen }: { onOpen: (code: string) => void }) {
               {data?.length ?? 0} цветов · группировка по семейству
             </div>
           </div>
-          <button
-            onClick={() => setEditingRow("new")}
-            className="px-3 py-1.5 text-xs text-white bg-stone-900 hover:bg-stone-800 rounded-md flex items-center gap-1.5"
-          >
-            <Plus className="w-3.5 h-3.5" /> Новый цвет
-          </button>
+          <div className="flex items-center gap-2">
+            <SyncMirrorButton />
+            <button
+              onClick={() => setEditingRow("new")}
+              className="px-3 py-1.5 text-xs text-white bg-stone-900 hover:bg-stone-800 rounded-md flex items-center gap-1.5"
+            >
+              <Plus className="w-3.5 h-3.5" /> Новый цвет
+            </button>
+          </div>
         </div>
       </div>
 

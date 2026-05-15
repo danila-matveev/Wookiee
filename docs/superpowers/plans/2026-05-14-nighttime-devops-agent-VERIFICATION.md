@@ -22,7 +22,7 @@
 | 1 | `58ed9c3c` | docs: 1051-строчный план реализации |
 | 2 | `a4467f9e` | Phase 0 foundation (старая версия) |
 | 3 | `3cc1fda6` | Wave B1 — `.hygiene/` + `shared/hygiene/` |
-| 4 | `5ee1f29e` | Wave B5 — 6 cron workflows + Supabase миграция 030 |
+| 4 | `5ee1f29e` | Wave B5 — 6 cron workflows + Supabase миграция 031 |
 | 5 | `fa39180d` | Wave B3 — `/code-quality-scan` + Codex sidecar |
 | 6 | `c3b97bbe` | Wave B4 — `/test-coverage-check` + `/heartbeat` + `telegram_digest` |
 | 7 | `47736e51` | Wave B2 — `/night-coordinator` + `/hygiene-resolve` + восстановление `/hygiene-autofix` |
@@ -77,7 +77,7 @@ scripts/nightly/
 .codex/skills/, .cursor/skills/  → зеркала для cross-platform parity
 
 database/migrations/
-  030_fix_log.sql           → таблица fix_log + RLS service_role-only
+  031_fix_log.sql           → таблица fix_log + RLS service_role-only
 ```
 
 ---
@@ -122,7 +122,7 @@ $ python3 -m pytest tests/shared/hygiene/ tests/shared/test_codex_sidecar.py \
 
 3. **Concurrency group `night-devops`** прописан во всех 6 workflows — гарантия что два запуска одной ночи не наступят друг другу на пятки.
 
-4. **Supabase migration 030** содержит:
+4. **Supabase migration 031** содержит:
    - `CREATE TABLE fix_log (...)`
    - `ALTER TABLE fix_log ENABLE ROW LEVEL SECURITY`
    - `CREATE POLICY ... TO service_role` (anon заблокирован)

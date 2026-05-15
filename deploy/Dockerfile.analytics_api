@@ -1,4 +1,6 @@
 FROM python:3.11-slim
+# rebuild marker: w10-sheets.3 — add /api/catalog/sync-mirror route
+#                 (services/sheets_sync/hub_to_sheets is already COPY'd below).
 
 WORKDIR /app
 

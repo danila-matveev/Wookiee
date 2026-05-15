@@ -14,6 +14,7 @@ import { StatusBadge } from "@/components/catalog/ui/status-badge"
 import { CellText } from "@/components/catalog/ui/cell-text"
 import { relativeDate } from "@/lib/catalog/color-utils"
 import { SkleykaCard } from "./skleyka-card"
+import { SyncMirrorButton } from "@/components/catalog/sync-mirror-button"
 
 type ChannelFilter = "all" | "wb" | "ozon"
 
@@ -151,13 +152,16 @@ function SkleykiList({ onOpen, onCreateClick }: SkleykiListProps) {
               До {MAX_SKU} SKU в склейке. {counts.active} активных, {counts.empty} пустых.
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onCreateClick}
-            className="px-3 py-1.5 text-xs text-white bg-stone-900 hover:bg-stone-800 rounded-md flex items-center gap-1.5"
-          >
-            <Plus className="w-3.5 h-3.5" /> Создать склейку
-          </button>
+          <div className="flex items-center gap-2">
+            <SyncMirrorButton />
+            <button
+              type="button"
+              onClick={onCreateClick}
+              className="px-3 py-1.5 text-xs text-white bg-stone-900 hover:bg-stone-800 rounded-md flex items-center gap-1.5"
+            >
+              <Plus className="w-3.5 h-3.5" /> Создать склейку
+            </button>
+          </div>
         </div>
       </div>
 

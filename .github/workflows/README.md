@@ -34,7 +34,7 @@ Five workflows run sequentially every night, all sharing `concurrency.group: nig
 
 ### Rollback verification
 
-`rollback-test.yml` runs **weekly** (cron `0 6 * * 0`, Sundays 06:00 UTC). It picks the 3 most recent rows from the Supabase `fix_log` table (migration `database/migrations/030_fix_log.sql`), simulates `git revert` in a throwaway branch, runs CI against the reverted tree, and alerts via Telegram if any rollback fails. This is the contract behind "every night-agent fix is one command away from being undone".
+`rollback-test.yml` runs **weekly** (cron `0 6 * * 0`, Sundays 06:00 UTC). It picks the 3 most recent rows from the Supabase `fix_log` table (migration `database/migrations/031_fix_log.sql`), simulates `git revert` in a throwaway branch, runs CI against the reverted tree, and alerts via Telegram if any rollback fails. This is the contract behind "every night-agent fix is one command away from being undone".
 
 ### Concurrency model
 
