@@ -1,0 +1,70 @@
+name: Heartbeat (Night DevOps)
+
+# Wave B5 of Nighttime DevOps Agent. Final step of the night cycle.
+# Sends one short Telegram summary at 05:00 UTC. Quiet if zero activity
+# (.hygiene/config.yaml: heartbeat_quiet_if_zero: true).
+#
+# Plan: docs/superpowers/plans/2026-05-14-nighttime-devops-agent-impl.md §5.6
+
+on:
+  schedule:
+    - cron: "0 5 * * *"  # 05:00 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: night-devops
+  cancel-in-progress: false
+
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install heartbeat deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install psycopg2-binary python-dotenv pyyaml requests
+
+      - name: Run /heartbeat via Claude Code action
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: "/heartbeat"
+          claude_args: "--allowed-tools Bash,Read,Skill"
+        env:
+          TELEGRAM_ALERTS_BOT_TOKEN: ${{ secrets.TELEGRAM_ALERTS_BOT_TOKEN }}
+          HYGIENE_TELEGRAM_CHAT_ID: ${{ secrets.HYGIENE_TELEGRAM_CHAT_ID }}
+          POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
+          POSTGRES_PORT: ${{ secrets.POSTGRES_PORT }}
+          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          HYGIENE_ENV: github_actions
+
+      - name: Telegram alert on failure
+        if: failure()
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_ALERTS_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.HYGIENE_TELEGRAM_CHAT_ID }}
+        run: |
+          if [ -n "$TG_TOKEN" ] && [ -n "$TG_CHAT" ]; then
+            curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+              -d "chat_id=${TG_CHAT}" \
+              -d "text=[wookiee night] heartbeat 05:00 UTC упал — сводку за ночь не отправил. См. https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+              > /dev/null
+          fi

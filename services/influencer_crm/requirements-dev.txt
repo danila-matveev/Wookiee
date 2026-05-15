@@ -1,3 +1,11 @@
 -r requirements.txt
 pytest>=9.0
 httpx>=0.28
+
+# Static-analysis stack — consumed by .claude/skills/code-quality-scan (Wave B3
+# of the Nighttime DevOps Agent, plan 2026-05-14). Kept here rather than a new
+# top-level dev-requirements file to avoid touching CI bootstrap.
+mypy>=1.10
+vulture>=2.10
+pipdeptree>=2.16
+pydantic>=2.5

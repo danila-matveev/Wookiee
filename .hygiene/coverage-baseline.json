@@ -1,0 +1,5 @@
+{
+  "_comment": "Stub baseline. First successful /test-coverage-check run will overwrite percent_covered with the measured value. See scripts/nightly/test_coverage_check.py and .claude/skills/test-coverage-check/SKILL.md.",
+  "percent_covered": null,
+  "updated_at": null
+}

@@ -1,0 +1,47 @@
+# Конфигурация ночного DevOps-агента.
+#
+# Это управляющий файл. Меняется только владельцем вручную через PR.
+# Подробности и смысл каждой опции — в docs/superpowers/plans/2026-05-14-nighttime-devops-agent-impl.md (§3.5).
+#
+# Если что-то непонятно — открой README в этой папке, там простыми словами.
+
+version: 1
+
+# Главный рубильник. Пока тут true — ночной агент НЕ открывает PR и НЕ пушит изменения.
+# Он только собирает JSON-отчёты и шлёт предпросмотр в Telegram.
+# Первая неделя жизни системы — обязательно true (калибровка).
+# Чтобы включить реальные ночные авто-фиксы — поменять на false в отдельном PR.
+read_only: true
+
+# Пороги.
+coverage_min_pct: 60          # если покрытие тестами упадёт ниже — мердж блокируется
+codex_confidence_auto: 0.90   # >= → автофикс
+codex_confidence_queue: 0.60  # >= → в очередь вопросов, < → выбросить
+
+# Авто-протухание.
+queue_expire_days: 7          # вопрос висит в queue.yaml не дольше недели → применяется безопасный дефолт
+reports_retention_days: 30    # JSON-отчёты в .hygiene/reports/ старше 30 дней удаляются
+
+# Утреннее короткое сообщение.
+heartbeat_enabled: true
+heartbeat_quiet_if_zero: true # если за ночь ноль находок и ноль фиксов — Telegram молчит
+
+# Лимиты токенов на каждый скилл. Превышение → graceful fail + Telegram alert.
+token_budgets:
+  hygiene: 150000
+  code_quality_scan: 250000
+  test_coverage_check: 50000
+  night_coordinator: 100000
+  heartbeat: 20000
+
+# Telegram. Сам токен бота — в .env (через GH Actions secrets), сюда только chat_id env-имя.
+telegram:
+  chat_id_env: HYGIENE_TELEGRAM_CHAT_ID
+  bot_token_env: TELEGRAM_ALERTS_BOT_TOKEN
+
+# Параметры PR, который агент будет открывать (когда read_only станет false).
+pr:
+  base_branch: main
+  branch_prefix: night-devops/
+  auto_merge: true
+  merge_method: squash

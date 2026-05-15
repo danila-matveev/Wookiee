@@ -1,0 +1,104 @@
+name: Rollback Test (Night DevOps)
+
+# Wave B5 of Nighttime DevOps Agent.
+# Weekly verification that the latest fix_log entries are actually reversible.
+# Picks the 3 most recent fix_log rows from Supabase, simulates `git revert`
+# in a throwaway branch, runs CI against the reverted state, alerts on failure.
+#
+# A green run here is the contract behind "каждый фикс ночного агента откатывается
+# одной командой" — без этого ночной агент не имеет права быть в read_only:false.
+#
+# Plan: docs/superpowers/plans/2026-05-14-nighttime-devops-agent-impl.md §4.3
+
+on:
+  schedule:
+    - cron: "0 6 * * 0"  # Sundays 06:00 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: night-devops
+  cancel-in-progress: false
+
+jobs:
+  rollback-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout (full history — needed for git revert)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: |
+            services/sheets_sync/requirements.txt
+            services/content_kb/requirements.txt
+            services/wb_logistics_api/requirements.txt
+            services/influencer_crm/requirements.txt
+
+      - name: Install rollback-test deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r services/sheets_sync/requirements.txt
+          pip install -r services/content_kb/requirements.txt
+          pip install -r services/wb_logistics_api/requirements.txt
+          pip install -r services/influencer_crm/requirements.txt
+          pip install "pytest>=7.4.0" "pytest-asyncio>=0.23.0" openpyxl \
+                      "fastapi>=0.110" "httpx>=0.27" requests schedule \
+                      "ruff>=0.15,<0.16" psycopg2-binary python-dotenv pyyaml
+
+      - name: Configure git identity (for revert commit)
+        run: |
+          git config user.name "wookiee-rollback-test"
+          git config user.email "bot+rollback@wookiee.shop"
+
+      - name: Run rollback verification
+        id: verify
+        env:
+          POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
+          POSTGRES_PORT: ${{ secrets.POSTGRES_PORT }}
+          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          ROLLBACK_TEST_LIMIT: "3"
+        run: |
+          # scripts/nightly/rollback_check.py is created by Wave E2.
+          # It MUST:
+          #   1. Query Supabase: SELECT * FROM fix_log
+          #      WHERE rolled_back_at IS NULL
+          #      ORDER BY occurred_at DESC LIMIT 3
+          #   2. For each row: checkout a temp branch from main, run rollback_command
+          #      (must parse as `git revert <sha>` or `git restore`), verify exit 0,
+          #      verify HEAD diff includes files_changed.
+          #   3. Run `python -m compileall -q agents services shared scripts`
+          #      and `ruff check agents services shared scripts` on the reverted tree.
+          #   4. Exit 0 if all 3 succeed, exit 1 otherwise.
+          if [ -f scripts/nightly/rollback_check.py ]; then
+            python scripts/nightly/rollback_check.py --limit "$ROLLBACK_TEST_LIMIT"
+          else
+            echo "scripts/nightly/rollback_check.py not yet present (Wave E2 pending)."
+            echo "Skipping — but this workflow is wired and ready."
+            exit 0
+          fi
+
+      - name: Telegram alert on failure
+        if: failure()
+        env:
+          TG_TOKEN: ${{ secrets.TELEGRAM_ALERTS_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.HYGIENE_TELEGRAM_CHAT_ID }}
+        run: |
+          if [ -n "$TG_TOKEN" ] && [ -n "$TG_CHAT" ]; then
+            curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+              -d "chat_id=${TG_CHAT}" \
+              -d "text=[wookiee night] rollback-test провалился — какой-то ночной фикс необратим. Это значит метаданные rollback_command в fix_log врут. Нужна твоя голова. См. https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+              > /dev/null
+          fi
