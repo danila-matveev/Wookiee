@@ -65,6 +65,6 @@ jobs:
           if [ -n "$TG_TOKEN" ] && [ -n "$TG_CHAT" ]; then
             curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
               -d "chat_id=${TG_CHAT}" \
-              -d "text=[wookiee night] heartbeat 05:00 UTC упал — сводку за ночь не отправил. См. https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+              -d "text=Не доделал утреннюю сводку за ночь.%0A%0AСами ночные шаги, скорее всего, отработали — упал только финальный отчёт. Если хочешь увидеть что произошло за ночь — посмотри runs в GitHub Actions.%0AЛоги: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
               > /dev/null
           fi

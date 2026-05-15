@@ -1,8 +1,8 @@
 name: Hygiene Follow-up Daily
 
+# Cron-trigger отключён 2026-05-15: парный workflow к Hygiene Daily (тоже отключён).
+# Падал из-за отсутствия CLOUDFLARE_API_TOKEN. Запуск вручную остаётся доступным.
 on:
-  schedule:
-    - cron: "0 6 * * *"  # 06:00 UTC = 3 hours after main hygiene (gives main run time to finish + main to stabilise)
   workflow_dispatch:
 
 concurrency:

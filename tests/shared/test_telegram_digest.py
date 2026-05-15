@@ -151,7 +151,9 @@ def _make_item(
 def test_render_needs_human_empty():
     text = render_needs_human_digest([])
     assert "чисто" in text.lower()
-    assert "wookiee night" in text.lower()
+    # No technical prefix like "[wookiee night]" — должно быть plain Russian
+    assert "[wookiee" not in text.lower()
+    assert "за ночь" in text.lower()
 
 
 def test_render_needs_human_one_item():
@@ -263,8 +265,9 @@ def test_render_heartbeat_failure_mode():
         failure="code-quality-scan превысил лимит токенов",
     )
     text = render_heartbeat(summary)
-    assert "Сломался" in text
+    assert "сломалось" in text.lower()
     assert "code-quality-scan" in text
+    assert "репо не тронул" in text
 
 
 def test_render_heartbeat_length_cap():
@@ -290,10 +293,11 @@ def test_render_heartbeat_length_cap():
 
 def test_render_failure_alert_includes_skill_and_error():
     text = render_failure_alert("code-quality-scan", "превысил лимит токенов 250k")
-    assert "wookiee night" in text.lower()
+    assert "сломалось" in text.lower()
     assert "сканер кода" in text  # russified skill name
-    assert "code-quality-scan" in text
     assert "лимит токенов" in text
+    # No technical prefix
+    assert "[wookiee" not in text.lower()
 
 
 def test_render_failure_alert_unknown_skill_passes_raw():

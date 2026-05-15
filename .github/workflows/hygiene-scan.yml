@@ -77,6 +77,6 @@ jobs:
           if [ -n "$TG_TOKEN" ] && [ -n "$TG_CHAT" ]; then
             curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
               -d "chat_id=${TG_CHAT}" \
-              -d "text=[wookiee night] hygiene-scan 03:00 UTC упал — PR не открыт, состояние репо не тронуто. См. https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+              -d "text=Не доделал ночной сканер репозитория.%0A%0AРепо не тронул, фиксы не применял. Завтра попробую ещё раз.%0AЛоги, если хочешь глянуть: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
               > /dev/null
           fi

@@ -1,8 +1,10 @@
 name: Hygiene Daily
 
+# Cron-trigger отключён 2026-05-15: вместо этого работает Night DevOps Agent
+# (.github/workflows/hygiene-scan.yml + night-coordinator.yml). Старый workflow
+# открывал PR-ы каждую ночь и конфликтовал с новой read-only фазой Night DevOps.
+# Запуск вручную (workflow_dispatch) остаётся доступным.
 on:
-  schedule:
-    - cron: "0 3 * * *"  # 03:00 UTC = 00:00 São Paulo (no DST)
   workflow_dispatch:
 
 concurrency:

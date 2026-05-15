@@ -78,6 +78,6 @@ jobs:
           if [ -n "$TG_TOKEN" ] && [ -n "$TG_CHAT" ]; then
             curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
               -d "chat_id=${TG_CHAT}" \
-              -d "text=[wookiee night] code-quality-scan 03:30 UTC упал — coordinator пойдёт без code-quality findings. См. https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+              -d "text=Не доделал проверку качества кода (линтер, типы, мёртвый код).%0A%0AРепо не тронул. Ночной разборщик пойдёт без этих находок — фиксы поедут только из основного сканера.%0AЛоги: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
               > /dev/null
           fi
