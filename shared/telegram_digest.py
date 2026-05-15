@@ -154,21 +154,17 @@ def render_needs_human_digest(queue_items: list[QueueItem]) -> str:
     """
     n = len(queue_items)
     if n == 0:
-        return "[wookiee night] чисто, делать нечего."
+        return "За ночь всё чисто — делать нечего."
 
     date_label = _today_ru()
-    header = f"[wookiee night] {date_label} — {_word_questions(n)} на твоё решение"
+    header = f"За ночь {date_label} прошёлся по репо. Большую часть починил сам, осталось {_word_questions(n)} на твоё решение."
     parts = [header, ""]
 
     if n == 1:
         item = queue_items[0]
-        parts.append(
-            "Большую часть починил сам, осталась одна штука, где я не уверен и не хочу гадать:"
-        )
-        parts.append("")
         parts.append(f"— {item.question_ru}")
         parts.append("")
-        parts.append("Если хочешь решить сейчас — открой Claude Code и вставь:")
+        parts.append("Когда удобно — открой Claude Code и вставь:")
         parts.append("")
         parts.append("    /hygiene-resolve")
         parts.append("")
@@ -177,8 +173,6 @@ def render_needs_human_digest(queue_items: list[QueueItem]) -> str:
             f"Если не ответишь — через 7 дней сам применю «{default}», это безопасный путь."
         )
     elif n <= 5:
-        parts.append(f"Большую часть починил сам, осталось {_word_things(n)}:")
-        parts.append("")
         for i, item in enumerate(queue_items, 1):
             parts.append(f"{i}) {item.question_ru}")
         parts.append("")
@@ -192,10 +186,8 @@ def render_needs_human_digest(queue_items: list[QueueItem]) -> str:
         )
     else:
         parts.append(
-            f"Большую часть починил сам. Но у тебя накопилось {n} вопросов — это много, лучше разобрать."
+            f"Накопилось {n} вопросов — это много, лучше разобрать вместе. Открой Claude Code и вставь:"
         )
-        parts.append("")
-        parts.append("Открой Claude Code и вставь:")
         parts.append("")
         parts.append("    /hygiene-resolve")
         parts.append("")
@@ -207,22 +199,25 @@ def render_needs_human_digest(queue_items: list[QueueItem]) -> str:
 
 
 def render_heartbeat(summary: HeartbeatSummary) -> str:
-    """Render the daily heartbeat one-liner. Plain Russian, ≤500 chars.
+    """Render the daily heartbeat. Plain Russian, ≤500 chars.
 
-    Matches plan §5.6 and the example in the brief:
-      🌙 Ночь 14 мая
-      ✅ Починил 3 штуки (...)
-      🤔 Ждёт твоё решение: 1 пункт (run `/hygiene-resolve` когда удобно)
-      📊 Покрытие тестами: 67% (без изменений)
+    Style matches the existing /hygiene message that the owner liked:
+      🧹 За ночь убрался в репозитории Wookiee.
+      <empty line>
+      Сам починил: X — описание.
+      Оставил тебе на ревью: Y — описание.
+      <empty line>
+      Покрытие тестами: NN% (без изменений).
+      PR #NNN — статус.
     """
-    lines = [f"🌙 Ночь {summary.date_str}"]
-
     if summary.failure:
-        lines.append(f"⚠️ Сломался: {summary.failure}")
-        text = "\n".join(lines)
-        return _truncate(text, MAX_HEARTBEAT_LEN)
+        return _truncate(
+            "Ночью что-то сломалось.\n\n"
+            f"Что не получилось: {summary.failure}\n"
+            f"Это значит: фиксы не применил, репо не тронул. Завтра попробую ещё раз.",
+            MAX_HEARTBEAT_LEN,
+        )
 
-    # All-clear case: 0 fixes, 0 needs-human, no PR → short line and exit.
     zero_activity = (
         summary.fixes_applied == 0
         and summary.needs_human_count == 0
@@ -230,25 +225,35 @@ def render_heartbeat(summary: HeartbeatSummary) -> str:
     )
     if zero_activity:
         if summary.coverage_pct is not None:
-            lines.append(
-                f"чисто, делать нечего. Покрытие тестами {int(round(summary.coverage_pct))}%."
+            return _truncate(
+                f"За ночь {summary.date_str} всё чисто — делать нечего.\n\n"
+                f"Покрытие тестами: {int(round(summary.coverage_pct))}%.",
+                MAX_HEARTBEAT_LEN,
             )
-        else:
-            lines.append("чисто, делать нечего.")
-        return _truncate("\n".join(lines), MAX_HEARTBEAT_LEN)
+        return _truncate(
+            f"За ночь {summary.date_str} всё чисто — делать нечего.",
+            MAX_HEARTBEAT_LEN,
+        )
+
+    lines = [f"За ночь {summary.date_str} прошёлся по репо."]
+    lines.append("")
 
     if summary.fixes_applied > 0:
         examples = ", ".join(summary.fixes_examples[:3]) if summary.fixes_examples else ""
         if examples:
-            lines.append(f"✅ Починил {_word_things(summary.fixes_applied)} ({examples})")
+            lines.append(
+                f"Сам починил: {_word_things(summary.fixes_applied)} — {examples}."
+            )
         else:
-            lines.append(f"✅ Починил {_word_things(summary.fixes_applied)}")
+            lines.append(f"Сам починил: {_word_things(summary.fixes_applied)}.")
 
     if summary.needs_human_count > 0:
         lines.append(
-            f"🤔 Ждёт твоё решение: {_word_points(summary.needs_human_count)} "
-            f"(вставь `/hygiene-resolve` в Claude Code, когда удобно)"
+            f"Оставил тебе на ревью: {_word_points(summary.needs_human_count)}. "
+            "Когда удобно — вставь /hygiene-resolve в Claude Code, спрошу пару вопросов и доделаю."
         )
+
+    bottom: list[str] = []
 
     if summary.coverage_pct is not None:
         delta = summary.coverage_delta_pp
@@ -258,17 +263,21 @@ def render_heartbeat(summary: HeartbeatSummary) -> str:
             change = f"+{delta:.1f} п.п."
         else:
             change = f"{delta:.1f} п.п."
-        lines.append(
-            f"📊 Покрытие тестами: {int(round(summary.coverage_pct))}% ({change})"
+        bottom.append(
+            f"Покрытие тестами: {int(round(summary.coverage_pct))}% ({change})."
         )
 
     if summary.pr_number and summary.pr_status:
         status_ru = {
             "merged": "уже смерджился",
             "open": "ещё открыт, ждёт CI",
-            "failed": "не прошёл проверку",
+            "failed": "не прошёл CI",
         }.get(summary.pr_status, summary.pr_status)
-        lines.append(f"PR #{summary.pr_number} — {status_ru}")
+        bottom.append(f"PR #{summary.pr_number} — {status_ru}.")
+
+    if bottom:
+        lines.append("")
+        lines.extend(bottom)
 
     return _truncate("\n".join(lines), MAX_HEARTBEAT_LEN)
 
@@ -288,12 +297,12 @@ def render_failure_alert(failed_skill: str, error: str) -> str:
     short_error = error.strip().splitlines()[0][:200] if error else "без подробностей"
 
     return (
-        f"[wookiee night] {date_label} — ночной агент сломался\n"
+        f"Ночью что-то сломалось.\n"
         f"\n"
-        f"Что упало: {skill_ru} ({failed_skill})\n"
-        f"Подробности: {short_error}\n"
+        f"Что не получилось: {skill_ru}.\n"
+        f"Причина: {short_error}\n"
         f"\n"
-        f"Состояние репо не тронуто, фиксы не применялись. Завтра попробую ещё раз.\n"
+        f"Это значит: репо не тронул, фиксы не применял. Завтра попробую ещё раз.\n"
         f"Если повторится 3 ночи подряд — приходи разбираться, что-то фундаментально съезжает."
     )
 

@@ -99,6 +99,6 @@ jobs:
           if [ -n "$TG_TOKEN" ] && [ -n "$TG_CHAT" ]; then
             curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
               -d "chat_id=${TG_CHAT}" \
-              -d "text=[wookiee night] rollback-test провалился — какой-то ночной фикс необратим. Это значит метаданные rollback_command в fix_log врут. Нужна твоя голова. См. https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+              -d "text=⚠️ Откат сломался — нужна твоя голова.%0A%0AОдин из ночных фиксов оказался необратимым: команда \"git revert\" для него не работает. Это значит, я где-то починил так, что назад вернуть нельзя.%0A%0AЭто плохой звонок: я обещал, что любой ночной фикс — одна команда от отката. Сейчас обещание не держу.%0AЛоги: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
               > /dev/null
           fi
