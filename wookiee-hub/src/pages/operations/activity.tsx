@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import { fetchRuns, fetchToolRuns, getAgentLabel, AGENT_TO_LABEL } from '@/lib/activity-service'
 import { cn } from '@/lib/utils'
+import { PageHeader } from '@/components/layout/page-header'
 import type { AgentRun, ToolRun, RunStatus, RunsFilter } from '@/types/activity'
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -444,13 +445,15 @@ export function ActivityPage() {
 
   return (
     <div className="space-y-5">
-      {/* Header */}
-      <div>
-        <h1 className="text-xl font-bold text-foreground">История запусков</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Агенты, скиллы и сервисы системы Wookiee
-        </p>
-      </div>
+      <PageHeader
+        kicker="Operations"
+        title="История запусков"
+        breadcrumbs={[
+          { label: 'Operations', to: '/operations' },
+          { label: 'Activity', to: '/operations/activity' },
+        ]}
+        description="Агенты, скиллы и сервисы системы Wookiee"
+      />
 
       {/* Source tabs */}
       <div className="flex gap-1 p-1 bg-muted/40 rounded-xl w-fit">
