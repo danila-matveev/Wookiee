@@ -90,7 +90,10 @@ errors = []
 for root in ("services", "scripts", "shared", "agents"):
     for path in Path(root).rglob("*.py"):
         try:
-            compile(path.read_text(encoding="utf-8"), str(path), "exec")
+            # Pass raw bytes (not decoded str) so PEP-263 encoding cookie
+            # is validated — `# coding: unknown-xyz` must fail here, not
+            # later at import time.
+            compile(path.read_bytes(), str(path), "exec")
         except SyntaxError as exc:
             errors.append(f"{path}: {exc.msg} (line {exc.lineno})")
         except OSError as exc:
