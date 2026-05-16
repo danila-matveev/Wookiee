@@ -26,7 +26,7 @@ Five workflows run sequentially every night, all sharing `concurrency.group: nig
 
 | File | Cron (UTC) | Skill it invokes | What it produces |
 |---|---|---|---|
-| `hygiene-scan.yml` | `0 3 * * *` (03:00) | `/hygiene --json-output` | `.hygiene/reports/hygiene-YYYY-MM-DD.json` (workflow artifact, 30-day retention). Does **not** open a PR. |
+| `hygiene-scan.yml` | `0 3 * * *` (03:00) | `python -m scripts.nightly.hygiene_scan` | `.hygiene/reports/hygiene-YYYY-MM-DD.{json,md}` (workflow artifact, 30-day retention) + optional Cloudflare Pages publish. Does **not** open a PR. |
 | `code-quality-scan.yml` | `30 3 * * *` (03:30) | `/code-quality-scan --json-output` | `.hygiene/reports/code-quality-YYYY-MM-DD.json` + `.hygiene/codex_logs/`. Does **not** open a PR. |
 | `night-coordinator.yml` | `0 4 * * *` (04:00) | `/night-coordinator` | **The only workflow that opens a PR.** Merges all SAFE findings into a single branch `night-devops/YYYY-MM-DD`, runs `gh pr create` + `gh pr merge --auto`. NEEDS_HUMAN items go to `.hygiene/queue.yaml` + a Telegram digest in plain Russian. |
 | `test-coverage-check.yml` | `30 4 * * *` (04:30) | `/test-coverage-check --json-output` | Coverage gate — fails the job (and labels the night PR `do-not-merge`) if coverage drops below `.hygiene/config.yaml: coverage_min_pct`. |
@@ -73,7 +73,7 @@ The five workflows + rollback-test require these secrets to be configured at the
 | `TELEGRAM_ALERTS_BOT_TOKEN` | all 6 | `@wookiee_alerts_bot` bot token for digests and alerts |
 | `HYGIENE_TELEGRAM_CHAT_ID` | all 6 | Destination chat id |
 | `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | hygiene, code-quality, coordinator, coverage, heartbeat, rollback-test | Supabase access for `fix_log` writes/reads and analytics queries |
-| `CLOUDFLARE_API_TOKEN`, `CF_ACCOUNT_ID` | hygiene (existing) | Wrangler / cloudflare-pub. Not used by the new workflows but kept in env for parity. |
+| `CLOUDFLARE_API_TOKEN`, `CF_ACCOUNT_ID` | hygiene-scan, hygiene-daily | Wrangler / cloudflare-pub for the public hygiene report. The JSON artifact is still uploaded if Cloudflare credentials are missing. |
 | `CODEX_AUTH_JSON` | code-quality-scan (Phase 2) | Contents of `~/.codex/auth.json` — Codex CLI OAuth, written into the runner before `codex exec` calls. Optional until Wave D is built. |
 
 ### Workflow Guard interaction

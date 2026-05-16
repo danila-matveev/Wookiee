@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from shared.hygiene.reports import load_report, save_report
+from shared.hygiene.reports import load_report, load_reports_for_date, save_report
 from shared.hygiene.schemas import (
     AskUser,
     CodeQualityFinding,
@@ -194,3 +194,14 @@ def test_fix_report_with_findings(tmp_path: Path) -> None:
     assert len(restored.findings) == 1
     assert restored.findings[0].category == "orphan-imports"
     assert restored.summary.categories == {"orphan-imports": 1}
+
+
+def test_load_reports_for_date_loads_hygiene_report(tmp_path: Path) -> None:
+    report = _build_minimal_report()
+    save_report(report, tmp_path / "hygiene-2026-05-14.json")
+    save_report(report, tmp_path / "coverage-2026-05-14.json")
+
+    loaded = load_reports_for_date("2026-05-14", tmp_path)
+
+    assert len(loaded) == 1
+    assert loaded[0].run_id == report.run_id

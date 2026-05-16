@@ -52,6 +52,25 @@ def load_report(path: Path) -> FixReport:
     return FixReport.model_validate(raw)
 
 
+def load_reports_for_date(when: date | str, base: Optional[Path] = None) -> list[FixReport]:
+    """Load valid fix reports for one date.
+
+    The coordinator consumes only `FixReport`-shaped reports here. Coverage has
+    its own schema and is read separately by the coverage gate.
+    """
+    if isinstance(when, str):
+        day = date.fromisoformat(when)
+    else:
+        day = when
+
+    loaded: list[FixReport] = []
+    for kind in ("hygiene",):
+        path = report_path(kind, day, base)
+        if path.exists():
+            loaded.append(load_report(path))
+    return loaded
+
+
 def save_report(report: FixReport, path: Path) -> Path:
     """Write a `FixReport` to disk as pretty-printed UTF-8 JSON.
 

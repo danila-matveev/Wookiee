@@ -54,6 +54,9 @@ python -m services.sheets_sync.runner fin_data_new --prod --start 14.03.2026 --e
 
 # WB tariffs daily collector
 python -m services.logistics_audit.etl.tariff_collector --cabinet OOO
+
+# Night DevOps hygiene scan (JSON + Markdown report only; no PR)
+python -m scripts.nightly.hygiene_scan --print-summary
 ```
 
 ---

@@ -31,7 +31,7 @@ Before first deploy in a session, verify once:
 command -v wrangler || echo "MISSING: run npm i -g wrangler"
 ```
 
-Credentials are loaded automatically from `.env` by the script. If deploy fails with auth error, tell the user:
+Credentials are loaded automatically from shell env (`CF_ACCOUNT_ID` + `CF_API_TOKEN`, or `CLOUDFLARE_API_TOKEN` as token fallback) and then `.env` by the script. If deploy fails with auth error, tell the user:
 
 > Create a `.env` file with `CF_ACCOUNT_ID` and `CF_API_TOKEN` next to the script or in `~/.claude/cloudflare-pub/.env`.
 

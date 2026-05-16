@@ -22,7 +22,6 @@ Cloudflare Pages Publisher — публикация любого контент�
 import sys
 import os
 import re
-import json
 import subprocess
 import tempfile
 import argparse
@@ -33,7 +32,11 @@ from datetime import datetime
 # ─── Config ───
 
 def load_env():
-    """Load .env from multiple locations (first found wins per key)."""
+    """Load Cloudflare credentials from environment and .env files.
+
+    GitHub Actions supplies credentials as environment variables, while local
+    runs usually rely on .env files. Environment values win over files.
+    """
     env = {}
     for env_path in [
         Path(__file__).resolve().parent / ".env",
@@ -51,6 +54,11 @@ def load_env():
                     key = k.strip()
                     if key not in env:
                         env[key] = v.strip().strip("'\"")
+    for key in ("CF_ACCOUNT_ID", "CF_API_TOKEN", "CLOUDFLARE_API_TOKEN"):
+        if os.environ.get(key):
+            env[key] = os.environ[key]
+    if "CF_API_TOKEN" not in env and env.get("CLOUDFLARE_API_TOKEN"):
+        env["CF_API_TOKEN"] = env["CLOUDFLARE_API_TOKEN"]
     return env
 
 

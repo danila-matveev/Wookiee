@@ -27,6 +27,7 @@ whitelist:
     - services/logistics_audit/*Итоговый*.xlsx
     - services/logistics_audit/*final*.xlsx
     - services/logistics_audit/*Тарифы*.xlsx
+    - services/telemost_recorder_api/assets/avatar.png
     - docs/images/**
 
   unpushed_paths:

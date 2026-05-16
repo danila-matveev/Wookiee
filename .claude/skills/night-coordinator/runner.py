@@ -9,22 +9,24 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from shared.hygiene import config as hygiene_config
 from shared.hygiene import decisions as hygiene_decisions
 from shared.hygiene import queue as hygiene_queue
 from shared.hygiene import reports as hygiene_reports
-from shared.hygiene.schemas import Finding, QueueItem
+from shared.hygiene.schemas import HygieneFinding, QueueItem
 
 # Match SAFE-whitelist from plan §6
 SAFE_TYPES = {
-    "orphan-import",
+    "orphan-imports",
     "broken-doc-link",
+    "broken-doc-links",
     "skill-registry-drift",
     "stray-binary",
     "gitignore-violation",
+    "cross-platform-skill-prep",
 }
 
 MAX_FIXES_PER_RUN = 10
@@ -44,16 +46,43 @@ def _coverage_blocks() -> bool:
     return bool(data.get("blocking", False))
 
 
-def _gather_findings() -> list[Finding]:
+def _gather_findings() -> list[HygieneFinding]:
     """Load all today's reports and return all findings."""
     today = date.today().isoformat()
-    findings: list[Finding] = []
+    findings: list[HygieneFinding] = []
     for report in hygiene_reports.load_reports_for_date(today):
         findings.extend(report.findings)
     return findings
 
 
-def _apply_safe(finding: Finding) -> dict | None:
+def _queue_item_from_finding(finding: HygieneFinding) -> QueueItem:
+    now = datetime.now(timezone.utc)
+    ask = finding.ask_user
+    if ask is None:
+        ask_question = f"Что сделать с находкой `{finding.id}` ({finding.rationale})?"
+        options = ["keep", "fix"]
+        default_after_7d = "keep"
+    else:
+        ask_question = ask.question_ru
+        options = ask.options
+        default_after_7d = ask.default_after_7d
+
+    today = date.today().isoformat()
+    return QueueItem(
+        id=finding.id,
+        source_report=f".hygiene/reports/hygiene-{today}.json",
+        enqueued_at=now,
+        expires_at=now + timedelta(days=7),
+        category=finding.category,
+        files=finding.files,
+        question_ru=ask_question,
+        options=options,
+        default_after_7d=default_after_7d,
+        last_surfaced_at=now,
+    )
+
+
+def _apply_safe(finding: HygieneFinding) -> dict | None:
     """Apply a SAFE fix. Returns dict with action details or None on skip."""
     # Stub — real implementation depends on the autofix module
     # which lives in .claude/skills/hygiene-autofix/. For now, we
@@ -98,32 +127,33 @@ def main() -> int:
         return 0
 
     decisions_path = Path(".hygiene/decisions.yaml")
-    decisions = hygiene_decisions.load_decisions(decisions_path) if decisions_path.exists() else {}
+    decisions = hygiene_decisions.load_decisions(decisions_path)
 
-    safe_to_apply: list[Finding] = []
+    safe_to_apply: list[HygieneFinding] = []
     needs_human: list[QueueItem] = []
 
     for f in findings:
-        decision = hygiene_decisions.match(decisions, f.id)
-        if decision and decision.get("decision") in ("delete", "keep", "exclude"):
+        first_file = f.files[0] if f.files else ""
+        decision = decisions.find_for(str(f.category), first_file, f.rationale)
+        if decision and decision.answer in ("delete", "keep", "exclude"):
             # apply known decision (stub — in real flow this calls apply_finding too)
-            print(f"[night-coordinator] applying known decision for {f.id}: {decision['decision']}")
+            print(f"[night-coordinator] applying known decision for {f.id}: {decision.answer}")
             continue
 
-        if f.type in SAFE_TYPES:
+        if f.safe_to_autofix and f.category in SAFE_TYPES:
             if len(safe_to_apply) < MAX_FIXES_PER_RUN:
                 safe_to_apply.append(f)
             else:
-                needs_human.append(QueueItem.from_finding(f, reason="overflow-from-safe-cap"))
+                needs_human.append(_queue_item_from_finding(f))
         else:
-            needs_human.append(QueueItem.from_finding(f, reason="not-in-safe-whitelist"))
+            needs_human.append(_queue_item_from_finding(f))
 
     # Persist queue
     if needs_human:
         queue_path = Path(".hygiene/queue.yaml")
         hygiene_queue.append_items(queue_path, needs_human)
 
-    if cfg.get("read_only", True):
+    if cfg.read_only:
         print(f"[night-coordinator] READ-ONLY: would apply {len(safe_to_apply)} fixes, {len(needs_human)} questions queued")
         # In read-only we still send the Telegram digest so user sees what would happen
         _send_telegram_digest(needs_human, cfg)
