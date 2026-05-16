@@ -46,6 +46,13 @@
     --wk-pink: oklch(0.65 0.245 350);       /* pink-500 */
     --wk-bitrix: oklch(0.6 0.245 254);      /* blue-500 (alias) */
 
+    /* Rating chart colors — light */
+    --rating-5: #22c55e;
+    --rating-4: #86efac;
+    --rating-3: #facc15;
+    --rating-2: #fb923c;
+    --rating-1: #ef4444;
+
     /* Chart colors */
     --chart-1: oklch(0.577 0.245 27.325);
     --chart-2: oklch(0.6 0.118 184.704);
@@ -115,6 +122,13 @@
     --wk-blue: oklch(0.7 0.2 254);          /* blue-400 */
     --wk-pink: oklch(0.75 0.22 350);        /* pink-400 */
     --wk-bitrix: oklch(0.7 0.2 254);        /* blue-400 (alias) */
+
+    /* Rating chart colors — dark (higher chroma for legibility on dark bg) */
+    --rating-5: #4ade80;
+    --rating-4: #bbf7d0;
+    --rating-3: #fde047;
+    --rating-2: #fdba74;
+    --rating-1: #f87171;
 
     /* Chart colors */
     --chart-1: oklch(0.704 0.191 22.216);

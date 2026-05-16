@@ -34,10 +34,7 @@ export function AnalyticsStoresTable({ className }: { className?: string }) {
                 <tr key={store.connectionId} className="border-b border-border/50 last:border-0">
                   <td className="py-2.5 pr-4">
                     <div className="flex items-center gap-2">
-                      <div
-                        className="w-6 h-6 rounded flex items-center justify-center text-[10px] font-bold text-white shrink-0"
-                        style={{ backgroundColor: def.color }}
-                      >
+                      <div className="w-6 h-6 rounded flex items-center justify-center text-[10px] font-bold bg-muted text-foreground shrink-0">
                         {def.label.slice(0, 2).toUpperCase()}
                       </div>
                       <span className="font-medium text-[13px]">{store.name}</span>

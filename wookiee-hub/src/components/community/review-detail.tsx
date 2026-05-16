@@ -93,10 +93,7 @@ export function ReviewDetail({ review, className }: ReviewDetailProps) {
         {/* Product info */}
         <div className="bg-card border border-border rounded-[10px] p-4">
           <div className="flex items-center gap-2 mb-2">
-            <span
-              className="px-2 py-0.5 rounded text-[11px] font-bold text-white"
-              style={{ backgroundColor: def.color }}
-            >
+            <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-muted text-foreground">
               {def.label}
             </span>
             <span className="text-[12px] text-muted-foreground">{review.productArticle}</span>
