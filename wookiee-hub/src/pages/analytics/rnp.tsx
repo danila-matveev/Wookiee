@@ -2,6 +2,7 @@ import { useState, useEffect } from "react"
 import { useSearchParams } from "react-router-dom"
 import { fetchRnpWeeks } from "@/api/rnp"
 import type { RnpWeek } from "@/types/rnp"
+import { PageHeader } from "@/components/layout/page-header"
 import { RnpHelpBlock } from "@/components/analytics/rnp-help-block"
 import { RnpFilters } from "@/components/analytics/rnp-filters"
 import { RnpSummaryCards } from "@/components/analytics/rnp-summary-cards"
@@ -55,6 +56,16 @@ export function RnpPage() {
 
   return (
     <div className="space-y-4">
+      <PageHeader
+        kicker="Analytics"
+        title="РНП — Рука на пульсе"
+        breadcrumbs={[
+          { label: "Analytics", to: "/analytics" },
+          { label: "РНП", to: "/analytics/rnp" },
+        ]}
+        description="Недельная динамика по модели: заказы, воронка, реклама, маржа и прогноз."
+      />
+
       <RnpHelpBlock />
 
       <RnpFilters onApply={load} loading={loading} />
