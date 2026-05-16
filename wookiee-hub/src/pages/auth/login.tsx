@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { PageHeader } from "@/components/layout/page-header"
+import { useDocumentTitle } from "@/hooks/use-document-title"
 
 type Mode = "magic" | "password"
 
@@ -11,6 +12,7 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ?? ""
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? ""
 
 export function LoginPage() {
+  useDocumentTitle("Войти")
   const navigate = useNavigate()
   const [mode, setMode] = useState<Mode>("magic")
   const [email, setEmail] = useState("")

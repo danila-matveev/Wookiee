@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input"
 import { useThemeStore } from "@/stores/theme"
 import { Inbox } from "lucide-react"
 import { PageHeader } from "@/components/layout/page-header"
+import { useDocumentTitle } from "@/hooks/use-document-title"
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -27,6 +28,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 export function DesignSystemPreview() {
+  useDocumentTitle("DS Preview")
   const { theme, toggleTheme } = useThemeStore()
 
   return (

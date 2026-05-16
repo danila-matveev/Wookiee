@@ -1,8 +1,10 @@
 import { Clock } from 'lucide-react'
 import { PageHeader } from '@/components/layout/page-header'
 import { EmptyState } from '@/components/ui/empty-state'
+import { useDocumentTitle } from '@/hooks/use-document-title'
 
 export function HealthPage() {
+  useDocumentTitle('Состояние системы')
   return (
     <div className="space-y-5">
       <PageHeader

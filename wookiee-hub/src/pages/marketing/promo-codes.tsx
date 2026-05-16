@@ -1,6 +1,7 @@
 import { useSearchParams } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { PageHeader } from "@/components/layout/page-header"
+import { useDocumentTitle } from "@/hooks/use-document-title"
 import { PromoCodesTable } from "./promo-codes/PromoCodesTable"
 import { AddPromoPanel } from "./promo-codes/AddPromoPanel"
 import { PromoDetailPanel } from "./promo-codes/PromoDetailPanel"
@@ -11,6 +12,7 @@ type ActivePanel =
   | null
 
 export function PromoCodesPage() {
+  useDocumentTitle("Промокоды")
   const [params, setParams] = useSearchParams()
   const adding   = params.get('add') === '1'
   const openRaw  = params.get('open')

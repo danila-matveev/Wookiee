@@ -3,6 +3,7 @@ import { ChevronDown, Plus } from "lucide-react"
 import { useSearchParams } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { PageHeader } from "@/components/layout/page-header"
+import { useDocumentTitle } from "@/hooks/use-document-title"
 import { SearchQueriesTable } from "./search-queries/SearchQueriesTable"
 import { AddBrandQueryPanel } from "./search-queries/AddBrandQueryPanel"
 import { AddWWPanel } from "./search-queries/AddWWPanel"
@@ -64,6 +65,7 @@ type ActivePanel =
   | null
 
 export function SearchQueriesPage() {
+  useDocumentTitle("Поисковые запросы")
   const [params, setParams] = useSearchParams()
   const addParam  = params.get('add')
   const openParam = params.get('open')

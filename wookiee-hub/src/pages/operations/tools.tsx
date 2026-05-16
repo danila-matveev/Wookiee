@@ -5,6 +5,7 @@ import { ToolCard } from '@/components/operations/tool-card'
 import { ToolFilters } from '@/components/operations/tool-filters'
 import { ToolDetailPanel } from '@/components/operations/tool-detail-panel'
 import { PageHeader } from '@/components/layout/page-header'
+import { useDocumentTitle } from '@/hooks/use-document-title'
 import type { OperationsTool, ToolCategory, ToolCategoryFilter } from '@/types/tool'
 
 const CATEGORY_LABELS: Record<ToolCategory, string> = {
@@ -18,6 +19,7 @@ const CATEGORY_LABELS: Record<ToolCategory, string> = {
 const CATEGORY_ORDER: ToolCategory[] = ['analytics', 'infra', 'content', 'publishing', 'team', 'planning']
 
 export function ToolsPage() {
+  useDocumentTitle('Каталог инструментов')
   const {
     tools, loading, categoryFilter, searchQuery, selectedTool,
     setTools, setLoading, setCategoryFilter, setSearchQuery, setSelectedTool,

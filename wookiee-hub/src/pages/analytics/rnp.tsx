@@ -13,6 +13,7 @@ import { TabAdsInternal } from "@/components/analytics/rnp-tabs/tab-ads-internal
 import { TabAdsExternal } from "@/components/analytics/rnp-tabs/tab-ads-external"
 import { TabMargin } from "@/components/analytics/rnp-tabs/tab-margin"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useDocumentTitle } from "@/hooks/use-document-title"
 
 const TABS = [
   { id: "orders",       label: "Заказы & Продажи" },
@@ -24,6 +25,7 @@ const TABS = [
 ]
 
 export function RnpPage() {
+  useDocumentTitle("РНП — Рука на пульсе")
   const [searchParams] = useSearchParams()
   const [weeks, setWeeks] = useState<RnpWeek[]>([])
   const [loading, setLoading] = useState(false)

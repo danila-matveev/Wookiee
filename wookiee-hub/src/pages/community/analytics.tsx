@@ -5,8 +5,10 @@ import { CommsAnalyticsMetrics } from "@/components/community/analytics-metrics"
 import { AnalyticsResponseChart } from "@/components/community/analytics-response-chart"
 import { AnalyticsRatingChart } from "@/components/community/analytics-rating-chart"
 import { AnalyticsStoresTable } from "@/components/community/analytics-stores-table"
+import { useDocumentTitle } from "@/hooks/use-document-title"
 
 export function AnalyticsPage() {
+  useDocumentTitle("Аналитика коммуникаций")
   const [period, setPeriod] = useState("28")
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null)
 

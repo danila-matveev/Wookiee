@@ -6,6 +6,7 @@ import {
 import { fetchRuns, fetchToolRuns, getAgentLabel, AGENT_TO_LABEL } from '@/lib/activity-service'
 import { cn } from '@/lib/utils'
 import { PageHeader } from '@/components/layout/page-header'
+import { useDocumentTitle } from '@/hooks/use-document-title'
 import type { AgentRun, ToolRun, RunStatus, RunsFilter } from '@/types/activity'
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -356,6 +357,7 @@ type UnifiedEntry =
 // ─── main page ──────────────────────────────────────────────────────────────
 
 export function ActivityPage() {
+  useDocumentTitle('История запусков')
   const [agentRuns, setAgentRuns] = useState<AgentRun[]>([])
   const [toolRuns, setToolRuns] = useState<ToolRun[]>([])
   const [loading, setLoading] = useState(true)

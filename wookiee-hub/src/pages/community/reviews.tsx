@@ -5,6 +5,7 @@ import { ReviewsStatusTabs } from "@/components/community/reviews-status-tabs"
 import { ReviewListItem } from "@/components/community/review-list-item"
 import { ReviewDetail } from "@/components/community/review-detail"
 import { PageHeader, type Crumb } from "@/components/layout/page-header"
+import { useDocumentTitle } from "@/hooks/use-document-title"
 import { useCommsStore } from "@/stores/community"
 import type { Review, ReviewSource } from "@/types/community"
 
@@ -98,6 +99,7 @@ export function ReviewsPage({
   ],
 }: ReviewsPageProps = {}) {
   const copy = KIND_COPY[kind]
+  useDocumentTitle(pageTitle)
   const [activeSource, setActiveSource] = useState<ReviewSource | "all">(initialSource)
   const { reviews, selectedReviewId, setSelectedReview, filters, setFilters, loading, error, fetchReviews, sessionCost } = useCommsStore()
 
