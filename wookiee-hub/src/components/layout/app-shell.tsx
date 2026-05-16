@@ -36,9 +36,17 @@ function AppShell() {
 
   return (
     <div data-slot="app-shell" className="h-screen w-screen overflow-hidden flex bg-background">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[60] focus:px-3 focus:py-2 focus:rounded-md focus:bg-foreground focus:text-background focus:outline-none focus:ring-2 focus:ring-ring"
+      >
+        Перейти к содержимому
+      </a>
       <IconBar />
       <SubSidebar />
       <main
+        id="main-content"
+        tabIndex={-1}
         className={cn(
           "flex-1 flex flex-col transition-[margin-left] duration-200 ease-in-out md:ml-14",
           sidebarOpen && "lg:ml-[276px]"
