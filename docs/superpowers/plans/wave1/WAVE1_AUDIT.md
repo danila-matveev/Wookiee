@@ -8,6 +8,39 @@ Read-only аудит перед стартом Wave 1 (миграция Hub-shel
 
 ---
 
+## 0. Bundle baseline (pre-Wave 1)
+
+Замер `npm run build` (Vite 7, production mode) до начала миграции.
+
+- **Total `dist/`**: 2932 KB
+- **Total CSS gzipped**: 19,995 bytes (~19.5 KB)
+
+### Top 10 JS assets (raw size, KB)
+
+| Файл | Raw KB | Gzip KB (из build output) |
+|---|---|---|
+| `assets/index-BmQQTPLD.js` | 1624 | 481.96 |
+| `assets/supabase-DL5HCojG.js` | 192 | 51.68 |
+| `assets/react-BrR0aEqA.js` | 100 | 33.95 |
+| `assets/search-queries-ZYZKx21Z.js` | 64 | 17.32 |
+| `assets/matrix-C7r7cnmr.js` | 56 | 13.82 |
+| `assets/tovary-DgXJyyQV.js` | 52 | 14.07 |
+| `assets/artikuly-AxOPD-5L.js` | 48 | 12.39 |
+| `assets/query-ClBGlpKM.js` | 40 | 11.06 |
+| `assets/colors-ZmgLqVS3.js` | 32 | 7.72 |
+| `assets/promo-codes-DoGLrHy8.js` | 24 | 6.92 |
+
+CSS bundle (single):
+- `assets/index-DqUCRA4M.css` — 120 KB raw / ~19.5 KB gzipped
+
+**G11 acceptance threshold:** после Wave 1 `du -sk dist/` не должен расти > +250 KB (общий, без учёта gzip).
+
+Build time: 4.76s. Build exit code: 0.
+
+Warning: `index-BmQQTPLD.js` > 700 KB warning threshold (Vite default). Это существующая проблема, не вводится Wave 1 — не блокер.
+
+---
+
 ## 1. Hardcoded `stone-*` classes
 
 Итого **74 файла** содержат хардкод `(text|bg|border)-stone-{50..950}`. Всего **1464 вхождения**.
