@@ -4,14 +4,14 @@ import { MemoryRouter } from "react-router-dom"
 import { PageHeader } from "../page-header"
 
 describe("PageHeader", () => {
-  it("renders title in Instrument Serif italic", () => {
+  it("renders title in serif italic", () => {
     render(
       <MemoryRouter>
         <PageHeader title="Тестовая страница" />
       </MemoryRouter>
     )
     const h1 = screen.getByRole("heading", { level: 1, name: "Тестовая страница" })
-    expect(h1.style.fontFamily).toMatch(/Instrument Serif/i)
+    expect(h1.className).toMatch(/font-serif/)
     expect(h1.className).toMatch(/italic/)
   })
 

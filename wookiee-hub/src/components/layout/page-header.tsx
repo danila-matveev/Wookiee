@@ -46,14 +46,11 @@ export function PageHeader({
               {kicker}
             </div>
           )}
-          <h1
-            className="text-4xl font-light italic text-foreground"
-            style={{ fontFamily: "'Instrument Serif', serif" }}
-          >
+          <h1 className="font-serif text-4xl font-light italic text-foreground">
             {title}
           </h1>
           {description && (
-            <p className="mt-2 text-sm text-muted-foreground max-w-2xl">{description}</p>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground max-w-2xl">{description}</p>
           )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
