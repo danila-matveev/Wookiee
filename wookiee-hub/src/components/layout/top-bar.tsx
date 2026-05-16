@@ -4,6 +4,7 @@ import { ChevronRight, Search, Menu } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useNavigationStore } from "@/stores/navigation"
 import { navigationGroups } from "@/config/navigation"
+import { Kbd } from "@/components/ui/kbd"
 
 function TopBar() {
   const location = useLocation()
@@ -87,9 +88,9 @@ function TopBar() {
       >
         <Search size={14} />
         <span className="hidden sm:inline">Поиск...</span>
-        <kbd className="hidden sm:inline text-[10px] border border-border bg-background rounded px-1 py-0 ml-1 text-text-dim">
-          ⌘K
-        </kbd>
+        <span className="hidden sm:inline ml-1">
+          <Kbd keys={["⌘", "K"]} />
+        </span>
       </button>
     </header>
   )
