@@ -11,7 +11,7 @@ const TYPE_LABELS: Record<string, string> = {
 const TYPE_CLASSES: Record<string, string> = {
   skill:   'bg-green-100 text-green-700',
   service: 'bg-blue-100 text-blue-700',
-  cron:    'bg-purple-100 text-purple-700',
+  cron:    'bg-stone-100 text-stone-700 dark:bg-stone-800 dark:text-stone-300',
   script:  'bg-amber-100 text-amber-700',
 }
 

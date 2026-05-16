@@ -105,7 +105,7 @@ function AgentRunRow({ run, expanded, onToggle }: { run: AgentRun; expanded: boo
         <StatusIcon status={run.status} />
 
         {/* Source type badge */}
-        <span className="text-[9px] bg-violet-50 text-violet-600 border border-violet-200 rounded px-1 py-0.5 font-semibold shrink-0">
+        <span className="text-[9px] bg-stone-100 text-stone-700 border border-stone-200 dark:bg-stone-800 dark:text-stone-300 dark:border-stone-700 rounded px-1 py-0.5 font-semibold shrink-0">
           АГЕНТ
         </span>
 
