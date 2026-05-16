@@ -81,7 +81,7 @@ export const navigationGroups: NavGroup[] = [
   {
     id: "community",
     icon: MessageSquare,
-    label: "Коммуникации",
+    label: "Сообщество",
     items: [
       { id: "reviews",   label: "Отзывы",    icon: Star,         path: "/community/reviews" },
       { id: "questions", label: "Вопросы",   icon: HelpCircle,   path: "/community/questions" },

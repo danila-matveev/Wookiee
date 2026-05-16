@@ -57,11 +57,11 @@ export function RnpPage() {
   return (
     <div className="space-y-4">
       <PageHeader
-        kicker="Analytics"
+        kicker="АНАЛИТИКА"
         title="РНП — Рука на пульсе"
         breadcrumbs={[
-          { label: "Analytics", to: "/analytics" },
-          { label: "РНП", to: "/analytics/rnp" },
+          { label: "Аналитика", to: "/analytics" },
+          { label: "Рука на пульсе", to: "/analytics/rnp" },
         ]}
         description="Недельная динамика по модели: заказы, воронка, реклама, маржа и прогноз."
       />

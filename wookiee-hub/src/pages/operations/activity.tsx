@@ -446,11 +446,11 @@ export function ActivityPage() {
   return (
     <div className="space-y-5">
       <PageHeader
-        kicker="Operations"
+        kicker="ОПЕРАЦИИ"
         title="История запусков"
         breadcrumbs={[
-          { label: 'Operations', to: '/operations' },
-          { label: 'Activity', to: '/operations/activity' },
+          { label: 'Операции', to: '/operations' },
+          { label: 'История запусков', to: '/operations/activity' },
         ]}
         description="Агенты, скиллы и сервисы системы Wookiee"
       />
