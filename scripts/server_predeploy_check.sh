@@ -78,17 +78,19 @@ done
 # и падает с PermissionError на каталогах, чей owner ≠ deploy (например после
 # ручного docker rebuild под root). Скрипт репортил это как "syntax error in
 # source", и дежурный тратил время не на ту проблему.
-# Используем ast.parse — он только парсит, ничего не пишет.
+# Используем builtin `compile()` — он гоняет полный компилятор Python (грамматика
+# + семантические проверки уровня compileall, типа `return` вне функции), но
+# не пишет .pyc. Это сохраняет полноту проверки без PermissionError-класса.
 if command -v python3 >/dev/null; then
     if COMPILE_OUT=$(cd "$REPO" && python3 - <<'PYEOF' 2>&1
-import ast, sys
+import sys
 from pathlib import Path
 
 errors = []
 for root in ("services", "scripts", "shared", "agents"):
     for path in Path(root).rglob("*.py"):
         try:
-            ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            compile(path.read_text(encoding="utf-8"), str(path), "exec")
         except SyntaxError as exc:
             errors.append(f"{path}: {exc.msg} (line {exc.lineno})")
         except OSError as exc:
