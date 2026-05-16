@@ -28,13 +28,19 @@ function renderLogin() {
   )
 }
 
+function switchToPasswordMode() {
+  // Login default mode = "magic" (только email). Переключаем в password mode.
+  fireEvent.click(screen.getByRole('button', { name: /войти с паролем/i }))
+}
+
 describe('LoginPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('renders email and password inputs', () => {
+  it('renders email and password inputs (after switching to password mode)', () => {
     renderLogin()
+    switchToPasswordMode()
     expect(screen.getByLabelText(/email/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/пароль/i)).toBeInTheDocument()
   })
@@ -52,9 +58,10 @@ describe('LoginPage', () => {
     } as any)
 
     renderLogin()
+    switchToPasswordMode()
     fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'a@b.com' } })
     fireEvent.change(screen.getByLabelText(/пароль/i), { target: { value: 'pass' } })
-    fireEvent.click(screen.getByRole('button', { name: /войти/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^войти$/i }))
 
     await waitFor(() => {
       expect(supabase.auth.signInWithPassword).toHaveBeenCalledWith({
@@ -71,9 +78,10 @@ describe('LoginPage', () => {
     } as any)
 
     renderLogin()
+    switchToPasswordMode()
     fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'bad@b.com' } })
     fireEvent.change(screen.getByLabelText(/пароль/i), { target: { value: 'wrong' } })
-    fireEvent.click(screen.getByRole('button', { name: /войти/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^войти$/i }))
 
     await waitFor(() => {
       expect(screen.getByText(/неверный логин или пароль/i)).toBeInTheDocument()
