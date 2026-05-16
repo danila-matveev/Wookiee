@@ -1,7 +1,7 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useIntegrations } from '@/hooks/crm/use-integrations';
-import { PageHeader } from '@/components/crm/layout/PageHeader';
+import { PageHeader } from '@/components/layout/page-header';
 import { IntegrationEditDrawer } from '@/pages/influence/integrations/IntegrationEditDrawer';
 import { Button } from '@/components/crm/ui/Button';
 import { FilterPill } from '@/components/crm/ui/FilterPill';
@@ -65,8 +65,13 @@ export function CalendarPage() {
   return (
     <>
       <PageHeader
+        kicker="ИНФЛЮЕНС"
         title="Календарь публикаций"
-        sub="Все интеграции по датам публикации. Клик по событию — редактирование. Клик по пустому дню — новая интеграция."
+        breadcrumbs={[
+          { label: 'Инфлюенс', to: '/influence/bloggers' },
+          { label: 'Календарь', to: '/influence/calendar' },
+        ]}
+        description="Все интеграции по датам публикации. Клик по событию — редактирование. Клик по пустому дню — новая интеграция."
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-2">

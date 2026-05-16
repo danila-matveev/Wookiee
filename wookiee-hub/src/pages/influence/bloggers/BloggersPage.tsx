@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useBloggers } from '@/hooks/crm/use-bloggers';
-import { PageHeader } from '@/components/crm/layout/PageHeader';
+import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/crm/ui/Button';
 import { QueryStatusBoundary } from '@/components/crm/ui/QueryStatusBoundary';
 import { BloggerEditDrawer } from './BloggerEditDrawer';
@@ -52,8 +52,13 @@ export function BloggersPage() {
   return (
     <>
       <PageHeader
+        kicker="ИНФЛЮЕНС"
         title="Блогеры"
-        sub="Все блогеры в работе. Клик по строке — детали и история интеграций."
+        breadcrumbs={[
+          { label: 'Инфлюенс', to: '/influence/bloggers' },
+          { label: 'Блогеры', to: '/influence/bloggers' },
+        ]}
+        description="Все блогеры в работе. Клик по строке — детали и история интеграций."
         actions={
           <div className="flex items-center gap-2">
             <div className="flex gap-1">
