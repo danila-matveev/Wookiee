@@ -110,8 +110,8 @@ export function LoginPage() {
                 </p>
               </div>
 
-              {error && <p className="text-sm text-destructive">{error}</p>}
-              {success && <p className="text-sm text-emerald-600">{success}</p>}
+              {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+              {success && <p role="status" className="text-sm text-emerald-600">{success}</p>}
 
               <Button type="submit" disabled={loading} className="w-full">
                 {loading ? "Отправляю..." : "Получить ссылку для входа"}
@@ -162,7 +162,7 @@ export function LoginPage() {
                 />
               </div>
 
-              {error && <p className="text-sm text-destructive">{error}</p>}
+              {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
 
               <Button type="submit" disabled={loading} className="w-full">
                 {loading ? "Вхожу..." : "Войти"}

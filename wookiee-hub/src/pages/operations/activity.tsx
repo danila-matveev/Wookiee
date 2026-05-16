@@ -500,8 +500,9 @@ export function ActivityPage() {
         {/* Tool filter — only for agents tab */}
         {sourceTab !== 'tools' && (
           <div className="flex flex-col gap-1 min-w-[180px]">
-            <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Агент</label>
+            <label htmlFor="activity-filter-agent" className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Агент</label>
             <select
+              id="activity-filter-agent"
               value={toolLabel}
               onChange={(e) => setToolLabel(e.target.value)}
               className="text-[13px] bg-background border border-border rounded-lg px-2 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
@@ -515,8 +516,8 @@ export function ActivityPage() {
         )}
 
         {/* Status filter */}
-        <div className="flex flex-col gap-1">
-          <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Статус</label>
+        <div className="flex flex-col gap-1" role="group" aria-labelledby="activity-filter-status-label">
+          <span id="activity-filter-status-label" className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Статус</span>
           <div className="flex gap-1">
             {STATUS_OPTIONS.map((opt) => (
               <button
@@ -537,13 +538,13 @@ export function ActivityPage() {
 
         {/* Date range */}
         <div className="flex flex-col gap-1">
-          <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">От</label>
-          <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
+          <label htmlFor="activity-filter-date-from" className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">От</label>
+          <input id="activity-filter-date-from" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
             className="text-[13px] bg-background border border-border rounded-lg px-2 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">До</label>
-          <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
+          <label htmlFor="activity-filter-date-to" className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">До</label>
+          <input id="activity-filter-date-to" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
             className="text-[13px] bg-background border border-border rounded-lg px-2 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
         </div>
 

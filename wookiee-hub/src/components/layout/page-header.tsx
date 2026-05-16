@@ -34,7 +34,7 @@ export function PageHeader({
           {breadcrumbs.map((c, i) => (
             <span key={i} className="flex items-center gap-1">
               <Link to={c.to} className="hover:text-foreground">{c.label}</Link>
-              {i < breadcrumbs.length - 1 && <ChevronRight className="size-3" />}
+              {i < breadcrumbs.length - 1 && <ChevronRight className="size-3" aria-hidden />}
             </span>
           ))}
         </nav>

@@ -27,7 +27,7 @@ function TopBar() {
           aria-label="Открыть меню"
           className="md:hidden text-text-dim hover:text-foreground transition-colors p-1 rounded hover:bg-bg-hover mr-1"
         >
-          <Menu size={18} />
+          <Menu size={18} aria-hidden />
         </button>
 
         {/* Sidebar toggle — desktop only */}
@@ -37,7 +37,7 @@ function TopBar() {
             aria-label="Развернуть навигацию"
             className="hidden md:block text-text-dim hover:text-foreground transition-colors p-1 rounded hover:bg-bg-hover mr-1"
           >
-            <ChevronRight size={16} />
+            <ChevronRight size={16} aria-hidden />
           </button>
         )}
 
@@ -48,7 +48,7 @@ function TopBar() {
             return (
               <span key={index} className="flex items-center gap-1">
                 {index > 0 && (
-                  <ChevronRight size={12} className="text-text-dim shrink-0" />
+                  <ChevronRight size={12} className="text-text-dim shrink-0" aria-hidden />
                 )}
                 <span
                   className={cn(
@@ -86,7 +86,7 @@ function TopBar() {
           )
         }}
       >
-        <Search size={14} />
+        <Search size={14} aria-hidden />
         <span className="hidden sm:inline">Поиск...</span>
         <span className="hidden sm:inline ml-1">
           <Kbd keys={["⌘", "K"]} />
