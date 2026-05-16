@@ -38,7 +38,7 @@ export function CommsAnalyticsHeader({
               className={cn(
                 "px-2.5 py-1 rounded text-[12px] font-medium transition-colors",
                 p.id === activePeriod
-                  ? "bg-accent text-white"
+                  ? "bg-accent text-accent-foreground"
                   : "bg-transparent text-muted-foreground hover:text-foreground",
               )}
             >
