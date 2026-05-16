@@ -11,6 +11,7 @@ from services.telemost_recorder.audio import AudioCapture
 from services.telemost_recorder.browser import launch_browser
 from services.telemost_recorder.config import (
     BOT_NAME,
+    DUMP_PARTICIPANTS_DOM,
     JOIN_TIMEOUT,
     KNOWN_BOT_NAMES,
     SCREENSHOT_INTERVAL,
@@ -266,6 +267,66 @@ def _filter_human_participants(names: list[str]) -> list[str]:
         n for n in names
         if not any(bot in n.lower() for bot in KNOWN_BOT_NAMES)
     ]
+
+
+async def dump_participants_dom(page: Page, output_dir: Path) -> Path | None:
+    """Snapshot the participants panel HTML for offline analysis.
+
+    Opens the Участники button (best-effort), waits for the panel to render,
+    then writes both the panel-only HTML (if locatable) and the full page HTML
+    into output_dir. Used to diagnose Yandex 360 UI changes that break the
+    extract_participants() selectors — invoke from a real meeting where
+    participants are known to be present.
+
+    Returns the path to the dumped file, or None on failure.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    ts = int(time.time())
+    out_path = output_dir / f"dom_participants_{ts}.html"
+
+    panel_html = ""
+    try:
+        btn = page.locator(
+            "button:has-text('Участники'), "
+            "button:has-text('Participants'), "
+            "[data-testid='participants-button']"
+        ).first
+        if await btn.is_visible(timeout=2_000):
+            await btn.click()
+            await asyncio.sleep(1.0)
+            # Try a few container guesses — capture whatever matches.
+            for sel in (
+                "[data-testid='participants-panel']",
+                "[class*='participants']",
+                "[class*='Participants']",
+                "aside",
+                "[role='dialog']",
+            ):
+                try:
+                    loc = page.locator(sel).first
+                    if await loc.is_visible(timeout=300):
+                        panel_html = await loc.evaluate("el => el.outerHTML")
+                        if panel_html:
+                            break
+                except Exception:
+                    continue
+    except Exception:
+        pass
+
+    try:
+        full_html = await page.content()
+    except Exception:
+        full_html = ""
+
+    out_path.write_text(
+        "<!-- panel -->\n"
+        f"{panel_html}\n"
+        "<!-- /panel -->\n"
+        "<!-- full-page -->\n"
+        f"{full_html}\n",
+        encoding="utf-8",
+    )
+    return out_path
 
 
 async def extract_participants(page: Page) -> list[str]:
@@ -633,6 +694,7 @@ async def run_session(
             screenshot_n = 2
             participant_tick = 0
             elapsed = 0
+            dom_dumped = False
             try:
                 while True:
                     await asyncio.sleep(SCREENSHOT_INTERVAL)
@@ -647,6 +709,32 @@ async def run_session(
                     if participant_tick >= 60:
                         meeting.participants = await extract_participants(page)
                         participant_tick = 0
+                        # Count only — names belong in the DB meeting record,
+                        # not in shared docker logs (other meetings' attendees
+                        # would be visible to anyone reading the stream).
+                        _emit({
+                            "status": "PARTICIPANTS_TICK",
+                            "meeting_id": meeting.meeting_id,
+                            "count": len(meeting.participants),
+                        })
+                        # Diagnostic: when extract_participants() returns nothing
+                        # despite the recorder being a few minutes in (so the
+                        # meeting almost certainly has at least the host), dump
+                        # the participants panel HTML once so the operator can
+                        # rebuild the selectors against the real Yandex 360 UI.
+                        if (
+                            DUMP_PARTICIPANTS_DOM
+                            and not dom_dumped
+                            and not meeting.participants
+                            and elapsed >= 120
+                        ):
+                            dump_path = await dump_participants_dom(page, screenshot_dir)
+                            dom_dumped = True
+                            _emit({
+                                "status": "PARTICIPANTS_DOM_DUMPED",
+                                "meeting_id": meeting.meeting_id,
+                                "path": str(dump_path) if dump_path else None,
+                            })
 
                     # Grace period: 5 минут вместо 90с. Раньше бот выходил, если
                     # к 90-й секунде хост ещё не подключился и badge_count держался

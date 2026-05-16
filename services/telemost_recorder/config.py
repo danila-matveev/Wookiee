@@ -22,6 +22,13 @@ HEADLESS: bool = os.getenv("TELEMOST_HEADLESS", "true").lower() != "false"
 # Empty/unset = legacy guest mode (kept for tests and local debugging).
 STORAGE_STATE_PATH: str = os.getenv("TELEMOST_STORAGE_STATE_PATH", "")
 
+# Debug helper: when set to "1", the recorder dumps the participants-panel DOM
+# (and a snapshot of the full page) the first time extract_participants() returns
+# an empty list on a non-empty meeting. Used to capture the live HTML structure
+# of Yandex 360 corporate UI so the selectors in extract_participants() can be
+# repaired. Off by default — production-safe.
+DUMP_PARTICIPANTS_DOM: bool = os.getenv("TELEMOST_DUMP_PARTICIPANTS_DOM", "").strip() == "1"
+
 # Phase 2 — audio + transcription
 SPEECHKIT_API_KEY: str = os.getenv("SPEECHKIT_API_KEY", "")
 YANDEX_FOLDER_ID: str = os.getenv("YANDEX_FOLDER_ID", "")
