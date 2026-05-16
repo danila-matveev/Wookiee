@@ -99,11 +99,11 @@ export function AddNomenclaturePanel({ onClose }: AddNomenclaturePanelProps) {
         />
       )}
       {matchedArtikul && (
-        <div className="bg-stone-50 rounded-md border border-stone-100 px-3 py-2">
-          <div className="text-[10px] uppercase text-stone-400">Артикул</div>
-          <div className="text-sm text-stone-900 mt-0.5">{matchedArtikul.artikul}</div>
+        <div className="bg-muted rounded-md border border-border px-3 py-2">
+          <div className="text-[10px] uppercase text-muted-foreground">Артикул</div>
+          <div className="text-sm text-foreground mt-0.5">{matchedArtikul.artikul}</div>
           {matchedArtikul.nm_id != null && (
-            <div className="text-[11px] font-mono text-stone-500">NM: {matchedArtikul.nm_id}</div>
+            <div className="text-[11px] font-mono text-muted-foreground">NM: {matchedArtikul.nm_id}</div>
           )}
           {matchedArtikul.nm_id == null && (
             <div className="text-[11px] text-amber-600">⚠ NM не привязан в каталоге</div>
@@ -118,7 +118,7 @@ export function AddNomenclaturePanel({ onClose }: AddNomenclaturePanelProps) {
         onChange={setPurpose}
       />
       <div>
-        <label className="block text-[11px] uppercase tracking-wider text-stone-400 font-medium mb-1">
+        <label className="block text-[11px] uppercase tracking-wider text-muted-foreground font-medium mb-1">
           Кампания
         </label>
         <Input

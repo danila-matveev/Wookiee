@@ -132,8 +132,8 @@ export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose }:
           </div>
         )}
 
-        <div className="border-t border-stone-200 pt-3" data-testid="funnel-block">
-          <div className="text-[10px] uppercase tracking-wider text-stone-400 mb-3">За выбранный период</div>
+        <div className="border-t border-border pt-3" data-testid="funnel-block">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-3">За выбранный период</div>
           <div className="space-y-2">
             <Row label="Частота"  value={fmt(total.f)} />
             <Row label="Переходы" value={fmt(total.t)} />
@@ -141,19 +141,19 @@ export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose }:
             <Row label="Корзина" value={fmt(total.a)} />
             <SubRow label="CR корзина → заказ" value={pct(total.o, total.a)} />
             <Row label="Заказы"  value={fmt(total.o)} />
-            <div className="pt-1 mt-1 border-t border-stone-100 flex items-center justify-between">
-              <span className="text-xs font-medium text-stone-700">CR перех → заказ</span>
-              <span className="text-sm font-medium text-stone-900 tabular-nums">{pct(total.o, total.t)}</span>
+            <div className="pt-1 mt-1 border-t border-border flex items-center justify-between">
+              <span className="text-xs font-medium text-foreground">CR перех → заказ</span>
+              <span className="text-sm font-medium text-foreground tabular-nums">{pct(total.o, total.t)}</span>
             </div>
           </div>
-          <div className="text-[10px] text-stone-400 mt-3">
+          <div className="text-[10px] text-muted-foreground mt-3">
             Всего за всё время: {fmt(allTotal.o)} заказов · {weekly.length} нед данных
           </div>
         </div>
 
-        <div className="border-t border-stone-200 pt-3" data-testid="weekly-block">
+        <div className="border-t border-border pt-3" data-testid="weekly-block">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] uppercase tracking-wider text-stone-400">По неделям</span>
+            <span className="text-[11px] uppercase tracking-wider text-muted-foreground">По неделям</span>
             <div className="inline-flex items-center gap-1" role="tablist" aria-label="Период недельной статистики">
               <button
                 type="button"
@@ -163,11 +163,11 @@ export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose }:
                 className={
                   'px-2 py-0.5 rounded-md text-[11px] transition-colors ' +
                   (weeklyMode === 'period'
-                    ? 'bg-stone-100 text-stone-900 font-medium'
-                    : 'text-stone-500 hover:bg-stone-50 hover:text-stone-700')
+                    ? 'bg-muted text-foreground font-medium'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground')
                 }
               >
-                За период {rangeWeeks.length > 0 && <span className="text-stone-400">({rangeWeeks.length})</span>}
+                За период {rangeWeeks.length > 0 && <span className="text-muted-foreground">({rangeWeeks.length})</span>}
               </button>
               <button
                 type="button"
@@ -177,11 +177,11 @@ export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose }:
                 className={
                   'px-2 py-0.5 rounded-md text-[11px] transition-colors ' +
                   (weeklyMode === 'all'
-                    ? 'bg-stone-100 text-stone-900 font-medium'
-                    : 'text-stone-500 hover:bg-stone-50 hover:text-stone-700')
+                    ? 'bg-muted text-foreground font-medium'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground')
                 }
               >
-                Все {weekly.length > 0 && <span className="text-stone-400">({weekly.length})</span>}
+                Все {weekly.length > 0 && <span className="text-muted-foreground">({weekly.length})</span>}
               </button>
             </div>
           </div>
@@ -194,32 +194,32 @@ export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose }:
             </>
           ) : sliced.length === 0 ? (
             <div className="py-6 flex flex-col items-center gap-2">
-              <p className="text-xs text-stone-400 italic">
+              <p className="text-xs text-muted-foreground italic">
                 {weeklyMode === 'period' ? 'Нет данных за этот период' : 'Нет данных'}
               </p>
             </div>
           ) : (
             <div className="overflow-y-auto max-h-[280px]">
               <table className="w-full text-xs" aria-label="Недельная статистика">
-                <thead className="sticky top-0 bg-stone-50/90 backdrop-blur-sm">
-                  <tr className="border-b border-stone-200">
-                    <th className="px-1 py-1 text-left  text-[10px] uppercase text-stone-400 font-medium">Нед</th>
-                    <th className="px-1 py-1 text-right text-[10px] uppercase text-stone-400 font-medium">Част.</th>
-                    <th className="px-1 py-1 text-right text-[10px] uppercase text-stone-400 font-medium">Перех.</th>
-                    <th className="px-1 py-1 text-right text-[10px] uppercase text-stone-400 font-medium">Корз.</th>
-                    <th className="px-1 py-1 text-right text-[10px] uppercase text-stone-400 font-medium">Зак.</th>
-                    <th className="px-1 py-1 text-right text-[10px] uppercase text-stone-400 font-medium">CRV</th>
+                <thead className="sticky top-0 bg-muted/90 backdrop-blur-sm">
+                  <tr className="border-b border-border">
+                    <th className="px-1 py-1 text-left  text-[10px] uppercase text-muted-foreground font-medium">Нед</th>
+                    <th className="px-1 py-1 text-right text-[10px] uppercase text-muted-foreground font-medium">Част.</th>
+                    <th className="px-1 py-1 text-right text-[10px] uppercase text-muted-foreground font-medium">Перех.</th>
+                    <th className="px-1 py-1 text-right text-[10px] uppercase text-muted-foreground font-medium">Корз.</th>
+                    <th className="px-1 py-1 text-right text-[10px] uppercase text-muted-foreground font-medium">Зак.</th>
+                    <th className="px-1 py-1 text-right text-[10px] uppercase text-muted-foreground font-medium">CRV</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-stone-50">
+                <tbody className="divide-y divide-border">
                   {sliced.map((w) => (
-                    <tr key={w.week_start} className="hover:bg-stone-50/60">
-                      <td className="px-1 py-1 tabular-nums text-stone-500">{fmtWeek(w.week_start)}</td>
-                      <td className="px-1 py-1 text-right tabular-nums text-stone-600">{fmt(w.frequency)}</td>
-                      <td className="px-1 py-1 text-right tabular-nums text-stone-500">{fmt(w.transitions)}</td>
-                      <td className="px-1 py-1 text-right tabular-nums text-stone-500">{fmt(w.additions)}</td>
-                      <td className="px-1 py-1 text-right tabular-nums text-stone-900 font-medium">{fmt(w.orders)}</td>
-                      <td className="px-1 py-1 text-right tabular-nums text-stone-400">{pct(w.orders, w.transitions)}</td>
+                    <tr key={w.week_start} className="hover:bg-muted/60">
+                      <td className="px-1 py-1 tabular-nums text-muted-foreground">{fmtWeek(w.week_start)}</td>
+                      <td className="px-1 py-1 text-right tabular-nums text-muted-foreground">{fmt(w.frequency)}</td>
+                      <td className="px-1 py-1 text-right tabular-nums text-muted-foreground">{fmt(w.transitions)}</td>
+                      <td className="px-1 py-1 text-right tabular-nums text-muted-foreground">{fmt(w.additions)}</td>
+                      <td className="px-1 py-1 text-right tabular-nums text-foreground font-medium">{fmt(w.orders)}</td>
+                      <td className="px-1 py-1 text-right tabular-nums text-muted-foreground">{pct(w.orders, w.transitions)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -229,43 +229,43 @@ export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose }:
         </div>
 
         {/* По товарам — какие WB карточки открывали/покупали по этому запросу */}
-        <div className="border-t border-stone-200 pt-3" data-testid="product-breakdown-block">
-          <div className="text-[10px] uppercase tracking-wider text-stone-400 mb-3">
+        <div className="border-t border-border pt-3" data-testid="product-breakdown-block">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-3">
             По товарам (за выбранный период)
           </div>
           {breakdownLoading ? (
             <div className="text-sm text-muted-foreground">Загрузка…</div>
           ) : breakdownAgg.length === 0 ? (
-            <div className="py-3 text-xs text-stone-400 italic">Нет данных за этот период</div>
+            <div className="py-3 text-xs text-muted-foreground italic">Нет данных за этот период</div>
           ) : (
             <div className="overflow-y-auto max-h-[320px]">
               <table className="w-full text-xs" aria-label="Разбивка по товарам">
-                <thead className="sticky top-0 bg-stone-50/90 backdrop-blur-sm">
-                  <tr className="border-b border-stone-200">
-                    <th className="px-1 py-1 text-left  text-[10px] uppercase text-stone-400 font-medium">Артикул</th>
-                    <th className="px-1 py-1 text-left  text-[10px] uppercase text-stone-400 font-medium">Модель</th>
-                    <th className="px-1 py-1 text-right text-[10px] uppercase text-stone-400 font-medium">Откр.</th>
-                    <th className="px-1 py-1 text-right text-[10px] uppercase text-stone-400 font-medium">Корз.</th>
-                    <th className="px-1 py-1 text-right text-[10px] uppercase text-stone-400 font-medium">Зак.</th>
+                <thead className="sticky top-0 bg-muted/90 backdrop-blur-sm">
+                  <tr className="border-b border-border">
+                    <th className="px-1 py-1 text-left  text-[10px] uppercase text-muted-foreground font-medium">Артикул</th>
+                    <th className="px-1 py-1 text-left  text-[10px] uppercase text-muted-foreground font-medium">Модель</th>
+                    <th className="px-1 py-1 text-right text-[10px] uppercase text-muted-foreground font-medium">Откр.</th>
+                    <th className="px-1 py-1 text-right text-[10px] uppercase text-muted-foreground font-medium">Корз.</th>
+                    <th className="px-1 py-1 text-right text-[10px] uppercase text-muted-foreground font-medium">Зак.</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-stone-50">
+                <tbody className="divide-y divide-border">
                   {breakdownAgg.map((p) => (
-                    <tr key={p.nm_id} className="hover:bg-stone-50/60">
-                      <td className="px-1 py-1 truncate text-stone-700" title={p.sku_label}>{p.sku_label}</td>
-                      <td className="px-1 py-1 text-stone-500">{p.model_code ?? '—'}</td>
-                      <td className="px-1 py-1 text-right tabular-nums text-stone-600">{fmt(p.open_card)}</td>
-                      <td className="px-1 py-1 text-right tabular-nums text-stone-500">{fmt(p.add_to_cart)}</td>
-                      <td className="px-1 py-1 text-right tabular-nums text-stone-900 font-medium">{fmt(p.orders)}</td>
+                    <tr key={p.nm_id} className="hover:bg-muted/60">
+                      <td className="px-1 py-1 truncate text-foreground" title={p.sku_label}>{p.sku_label}</td>
+                      <td className="px-1 py-1 text-muted-foreground">{p.model_code ?? '—'}</td>
+                      <td className="px-1 py-1 text-right tabular-nums text-muted-foreground">{fmt(p.open_card)}</td>
+                      <td className="px-1 py-1 text-right tabular-nums text-muted-foreground">{fmt(p.add_to_cart)}</td>
+                      <td className="px-1 py-1 text-right tabular-nums text-foreground font-medium">{fmt(p.orders)}</td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot>
-                  <tr className="border-t border-stone-200">
-                    <td colSpan={2} className="px-1 py-1 text-[10px] text-stone-400">Итого по {breakdownAgg.length} товарам</td>
-                    <td className="px-1 py-1 text-right tabular-nums text-[11px] text-stone-600">{fmt(breakdownAgg.reduce((s, r) => s + r.open_card, 0))}</td>
-                    <td className="px-1 py-1 text-right tabular-nums text-[11px] text-stone-500">{fmt(breakdownAgg.reduce((s, r) => s + r.add_to_cart, 0))}</td>
-                    <td className="px-1 py-1 text-right tabular-nums text-[11px] font-medium text-stone-900">{fmt(breakdownAgg.reduce((s, r) => s + r.orders, 0))}</td>
+                  <tr className="border-t border-border">
+                    <td colSpan={2} className="px-1 py-1 text-[10px] text-muted-foreground">Итого по {breakdownAgg.length} товарам</td>
+                    <td className="px-1 py-1 text-right tabular-nums text-[11px] text-muted-foreground">{fmt(breakdownAgg.reduce((s, r) => s + r.open_card, 0))}</td>
+                    <td className="px-1 py-1 text-right tabular-nums text-[11px] text-muted-foreground">{fmt(breakdownAgg.reduce((s, r) => s + r.add_to_cart, 0))}</td>
+                    <td className="px-1 py-1 text-right tabular-nums text-[11px] font-medium text-foreground">{fmt(breakdownAgg.reduce((s, r) => s + r.orders, 0))}</td>
                   </tr>
                 </tfoot>
               </table>
@@ -287,8 +287,8 @@ interface RowProps { label: string; value: string }
 function Row({ label, value }: RowProps) {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-xs text-stone-500">{label}</span>
-      <span className="text-sm font-medium text-stone-900 tabular-nums">{value}</span>
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="text-sm font-medium text-foreground tabular-nums">{value}</span>
     </div>
   )
 }
@@ -296,8 +296,8 @@ function Row({ label, value }: RowProps) {
 function SubRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between pl-4 -mt-0.5">
-      <span className="text-[11px] text-stone-400">{label}</span>
-      <span className="text-[11px] text-stone-500 tabular-nums">{value}</span>
+      <span className="text-[11px] text-muted-foreground">{label}</span>
+      <span className="text-[11px] text-muted-foreground tabular-nums">{value}</span>
     </div>
   )
 }

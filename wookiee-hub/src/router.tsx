@@ -4,7 +4,6 @@ import { AppShell } from "@/components/layout/app-shell"
 import { ProtectedRoute } from "@/components/auth/protected-route"
 import { LoginPage } from "@/pages/auth/login"
 import { CatalogLayout } from "@/components/layout/catalog-layout"
-import { MarketingLayout } from "@/components/layout/marketing-layout"
 import { ToolsPage } from "@/pages/operations/tools"
 import { ActivityPage } from "@/pages/operations/activity"
 import { HealthPage } from "@/pages/operations/health"
@@ -163,15 +162,9 @@ export const router = createBrowserRouter([
       { path: "/design-system-preview",  element: withFallback(<DesignSystemPreviewPage />) },
       ...(featureFlags.marketing
         ? [
-            {
-              path: "/marketing",
-              element: <MarketingLayout />,
-              children: [
-                { index: true,                element: <Navigate to="/marketing/promo-codes" replace /> },
-                { path: "promo-codes",        element: withFallback(<PromoCodesPage />) },
-                { path: "search-queries",     element: withFallback(<SearchQueriesPage />) },
-              ],
-            },
+            { path: "/marketing",                element: <Navigate to="/marketing/promo-codes" replace /> },
+            { path: "/marketing/promo-codes",    element: withFallback(<PromoCodesPage />) },
+            { path: "/marketing/search-queries", element: withFallback(<SearchQueriesPage />) },
           ]
         : []),
     ],

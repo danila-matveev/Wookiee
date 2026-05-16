@@ -1,5 +1,6 @@
 import { useSearchParams } from "react-router-dom"
-import { Button } from "@/components/crm/ui/Button"
+import { Button } from "@/components/ui/button"
+import { PageHeader } from "@/components/layout/page-header"
 import { PromoCodesTable } from "./promo-codes/PromoCodesTable"
 import { AddPromoPanel } from "./promo-codes/AddPromoPanel"
 import { PromoDetailPanel } from "./promo-codes/PromoDetailPanel"
@@ -20,14 +21,11 @@ export function PromoCodesPage() {
   const closeAdd    = () => setParams((p) => { p.delete('add');  return p })
   const closeDetail = () => setParams((p) => { p.delete('open'); return p })
 
-  // Add takes precedence over detail when both URL params are set (user just clicked Add).
   const active: ActivePanel =
     adding              ? { kind: 'add' } :
     detailId != null    ? { kind: 'detail', promoId: detailId } :
     null
 
-  // All panels (Add + Detail) render as overlay Drawer — keeps the table behind at full width.
-  // Previous split-pane (560px) caused the right table columns to clip on viewport ≤ 1600.
   const renderPanel = () => {
     if (!active) return null
     if (active.kind === 'add') return <AddPromoPanel onClose={closeAdd} />
@@ -38,20 +36,16 @@ export function PromoCodesPage() {
     <div className="flex flex-1 overflow-hidden">
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         <div className="px-6 pt-6 pb-0">
-          <div className="flex items-end justify-between mb-6">
-            <div>
-              <h1
-                className="text-stone-900"
-                style={{ fontFamily: "'Instrument Serif', serif", fontSize: 24, fontStyle: "italic" }}
-              >
-                Промокоды
-              </h1>
-              <p className="text-sm text-stone-500 mt-0.5">Статистика по кодам скидок</p>
-            </div>
-            <Button variant="primary" onClick={openAdd}>
-              + Добавить
-            </Button>
-          </div>
+          <PageHeader
+            kicker="МАРКЕТИНГ"
+            title="Промокоды"
+            description="Статистика по кодам скидок"
+            breadcrumbs={[
+              { label: "Маркетинг", to: "/marketing" },
+              { label: "Промокоды", to: "/marketing/promo-codes" },
+            ]}
+            actions={<Button onClick={openAdd}>+ Добавить</Button>}
+          />
         </div>
         <PromoCodesTable />
       </div>
