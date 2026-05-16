@@ -73,12 +73,42 @@ for s in "${SCRIPTS_REFERENCED[@]}"; do
 done
 [ "$ERRORS" = "0" ] && ok "all referenced scripts present"
 
-# 5) Python compileall — синтаксис исходников валиден
+# 5) Python syntax check — без записи .pyc.
+# Раньше использовался `python -m compileall`, который пишет .pyc в __pycache__
+# и падает с PermissionError на каталогах, чей owner ≠ deploy (например после
+# ручного docker rebuild под root). Скрипт репортил это как "syntax error in
+# source", и дежурный тратил время не на ту проблему.
+# Используем builtin `compile()` — он гоняет полный компилятор Python (грамматика
+# + семантические проверки уровня compileall, типа `return` вне функции), но
+# не пишет .pyc. Это сохраняет полноту проверки без PermissionError-класса.
 if command -v python3 >/dev/null; then
-    if (cd "$REPO" && python3 -m compileall -q services scripts shared agents 2>&1 >/dev/null); then
-        ok "python compileall passed"
+    if COMPILE_OUT=$(cd "$REPO" && python3 - <<'PYEOF' 2>&1
+import sys
+from pathlib import Path
+
+errors = []
+for root in ("services", "scripts", "shared", "agents"):
+    for path in Path(root).rglob("*.py"):
+        try:
+            # Pass raw bytes (not decoded str) so PEP-263 encoding cookie
+            # is validated — `# coding: unknown-xyz` must fail here, not
+            # later at import time.
+            compile(path.read_bytes(), str(path), "exec")
+        except SyntaxError as exc:
+            errors.append(f"{path}: {exc.msg} (line {exc.lineno})")
+        except OSError as exc:
+            errors.append(f"{path}: cannot read ({exc.strerror})")
+
+if errors:
+    for line in errors:
+        print(line)
+    sys.exit(1)
+PYEOF
+); then
+        ok "python syntax check passed"
     else
-        err "python compileall failed — syntax error in source"
+        err "python syntax check failed:"
+        echo "$COMPILE_OUT" | head -10 | sed 's/^/    /' >&2
     fi
 fi
 
