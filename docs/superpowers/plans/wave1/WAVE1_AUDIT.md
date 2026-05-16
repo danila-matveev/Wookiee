@@ -499,3 +499,38 @@ separator.tsx, tabs.tsx, textarea.tsx
 | Файлов с extended tokens | 24 |
 | `design-system-preview-NEW` route | отсутствует |
 | `featureFlags.marketing` | объявлен в `src/lib/feature-flags.ts` (env: `VITE_FEATURE_MARKETING`) |
+
+---
+
+## Phase 4 — Primitives package: результаты (2026-05-15)
+
+11 primitives созданы + Button расширен. Все в каноническом `src/components/ui/`:
+
+- `badge.tsx` (Task 4.1) — 7 variants × 2 sizes + dot/icon slots
+- `status-badge.tsx` (Task 4.2) — 10 статусов на русском (active/draft/review/archived/pending/approved/rejected/in_progress/completed/blocked)
+- `level-badge.tsx` (Task 4.3) — 4 уровня (model/variation/artikul/sku), `font-mono`
+- `tag.tsx` + `chip.tsx` (Task 4.4) — Tag декоративный, Chip с `onRemove` (lucide X)
+- `avatar.tsx` + `avatar-group.tsx` (Task 4.5) — инициалы 2 буквы, `-space-x-2` overlap
+- `color-swatch.tsx` + `ring.tsx` (Task 4.6) — SVG progress ring с `strokeDasharray/Offset`
+- `tooltip.tsx` (Task 4.7) — на `@radix-ui/react-tooltip` (Provider/Root/Trigger/Content)
+- `skeleton.tsx` + `kbd.tsx` + `empty-state.tsx` (Task 4.8) — Kbd поддерживает single + `keys[]` combo
+- `button.tsx` extended (Task 4.9) — добавлены variants `success` (emerald-600/white) + `danger-ghost` (red-600 text)
+
+### Unit-tests smoke pass (Task 4.10)
+
+```
+Test Files  9 passed (9)
+     Tests  21 passed (21)
+```
+
+Запуск: `npx vitest run src/components/ui/__tests__/`.
+
+### Bundle delta после Phase 4
+
+| Метрика | Pre-Wave 1 | После Phase 4 | Delta |
+|---|---|---|---|
+| `du -sk dist/` | 2932 KB | 2772 KB | −160 KB |
+
+Замечание: baseline 2932 KB в секции 0 был зафиксирован до серии оптимизаций в фазах 0-3 (chunking, prune, etc.). Реальный baseline на старте Phase 4 (после Phases 0-3) = 2768 KB. Сама Phase 4 добавила +4 KB к этому промежуточному значению. Бюджет G11 (+250 KB к 2932 KB) → far under threshold.
+
+Build time после Phase 4: 4.67s. Build exit code: 0.
