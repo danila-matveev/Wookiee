@@ -87,6 +87,9 @@ const PromoCodesPage = lazy(() =>
 const SearchQueriesPage = lazy(() =>
   import("@/pages/marketing/search-queries").then((m) => ({ default: m.SearchQueriesPage })),
 )
+const DesignSystemPreviewPage = lazy(() =>
+  import("@/pages/design-system-preview").then((m) => ({ default: m.DesignSystemPreview })),
+)
 
 function CatalogFallback() {
   return (
@@ -157,6 +160,7 @@ export const router = createBrowserRouter([
       { path: "/influence/calendar",     element: <CalendarPage /> },
       { path: "/analytics",              element: <Navigate to="/analytics/rnp" replace /> },
       { path: "/analytics/rnp",          element: <RnpPage /> },
+      { path: "/design-system-preview",  element: withFallback(<DesignSystemPreviewPage />) },
       ...(featureFlags.marketing
         ? [
             {
