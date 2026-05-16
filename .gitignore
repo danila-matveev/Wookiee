@@ -137,6 +137,7 @@ temp/
 *.zip
 *.pdf
 *.png
+!services/telemost_recorder_api/assets/avatar.png
 *.jpg
 *.jpeg
 

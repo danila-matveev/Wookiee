@@ -1,8 +1,7 @@
 name: Hygiene Scan (Night DevOps)
 
 # Wave B5 of Nighttime DevOps Agent.
-# Runs alongside hygiene-daily.yml (which is preserved as-is). This workflow
-# emits a JSON report consumed by night-coordinator at 04:00 UTC. It does NOT
+# Emits a JSON report consumed by night-coordinator at 04:00 UTC. It does NOT
 # open a PR — that is exclusively the responsibility of night-coordinator.yml.
 #
 # Plan: docs/superpowers/plans/2026-05-14-nighttime-devops-agent-impl.md
@@ -39,34 +38,47 @@ jobs:
       - name: Install hygiene deps
         run: |
           python -m pip install --upgrade pip
-          pip install psycopg2-binary python-dotenv pyyaml requests jsonschema
+          pip install pydantic pyyaml
 
-      - name: Run /hygiene --json-output via Claude Code action
-        id: hygiene
-        uses: anthropics/claude-code-action@v1
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          prompt: "/hygiene --json-output"
-          claude_args: "--allowed-tools Bash,Read,Edit,Write,Skill"
-        env:
-          TELEGRAM_ALERTS_BOT_TOKEN: ${{ secrets.TELEGRAM_ALERTS_BOT_TOKEN }}
-          HYGIENE_TELEGRAM_CHAT_ID: ${{ secrets.HYGIENE_TELEGRAM_CHAT_ID }}
-          POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
-          POSTGRES_PORT: ${{ secrets.POSTGRES_PORT }}
-          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
-          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
-          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-          HYGIENE_TRIGGER: ${{ github.event_name }}
-          HYGIENE_ENV: github_actions
+      - name: Run deterministic hygiene scan
+        run: python -m scripts.nightly.hygiene_scan --print-summary
 
       - name: Upload report artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: hygiene-report-${{ github.run_id }}
-          path: .hygiene/reports/hygiene-*.json
+          path: |
+            .hygiene/reports/hygiene-*.json
+            .hygiene/reports/hygiene-*.md
           if-no-files-found: warn
           retention-days: 30
+
+      - name: Set up Node 20 (for wrangler / cloudflare-pub)
+        if: always()
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install wrangler
+        if: always()
+        run: npm i -g wrangler
+
+      - name: Publish hygiene report to Cloudflare
+        if: always()
+        continue-on-error: true
+        env:
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          report="$(ls .hygiene/reports/hygiene-*.md | sort | tail -1)"
+          if [ -z "$CF_ACCOUNT_ID" ] || [ -z "$CF_API_TOKEN" ]; then
+            echo "::warning::Cloudflare credentials are not configured; JSON artifact was still uploaded."
+            exit 0
+          fi
+          python .claude/skills/cloudflare-pub/scripts/publish.py "$report" \
+            --name "wookiee-hygiene-$(date -u +%Y-%m-%d)" \
+            --title "Wookiee Hygiene Run $(date -u +%Y-%m-%d)"
 
       - name: Telegram alert on failure
         if: failure()

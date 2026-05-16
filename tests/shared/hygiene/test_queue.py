@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from shared.hygiene.queue import Queue, load_queue, save_queue
+from shared.hygiene.queue import Queue, append_items, load_queue, save_queue
 from shared.hygiene.schemas import QueueItem
 
 
@@ -118,6 +118,16 @@ def test_save_uses_atomic_write(tmp_path: Path) -> None:
     path = tmp_path / "queue.yaml"
     save_queue(Queue(items=[_make_item()]), path)
     assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_append_items_dedupes_by_id(tmp_path: Path) -> None:
+    path = tmp_path / "queue.yaml"
+    append_items(path, [_make_item("dup")])
+    append_items(path, [_make_item("dup"), _make_item("fresh")])
+
+    queue = load_queue(path)
+    assert [item.id for item in queue.items] == ["dup", "fresh"]
+    assert queue.items[0].times_surfaced == 2
 
 
 def test_invalid_yaml_top_level_raises(tmp_path: Path) -> None:

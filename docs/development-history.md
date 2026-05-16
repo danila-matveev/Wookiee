@@ -5,6 +5,28 @@
 
 ---
 
+## [2026-05-16] Night DevOps: deterministic hygiene scan + Cloudflare publish fix
+
+### Что сделано
+- `hygiene-scan.yml` переведён с Claude Code `/hygiene --json-output` на deterministic runner `python -m scripts.nightly.hygiene_scan`, чтобы scan не открывал PR и всегда писал JSON/Markdown artifact.
+- `cloudflare-pub` теперь читает `CF_ACCOUNT_ID` и `CF_API_TOKEN`/`CLOUDFLARE_API_TOKEN` из shell env, поэтому GitHub Actions не требует локальный `.env`.
+- `night-coordinator` починен под текущие shared-модели: читает hygiene reports, использует `category`, сохраняет queue items и уважает `read_only`.
+- Закрыты находки из PR #150: `avatar.png` whitelisted/unignored, `.agents/skills` убраны из git tracking, `code-quality-scan` синхронизирован в Cursor/Codex, добавлены Telemost README и отсутствующий WB toolkit Plan 2.
+
+### Обновлено
+- [x] `.github/workflows/hygiene-scan.yml`
+- [x] `.github/workflows/README.md`
+- [x] `.claude/skills/cloudflare-pub/`
+- [x] `.claude/skills/night-coordinator/runner.py`
+- [x] `scripts/nightly/hygiene_scan.py`
+- [x] `shared/hygiene/`
+- [x] `services/telemost_recorder_api/README.md`
+- [x] `docs/adr.md`
+- [x] `README.md`
+- [x] `docs/development-history.md`
+
+---
+
 ## [2026-05-14] Sheets Sync: prod/test routing for `Фин данные NEW`
 
 ### Что сделано

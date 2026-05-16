@@ -16,6 +16,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 Severity = Literal["low", "medium", "high", "critical"]
 HygieneCategory = Literal[
+    "stray-binary",
+    "gitignore-violation",
+    "missing-readme",
+    "pycache-committed",
     "orphan-imports",
     "orphan-docs",
     "skill-registry-drift",

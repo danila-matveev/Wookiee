@@ -105,3 +105,11 @@ def save_queue(queue: Queue, path: Optional[Path] = None) -> None:
         encoding="utf-8",
     )
     tmp.replace(target)
+
+
+def append_items(path: Path, items: list[QueueItem]) -> None:
+    """Append items to a queue file, de-duping by id via `Queue.add()`."""
+    queue = load_queue(path)
+    for item in items:
+        queue.add(item)
+    save_queue(queue, path)

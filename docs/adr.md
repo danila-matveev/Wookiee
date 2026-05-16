@@ -4,6 +4,36 @@
 
 ---
 
+## [2026-05-16] ADR-010: Deterministic Hygiene Scan for Night DevOps
+
+### Статус
+Принято
+
+### Контекст
+Night DevOps должен начинаться с read-only hygiene scan: один JSON-отчёт в
+`.hygiene/reports/`, без веток, коммитов и PR. Фактический запуск
+`/hygiene --json-output` через Claude Code action открыл PR #150 и не записал
+JSON artifact. Дополнительно Cloudflare publish не получал credentials из
+GitHub Actions env, потому что publisher читал только `.env`.
+
+### Решение
+1. Для nightly `hygiene-scan.yml` использовать deterministic runner
+   `python -m scripts.nightly.hygiene_scan`.
+2. Оставить интерактивный `/hygiene` skill для ручных уборок, где PR и
+   Telegram-публикации допустимы.
+3. Генерировать оба артефакта: JSON для `night-coordinator` и Markdown для
+   Cloudflare Pages.
+4. Разрешить `cloudflare-pub` читать `CF_ACCOUNT_ID`/`CF_API_TOKEN` из shell env.
+
+### Последствия
+- (+) 03:00 scan не может случайно открыть PR.
+- (+) `night-coordinator` получает стабильный JSON-контракт.
+- (+) Cloudflare publish работает в GitHub Actions без локального `.env`.
+- (-) Ночной hygiene scan покрывает только deterministic checks; LLM-heavy
+  проверки остаются в ручном `/hygiene`.
+
+---
+
 ## [2026-02-21] ADR-007: Narrow runtime contour and retire Lyudmila + Vasily agent runtime
 
 ### Статус
