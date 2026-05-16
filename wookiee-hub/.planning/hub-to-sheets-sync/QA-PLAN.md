@@ -198,7 +198,7 @@ ssh timeweb 'docker compose -f /home/danila/projects/wookiee/docker-compose.yml 
 
 **1.8.** Триггернуть синк только для моделей:
 ```bash
-curl -s -X POST https://hub.os.wookiee.shop/api/catalog/sync-mirror \
+curl -s -X POST https://analytics-api.os.wookiee.shop/api/catalog/sync-mirror \
   -H "X-API-Key: $ANALYTICS_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"sheet":"Все модели"}' | jq
@@ -459,16 +459,16 @@ Test authentication and validation on /api/catalog/sync-mirror endpoint.
 Use curl (Bash tool). Tests:
 
 1. POST without Authorization header → expect 401
-   curl -i -X POST https://hub.os.wookiee.shop/api/catalog/sync-mirror -H "Content-Type: application/json" -d '{}'
+   curl -i -X POST https://analytics-api.os.wookiee.shop/api/catalog/sync-mirror -H "Content-Type: application/json" -d '{}'
 
 2. POST with garbage Bearer → expect 401
-   curl -i -X POST https://hub.os.wookiee.shop/api/catalog/sync-mirror -H "Authorization: Bearer xxx" -H "Content-Type: application/json" -d '{}'
+   curl -i -X POST https://analytics-api.os.wookiee.shop/api/catalog/sync-mirror -H "Authorization: Bearer xxx" -H "Content-Type: application/json" -d '{}'
 
 3. POST with valid X-API-Key (from .env ANALYTICS_API_KEY), invalid sheet → expect 400 with message listing valid sheet names
    curl -i -X POST ... -H "X-API-Key: $ANALYTICS_API_KEY" -d '{"sheet":"NonExistent"}'
 
 4. GET /status without auth → expect 401
-   curl -i https://hub.os.wookiee.shop/api/catalog/sync-mirror/status
+   curl -i https://analytics-api.os.wookiee.shop/api/catalog/sync-mirror/status
 
 5. GET /status with valid key → expect 200 with last run info
    curl -i ... -H "X-API-Key: $ANALYTICS_API_KEY"
@@ -523,7 +523,7 @@ Verify idempotency and status endpoint.
    Save the run_id as PREV_RUN_ID.
 
 2. Trigger a full sync via API:
-   curl -X POST https://hub.os.wookiee.shop/api/catalog/sync-mirror \
+   curl -X POST https://analytics-api.os.wookiee.shop/api/catalog/sync-mirror \
      -H "X-API-Key: $ANALYTICS_API_KEY" \
      -H "Content-Type: application/json" \
      -d '{"sheet":"all"}'
