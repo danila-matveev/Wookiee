@@ -4,6 +4,7 @@ import { fetchTools } from '@/lib/tools-service'
 import { ToolCard } from '@/components/operations/tool-card'
 import { ToolFilters } from '@/components/operations/tool-filters'
 import { ToolDetailPanel } from '@/components/operations/tool-detail-panel'
+import { PageHeader } from '@/components/layout/page-header'
 import type { OperationsTool, ToolCategory, ToolCategoryFilter } from '@/types/tool'
 
 const CATEGORY_LABELS: Record<ToolCategory, string> = {
@@ -68,13 +69,15 @@ export function ToolsPage() {
 
   return (
     <div className="space-y-5">
-      {/* Header */}
-      <div>
-        <h1 className="text-xl font-bold text-foreground">Каталог инструментов</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Все инструменты системы Wookiee — агенты, сервисы, скиллы, cron-задачи
-        </p>
-      </div>
+      <PageHeader
+        kicker="Operations"
+        title="Каталог инструментов"
+        breadcrumbs={[
+          { label: 'Operations', to: '/operations' },
+          { label: 'Tools', to: '/operations/tools' },
+        ]}
+        description="Все инструменты системы Wookiee — агенты, сервисы, скиллы, cron-задачи"
+      />
 
       {/* KPI cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
