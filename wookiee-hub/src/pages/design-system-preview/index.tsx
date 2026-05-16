@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useThemeStore } from "@/stores/theme"
 import { Inbox } from "lucide-react"
+import { PageHeader } from "@/components/layout/page-header"
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -31,12 +32,16 @@ export function DesignSystemPreview() {
   return (
     <TooltipProvider>
       <div className="max-w-5xl mx-auto px-6 py-10">
-        <header className="mb-8 flex items-center justify-between">
-          <h1 className="text-4xl italic font-light" style={{ fontFamily: "'Instrument Serif', serif" }}>
-            Design System v2 · Preview
-          </h1>
-          <Button onClick={toggleTheme} variant="outline">Theme: {theme}</Button>
-        </header>
+        <PageHeader
+          kicker="DESIGN SYSTEM"
+          title="Preview v2"
+          description="Тестбед примитивов DS v2 — Wave 1 Foundation"
+          actions={
+            <Button onClick={toggleTheme} variant="outline">
+              Тема: {theme === "dark" ? "тёмная" : "светлая"}
+            </Button>
+          }
+        />
 
         <Section title="Badge variants">
           <Badge variant="emerald">emerald</Badge>
