@@ -309,19 +309,33 @@ async def extract_participants(page: Page) -> list[str]:
 
 
 async def detect_meeting_ended(page: Page) -> bool:
-    """Return True when Telemost signals the meeting has ended."""
-    # URL check first — fast and reliable: /j/ is only present in active meeting URLs
+    """Return True only on unambiguous "meeting ended" signals.
+
+    Two trusted sources:
+      1. URL leaves /j/ — happens on host "End meeting" + on a forced kick.
+      2. Yandex shows an explicit "Встреча завершена" / "Meeting ended"
+         overlay on the page.
+
+    Earlier this also counted participants via the Участники-button badge and
+    cross-checked names through extract_participants(). That was a false-
+    positive factory: extract_participants() relies on CSS selectors that
+    Yandex 360 (telemost.360.yandex.ru) renders with different classes, so
+    on the corporate domain it returned an empty list every tick despite
+    real humans being on the call. After the 5-minute grace, the recorder
+    kicked itself out — observed on smoke test 091300db (2026-05-15).
+    Hard cap RECORDING_HARD_LIMIT_HOURS (default 4h) still prevents the bot
+    from sitting forever in a genuinely empty room.
+    """
     try:
         if "/j/" not in page.url:
             return True
     except Exception:
         pass
 
-    # Explicit "meeting ended" overlays. Раньше сюда были добавлены
-    # "Чтобы пригласить других участников" / "To invite other participants",
-    # но эти строки реально живут в боковой подсказке share-кнопки Я.Телемоста
-    # — и срабатывают как ложный сигнал, выкидывая бота со встречи через
-    # ~90 секунд даже когда в звонке 5+ человек (см. кейс 13.05 Dayli).
+    # Explicit "meeting ended" overlays. Кейс 13.05 Dayli показал, что строки
+    # вроде "Чтобы пригласить других участников" жили в боковой подсказке
+    # share-кнопки и давали ложный сигнал — поэтому здесь оставлены только
+    # уникальные финальные оверлеи.
     for selector in (
         "text=Встреча завершена",
         "text=Meeting ended",
@@ -333,24 +347,6 @@ async def detect_meeting_ended(page: Page) -> bool:
                 return True
         except Exception:
             continue
-
-    # Count is dynamic — even if Telemost UI shows 2 participants,
-    # they could be us + another bot. Pull names and filter.
-    try:
-        btn = page.locator("button").filter(has_text="Участники")
-        badge_text = (await btn.first.text_content(timeout=500) or "")
-        match = re.search(r"\d+", badge_text)
-        if match:
-            badge_count = int(match.group())
-            if badge_count <= 1:
-                return True
-            # Badge > 1: pull names, filter bots, check if any humans remain.
-            # extract_participants already excludes Wookiee Recorder + bots from KNOWN_BOT_NAMES.
-            human_names = await extract_participants(page)
-            if not human_names:
-                return True
-    except Exception:
-        pass
 
     return False
 
