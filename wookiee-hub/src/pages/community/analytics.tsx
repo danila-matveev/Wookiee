@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { PageHeader } from "@/components/layout/page-header"
 import { CommsAnalyticsHeader } from "@/components/community/analytics-header"
 import { CommsAnalyticsMetrics } from "@/components/community/analytics-metrics"
 import { AnalyticsResponseChart } from "@/components/community/analytics-response-chart"
@@ -11,6 +12,14 @@ export function AnalyticsPage() {
 
   return (
     <div className="space-y-4">
+      <PageHeader
+        kicker="Сообщество"
+        title="Аналитика коммуникаций"
+        breadcrumbs={[
+          { label: "Сообщество", to: "/community/reviews" },
+          { label: "Аналитика", to: "/community/analytics" },
+        ]}
+      />
       <CommsAnalyticsHeader
         activePeriod={period}
         onPeriodChange={setPeriod}
