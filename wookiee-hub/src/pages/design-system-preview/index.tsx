@@ -88,6 +88,13 @@ export function DesignSystemPreview() {
             <Avatar name="C D" />
             <Avatar name="E F" />
           </AvatarGroup>
+          <AvatarGroup max={3}>
+            <Avatar name="A B" />
+            <Avatar name="C D" />
+            <Avatar name="E F" />
+            <Avatar name="G H" />
+            <Avatar name="I J" />
+          </AvatarGroup>
         </Section>
 
         <Section title="ColorSwatch">
