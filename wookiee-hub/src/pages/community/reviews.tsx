@@ -66,10 +66,10 @@ function applyCommonFilters(review: Review, filters: ReturnType<typeof useCommsS
 
 export type ReviewsPageKind = "reviews" | "questions" | "answers"
 
-const KIND_COPY: Record<ReviewsPageKind, { empty: string; searchPlaceholder: string }> = {
-  reviews:   { empty: "Нет отзывов",  searchPlaceholder: "Поиск по отзывам…"  },
-  questions: { empty: "Нет вопросов", searchPlaceholder: "Поиск по вопросам…" },
-  answers:   { empty: "Нет ответов",  searchPlaceholder: "Поиск по ответам…"  },
+const KIND_COPY: Record<ReviewsPageKind, { empty: string; searchPlaceholder: string; rightPanePrompt: string }> = {
+  reviews:   { empty: "Нет отзывов",  searchPlaceholder: "Поиск по отзывам…",  rightPanePrompt: "Выберите отзыв из списка"  },
+  questions: { empty: "Нет вопросов", searchPlaceholder: "Поиск по вопросам…", rightPanePrompt: "Выберите вопрос из списка" },
+  answers:   { empty: "Нет ответов",  searchPlaceholder: "Поиск по ответам…",  rightPanePrompt: "Выберите ответ из списка" },
 }
 
 export interface ReviewsPageProps {
@@ -251,7 +251,7 @@ export function ReviewsPage({
         </div>
         {/* Right panel -- review detail */}
         <div className="flex-1 min-w-0">
-          <ReviewDetail review={selectedReview} className="h-full" />
+          <ReviewDetail review={selectedReview} emptyPrompt={copy.rightPanePrompt} className="h-full" />
         </div>
       </div>
     </div>

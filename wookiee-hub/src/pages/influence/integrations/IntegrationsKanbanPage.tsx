@@ -83,14 +83,14 @@ export function IntegrationsKanbanPage() {
             <div className="flex gap-1">
               <button
                 type="button"
-                className={`px-3 py-1.5 text-sm rounded ${view === 'kanban' ? 'bg-primary text-primary-fg' : 'bg-muted text-muted-fg hover:bg-muted/80'}`}
+                className={`px-3 py-1.5 text-sm rounded ${view === 'kanban' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-fg hover:bg-muted/80'}`}
                 onClick={() => setSearchParams({ view: 'kanban' })}
               >
                 Канбан
               </button>
               <button
                 type="button"
-                className={`px-3 py-1.5 text-sm rounded ${view === 'table' ? 'bg-primary text-primary-fg' : 'bg-muted text-muted-fg hover:bg-muted/80'}`}
+                className={`px-3 py-1.5 text-sm rounded ${view === 'table' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-fg hover:bg-muted/80'}`}
                 onClick={() => setSearchParams({ view: 'table' })}
               >
                 Таблица
