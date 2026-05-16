@@ -100,7 +100,7 @@ def _finish_run(
         return
     from shared.data_layer._connection import _get_supabase_connection
 
-    duration_ms = int((time.time() - started_at) * 1000)
+    duration_sec = time.time() - started_at
     output_summary = (
         f"sheets={summary.get('sheets_synced', [])} "
         f"cells={summary.get('cells_updated', 0)} "
@@ -116,12 +116,12 @@ def _finish_run(
                 UPDATE tool_runs
                 SET status = %s,
                     finished_at = NOW(),
-                    duration_ms = %s,
-                    output_summary = %s,
+                    duration_sec = %s,
+                    details = jsonb_build_object('summary', %s::text),
                     error_message = %s
                 WHERE id = %s
                 """,
-                (status, duration_ms, output_summary, error, run_id),
+                (status, duration_sec, output_summary, error, run_id),
             )
         conn.commit()
     except Exception as exc:
@@ -212,7 +212,7 @@ def sync_mirror_status() -> dict:
             cur.execute(
                 """
                 SELECT id, status, started_at, finished_at,
-                       duration_ms, output_summary, error_message, triggered_by
+                       duration_sec, details, error_message, triggered_by
                 FROM tool_runs
                 WHERE tool_slug = %s
                 ORDER BY started_at DESC
@@ -230,13 +230,16 @@ def sync_mirror_status() -> dict:
     if not row:
         return {"status": "never_run"}
 
-    rid, status, started, finished, duration_ms, summary, error, triggered_by = row
+    rid, status, started, finished, duration_sec, details, error, triggered_by = row
+    summary = None
+    if isinstance(details, dict):
+        summary = details.get("summary")
     return {
         "run_id":         str(rid),
         "status":         status,
         "started_at":     started.isoformat() if started else None,
         "finished_at":    finished.isoformat() if finished else None,
-        "duration_ms":    duration_ms,
+        "duration_ms":    int(duration_sec * 1000) if duration_sec is not None else None,
         "output_summary": summary,
         "error_message":  error,
         "triggered_by":   triggered_by,
