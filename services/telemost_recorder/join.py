@@ -68,14 +68,15 @@ _STATE_SELECTORS: dict[ScreenState, list[str]] = {
         "input[placeholder*='name']",
         "input[type='text']",
     ],
-    # Authenticated pre-join: Yandex 360 user logged in via storage_state lands
-    # on a screen with their avatar/name/email and a single "Подключиться"
-    # button — no name input. Detect by the e-mail row + Подключиться button
-    # combo, so guests on NAME_FORM (which also has a Подключиться submit) are
-    # not misclassified.
+    # Authenticated pre-join: Yandex 360 user logged in via storage_state
+    # lands on a screen with their avatar/name/email and a single
+    # "Подключиться" button — no name input. Match by the email shown under
+    # the display name (any email pattern, so the same code works for any
+    # bot account, not just recorder@wookiee.shop). Guests on NAME_FORM
+    # don't show an email — they fall through to NAME_FORM matching above.
+    # Playwright text= supports a regex form `/.../` (JS RegExp syntax).
     ScreenState.AUTH_PRE_JOIN: [
-        "text=recorder@wookiee.shop",
-        "text=@wookiee.shop",
+        r"text=/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/",
     ],
     ScreenState.CONTINUE_IN_BROWSER: [
         "[data-testid='continue-button']",
@@ -268,7 +269,17 @@ def _filter_human_participants(names: list[str]) -> list[str]:
 
 
 async def extract_participants(page: Page) -> list[str]:
-    """Open Participants panel and scrape display names."""
+    """Open Participants panel and scrape display names.
+
+    KNOWN LIMITATION: works on the public telemost.yandex.ru UI but returns
+    [] on the corporate telemost.360.yandex.ru UI — Yandex 360 renders the
+    participant list with different CSS classes and neither the testid-based
+    selector nor the video-tile-name fallback matches. This is benign:
+    detect_meeting_ended() no longer depends on this function (PR #144), and
+    the empty list just means the final meeting summary won't list speakers.
+    Speaker resolution still works via raw_segments.json + speakers.yml.
+    Fixing this needs a fresh DOM dump from a live Yandex 360 meeting.
+    """
     names: list[str] = []
     try:
         btn = page.locator(
