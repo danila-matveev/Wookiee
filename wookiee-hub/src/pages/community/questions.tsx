@@ -4,6 +4,7 @@ import { ReviewsPage } from "@/pages/community/reviews"
 export function QuestionsPage() {
   return (
     <ReviewsPage
+      kind="questions"
       initialSource="question"
       pageTitle="Вопросы"
       pageBreadcrumbs={[

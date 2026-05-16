@@ -20,9 +20,15 @@ interface ReviewsHeaderProps {
   className?: string
   activeSource: ReviewSource | "all"
   onSourceChange: (source: ReviewSource | "all") => void
+  searchPlaceholder?: string
 }
 
-export function ReviewsHeader({ className, activeSource, onSourceChange }: ReviewsHeaderProps) {
+export function ReviewsHeader({
+  className,
+  activeSource,
+  onSourceChange,
+  searchPlaceholder = "Поиск по отзывам…",
+}: ReviewsHeaderProps) {
   const { filters, setFilters } = useCommsStore()
   const allConnections = useIntegrationsStore((s) => s.connections)
   const connections = useMemo(() => allConnections.filter((c) => c.status === "active"), [allConnections])
@@ -48,7 +54,7 @@ export function ReviewsHeader({ className, activeSource, onSourceChange }: Revie
       <div className="relative flex-1 max-w-[280px]">
         <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
         <Input
-          placeholder="Поиск по отзывам..."
+          placeholder={searchPlaceholder}
           value={filters.search}
           onChange={(e) => setFilters({ search: e.target.value })}
           className="pl-8 h-8"

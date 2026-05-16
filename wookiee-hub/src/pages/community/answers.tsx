@@ -4,6 +4,7 @@ import { ReviewsPage } from "@/pages/community/reviews"
 export function AnswersPage() {
   return (
     <ReviewsPage
+      kind="answers"
       initialTab="processed"
       initialProcessedSubTab="answered"
       pageTitle="Ответы"

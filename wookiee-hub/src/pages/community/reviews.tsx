@@ -63,7 +63,17 @@ function applyCommonFilters(review: Review, filters: ReturnType<typeof useCommsS
   return true
 }
 
+export type ReviewsPageKind = "reviews" | "questions" | "answers"
+
+const KIND_COPY: Record<ReviewsPageKind, { empty: string; searchPlaceholder: string }> = {
+  reviews:   { empty: "Нет отзывов",  searchPlaceholder: "Поиск по отзывам…"  },
+  questions: { empty: "Нет вопросов", searchPlaceholder: "Поиск по вопросам…" },
+  answers:   { empty: "Нет ответов",  searchPlaceholder: "Поиск по ответам…"  },
+}
+
 export interface ReviewsPageProps {
+  /** Tab variant — controls empty state + search placeholder copy. */
+  kind?: ReviewsPageKind
   /** Default source filter on mount (e.g. "question" for /community/questions). */
   initialSource?: ReviewSource | "all"
   /** Default top-level tab on mount ("new" | "processed"). */
@@ -77,6 +87,7 @@ export interface ReviewsPageProps {
 }
 
 export function ReviewsPage({
+  kind = "reviews",
   initialSource = "all",
   initialTab,
   initialProcessedSubTab,
@@ -86,6 +97,7 @@ export function ReviewsPage({
     { label: "Отзывы", to: "/community/reviews" },
   ],
 }: ReviewsPageProps = {}) {
+  const copy = KIND_COPY[kind]
   const [activeSource, setActiveSource] = useState<ReviewSource | "all">(initialSource)
   const { reviews, selectedReviewId, setSelectedReview, filters, setFilters, loading, error, fetchReviews, sessionCost } = useCommsStore()
 
@@ -179,6 +191,7 @@ export function ReviewsPage({
       <ReviewsHeader
         activeSource={activeSource}
         onSourceChange={setActiveSource}
+        searchPlaceholder={copy.searchPlaceholder}
       />
       {sessionCost > 0 && (
         <div className="flex justify-end -mt-1">
@@ -220,7 +233,7 @@ export function ReviewsPage({
               </div>
             ) : displayedReviews.length === 0 ? (
               <div className="flex items-center justify-center h-32 text-[13px] text-muted-foreground">
-                Нет отзывов
+                {copy.empty}
               </div>
             ) : (
               displayedReviews.map((review) => (
