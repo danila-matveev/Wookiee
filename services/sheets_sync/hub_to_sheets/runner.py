@@ -17,10 +17,11 @@ import sys
 import time
 from typing import Optional
 
+from dataclasses import replace
+
 from services.sheets_sync.hub_to_sheets.batch import SheetsBatchWriter
 from services.sheets_sync.hub_to_sheets.config import (
     ARCHIVE_STATUS_VALUE,
-    CATALOG_MIRROR_SHEET_ID,
     SHEET_SPECS,
     SheetSpec,
     get_spec,
@@ -29,6 +30,19 @@ from services.sheets_sync.hub_to_sheets.diff import diff_sheet
 from services.sheets_sync.hub_to_sheets.exporter import fetch_view
 
 logger = logging.getLogger(__name__)
+
+
+def _retarget_view(spec: SheetSpec, views_schema: str) -> SheetSpec:
+    """Re-point a SheetSpec at a non-default Postgres schema (e.g. test fixtures).
+
+    Default views live in `public.vw_export_*`. With `views_schema='test_catalog_sync'`
+    the spec is rewritten to `test_catalog_sync.vw_export_*`.
+    """
+    if not views_schema or views_schema == "public":
+        return spec
+    qualified = spec.view_name.split(".", 1)
+    view = qualified[1] if len(qualified) == 2 else qualified[0]
+    return replace(spec, view_name=f"{views_schema}.{view}")
 
 
 def _sync_one(spec: SheetSpec, writer: SheetsBatchWriter) -> dict:
@@ -78,21 +92,32 @@ def _sync_one(spec: SheetSpec, writer: SheetsBatchWriter) -> dict:
     return metrics
 
 
-def sync_one(sheet_name: str, *, dry_run: bool = False) -> dict:
+def sync_one(
+    sheet_name: str,
+    *,
+    dry_run: bool = False,
+    spreadsheet_id: str = "",
+    views_schema: str = "public",
+) -> dict:
     """Public API: sync a single tab by name."""
-    writer = SheetsBatchWriter(dry_run=dry_run)
-    return _sync_one(get_spec(sheet_name), writer)
+    writer = SheetsBatchWriter(spreadsheet_id=spreadsheet_id, dry_run=dry_run)
+    return _sync_one(_retarget_view(get_spec(sheet_name), views_schema), writer)
 
 
-def sync_all(*, dry_run: bool = False) -> dict:
+def sync_all(
+    *,
+    dry_run: bool = False,
+    spreadsheet_id: str = "",
+    views_schema: str = "public",
+) -> dict:
     """Public API: sync all 6 tabs in a single connection."""
-    writer = SheetsBatchWriter(dry_run=dry_run)
+    writer = SheetsBatchWriter(spreadsheet_id=spreadsheet_id, dry_run=dry_run)
     started = time.time()
     per_sheet: list[dict] = []
     errors: list[dict] = []
     for spec in SHEET_SPECS:
         try:
-            per_sheet.append(_sync_one(spec, writer))
+            per_sheet.append(_sync_one(_retarget_view(spec, views_schema), writer))
         except Exception as exc:
             logger.exception("sync failed for %s", spec.sheet_name)
             errors.append({"sheet": spec.sheet_name, "error": str(exc)})
@@ -123,10 +148,10 @@ def sync_all(*, dry_run: bool = False) -> dict:
     return summary
 
 
-def smoke() -> dict:
+def smoke(*, spreadsheet_id: str = "") -> dict:
     """Read-only check: ensure mirror is reachable and headers look sane."""
-    writer = SheetsBatchWriter(dry_run=True)
-    out: dict = {"spreadsheet_id": CATALOG_MIRROR_SHEET_ID, "sheets": {}}
+    writer = SheetsBatchWriter(spreadsheet_id=spreadsheet_id, dry_run=True)
+    out: dict = {"spreadsheet_id": writer.spreadsheet_id, "sheets": {}}
     for spec in SHEET_SPECS:
         header, rows = writer.read_sheet(spec.sheet_name)
         out["sheets"][spec.sheet_name] = {
@@ -154,6 +179,16 @@ def _build_parser() -> argparse.ArgumentParser:
     grp.add_argument("--smoke", action="store_true", help="read-only smoke check")
     p.add_argument("--dry-run", action="store_true", help="compute diff but skip writes")
     p.add_argument("--verbose", "-v", action="store_true")
+    p.add_argument(
+        "--spreadsheet-id",
+        default="",
+        help="override CATALOG_MIRROR_SHEET_ID env var (used for QA against a test mirror)",
+    )
+    p.add_argument(
+        "--views-schema",
+        default="public",
+        help="Postgres schema for vw_export_* views (default: public)",
+    )
     return p
 
 
@@ -165,11 +200,20 @@ def main(argv: Optional[list[str]] = None) -> int:
     )
 
     if args.smoke:
-        result = smoke()
+        result = smoke(spreadsheet_id=args.spreadsheet_id)
     elif args.all:
-        result = sync_all(dry_run=args.dry_run)
+        result = sync_all(
+            dry_run=args.dry_run,
+            spreadsheet_id=args.spreadsheet_id,
+            views_schema=args.views_schema,
+        )
     else:
-        result = sync_one(args.sheet, dry_run=args.dry_run)
+        result = sync_one(
+            args.sheet,
+            dry_run=args.dry_run,
+            spreadsheet_id=args.spreadsheet_id,
+            views_schema=args.views_schema,
+        )
 
     import json
     print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
