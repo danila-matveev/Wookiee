@@ -65,16 +65,16 @@
     --sidebar-border: oklch(0.922 0 0);
     --sidebar-ring: oklch(0.708 0 0);
 
-    /* CRM compat — required by ported Influencer CRM components */
-    --crm-primary-light: oklch(0.490 0.250 292 / 0.12);
-    --crm-primary-hover: oklch(0.420 0.240 292);
-    --crm-primary-muted: oklch(0.760 0.120 292);
-    --crm-border-strong: oklch(0.870 0.006 285);
-    --crm-bg-warm: oklch(0.985 0.002 285);
+    /* CRM compat — retinted to stone for Wave 1; CRM module proper migrates in Wave 5 */
+    --crm-primary-light: oklch(0.205 0 0 / 0.08);
+    --crm-primary-hover: oklch(0.145 0 0);
+    --crm-primary-muted: oklch(0.708 0 0);
+    --crm-border-strong: oklch(0.708 0 0);
+    --crm-bg-warm: oklch(0.985 0 0);
     --crm-surface: oklch(1 0 0);
 }
 
-/* ─── Dark Theme (default) ─── */
+/* ─── Dark Theme ─── */
 .dark {
     color-scheme: dark;
 
@@ -91,7 +91,7 @@
     --muted: oklch(0.269 0 0);
     --muted-foreground: oklch(0.708 0 0);
     --accent: oklch(0.985 0 0);
-    --accent-foreground: oklch(0.985 0 0);
+    --accent-foreground: oklch(0.205 0 0);
     --destructive: oklch(0.704 0.191 22.216);
     --destructive-foreground: oklch(0.985 0 0);
     --border: oklch(1 0 0 / 10%);
@@ -133,18 +133,19 @@
     --sidebar-border: oklch(1 0 0 / 10%);
     --sidebar-ring: oklch(0.556 0 0);
 
-    /* CRM compat — dark mode */
-    --crm-primary-light: oklch(0.541 0.232 292 / 0.15);
-    --crm-primary-hover: oklch(0.620 0.240 292);
-    --crm-primary-muted: oklch(0.400 0.150 292);
-    --crm-border-strong: oklch(0.250 0.012 275);
-    --crm-bg-warm: oklch(0.094 0.005 285);
-    --crm-surface: oklch(0.150 0.008 285);
+    /* CRM compat — dark mode (retinted to stone) */
+    --crm-primary-light: oklch(0.985 0 0 / 0.1);
+    --crm-primary-hover: oklch(0.985 0 0);
+    --crm-primary-muted: oklch(0.556 0 0);
+    --crm-border-strong: oklch(0.269 0 0);
+    --crm-bg-warm: oklch(0.145 0 0);
+    --crm-surface: oklch(0.205 0 0);
 }
 
 @theme inline {
     /* Font */
     --font-sans: 'DM Sans Variable', sans-serif;
+    --font-serif: 'Instrument Serif', ui-serif, Georgia, serif;
 
     /* Breakpoints (spec: tablet 768, laptop 1024, desktop 1280) */
     --breakpoint-sm: 768px;
@@ -329,19 +330,8 @@
   font-style: italic;
 }
 
-/* Marketing section — stone palette override per design 2026-05-12 */
-[data-section="marketing"] {
-  --background: oklch(0.985 0 0);   /* near-white */
-  --foreground: oklch(0.146 0.005 60); /* stone-900 */
-  --card: oklch(1 0 0);             /* white */
-  --card-foreground: oklch(0.146 0.005 60);
-  --muted: oklch(0.97 0.005 60);    /* stone-50 */
-  --muted-foreground: oklch(0.55 0.01 60); /* stone-400 */
-  --border: oklch(0.91 0.005 60);   /* stone-200 */
-  --input: oklch(0.91 0.005 60);
-  --primary: oklch(0.146 0.005 60); /* stone-900 */
-  --primary-foreground: oklch(1 0 0);
-}
+/* Marketing section used to force light-mode tokens; removed in Wave 1 — Hub tokens
+   now paint stone-light by default and respect .dark cascade like the rest of the shell. */
 
 /* ───────────────────────────────────────────────────────────
    W9.7 — Sticky first column (horizontal scroll anchor).
