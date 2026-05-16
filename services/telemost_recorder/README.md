@@ -64,7 +64,17 @@ python scripts/telemost_record.py join <meeting_url>
 
 ## Известные ограничения
 
-- `extract_participants()` возвращает `[]` на `telemost.360.yandex.ru` — селекторы под публичный домен, корпоративный использует другие. Влияет только на список спикеров в финальной саммари. Speaker resolution через `raw_segments.json` + `speakers.yml` работает независимо. Чинить нужно с живым DOM-дампом из звонка на Yandex 360.
+- `extract_participants()` возвращает `[]` на `telemost.360.yandex.ru` — селекторы под публичный домен, корпоративный использует другие. Влияет только на список спикеров в финальной саммари. Speaker resolution через `raw_segments.json` + `speakers.yml` работает независимо. Чинить нужно с живым DOM-дампом из звонка на Yandex 360 — см. инструкцию [docs/operations/telemost_bot.md → «Починка extract_participants()»](../../docs/operations/telemost_bot.md). Два варианта:
+  - `TELEMOST_DUMP_PARTICIPANTS_DOM=1` — рекордер один раз сам сохранит панель + полную страницу как `data/telemost/<meeting_id>/dom_participants_<ts>.html`, если через 2 минуты после старта список участников пустой.
+  - `scripts/telemost_dump_participants.py <meeting_url>` — оператор-флоу через локальный Chromium с авторизацией.
+
+## Health-check куки
+
+Каждый день в 08:00 MSK `scripts/telemost_check_cookies.py` (запускается из `wookiee-cron`):
+1. Парсит `Session_id.expires` из `TELEMOST_STORAGE_STATE_PATH`. Если осталось <7 дней — алерт в `@wookiee_alerts_bot`.
+2. Дёргает `passport.yandex.ru/profile` с этими куками. Если Яндекс отвечает страницей логина — куки revoked, отдельный алерт.
+
+Если всё хорошо — пишет `OK: Session_id valid, days_left=N` в stdout (виден в `docker logs wookiee_cron`). Цель — узнавать о протухании за неделю до того, как бот начнёт падать.
 
 ## Требования
 
@@ -75,6 +85,8 @@ python scripts/telemost_record.py join <meeting_url>
   - `OPENROUTER_API_KEY` — speaker resolve
   - `TELEMOST_BOT_NAME` — отображаемое имя в гостевом режиме (для авторизованного — имя берётся из Yandex 360 профиля)
   - `TELEMOST_STORAGE_STATE_PATH` — путь к storage_state.json (опционально, без него гостевой режим)
+  - `TELEMOST_DUMP_PARTICIPANTS_DOM=1` — диагностический флаг: один раз дампит DOM панели участников, если `extract_participants()` вернул пусто через 2+ минуты после начала записи (выкл. по умолчанию)
+  - `TELEGRAM_ALERTS_BOT_TOKEN` + `HYGIENE_TELEGRAM_CHAT_ID` — для алертов от cookie health-check (нужны в cron-контейнере)
 
 ## Статус
 

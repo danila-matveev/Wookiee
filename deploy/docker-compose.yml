@@ -9,8 +9,8 @@ services:
     entrypoint: ["/bin/bash", "-c"]
     command:
       - |
-        (echo "PATH=/usr/local/bin:/usr/bin:/bin"; echo "PYTHONPATH=/app"; echo "0 10 * * 1 cd /app && python scripts/run_search_queries_sync.py >> /proc/1/fd/1 2>&1"; echo "0 6 * * * cd /app && python scripts/sync_sheets_to_supabase.py --level all >> /proc/1/fd/1 2>&1"; echo "0 12 * * 1 cd /app && python scripts/run_wb_promocodes_sync.py >> /proc/1/fd/1 2>&1"; echo "0 */6 * * * cd /app && python -m services.influencer_crm.scripts.etl_runner >> /proc/1/fd/1 2>&1") | crontab -
-        echo "Wookiee cron installed: search queries Mon 10:00 + sheets sync daily 06:00 + promocodes Mon 12:00 MSK + CRM ETL every 6h"
+        (echo "PATH=/usr/local/bin:/usr/bin:/bin"; echo "PYTHONPATH=/app"; echo "0 10 * * 1 cd /app && python scripts/run_search_queries_sync.py >> /proc/1/fd/1 2>&1"; echo "0 6 * * * cd /app && python scripts/sync_sheets_to_supabase.py --level all >> /proc/1/fd/1 2>&1"; echo "0 12 * * 1 cd /app && python scripts/run_wb_promocodes_sync.py >> /proc/1/fd/1 2>&1"; echo "0 */6 * * * cd /app && python -m services.influencer_crm.scripts.etl_runner >> /proc/1/fd/1 2>&1"; echo "0 8 * * * cd /app && python scripts/telemost_check_cookies.py >> /proc/1/fd/1 2>&1") | crontab -
+        echo "Wookiee cron installed: search queries Mon 10:00 + sheets sync daily 06:00 + promocodes Mon 12:00 MSK + CRM ETL every 6h + telemost cookies check daily 08:00"
         cron -f
 
     env_file:
@@ -25,6 +25,9 @@ services:
       - ../services/etl/data:/app/services/etl/data
       - ../reports:/app/reports
       - ../scripts:/app/scripts:ro
+      # Telemost cookie health-check reads storage_state from the same host
+      # path the API container uses (see telemost-recorder-api below).
+      - /opt/wookiee/secrets:/opt/wookiee/secrets:ro
 
     networks:
       - n8n-docker-caddy_default
