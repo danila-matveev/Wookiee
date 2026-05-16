@@ -126,7 +126,7 @@ export function LoginPage() {
                   setError(null)
                   setSuccess(null)
                 }}
-                className="w-full text-xs text-muted-foreground"
+                className="w-full text-xs text-foreground/70 hover:text-foreground"
               >
                 Войти с паролем
               </Button>
@@ -176,7 +176,7 @@ export function LoginPage() {
                   setMode("magic")
                   setError(null)
                 }}
-                className="w-full text-xs text-muted-foreground"
+                className="w-full text-xs text-foreground/70 hover:text-foreground"
               >
                 Назад к магическим ссылкам
               </Button>
