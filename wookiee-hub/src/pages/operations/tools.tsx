@@ -83,8 +83,8 @@ export function ToolsPage() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
           { label: 'Всего тулзов',     value: tools.length,   sub: 'в каталоге',         cls: 'text-foreground' },
-          { label: 'Активных',         value: activeCount,     sub: `из ${tools.length}`,  cls: 'text-green-600' },
-          { label: 'С ошибкой',        value: errorCount,      sub: 'last_status = error', cls: errorCount > 0 ? 'text-red-600' : 'text-foreground' },
+          { label: 'Активных',         value: activeCount,     sub: `из ${tools.length}`,  cls: 'text-green-600 dark:text-green-400' },
+          { label: 'С ошибкой',        value: errorCount,      sub: 'last_status = error', cls: errorCount > 0 ? 'text-red-600 dark:text-red-400' : 'text-foreground' },
           { label: 'Последний запуск', value: lastRunDisplay,  sub: 'по данным каталога',  cls: 'text-foreground' },
         ].map(({ label, value, sub, cls }) => (
           <div key={label} className="bg-card border border-border rounded-xl p-4">

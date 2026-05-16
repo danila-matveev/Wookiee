@@ -79,19 +79,19 @@ type SourceTab = 'all' | 'agents' | 'tools'
 // ─── status icon ────────────────────────────────────────────────────────────
 
 function StatusIcon({ status, size = 16 }: { status: RunStatus; size?: number }) {
-  if (status === 'success') return <CheckCircle2 size={size} className="text-green-600 flex-shrink-0" />
-  if (status === 'error') return <XCircle size={size} className="text-red-600 flex-shrink-0" />
-  if (status === 'running') return <Loader2 size={size} className="text-blue-500 flex-shrink-0 animate-spin" />
-  return <Clock size={size} className="text-amber-600 flex-shrink-0" />
+  if (status === 'success') return <CheckCircle2 size={size} className="text-green-600 dark:text-green-400 flex-shrink-0" />
+  if (status === 'error') return <XCircle size={size} className="text-red-600 dark:text-red-400 flex-shrink-0" />
+  if (status === 'running') return <Loader2 size={size} className="text-blue-500 dark:text-blue-400 flex-shrink-0 animate-spin" />
+  return <Clock size={size} className="text-amber-600 dark:text-amber-400 flex-shrink-0" />
 }
 
 // ─── agent run row ───────────────────────────────────────────────────────────
 
 function AgentRunRow({ run, expanded, onToggle }: { run: AgentRun; expanded: boolean; onToggle: () => void }) {
   const statusColorClass =
-    run.status === 'success' ? 'bg-green-50 border-green-200 text-green-600'
-    : run.status === 'error' ? 'bg-red-50 border-red-200 text-red-600'
-    : 'bg-amber-50 border-amber-200 text-amber-600'
+    run.status === 'success' ? 'bg-green-50 border-green-200 text-green-600 dark:bg-green-950 dark:border-green-900 dark:text-green-300'
+    : run.status === 'error' ? 'bg-red-50 border-red-200 text-red-600 dark:bg-red-950 dark:border-red-900 dark:text-red-300'
+    : 'bg-amber-50 border-amber-200 text-amber-600 dark:bg-amber-950 dark:border-amber-900 dark:text-amber-300'
 
   return (
     <>
@@ -127,7 +127,7 @@ function AgentRunRow({ run, expanded, onToggle }: { run: AgentRun; expanded: boo
       {expanded && (
         <div className="px-4 py-3 bg-muted/20 border-b border-border space-y-2 text-[12px]">
           {run.errorMessage && (
-            <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 font-mono text-[11px] whitespace-pre-wrap break-all">
+            <div className="bg-red-50 border border-red-200 text-red-700 dark:bg-red-950 dark:border-red-900 dark:text-red-300 rounded-lg px-3 py-2 font-mono text-[11px] whitespace-pre-wrap break-all">
               {run.errorMessage}
             </div>
           )}
@@ -186,14 +186,14 @@ function AgentRunRow({ run, expanded, onToggle }: { run: AgentRun; expanded: boo
 function ToolRunRow({ run, expanded, onToggle }: { run: ToolRun; expanded: boolean; onToggle: () => void }) {
   const isSkill = run.toolSlug.startsWith('/')
   const statusColorClass =
-    run.status === 'success' ? 'bg-green-50 border-green-200 text-green-600'
-    : run.status === 'error' ? 'bg-red-50 border-red-200 text-red-600'
-    : run.status === 'running' ? 'bg-blue-50 border-blue-200 text-blue-600'
-    : 'bg-amber-50 border-amber-200 text-amber-600'
+    run.status === 'success' ? 'bg-green-50 border-green-200 text-green-600 dark:bg-green-950 dark:border-green-900 dark:text-green-300'
+    : run.status === 'error' ? 'bg-red-50 border-red-200 text-red-600 dark:bg-red-950 dark:border-red-900 dark:text-red-300'
+    : run.status === 'running' ? 'bg-blue-50 border-blue-200 text-blue-600 dark:bg-blue-950 dark:border-blue-900 dark:text-blue-300'
+    : 'bg-amber-50 border-amber-200 text-amber-600 dark:bg-amber-950 dark:border-amber-900 dark:text-amber-300'
 
   const badgeColor = isSkill
-    ? 'bg-sky-50 text-sky-600 border-sky-200'
-    : 'bg-orange-50 text-orange-600 border-orange-200'
+    ? 'bg-sky-50 text-sky-600 border-sky-200 dark:bg-sky-950 dark:text-sky-300 dark:border-sky-900'
+    : 'bg-orange-50 text-orange-600 border-orange-200 dark:bg-orange-950 dark:text-orange-300 dark:border-orange-900'
 
   return (
     <>
@@ -201,7 +201,7 @@ function ToolRunRow({ run, expanded, onToggle }: { run: ToolRun; expanded: boole
         className={cn(
           'flex items-center gap-3 px-4 py-3 border-b border-border hover:bg-muted/40 transition-colors cursor-pointer select-none',
           expanded && 'bg-muted/30',
-          run.status === 'error' && !expanded && 'border-l-2 border-l-red-400',
+          run.status === 'error' && !expanded && 'border-l-2 border-l-red-400 dark:border-l-red-500',
         )}
         onClick={onToggle}
       >
@@ -225,7 +225,7 @@ function ToolRunRow({ run, expanded, onToggle }: { run: ToolRun; expanded: boole
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
-            className="hidden sm:flex items-center gap-1 text-[11px] text-sky-600 hover:text-sky-700 hover:underline shrink-0"
+            className="hidden sm:flex items-center gap-1 text-[11px] text-sky-600 hover:text-sky-700 dark:text-sky-400 dark:hover:text-sky-300 hover:underline shrink-0"
           >
             Отчёт <ExternalLink size={10} />
           </a>
@@ -246,14 +246,14 @@ function ToolRunRow({ run, expanded, onToggle }: { run: ToolRun; expanded: boole
         <div className="px-4 py-3 bg-muted/20 border-b border-border space-y-2 text-[12px]">
           {/* Error detail */}
           {run.status === 'error' && (
-            <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2.5 space-y-1">
+            <div className="bg-red-50 border border-red-200 dark:bg-red-950 dark:border-red-900 rounded-lg px-3 py-2.5 space-y-1">
               {run.errorStage && (
-                <p className="text-[10px] font-semibold text-red-600 uppercase tracking-wider">
+                <p className="text-[10px] font-semibold text-red-600 dark:text-red-400 uppercase tracking-wider">
                   Этап: {run.errorStage}
                 </p>
               )}
               {run.errorMessage && (
-                <p className="text-[11px] text-red-700 font-mono whitespace-pre-wrap break-all">
+                <p className="text-[11px] text-red-700 dark:text-red-300 font-mono whitespace-pre-wrap break-all">
                   {run.errorMessage}
                 </p>
               )}
@@ -329,7 +329,7 @@ function ToolRunRow({ run, expanded, onToggle }: { run: ToolRun; expanded: boole
                   href={run.resultUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-sky-600 hover:text-sky-700 hover:underline inline-flex items-center gap-1 font-mono text-[11px] break-all"
+                  className="text-sky-600 hover:text-sky-700 dark:text-sky-400 dark:hover:text-sky-300 hover:underline inline-flex items-center gap-1 font-mono text-[11px] break-all"
                 >
                   {run.resultUrl} <ExternalLink size={10} className="shrink-0" />
                 </a>
@@ -482,8 +482,8 @@ export function ActivityPage() {
       <div className="grid grid-cols-3 gap-3">
         {[
           { label: 'Всего запусков', value: totalShown, sub: 'в выборке', cls: 'text-foreground' },
-          { label: 'Успешных', value: successCount, sub: `из ${totalShown}`, cls: totalShown > 0 ? 'text-green-600' : 'text-foreground' },
-          { label: 'С ошибкой', value: failCount, sub: 'ошибки + таймауты', cls: failCount > 0 ? 'text-red-600' : 'text-foreground' },
+          { label: 'Успешных', value: successCount, sub: `из ${totalShown}`, cls: totalShown > 0 ? 'text-green-600 dark:text-green-400' : 'text-foreground' },
+          { label: 'С ошибкой', value: failCount, sub: 'ошибки + таймауты', cls: failCount > 0 ? 'text-red-600 dark:text-red-400' : 'text-foreground' },
         ].map(({ label, value, sub, cls }) => (
           <div key={label} className="bg-card border border-border rounded-xl p-4">
             <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">{label}</p>

@@ -13,10 +13,10 @@ const STATUS_LABEL: Record<string, string> = {
   archived:   'Архив',
 }
 const STATUS_CLASS: Record<string, string> = {
-  active:     'bg-green-100 text-green-700',
-  deprecated: 'bg-amber-100 text-amber-700',
-  draft:      'bg-gray-100 text-gray-600',
-  archived:   'bg-red-100 text-red-700',
+  active:     'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300',
+  deprecated: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
+  draft:      'bg-gray-100 text-gray-600 dark:bg-stone-800 dark:text-stone-300',
+  archived:   'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
 }
 const CATEGORY_LABEL: Record<string, string> = {
   analytics:  'Аналитика',
@@ -198,7 +198,7 @@ export function ToolDetailPanel({ tool, onClose }: ToolDetailPanelProps) {
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <ArrowRight size={12} className="text-muted-foreground" />
                   {tool.outputTargets.map((t) => (
-                    <span key={t} className="text-[11px] bg-green-50 border border-green-200 text-green-700 rounded px-2 py-0.5">
+                    <span key={t} className="text-[11px] bg-green-50 border border-green-200 text-green-700 dark:bg-green-950 dark:border-green-900 dark:text-green-300 rounded px-2 py-0.5">
                       {t}
                     </span>
                   ))}
@@ -212,7 +212,7 @@ export function ToolDetailPanel({ tool, onClose }: ToolDetailPanelProps) {
             <Section label="Переменные окружения">
               <div className="flex flex-wrap gap-2">
                 {tool.requiredEnvVars.map((v) => (
-                  <code key={v} className="text-[11px] bg-amber-50 border border-amber-200 text-amber-700 rounded px-2 py-0.5 font-mono">
+                  <code key={v} className="text-[11px] bg-amber-50 border border-amber-200 text-amber-700 dark:bg-amber-950 dark:border-amber-900 dark:text-amber-300 rounded px-2 py-0.5 font-mono">
                     {v}
                   </code>
                 ))}
@@ -234,24 +234,24 @@ export function ToolDetailPanel({ tool, onClose }: ToolDetailPanelProps) {
               </div>
               <div className={cn(
                 'border rounded-lg p-3',
-                tool.lastStatus === 'error' ? 'bg-red-50 border-red-200' : 'bg-muted/40 border-border'
+                tool.lastStatus === 'error' ? 'bg-red-50 border-red-200 dark:bg-red-950 dark:border-red-900' : 'bg-muted/40 border-border'
               )}>
                 <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Статус</p>
                 <p className={cn(
                   'text-[12px] font-medium',
-                  tool.lastStatus === 'error'   ? 'text-red-600' :
-                  tool.lastStatus === 'success' ? 'text-green-600' : 'text-muted-foreground'
+                  tool.lastStatus === 'error'   ? 'text-red-600 dark:text-red-400' :
+                  tool.lastStatus === 'success' ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'
                 )}>
                   {tool.lastStatus ?? '—'}
                 </p>
               </div>
             </div>
             {tool.lastStatus === 'error' && (
-              <div className="mt-3 flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                <XCircle size={13} className="text-red-600 mt-0.5 shrink-0" />
+              <div className="mt-3 flex items-start gap-2 bg-red-50 border border-red-200 dark:bg-red-950 dark:border-red-900 rounded-lg px-3 py-2">
+                <XCircle size={13} className="text-red-600 dark:text-red-400 mt-0.5 shrink-0" />
                 <div>
-                  <p className="text-[12px] font-semibold text-red-700">Последний запуск завершился ошибкой</p>
-                  <p className="text-[11px] text-red-600 mt-0.5">
+                  <p className="text-[12px] font-semibold text-red-700 dark:text-red-300">Последний запуск завершился ошибкой</p>
+                  <p className="text-[11px] text-red-600 dark:text-red-400 mt-0.5">
                     Проверьте секцию «Последние запуски» ниже или запустите инструмент повторно.
                   </p>
                 </div>
@@ -270,9 +270,9 @@ export function ToolDetailPanel({ tool, onClose }: ToolDetailPanelProps) {
               <div className="space-y-1.5">
                 {recentRuns.map((run) => (
                   <div key={run.id} className="flex items-center gap-2">
-                    {run.status === 'success' && <CheckCircle2 size={12} className="text-green-600 shrink-0" />}
-                    {run.status === 'error' && <XCircle size={12} className="text-red-600 shrink-0" />}
-                    {run.status === 'timeout' && <Clock size={12} className="text-amber-600 shrink-0" />}
+                    {run.status === 'success' && <CheckCircle2 size={12} className="text-green-600 dark:text-green-400 shrink-0" />}
+                    {run.status === 'error' && <XCircle size={12} className="text-red-600 dark:text-red-400 shrink-0" />}
+                    {run.status === 'timeout' && <Clock size={12} className="text-amber-600 dark:text-amber-400 shrink-0" />}
                     <span className="font-mono text-[11px] text-foreground flex-1 truncate">{run.agentName}</span>
                     <span className="text-[11px] text-muted-foreground w-10 text-right shrink-0">{formatDuration(run.durationMs)}</span>
                     <span className="text-[11px] text-muted-foreground whitespace-nowrap shrink-0">{formatRunTime(run.startedAt)}</span>
