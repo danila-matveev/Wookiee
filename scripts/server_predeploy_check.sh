@@ -73,24 +73,36 @@ for s in "${SCRIPTS_REFERENCED[@]}"; do
 done
 [ "$ERRORS" = "0" ] && ok "all referenced scripts present"
 
-# 5) Python compileall — синтаксис исходников валиден.
-# PYTHONDONTWRITEBYTECODE=1 не даёт compileall писать .pyc в __pycache__ —
-# без этого падал PermissionError для каталогов, чей owner ≠ deploy
-# (например после ручных docker rebuild под root), и репортилось как
-# "syntax error in source", путая дежурного.
+# 5) Python syntax check — без записи .pyc.
+# Раньше использовался `python -m compileall`, который пишет .pyc в __pycache__
+# и падает с PermissionError на каталогах, чей owner ≠ deploy (например после
+# ручного docker rebuild под root). Скрипт репортил это как "syntax error in
+# source", и дежурный тратил время не на ту проблему.
+# Используем ast.parse — он только парсит, ничего не пишет.
 if command -v python3 >/dev/null; then
-    # Capture stdout+stderr; `set -e` would normally abort on non-zero from
-    # compileall, so we wrap in `if` and let the conditional consume the exit.
-    if COMPILE_OUT=$(cd "$REPO" && PYTHONDONTWRITEBYTECODE=1 python3 -m compileall -q services scripts shared agents 2>&1); then
-        if [ -z "$COMPILE_OUT" ]; then
-            ok "python compileall passed"
-        else
-            # compileall returned 0 but printed warnings — surface them, don't fail
-            ok "python compileall passed (with warnings):"
-            echo "$COMPILE_OUT" | head -10 | sed 's/^/    /' >&2
-        fi
+    if COMPILE_OUT=$(cd "$REPO" && python3 - <<'PYEOF' 2>&1
+import ast, sys
+from pathlib import Path
+
+errors = []
+for root in ("services", "scripts", "shared", "agents"):
+    for path in Path(root).rglob("*.py"):
+        try:
+            ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        except SyntaxError as exc:
+            errors.append(f"{path}: {exc.msg} (line {exc.lineno})")
+        except OSError as exc:
+            errors.append(f"{path}: cannot read ({exc.strerror})")
+
+if errors:
+    for line in errors:
+        print(line)
+    sys.exit(1)
+PYEOF
+); then
+        ok "python syntax check passed"
     else
-        err "python compileall failed:"
+        err "python syntax check failed:"
         echo "$COMPILE_OUT" | head -10 | sed 's/^/    /' >&2
     fi
 fi
