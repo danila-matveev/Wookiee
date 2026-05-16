@@ -33,7 +33,7 @@ export function ReviewListItem({ review, isSelected, onClick }: ReviewListItemPr
         </span>
         <span className="text-[11px] text-muted-foreground">{dateStr}</span>
         {review.source === "question" && (
-          <span className="text-[10px] bg-blue-500/10 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded-full font-medium">Вопрос</span>
+          <span className="text-[10px] bg-blue-500/10 text-blue-600 px-1.5 py-0.5 rounded-full font-medium">Вопрос</span>
         )}
         <div className="flex-1" />
         {review.rating > 0 && (

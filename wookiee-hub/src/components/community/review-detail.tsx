@@ -125,13 +125,13 @@ export function ReviewDetail({ review, className }: ReviewDetailProps) {
                 </div>
               )}
               {review.source === "question" && (
-                <span className="text-[11px] bg-blue-500/10 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded-full font-medium">
+                <span className="text-[11px] bg-blue-500/10 text-blue-600 px-2 py-0.5 rounded-full font-medium">
                   Вопрос
                 </span>
               )}
             </div>
             {review.purchaseStatus === "verified" && (
-              <span className="text-[11px] text-green-600 dark:text-green-400 font-medium">Покупка подтверждена</span>
+              <span className="text-[11px] text-green-600 font-medium">Покупка подтверждена</span>
             )}
           </div>
 

@@ -4,6 +4,7 @@ import { ReviewsHeader } from "@/components/community/reviews-header"
 import { ReviewsStatusTabs } from "@/components/community/reviews-status-tabs"
 import { ReviewListItem } from "@/components/community/review-list-item"
 import { ReviewDetail } from "@/components/community/review-detail"
+import { PageHeader, type Crumb } from "@/components/layout/page-header"
 import { useCommsStore } from "@/stores/community"
 import type { Review, ReviewSource } from "@/types/community"
 
@@ -69,12 +70,21 @@ export interface ReviewsPageProps {
   initialTab?: "new" | "processed"
   /** Default sub-tab inside "processed" ("pending" | "answered" | "archived"). */
   initialProcessedSubTab?: "pending" | "answered" | "archived"
+  /** Page title shown in DS v2 PageHeader. */
+  pageTitle?: string
+  /** Breadcrumbs for DS v2 PageHeader. */
+  pageBreadcrumbs?: Crumb[]
 }
 
 export function ReviewsPage({
   initialSource = "all",
   initialTab,
   initialProcessedSubTab,
+  pageTitle = "Отзывы",
+  pageBreadcrumbs = [
+    { label: "Сообщество", to: "/community/reviews" },
+    { label: "Отзывы", to: "/community/reviews" },
+  ],
 }: ReviewsPageProps = {}) {
   const [activeSource, setActiveSource] = useState<ReviewSource | "all">(initialSource)
   const { reviews, selectedReviewId, setSelectedReview, filters, setFilters, loading, error, fetchReviews, sessionCost } = useCommsStore()
@@ -161,6 +171,11 @@ export function ReviewsPage({
 
   return (
     <div className="space-y-3">
+      <PageHeader
+        kicker="Сообщество"
+        title={pageTitle}
+        breadcrumbs={pageBreadcrumbs}
+      />
       <ReviewsHeader
         activeSource={activeSource}
         onSourceChange={setActiveSource}
