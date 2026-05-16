@@ -39,6 +39,18 @@ Build time: 4.76s. Build exit code: 0.
 
 Warning: `index-BmQQTPLD.js` > 700 KB warning threshold (Vite default). Это существующая проблема, не вводится Wave 1 — не блокер.
 
+### Bundle final (post-Wave 1)
+
+После всех 33 commits на ветке `feat/ds-v2-wave-1-spec`:
+
+- **Total `dist/`**: 2784 KB
+- **Delta vs baseline (2932 KB)**: **−148 KB** (bundle стал меньше)
+- **G11 status**: ✅ PASS (delta < +250 KB threshold; реально negative)
+
+Причина уменьшения: замена `@fontsource-variable/inter` → `@fontsource-variable/dm-sans` (Phase 3) экономит ~160 KB; primitives + preview добавили ~12 KB.
+
+Build time post-Wave 1: 3.90s. Typecheck post-Wave 1: ✓ exit 0. Unit tests: 126/126 pass (31 files).
+
 ---
 
 ## 1. Hardcoded `stone-*` classes
