@@ -73,12 +73,18 @@ for s in "${SCRIPTS_REFERENCED[@]}"; do
 done
 [ "$ERRORS" = "0" ] && ok "all referenced scripts present"
 
-# 5) Python compileall — синтаксис исходников валиден
+# 5) Python compileall — синтаксис исходников валиден.
+# PYTHONDONTWRITEBYTECODE=1 не даёт compileall писать .pyc в __pycache__ —
+# без этого падал PermissionError для каталогов, чей owner ≠ deploy
+# (например после ручных docker rebuild под root), и репортилось как
+# "syntax error in source", путая дежурного.
 if command -v python3 >/dev/null; then
-    if (cd "$REPO" && python3 -m compileall -q services scripts shared agents 2>&1 >/dev/null); then
+    COMPILE_OUT=$(cd "$REPO" && PYTHONDONTWRITEBYTECODE=1 python3 -m compileall -q services scripts shared agents 2>&1)
+    if [ -z "$COMPILE_OUT" ]; then
         ok "python compileall passed"
     else
-        err "python compileall failed — syntax error in source"
+        err "python compileall failed:"
+        echo "$COMPILE_OUT" | head -10 | sed 's/^/    /' >&2
     fi
 fi
 
