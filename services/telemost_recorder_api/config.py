@@ -99,6 +99,17 @@ SCHEDULER_LEAD_SECONDS: int = int(os.getenv("TELEMOST_SCHEDULER_LEAD_SECONDS", "
 # anything that started more than this many seconds ago.
 SCHEDULER_GRACE_SECONDS: int = int(os.getenv("TELEMOST_SCHEDULER_GRACE_SECONDS", "300"))
 
+# Morning digest — daily DM to each active user with today's meetings.
+#
+#   MORNING_DIGEST_ENABLED   — master on/off switch (default false).
+#                              Set to "true" on prod when ready to activate.
+#   MORNING_DIGEST_HOUR_MSK  — hour in Europe/Moscow when digest is sent
+#                              (default 9 = 09:00 МСК).
+MORNING_DIGEST_ENABLED: bool = (
+    os.getenv("MORNING_DIGEST_ENABLED", "false").lower() == "true"
+)
+MORNING_DIGEST_HOUR_MSK: int = int(os.getenv("MORNING_DIGEST_HOUR_MSK", "9"))
+
 # Paths
 DATA_DIR: Path = _PROJECT_ROOT / "data" / "telemost"
 # When the API runs inside a container that talks to the host docker.sock,
