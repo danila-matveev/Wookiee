@@ -76,3 +76,27 @@ def confirm_delete(short_id: str) -> dict:
             ]
         ]
     }
+
+
+def digest_keyboard(needs_link_events: list[dict]) -> dict:
+    """Inline keyboard for morning digest — one button per needs-link event.
+
+    Each button has callback_data ``add_telemost:<bitrix_event_id>`` and
+    is placed on its own row so the label stays readable.
+
+    Args:
+        needs_link_events: List of raw Bitrix event dicts that lack a
+            Telemost URL and are real meetings (attendees≥2 or IS_MEETING).
+
+    Returns:
+        Telegram inline_keyboard dict ready for ``reply_markup`` parameter.
+    """
+    rows = []
+    for ev in needs_link_events:
+        event_id = str(ev.get("ID") or "").strip()
+        name = (ev.get("NAME") or "Встреча").strip()
+        label = f"➕ Добавить Telemost: {name}"
+        if len(label) > 64:
+            label = label[:61] + "..."
+        rows.append([{"text": label, "callback_data": f"add_telemost:{event_id}"}])
+    return {"inline_keyboard": rows}
