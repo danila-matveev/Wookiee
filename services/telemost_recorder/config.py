@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 load_dotenv(_PROJECT_ROOT / ".env")
 
-BOT_NAME: str = os.getenv("TELEMOST_BOT_NAME", "Wookiee Recorder")
+BOT_NAME: str = os.getenv("TELEMOST_BOT_NAME", "Саймон")
 JOIN_TIMEOUT: int = int(os.getenv("TELEMOST_JOIN_TIMEOUT", "60"))
 WAITING_ROOM_TIMEOUT: int = int(os.getenv("TELEMOST_WAITING_ROOM_TIMEOUT", "600"))
 SCREENSHOT_INTERVAL: int = int(os.getenv("TELEMOST_SCREENSHOT_INTERVAL", "30"))
@@ -56,7 +56,8 @@ BROWSER_FLAGS: list[str] = [
 # on the participant side. Prefer distinctive tokens over short generic ones
 # to avoid false positives on human names (e.g. "sber salut", not "salut").
 KNOWN_BOT_NAMES: frozenset[str] = frozenset({
-    "wookiee recorder",      # this bot itself
+    "саймон",                # this bot itself (new display name)
+    "wookiee recorder",      # legacy display name — kept so old recordings still filter correctly
     "navstreche.com",        # navstreche AI assistant
     "sber salut",            # Sber Salut (specific token, "salut" alone catches Salutamica etc.)
     "yandex go",             # Yandex assistant

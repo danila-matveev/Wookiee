@@ -8,6 +8,13 @@ def test_filter_removes_known_bots_case_insensitive():
     assert humans == ["Данила Матвеев", "Алина"]
 
 
+def test_filter_removes_saimon_bot():
+    """New display name «Саймон» must also be filtered as a bot."""
+    names = ["Данила Матвеев", "Саймон", "Алина"]
+    humans = _filter_human_participants(names)
+    assert humans == ["Данила Матвеев", "Алина"]
+
+
 def test_filter_handles_bot_name_substring():
     names = ["Sber Salut Bot 2.0", "Артём"]
     humans = _filter_human_participants(names)
@@ -27,6 +34,12 @@ def test_filter_empty_list():
 
 def test_filter_only_bots_returns_empty():
     names = ["Wookiee Recorder", "navstreche.com"]
+    assert _filter_human_participants(names) == []
+
+
+def test_filter_only_saimon_returns_empty():
+    """When only Саймон is in the list — no humans, returns empty."""
+    names = ["Саймон"]
     assert _filter_human_participants(names) == []
 
 

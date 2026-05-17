@@ -44,5 +44,5 @@ async def test_live_join(telemost_url: str) -> None:
         print(f"  Screenshot: {meeting.screenshot_path}")
     else:
         print("⏳ Bot is in WAITING_ROOM")
-        print("  → Admit 'Wookiee Recorder' in Telemost interface to complete the phase")
+        print("  → Admit 'Саймон' in Telemost interface to complete the phase")
         print(f"  Meeting ID: {meeting.meeting_id}")

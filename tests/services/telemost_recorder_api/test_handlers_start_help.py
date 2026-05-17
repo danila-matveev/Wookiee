@@ -57,7 +57,8 @@ async def test_start_known_user_gets_welcome_with_keyboard():
     chat_id, text, markup = sent[0]
     assert chat_id == 555
     assert "Полина" in text
-    assert "Wookiee Recorder" in text
+    assert "Саймон" in text
+    assert "Wookiee Recorder" not in text
     assert "/record" in text
     # Inline keyboard with 3 navigation buttons
     assert markup is not None
