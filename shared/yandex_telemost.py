@@ -39,7 +39,7 @@ _TIMEOUT = httpx.Timeout(15.0)
 # ---------------------------------------------------------------------------
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class Conference:
     """Telemost conference created via the API."""
 
