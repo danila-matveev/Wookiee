@@ -128,7 +128,7 @@ export function PromoCodesTable() {
         <span className="text-[10px] text-muted-foreground ml-auto tabular-nums">{filtered.length} кодов</span>
       </div>
 
-      <div className="flex-1 overflow-auto">
+      <div className="overflow-auto max-h-[calc(100dvh-280px)]">
         <table className="w-full table-fixed">
           <colgroup>
             <col className="w-[220px]" /><col className="w-[120px]" /><col className="w-[80px]" /><col className="w-[110px]" />

@@ -152,7 +152,7 @@ export function SearchQueriesTable() {
 
   return (
     <QueryStatusBoundary isLoading={lq || ls} error={eq ?? es}>
-      <div className="flex flex-col h-full">
+      <div className="flex flex-col">
         <UpdateBar job="search-queries" />
 
         <div className="px-6 pt-3 pb-2 flex flex-col gap-2 border-b border-border bg-card">
@@ -212,7 +212,7 @@ export function SearchQueriesTable() {
           <span className="text-[10px] text-muted-foreground ml-auto tabular-nums">{filtered.length} записей</span>
         </div>
 
-        <div className="flex-1 overflow-auto">
+        <div className="overflow-auto max-h-[calc(100dvh-260px)]">
           <table className="min-w-[1200px] table-fixed tabular-nums w-full">
               <colgroup>
                 <col className="w-[130px]" />
