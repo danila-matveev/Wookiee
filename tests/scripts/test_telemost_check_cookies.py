@@ -5,8 +5,7 @@ import json
 import sys
 import time
 from types import SimpleNamespace
-
-import pytest
+from unittest.mock import AsyncMock
 
 
 def _reset_module(monkeypatch):
@@ -55,6 +54,17 @@ def _stub_healthy_profile(monkeypatch):
         )
 
     monkeypatch.setattr("httpx.get", _get)
+
+
+def _stub_oauth_ok(monkeypatch):
+    """Patch shared.yandex_telemost.list_conferences to return success.
+
+    Applied in tests that exercise the cookie-check path — we don't want the
+    OAuth sub-check to fire real HTTP or interfere with cookie-alert assertions.
+    """
+    import shared.yandex_telemost as _yt  # noqa: PLC0415
+
+    monkeypatch.setattr(_yt, "list_conferences", AsyncMock(return_value=[]))
 
 
 def _stub_logged_out_profile(monkeypatch):
@@ -106,6 +116,7 @@ def test_alerts_when_cookies_about_to_expire(monkeypatch, tmp_path):
     _set_env(monkeypatch, str(p))
     alerts = _stub_alerts(monkeypatch)
     _stub_healthy_profile(monkeypatch)
+    # Cookie check returns 1 early — OAuth check is never reached.
     from scripts.telemost_check_cookies import main
 
     assert main() == 1
@@ -130,6 +141,7 @@ def test_passes_when_cookies_valid_and_live_check_ok(monkeypatch, tmp_path):
     _set_env(monkeypatch, str(p))
     alerts = _stub_alerts(monkeypatch)
     _stub_healthy_profile(monkeypatch)
+    _stub_oauth_ok(monkeypatch)  # prevent real HTTP from OAuth sub-check
     from scripts.telemost_check_cookies import main
 
     assert main() == 0
