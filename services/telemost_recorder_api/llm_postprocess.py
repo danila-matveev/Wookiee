@@ -6,6 +6,7 @@ import json
 import logging
 import re
 from typing import Optional
+from uuid import UUID
 
 import httpx
 
@@ -365,6 +366,7 @@ async def postprocess_meeting(
     *,
     model: Optional[str] = None,
     team_users: Optional[list[dict]] = None,
+    meeting_id: Optional[UUID] = None,
 ) -> dict:
     """Run LLM postprocessing.
 
@@ -389,7 +391,7 @@ async def postprocess_meeting(
             logger.error("LLM returned non-JSON: %r", cleaned[:500])
             raise LLMPostprocessError(f"invalid JSON: {e}") from e
         _validate_shape(data)
-        await _enrich_voice_triggers(data, segments, team_users)
+        await _enrich_voice_triggers(data, segments, team_users, meeting_id)
         return data
 
     # Chunked path
@@ -430,7 +432,7 @@ async def postprocess_meeting(
         "summary": summary_block,
     }
     _validate_shape(merged)
-    await _enrich_voice_triggers(merged, segments, team_users)
+    await _enrich_voice_triggers(merged, segments, team_users, meeting_id)
     return merged
 
 
@@ -438,6 +440,7 @@ async def _enrich_voice_triggers(
     data: dict,
     segments: list[dict],
     team_users: Optional[list[dict]],
+    meeting_id: Optional[UUID] = None,
 ) -> None:
     """Run voice-trigger extraction and attach results to data['voice_triggers'].
 
@@ -458,7 +461,7 @@ async def _enrich_voice_triggers(
     users = team_users or []
 
     try:
-        candidates = await voice_triggers.extract(transcript, users)
+        candidates = await voice_triggers.extract(transcript, users, meeting_id)
         data["voice_triggers"] = candidates
     except Exception:
         logger.exception("voice_triggers extraction failed — skipping sections")

@@ -9,6 +9,14 @@ import logging
 
 from services.telemost_recorder_api.auth import get_user_by_telegram_id
 from services.telemost_recorder_api.handlers.add_telemost import handle_add_telemost
+from services.telemost_recorder_api.handlers.voice_actions import (
+    handle_meeting_create,
+    handle_meeting_edit,
+    handle_meeting_ignore,
+    handle_task_create,
+    handle_task_edit,
+    handle_task_ignore,
+)
 from services.telemost_recorder_api.handlers.voice_trigger_disabled import handle_voice_disabled
 from services.telemost_recorder_api.handlers.help import handle_help
 from services.telemost_recorder_api.handlers.list_meetings import handle_list
@@ -137,10 +145,36 @@ async def _handle_callback_query(cq: dict) -> None:
         else:
             logger.info("Malformed add_telemost callback: %s", data)
     elif data.startswith("voice:") and data.endswith(":disabled"):
-        # Phase 1 placeholder — all three voice-trigger buttons land here.
-        # Phase 2 will replace these with real task/meeting/note handlers.
+        # Phase 1 legacy callback — kept as fallback for candidates that
+        # were rendered before T7 (no UUID assigned) or for which Phase 2
+        # persistence failed at the LLM stage.
         parts = data.split(":")
         candidate_id = parts[1] if len(parts) >= 3 else "unknown"
         await handle_voice_disabled(chat_id=chat_id, candidate_id=candidate_id)
+    elif (
+        data.startswith(("task_create:", "task_edit:", "task_ignore:"))
+        or data.startswith(("meeting_create:", "meeting_edit:", "meeting_ignore:"))
+    ):
+        # Phase 2 voice-trigger action callbacks. Shape: <action_kind>:<uuid>
+        action, _, raw_uuid = data.partition(":")
+        try:
+            from uuid import UUID
+            cand_uuid = UUID(raw_uuid)
+        except ValueError:
+            logger.info("Malformed voice-action callback %s (bad UUID %r)", data, raw_uuid)
+            return
+        dispatch = {
+            "task_create": handle_task_create,
+            "task_edit": handle_task_edit,
+            "task_ignore": handle_task_ignore,
+            "meeting_create": handle_meeting_create,
+            "meeting_edit": handle_meeting_edit,
+            "meeting_ignore": handle_meeting_ignore,
+        }
+        handler = dispatch.get(action)
+        if handler is None:
+            logger.info("Unknown voice action: %s", action)
+            return
+        await handler(chat_id=chat_id, candidate_id=cand_uuid)
     else:
         logger.info("Unknown callback data: %s", data)

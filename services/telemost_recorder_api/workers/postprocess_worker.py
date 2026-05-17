@@ -115,7 +115,15 @@ async def process_one() -> bool:
                 tags=[],
             )
         else:
-            result = await postprocess_meeting(segments, invitees)
+            # Pass meeting_id so voice_triggers.extract() can persist each
+            # candidate to telemost.voice_trigger_candidates and stamp a real
+            # UUID on every VoiceCandidate the notifier picks up.
+            result = await postprocess_meeting(
+                segments,
+                invitees,
+                team_users=invitees,
+                meeting_id=meeting_id,
+            )
             await _update_meeting(
                 meeting_id,
                 "done",
