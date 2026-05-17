@@ -260,7 +260,7 @@ export function SearchQueryDetailPanel({ unifiedId, dateFrom, dateTo, onClose }:
                     </tr>
                   ))}
                 </tbody>
-                <tfoot>
+                <tfoot className="sticky bottom-0 bg-card/95 backdrop-blur-sm">
                   <tr className="border-t border-border">
                     <td colSpan={2} className="px-1 py-1 text-[10px] text-muted-foreground">Итого по {breakdownAgg.length} товарам</td>
                     <td className="px-1 py-1 text-right tabular-nums text-[11px] text-muted-foreground">{fmt(breakdownAgg.reduce((s, r) => s + r.open_card, 0))}</td>

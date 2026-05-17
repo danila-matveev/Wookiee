@@ -98,24 +98,14 @@ export function SearchQueriesPage() {
   }
 
   return (
-    <div className="flex flex-1 overflow-hidden">
-      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        <div className="px-6 pt-6 pb-0">
-          <PageHeader
-            kicker="МАРКЕТИНГ"
-            title="Поисковые запросы"
-            description="Брендовые, артикулы и подменные WW-коды"
-            breadcrumbs={[
-              { label: "Маркетинг", to: "/marketing" },
-              { label: "Поисковые запросы", to: "/marketing/search-queries" },
-            ]}
-            actions={<AddMenu />}
-          />
-        </div>
-        <SearchQueriesTable />
-      </div>
-
+    <>
+      <PageHeader
+        title="Поисковые запросы"
+        description="Брендовые, артикулы и подменные WW-коды"
+        actions={<AddMenu />}
+      />
+      <SearchQueriesTable />
       {renderPanel()}
-    </div>
+    </>
   )
 }

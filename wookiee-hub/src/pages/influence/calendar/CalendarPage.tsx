@@ -65,12 +65,7 @@ export function CalendarPage() {
   return (
     <>
       <PageHeader
-        kicker="ИНФЛЮЕНС"
         title="Календарь публикаций"
-        breadcrumbs={[
-          { label: 'Инфлюенс', to: '/influence/bloggers' },
-          { label: 'Календарь', to: '/influence/calendar' },
-        ]}
         description="Все интеграции по датам публикации. Клик по событию — редактирование. Клик по пустому дню — новая интеграция."
       />
 

@@ -7,10 +7,6 @@ export function QuestionsPage() {
       kind="questions"
       initialSource="question"
       pageTitle="Вопросы"
-      pageBreadcrumbs={[
-        { label: "Сообщество", to: "/community/reviews" },
-        { label: "Вопросы", to: "/community/questions" },
-      ]}
     />
   )
 }

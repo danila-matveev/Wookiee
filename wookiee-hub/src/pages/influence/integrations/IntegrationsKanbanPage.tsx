@@ -75,12 +75,7 @@ export function IntegrationsKanbanPage() {
   return (
     <>
       <PageHeader
-        kicker="ИНФЛЮЕНС"
         title="Интеграции"
-        breadcrumbs={[
-          { label: 'Инфлюенс', to: '/influence/bloggers' },
-          { label: 'Интеграции', to: '/influence/integrations' },
-        ]}
         description="8 стадий — перетащи карточку для смены стадии. Клик откроет детали."
         actions={
           <div className="flex items-center gap-2">

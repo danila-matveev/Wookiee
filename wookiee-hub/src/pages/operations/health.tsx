@@ -8,12 +8,7 @@ export function HealthPage() {
   return (
     <div className="space-y-5">
       <PageHeader
-        kicker="ОПЕРАЦИИ"
         title="Состояние системы"
-        breadcrumbs={[
-          { label: 'Операции', to: '/operations' },
-          { label: 'Состояние системы', to: '/operations/health' },
-        ]}
         description="Мониторинг сервисов, очередей и зависимостей"
       />
       <EmptyState

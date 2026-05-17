@@ -152,46 +152,46 @@ export function SearchQueriesTable() {
 
   return (
     <QueryStatusBoundary isLoading={lq || ls} error={eq ?? es}>
-      <div className="flex flex-col h-full">
+      <div className="flex flex-col">
         <UpdateBar job="search-queries" />
 
-        <div className="px-6 pt-3 pb-2 flex flex-col gap-2 border-b border-border bg-card">
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Модель:</span>
-              <div className="w-[180px]">
-                <SelectMenu
-                  value={modelF === 'all' ? '' : modelF}
-                  options={uniqueModels.map((m) => ({ value: m, label: m }))}
-                  onChange={(v) => setQ('model', v || null)}
-                  placeholder="Все"
-                />
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Назначение:</span>
-              <div className="w-[200px]">
-                <SelectMenu
-                  value={channelF === 'all' ? '' : channelF}
-                  options={uniqueChannels.map((c) => ({ value: c, label: c }))}
-                  onChange={(v) => setQ('channel', v || null)}
-                  placeholder="Все"
-                />
-              </div>
+        <div className="px-6 pt-3 pb-2 flex items-center gap-3 flex-wrap border-b border-border bg-card">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Модель:</span>
+            <div className="w-[180px]">
+              <SelectMenu
+                value={modelF === 'all' ? '' : modelF}
+                options={uniqueModels.map((m) => ({ value: m, label: m }))}
+                onChange={(v) => setQ('model', v || null)}
+                placeholder="Все"
+              />
             </div>
           </div>
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[11px] uppercase tracking-wider text-muted-foreground mr-0.5">Статус:</span>
-            {(['all', 'active', 'free', 'archive'] as const).map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setQ('status', s === 'all' ? null : s)}
-                className={`px-2.5 py-1 rounded-full text-[12px] font-medium transition-colors ${statusF === s ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}
-              >
-                {s === 'all' ? 'Все' : STATUS_LABELS[s]}
-              </button>
-            ))}
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Назначение:</span>
+            <div className="w-[200px]">
+              <SelectMenu
+                value={channelF === 'all' ? '' : channelF}
+                options={uniqueChannels.map((c) => ({ value: c, label: c }))}
+                onChange={(v) => setQ('channel', v || null)}
+                placeholder="Все"
+              />
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Статус:</span>
+            <div className="w-[140px]">
+              <SelectMenu
+                value={statusF === 'all' ? '' : statusF}
+                options={[
+                  { value: 'active',  label: STATUS_LABELS.active  },
+                  { value: 'free',    label: STATUS_LABELS.free    },
+                  { value: 'archive', label: STATUS_LABELS.archive },
+                ]}
+                onChange={(v) => setQ('status', v || null)}
+                placeholder="Все"
+              />
+            </div>
           </div>
         </div>
 
@@ -212,7 +212,7 @@ export function SearchQueriesTable() {
           <span className="text-[10px] text-muted-foreground ml-auto tabular-nums">{filtered.length} записей</span>
         </div>
 
-        <div className="flex-1 overflow-auto">
+        <div className="overflow-auto max-h-[calc(100dvh-260px)]">
           <table className="min-w-[1200px] table-fixed tabular-nums w-full">
               <colgroup>
                 <col className="w-[130px]" />
