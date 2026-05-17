@@ -4,6 +4,7 @@ import { ChevronRight, Search, Menu } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useNavigationStore } from "@/stores/navigation"
 import { navigationGroups } from "@/config/navigation"
+import { Kbd } from "@/components/ui/kbd"
 
 function TopBar() {
   const location = useLocation()
@@ -26,7 +27,7 @@ function TopBar() {
           aria-label="Открыть меню"
           className="md:hidden text-text-dim hover:text-foreground transition-colors p-1 rounded hover:bg-bg-hover mr-1"
         >
-          <Menu size={18} />
+          <Menu size={18} aria-hidden />
         </button>
 
         {/* Sidebar toggle — desktop only */}
@@ -36,7 +37,7 @@ function TopBar() {
             aria-label="Развернуть навигацию"
             className="hidden md:block text-text-dim hover:text-foreground transition-colors p-1 rounded hover:bg-bg-hover mr-1"
           >
-            <ChevronRight size={16} />
+            <ChevronRight size={16} aria-hidden />
           </button>
         )}
 
@@ -47,7 +48,7 @@ function TopBar() {
             return (
               <span key={index} className="flex items-center gap-1">
                 {index > 0 && (
-                  <ChevronRight size={12} className="text-text-dim shrink-0" />
+                  <ChevronRight size={12} className="text-text-dim shrink-0" aria-hidden />
                 )}
                 <span
                   className={cn(
@@ -85,11 +86,11 @@ function TopBar() {
           )
         }}
       >
-        <Search size={14} />
+        <Search size={14} aria-hidden />
         <span className="hidden sm:inline">Поиск...</span>
-        <kbd className="hidden sm:inline text-[10px] border border-border bg-background rounded px-1 py-0 ml-1 text-text-dim">
-          ⌘K
-        </kbd>
+        <span className="hidden sm:inline ml-1">
+          <Kbd keys={["⌘", "K"]} />
+        </span>
       </button>
     </header>
   )

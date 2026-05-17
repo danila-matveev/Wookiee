@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils"
 import { useNavigationStore } from "@/stores/navigation"
 
 const tabs = [
-  { id: "community", label: "Комьюнити", icon: MessageSquare, path: "/community/reviews" },
+  { id: "community", label: "Сообщество", icon: MessageSquare, path: "/community/reviews" },
   { id: "agents", label: "Агенты", icon: Bot, path: "/agents/skills" },
   { id: "more", label: "Ещё", icon: MoreHorizontal, path: null },
 ] as const

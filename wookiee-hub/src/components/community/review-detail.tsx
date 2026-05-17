@@ -12,9 +12,10 @@ import type { Review } from "@/types/community"
 interface ReviewDetailProps {
   review: Review | null
   className?: string
+  emptyPrompt?: string
 }
 
-export function ReviewDetail({ review, className }: ReviewDetailProps) {
+export function ReviewDetail({ review, className, emptyPrompt = "Выберите отзыв из списка" }: ReviewDetailProps) {
   const [isGenerating, setIsGenerating] = useState(false)
   const [isPublishing, setIsPublishing] = useState(false)
   const [draftText, setDraftText] = useState("")
@@ -38,7 +39,7 @@ export function ReviewDetail({ review, className }: ReviewDetailProps) {
       <div className={cn("flex items-center justify-center h-full text-muted-foreground", className)}>
         <div className="text-center">
           <div className="text-4xl mb-3 opacity-30">💬</div>
-          <p className="text-sm">Выберите отзыв из списка</p>
+          <p className="text-sm">{emptyPrompt}</p>
         </div>
       </div>
     )
@@ -93,10 +94,7 @@ export function ReviewDetail({ review, className }: ReviewDetailProps) {
         {/* Product info */}
         <div className="bg-card border border-border rounded-[10px] p-4">
           <div className="flex items-center gap-2 mb-2">
-            <span
-              className="px-2 py-0.5 rounded text-[11px] font-bold text-white"
-              style={{ backgroundColor: def.color }}
-            >
+            <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-muted text-foreground">
               {def.label}
             </span>
             <span className="text-[12px] text-muted-foreground">{review.productArticle}</span>

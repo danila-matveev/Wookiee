@@ -271,3 +271,4 @@ _scratch/
 !.hygiene/reports/.gitkeep
 .hygiene/reports/*.json
 .hygiene/codex_logs/
+wookiee-hub/wave1-qa-screenshots/

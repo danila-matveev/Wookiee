@@ -29,8 +29,14 @@ const WIDTH_TOKENS: Record<'sm' | 'md' | 'lg' | 'xl', string> = {
   xl: 'w-[920px] max-w-full',
 }
 
+type WidthToken = keyof typeof WIDTH_TOKENS
+
+function isWidthToken(w: DrawerWidth): w is WidthToken {
+  return w === 'sm' || w === 'md' || w === 'lg' || w === 'xl'
+}
+
 function resolveWidth(width: DrawerWidth): { className: string; useFullWidth: boolean } {
-  if (width === 'sm' || width === 'md' || width === 'lg' || width === 'xl') {
+  if (isWidthToken(width)) {
     return { className: WIDTH_TOKENS[width], useFullWidth: false }
   }
   // Legacy string (Tailwind class) — keep `w-full` baseline so max-w-* takes effect.

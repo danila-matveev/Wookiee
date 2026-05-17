@@ -2,7 +2,6 @@ import { useEffect } from "react"
 import { Outlet, useLocation } from "react-router-dom"
 
 import { cn } from "@/lib/utils"
-import { useThemeStore } from "@/stores/theme"
 import { useNavigationStore } from "@/stores/navigation"
 import { navigationGroups } from "@/config/navigation"
 
@@ -14,14 +13,10 @@ import { MobileMenu } from "./mobile-menu"
 import { CommandPalette } from "@/components/shared/command-palette"
 
 function AppShell() {
-  const { theme } = useThemeStore()
   const { sidebarOpen, mobileMenuOpen, closeMobileMenu } = useNavigationStore()
   const location = useLocation()
 
-  // Sync dark class on documentElement
-  useEffect(() => {
-    document.documentElement.classList.toggle("dark", theme === "dark")
-  }, [theme])
+  // Theme sync moved to main.tsx (works for /login too — outside AppShell).
 
   // Sync active nav group from current URL (without toggling sidebar)
   useEffect(() => {
@@ -41,9 +36,17 @@ function AppShell() {
 
   return (
     <div data-slot="app-shell" className="h-screen w-screen overflow-hidden flex bg-background">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[60] focus:px-3 focus:py-2 focus:rounded-md focus:bg-foreground focus:text-background focus:outline-none focus:ring-2 focus:ring-ring"
+      >
+        Перейти к содержимому
+      </a>
       <IconBar />
       <SubSidebar />
       <main
+        id="main-content"
+        tabIndex={-1}
         className={cn(
           "flex-1 flex flex-col transition-[margin-left] duration-200 ease-in-out md:ml-14",
           sidebarOpen && "lg:ml-[276px]"

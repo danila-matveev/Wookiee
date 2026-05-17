@@ -29,7 +29,7 @@ function SubSidebarItem({ item }: SubSidebarItemProps) {
         )
       }
     >
-      <Icon size={16} className="shrink-0" />
+      <Icon size={16} className="shrink-0" aria-hidden />
       <span className="truncate">{item.label}</span>
       {badge && (
         <span className="ml-auto text-[10px] border border-border bg-bg-soft text-text-dim rounded-[3px] px-1 py-0 shrink-0">

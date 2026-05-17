@@ -16,6 +16,8 @@ function IconBarButton({ icon: Icon, isActive, onClick, tooltip }: IconBarButton
       onClick={onClick}
       title={tooltip}
       aria-label={tooltip}
+      aria-expanded={isActive}
+      aria-controls="sub-sidebar"
       className={cn(
         "flex items-center justify-center w-11 h-11 rounded-lg transition-colors duration-100 shrink-0",
         isActive

@@ -158,7 +158,7 @@ export function SearchQueriesTable() {
         <div className="px-6 pt-3 pb-2 flex flex-col gap-2 border-b border-border bg-card">
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-2">
-              <span className="text-[11px] uppercase tracking-wider text-stone-500">Модель:</span>
+              <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Модель:</span>
               <div className="w-[180px]">
                 <SelectMenu
                   value={modelF === 'all' ? '' : modelF}
@@ -169,7 +169,7 @@ export function SearchQueriesTable() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-[11px] uppercase tracking-wider text-stone-500">Назначение:</span>
+              <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Назначение:</span>
               <div className="w-[200px]">
                 <SelectMenu
                   value={channelF === 'all' ? '' : channelF}
@@ -181,7 +181,7 @@ export function SearchQueriesTable() {
             </div>
           </div>
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[11px] uppercase tracking-wider text-stone-500 mr-0.5">Статус:</span>
+            <span className="text-[11px] uppercase tracking-wider text-muted-foreground mr-0.5">Статус:</span>
             {(['all', 'active', 'free', 'archive'] as const).map((s) => (
               <button
                 key={s}
@@ -326,7 +326,7 @@ function SectionGroup({ icon, label, rows, collapsed, onToggle, statsMap, onOpen
             <td className="px-2 py-2">
               {it.purpose
                 ? <Badge color="gray" label={channelLabel(it.purpose)} compact />
-                : <span className="text-stone-400 text-xs">—</span>}
+                : <span className="text-muted-foreground text-xs">—</span>}
             </td>
             <td className="px-2 py-2 text-xs text-muted-foreground truncate">{it.campaign_name ?? ''}</td>
             <td

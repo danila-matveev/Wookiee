@@ -4,6 +4,8 @@ import { fetchTools } from '@/lib/tools-service'
 import { ToolCard } from '@/components/operations/tool-card'
 import { ToolFilters } from '@/components/operations/tool-filters'
 import { ToolDetailPanel } from '@/components/operations/tool-detail-panel'
+import { PageHeader } from '@/components/layout/page-header'
+import { useDocumentTitle } from '@/hooks/use-document-title'
 import type { OperationsTool, ToolCategory, ToolCategoryFilter } from '@/types/tool'
 
 const CATEGORY_LABELS: Record<ToolCategory, string> = {
@@ -17,6 +19,7 @@ const CATEGORY_LABELS: Record<ToolCategory, string> = {
 const CATEGORY_ORDER: ToolCategory[] = ['analytics', 'infra', 'content', 'publishing', 'team', 'planning']
 
 export function ToolsPage() {
+  useDocumentTitle('Каталог инструментов')
   const {
     tools, loading, categoryFilter, searchQuery, selectedTool,
     setTools, setLoading, setCategoryFilter, setSearchQuery, setSelectedTool,
@@ -68,20 +71,22 @@ export function ToolsPage() {
 
   return (
     <div className="space-y-5">
-      {/* Header */}
-      <div>
-        <h1 className="text-xl font-bold text-foreground">Каталог инструментов</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Все инструменты системы Wookiee — агенты, сервисы, скиллы, cron-задачи
-        </p>
-      </div>
+      <PageHeader
+        kicker="ОПЕРАЦИИ"
+        title="Каталог инструментов"
+        breadcrumbs={[
+          { label: 'Операции', to: '/operations' },
+          { label: 'Каталог инструментов', to: '/operations/tools' },
+        ]}
+        description="Все инструменты системы Wookiee — агенты, сервисы, скиллы, cron-задачи"
+      />
 
       {/* KPI cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
           { label: 'Всего тулзов',     value: tools.length,   sub: 'в каталоге',         cls: 'text-foreground' },
-          { label: 'Активных',         value: activeCount,     sub: `из ${tools.length}`,  cls: 'text-green-600' },
-          { label: 'С ошибкой',        value: errorCount,      sub: 'last_status = error', cls: errorCount > 0 ? 'text-red-600' : 'text-foreground' },
+          { label: 'Активных',         value: activeCount,     sub: `из ${tools.length}`,  cls: 'text-green-600 dark:text-green-400' },
+          { label: 'С ошибкой',        value: errorCount,      sub: 'last_status = error', cls: errorCount > 0 ? 'text-red-600 dark:text-red-400' : 'text-foreground' },
           { label: 'Последний запуск', value: lastRunDisplay,  sub: 'по данным каталога',  cls: 'text-foreground' },
         ].map(({ label, value, sub, cls }) => (
           <div key={label} className="bg-card border border-border rounded-xl p-4">

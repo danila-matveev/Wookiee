@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils';
 const palettes = [
   'bg-[#F97316]',
   'bg-[#3B82F6]',
-  'bg-[#8B5CF6]',
+  'bg-stone-500',
   'bg-[#EC4899]',
   'bg-[#10B981]',
   'bg-[#F59E0B]',

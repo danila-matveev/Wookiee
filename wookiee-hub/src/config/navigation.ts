@@ -81,7 +81,7 @@ export const navigationGroups: NavGroup[] = [
   {
     id: "community",
     icon: MessageSquare,
-    label: "Коммуникации",
+    label: "Сообщество",
     items: [
       { id: "reviews",   label: "Отзывы",    icon: Star,         path: "/community/reviews" },
       { id: "questions", label: "Вопросы",   icon: HelpCircle,   path: "/community/questions" },
@@ -92,7 +92,7 @@ export const navigationGroups: NavGroup[] = [
   {
     id: "influence",
     icon: Users2,
-    label: "Influence CRM",
+    label: "Инфлюенс",
     items: [
       { id: "bloggers",     label: "Блогеры",    icon: Users2,       path: "/influence/bloggers" },
       { id: "integrations", label: "Интеграции", icon: Kanban,       path: "/influence/integrations" },

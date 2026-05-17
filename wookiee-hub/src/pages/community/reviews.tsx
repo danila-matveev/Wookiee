@@ -4,6 +4,8 @@ import { ReviewsHeader } from "@/components/community/reviews-header"
 import { ReviewsStatusTabs } from "@/components/community/reviews-status-tabs"
 import { ReviewListItem } from "@/components/community/review-list-item"
 import { ReviewDetail } from "@/components/community/review-detail"
+import { PageHeader, type Crumb } from "@/components/layout/page-header"
+import { useDocumentTitle } from "@/hooks/use-document-title"
 import { useCommsStore } from "@/stores/community"
 import type { Review, ReviewSource } from "@/types/community"
 
@@ -62,20 +64,42 @@ function applyCommonFilters(review: Review, filters: ReturnType<typeof useCommsS
   return true
 }
 
+export type ReviewsPageKind = "reviews" | "questions" | "answers"
+
+const KIND_COPY: Record<ReviewsPageKind, { empty: string; searchPlaceholder: string; rightPanePrompt: string }> = {
+  reviews:   { empty: "Нет отзывов",  searchPlaceholder: "Поиск по отзывам…",  rightPanePrompt: "Выберите отзыв из списка"  },
+  questions: { empty: "Нет вопросов", searchPlaceholder: "Поиск по вопросам…", rightPanePrompt: "Выберите вопрос из списка" },
+  answers:   { empty: "Нет ответов",  searchPlaceholder: "Поиск по ответам…",  rightPanePrompt: "Выберите ответ из списка" },
+}
+
 export interface ReviewsPageProps {
+  /** Tab variant — controls empty state + search placeholder copy. */
+  kind?: ReviewsPageKind
   /** Default source filter on mount (e.g. "question" for /community/questions). */
   initialSource?: ReviewSource | "all"
   /** Default top-level tab on mount ("new" | "processed"). */
   initialTab?: "new" | "processed"
   /** Default sub-tab inside "processed" ("pending" | "answered" | "archived"). */
   initialProcessedSubTab?: "pending" | "answered" | "archived"
+  /** Page title shown in DS v2 PageHeader. */
+  pageTitle?: string
+  /** Breadcrumbs for DS v2 PageHeader. */
+  pageBreadcrumbs?: Crumb[]
 }
 
 export function ReviewsPage({
+  kind = "reviews",
   initialSource = "all",
   initialTab,
   initialProcessedSubTab,
+  pageTitle = "Отзывы",
+  pageBreadcrumbs = [
+    { label: "Сообщество", to: "/community/reviews" },
+    { label: "Отзывы", to: "/community/reviews" },
+  ],
 }: ReviewsPageProps = {}) {
+  const copy = KIND_COPY[kind]
+  useDocumentTitle(pageTitle)
   const [activeSource, setActiveSource] = useState<ReviewSource | "all">(initialSource)
   const { reviews, selectedReviewId, setSelectedReview, filters, setFilters, loading, error, fetchReviews, sessionCost } = useCommsStore()
 
@@ -161,9 +185,15 @@ export function ReviewsPage({
 
   return (
     <div className="space-y-3">
+      <PageHeader
+        kicker="Сообщество"
+        title={pageTitle}
+        breadcrumbs={pageBreadcrumbs}
+      />
       <ReviewsHeader
         activeSource={activeSource}
         onSourceChange={setActiveSource}
+        searchPlaceholder={copy.searchPlaceholder}
       />
       {sessionCost > 0 && (
         <div className="flex justify-end -mt-1">
@@ -205,7 +235,7 @@ export function ReviewsPage({
               </div>
             ) : displayedReviews.length === 0 ? (
               <div className="flex items-center justify-center h-32 text-[13px] text-muted-foreground">
-                Нет отзывов
+                {copy.empty}
               </div>
             ) : (
               displayedReviews.map((review) => (
@@ -221,7 +251,7 @@ export function ReviewsPage({
         </div>
         {/* Right panel -- review detail */}
         <div className="flex-1 min-w-0">
-          <ReviewDetail review={selectedReview} className="h-full" />
+          <ReviewDetail review={selectedReview} emptyPrompt={copy.rightPanePrompt} className="h-full" />
         </div>
       </div>
     </div>

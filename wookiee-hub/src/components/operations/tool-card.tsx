@@ -9,10 +9,10 @@ const TYPE_LABELS: Record<string, string> = {
 }
 
 const TYPE_CLASSES: Record<string, string> = {
-  skill:   'bg-green-100 text-green-700',
-  service: 'bg-blue-100 text-blue-700',
-  cron:    'bg-purple-100 text-purple-700',
-  script:  'bg-amber-100 text-amber-700',
+  skill:   'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300',
+  service: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
+  cron:    'bg-stone-100 text-stone-700 dark:bg-stone-800 dark:text-stone-300',
+  script:  'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
 }
 
 function getStatusDot(tool: OperationsTool): string {
@@ -46,7 +46,7 @@ export function ToolCard({ tool, onSelect }: ToolCardProps) {
       className={cn(
         'bg-card rounded-xl p-4 cursor-pointer hover:shadow-sm transition-all border',
         tool.lastStatus === 'error'
-          ? 'border-red-300 bg-red-50/30 hover:border-red-400'
+          ? 'border-red-300 bg-red-50/30 hover:border-red-400 dark:border-red-900 dark:bg-red-950/30 dark:hover:border-red-800'
           : 'border-border hover:border-primary/40'
       )}
     >

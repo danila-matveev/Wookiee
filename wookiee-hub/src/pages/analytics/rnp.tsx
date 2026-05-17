@@ -2,6 +2,7 @@ import { useState, useEffect } from "react"
 import { useSearchParams } from "react-router-dom"
 import { fetchRnpWeeks } from "@/api/rnp"
 import type { RnpWeek } from "@/types/rnp"
+import { PageHeader } from "@/components/layout/page-header"
 import { RnpHelpBlock } from "@/components/analytics/rnp-help-block"
 import { RnpFilters } from "@/components/analytics/rnp-filters"
 import { RnpSummaryCards } from "@/components/analytics/rnp-summary-cards"
@@ -12,6 +13,7 @@ import { TabAdsInternal } from "@/components/analytics/rnp-tabs/tab-ads-internal
 import { TabAdsExternal } from "@/components/analytics/rnp-tabs/tab-ads-external"
 import { TabMargin } from "@/components/analytics/rnp-tabs/tab-margin"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useDocumentTitle } from "@/hooks/use-document-title"
 
 const TABS = [
   { id: "orders",       label: "Заказы & Продажи" },
@@ -23,6 +25,7 @@ const TABS = [
 ]
 
 export function RnpPage() {
+  useDocumentTitle("РНП — Рука на пульсе")
   const [searchParams] = useSearchParams()
   const [weeks, setWeeks] = useState<RnpWeek[]>([])
   const [loading, setLoading] = useState(false)
@@ -55,6 +58,16 @@ export function RnpPage() {
 
   return (
     <div className="space-y-4">
+      <PageHeader
+        kicker="АНАЛИТИКА"
+        title="РНП — Рука на пульсе"
+        breadcrumbs={[
+          { label: "Аналитика", to: "/analytics" },
+          { label: "Рука на пульсе", to: "/analytics/rnp" },
+        ]}
+        description="Недельная динамика по модели: заказы, воронка, реклама, маржа и прогноз."
+      />
+
       <RnpHelpBlock />
 
       <RnpFilters onApply={load} loading={loading} />

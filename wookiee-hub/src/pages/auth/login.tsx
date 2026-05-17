@@ -1,6 +1,10 @@
 import { useState, type FormEvent } from "react"
 import { useNavigate } from "react-router-dom"
 import { supabase } from "@/lib/supabase"
+import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
+import { PageHeader } from "@/components/layout/page-header"
+import { useDocumentTitle } from "@/hooks/use-document-title"
 
 type Mode = "magic" | "password"
 
@@ -8,6 +12,7 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ?? ""
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? ""
 
 export function LoginPage() {
+  useDocumentTitle("Войти")
   const navigate = useNavigate()
   const [mode, setMode] = useState<Mode>("magic")
   const [email, setEmail] = useState("")
@@ -78,10 +83,11 @@ export function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
       <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-foreground">Wookiee Hub</h1>
-          <p className="text-sm text-muted-foreground mt-1">Войдите в рабочее пространство</p>
-        </div>
+        <PageHeader
+          kicker="Wookiee"
+          title="Войти"
+          description="Доступ только для сотрудников из Bitrix24"
+        />
 
         <div className="bg-card border border-border rounded-xl p-6 space-y-4">
           {mode === "magic" ? (
@@ -90,43 +96,40 @@ export function LoginPage() {
                 <label htmlFor="email" className="text-sm font-medium text-foreground">
                   Email
                 </label>
-                <input
+                <Input
                   id="email"
                   type="email"
                   required
                   autoComplete="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                   placeholder="you@wookiee.shop"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Доступ только для сотрудников из Bitrix24.
+                  Введите рабочий email — пришлём magic-link.
                 </p>
               </div>
 
-              {error && <p className="text-sm text-destructive">{error}</p>}
-              {success && <p className="text-sm text-emerald-600">{success}</p>}
+              {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+              {success && <p role="status" className="text-sm text-emerald-600">{success}</p>}
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-2 px-4 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
-              >
+              <Button type="submit" disabled={loading} className="w-full">
                 {loading ? "Отправляю..." : "Получить ссылку для входа"}
-              </button>
+              </Button>
 
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() => {
                   setMode("password")
                   setError(null)
                   setSuccess(null)
                 }}
-                className="w-full text-xs text-muted-foreground hover:text-foreground transition-colors"
+                className="w-full text-xs text-foreground/70 hover:text-foreground"
               >
                 Войти с паролем
-              </button>
+              </Button>
             </form>
           ) : (
             <form onSubmit={handlePassword} className="space-y-4">
@@ -134,14 +137,13 @@ export function LoginPage() {
                 <label htmlFor="email-pwd" className="text-sm font-medium text-foreground">
                   Email
                 </label>
-                <input
+                <Input
                   id="email-pwd"
                   type="email"
                   required
                   autoComplete="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                   placeholder="you@wookiee.shop"
                 />
               </div>
@@ -150,37 +152,34 @@ export function LoginPage() {
                 <label htmlFor="password" className="text-sm font-medium text-foreground">
                   Пароль
                 </label>
-                <input
+                <Input
                   id="password"
                   type="password"
                   required
                   autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                 />
               </div>
 
-              {error && <p className="text-sm text-destructive">{error}</p>}
+              {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-2 px-4 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
-              >
+              <Button type="submit" disabled={loading} className="w-full">
                 {loading ? "Вхожу..." : "Войти"}
-              </button>
+              </Button>
 
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() => {
                   setMode("magic")
                   setError(null)
                 }}
-                className="w-full text-xs text-muted-foreground hover:text-foreground transition-colors"
+                className="w-full text-xs text-foreground/70 hover:text-foreground"
               >
                 Назад к магическим ссылкам
-              </button>
+              </Button>
             </form>
           )}
         </div>

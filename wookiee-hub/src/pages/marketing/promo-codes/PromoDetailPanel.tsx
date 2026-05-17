@@ -19,7 +19,7 @@ interface PromoDetailPanelProps {
 
 const fmt  = (n: number) => n.toLocaleString('ru-RU')
 const fmtR = (n: number) => `${n.toLocaleString('ru-RU')} ₽`
-const lCls = "block text-[11px] uppercase tracking-wider text-stone-400 font-medium mb-1"
+const lCls = "block text-[11px] uppercase tracking-wider text-muted-foreground font-medium mb-1"
 
 type StatusBadge = { label: string; color: 'green' | 'amber' | 'gray' | 'blue' }
 
@@ -123,7 +123,7 @@ export function PromoDetailPanel({ promoId, onClose }: PromoDetailPanelProps) {
 
   const body = (
     promosLoading ? (
-      <div className="text-sm text-stone-500 p-4">Загрузка…</div>
+      <div className="text-sm text-muted-foreground p-4">Загрузка…</div>
     ) : !promo ? (
       <EmptyState title="Промокод не найден" description="Возможно, он удалён или ID неверен." />
     ) : (
@@ -132,18 +132,18 @@ export function PromoDetailPanel({ promoId, onClose }: PromoDetailPanelProps) {
       // channel chip, UUID, edit button) and the data sections here.
       <div className="flex flex-col -mx-6 -my-4">
         {/* Meta toolbar: status + channel + UUID + edit */}
-        <div className="flex items-start justify-between px-5 py-3 border-b border-stone-200 shrink-0">
+        <div className="flex items-start justify-between px-5 py-3 border-b border-border shrink-0">
           <div className="flex-1 min-w-0 mr-3">
             <div className="flex items-center gap-1.5 flex-wrap">
               {statusBadge && <Badge color={statusBadge.color} label={statusBadge.label} />}
               {promo.channel && (
-                <span className="px-1.5 py-0.5 rounded bg-stone-100 text-stone-600 text-[11px] font-medium ring-1 ring-inset ring-stone-500/20">
+                <span className="px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-[11px] font-medium ring-1 ring-inset ring-border">
                   {promo.channel}
                 </span>
               )}
             </div>
             {promo.external_uuid && (
-              <div className="mt-2 font-mono text-[10px] text-stone-400 break-all">
+              <div className="mt-2 font-mono text-[10px] text-muted-foreground break-all">
                 UUID: {promo.external_uuid}
               </div>
             )}
@@ -154,7 +154,7 @@ export function PromoDetailPanel({ promoId, onClose }: PromoDetailPanelProps) {
                 type="button"
                 onClick={() => setIsEdit(true)}
                 aria-label="Edit"
-                className="p-1.5 rounded-md text-stone-400 hover:bg-stone-100"
+                className="p-1.5 rounded-md text-muted-foreground hover:bg-muted"
               >
                 <Edit3 className="w-3.5 h-3.5" />
               </button>
@@ -164,7 +164,7 @@ export function PromoDetailPanel({ promoId, onClose }: PromoDetailPanelProps) {
 
         <div>
           {/* Fields block (view/edit) */}
-          <div className="px-5 py-4 border-b border-stone-200 space-y-3">
+          <div className="px-5 py-4 border-b border-border space-y-3">
             <div>
               <label className={lCls}>Код</label>
               {isEdit ? (
@@ -175,7 +175,7 @@ export function PromoDetailPanel({ promoId, onClose }: PromoDetailPanelProps) {
                   aria-label="Код"
                 />
               ) : (
-                <div className="font-mono text-xs text-stone-900 break-all">{form.code}</div>
+                <div className="font-mono text-xs text-foreground break-all">{form.code}</div>
               )}
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -192,7 +192,7 @@ export function PromoDetailPanel({ promoId, onClose }: PromoDetailPanelProps) {
                 ) : (
                   <div>
                     <div className={lCls}>Канал</div>
-                    <div className="text-sm text-stone-900">{form.channel || '—'}</div>
+                    <div className="text-sm text-foreground">{form.channel || '—'}</div>
                   </div>
                 )}
               </div>
@@ -206,7 +206,7 @@ export function PromoDetailPanel({ promoId, onClose }: PromoDetailPanelProps) {
                     aria-label="Скидка %"
                   />
                 ) : (
-                  <div className="text-sm tabular-nums text-stone-900">
+                  <div className="text-sm tabular-nums text-foreground">
                     {form.discount_pct ? `${form.discount_pct}%` : '—'}
                   </div>
                 )}
@@ -223,7 +223,7 @@ export function PromoDetailPanel({ promoId, onClose }: PromoDetailPanelProps) {
                     aria-label="Начало"
                   />
                 ) : (
-                  <div className="text-sm tabular-nums text-stone-900">{form.valid_from || '—'}</div>
+                  <div className="text-sm tabular-nums text-foreground">{form.valid_from || '—'}</div>
                 )}
               </div>
               <div>
@@ -236,7 +236,7 @@ export function PromoDetailPanel({ promoId, onClose }: PromoDetailPanelProps) {
                     aria-label="Окончание"
                   />
                 ) : (
-                  <div className="text-sm tabular-nums text-stone-900">{form.valid_until || '—'}</div>
+                  <div className="text-sm tabular-nums text-foreground">{form.valid_until || '—'}</div>
                 )}
               </div>
             </div>
@@ -253,28 +253,28 @@ export function PromoDetailPanel({ promoId, onClose }: PromoDetailPanelProps) {
           </div>
 
           {/* KPI block */}
-          <div className="px-5 py-4 border-b border-stone-200">
+          <div className="px-5 py-4 border-b border-border">
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <div className="text-[11px] uppercase tracking-wider text-stone-400 mb-0.5">Продажи, шт</div>
-                <div className="text-lg font-medium text-stone-900 tabular-nums">{fmt(qty)}</div>
+                <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-0.5">Продажи, шт</div>
+                <div className="text-lg font-medium text-foreground tabular-nums">{fmt(qty)}</div>
               </div>
               <div>
-                <div className="text-[11px] uppercase tracking-wider text-stone-400 mb-0.5">Продажи, ₽</div>
-                <div className="text-lg font-medium text-stone-900 tabular-nums">{fmtR(sales)}</div>
+                <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-0.5">Продажи, ₽</div>
+                <div className="text-lg font-medium text-foreground tabular-nums">{fmtR(sales)}</div>
               </div>
               <div>
-                <div className="text-[11px] uppercase tracking-wider text-stone-400 mb-0.5">Ср. чек, ₽</div>
-                <div className="text-lg font-medium text-stone-900 tabular-nums">{avg > 0 ? fmtR(avg) : '—'}</div>
+                <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-0.5">Ср. чек, ₽</div>
+                <div className="text-lg font-medium text-foreground tabular-nums">{avg > 0 ? fmtR(avg) : '—'}</div>
               </div>
             </div>
           </div>
 
           {/* Weekly stats */}
-          <div className="px-5 py-4 border-b border-stone-200">
-            <div className="text-[11px] uppercase tracking-wider text-stone-400 mb-2">По неделям</div>
+          <div className="px-5 py-4 border-b border-border">
+            <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2">По неделям</div>
             {weeklyLoading ? (
-              <div className="text-sm text-stone-500">Загрузка…</div>
+              <div className="text-sm text-muted-foreground">Загрузка…</div>
             ) : weeklyError ? (
               <EmptyState title="Ошибка загрузки" description="Не удалось загрузить данные по неделям." />
             ) : weekly.length === 0 ? (
@@ -282,20 +282,20 @@ export function PromoDetailPanel({ promoId, onClose }: PromoDetailPanelProps) {
             ) : (
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="border-b border-stone-100">
-                    <th className="text-left py-1 text-[10px] uppercase text-stone-400 font-medium">Нед</th>
-                    <th className="text-right py-1 text-[10px] uppercase text-stone-400 font-medium">Зак.</th>
-                    <th className="text-right py-1 text-[10px] uppercase text-stone-400 font-medium">Продажи</th>
-                    <th className="text-right py-1 text-[10px] uppercase text-stone-400 font-medium">Возвр.</th>
+                  <tr className="border-b border-border">
+                    <th className="text-left py-1 text-[10px] uppercase text-muted-foreground font-medium">Нед</th>
+                    <th className="text-right py-1 text-[10px] uppercase text-muted-foreground font-medium">Зак.</th>
+                    <th className="text-right py-1 text-[10px] uppercase text-muted-foreground font-medium">Продажи</th>
+                    <th className="text-right py-1 text-[10px] uppercase text-muted-foreground font-medium">Возвр.</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-stone-50">
+                <tbody className="divide-y divide-border">
                   {weekly.map((w) => (
                     <tr key={w.week_start}>
-                      <td className="py-1.5 tabular-nums text-stone-500">{w.week_start}</td>
-                      <td className="py-1.5 text-right tabular-nums text-stone-900 font-medium">{w.orders_count}</td>
-                      <td className="py-1.5 text-right tabular-nums text-stone-700">{fmtR(w.sales_rub)}</td>
-                      <td className="py-1.5 text-right tabular-nums text-stone-400">{w.returns_count}</td>
+                      <td className="py-1.5 tabular-nums text-muted-foreground">{w.week_start}</td>
+                      <td className="py-1.5 text-right tabular-nums text-foreground font-medium">{w.orders_count}</td>
+                      <td className="py-1.5 text-right tabular-nums text-foreground">{fmtR(w.sales_rub)}</td>
+                      <td className="py-1.5 text-right tabular-nums text-muted-foreground">{w.returns_count}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -305,33 +305,33 @@ export function PromoDetailPanel({ promoId, onClose }: PromoDetailPanelProps) {
 
           {/* Product breakdown — aggregated by SKU across all weeks */}
           <div className="px-5 py-4">
-            <div className="text-[11px] uppercase tracking-wider text-stone-400 mb-2">Товарная разбивка</div>
+            <div className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2">Товарная разбивка</div>
             {breakdownLoading ? (
-              <div className="text-sm text-stone-500">Загрузка…</div>
+              <div className="text-sm text-muted-foreground">Загрузка…</div>
             ) : breakdownError ? (
               <EmptyState title="Ошибка загрузки" description="Не удалось загрузить товарную разбивку." />
             ) : breakdownAgg.length === 0 ? (
               <EmptyState title="Товарная разбивка" description="Данные собираются" />
             ) : (
               <table className="w-full text-xs">
-                <thead className="sticky top-0 bg-white">
-                  <tr className="border-b border-stone-100">
-                    <th className="text-left py-1 text-[10px] uppercase text-stone-400 font-medium">Товар</th>
-                    <th className="text-right py-1 text-[10px] uppercase text-stone-400 font-medium">Шт</th>
-                    <th className="text-right py-1 text-[10px] uppercase text-stone-400 font-medium">Сумма</th>
+                <thead className="sticky top-0 bg-card">
+                  <tr className="border-b border-border">
+                    <th className="text-left py-1 text-[10px] uppercase text-muted-foreground font-medium">Товар</th>
+                    <th className="text-right py-1 text-[10px] uppercase text-muted-foreground font-medium">Шт</th>
+                    <th className="text-right py-1 text-[10px] uppercase text-muted-foreground font-medium">Сумма</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-stone-50">
+                <tbody className="divide-y divide-border">
                   {breakdownAgg.map((p) => (
                     <tr key={p.sku_label}>
                       <td className="py-1.5">
-                        <div className="font-mono text-stone-900 break-all">{p.sku_label}</div>
+                        <div className="font-mono text-foreground break-all">{p.sku_label}</div>
                         {p.model_code && (
-                          <div className="text-[10px] text-stone-400">{p.model_code}</div>
+                          <div className="text-[10px] text-muted-foreground">{p.model_code}</div>
                         )}
                       </td>
-                      <td className="py-1.5 text-right tabular-nums text-stone-700">{fmt(p.qty)}</td>
-                      <td className="py-1.5 text-right tabular-nums text-stone-900 font-medium">{fmtR(p.amount_rub)}</td>
+                      <td className="py-1.5 text-right tabular-nums text-foreground">{fmt(p.qty)}</td>
+                      <td className="py-1.5 text-right tabular-nums text-foreground font-medium">{fmtR(p.amount_rub)}</td>
                     </tr>
                   ))}
                 </tbody>

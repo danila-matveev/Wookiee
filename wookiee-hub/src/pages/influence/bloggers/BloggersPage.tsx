@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useBloggers } from '@/hooks/crm/use-bloggers';
-import { PageHeader } from '@/components/crm/layout/PageHeader';
+import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/crm/ui/Button';
 import { QueryStatusBoundary } from '@/components/crm/ui/QueryStatusBoundary';
 import { BloggerEditDrawer } from './BloggerEditDrawer';
@@ -52,13 +52,18 @@ export function BloggersPage() {
   return (
     <>
       <PageHeader
+        kicker="ИНФЛЮЕНС"
         title="Блогеры"
-        sub="Все блогеры в работе. Клик по строке — детали и история интеграций."
+        breadcrumbs={[
+          { label: 'Инфлюенс', to: '/influence/bloggers' },
+          { label: 'Блогеры', to: '/influence/bloggers' },
+        ]}
+        description="Все блогеры в работе. Клик по строке — детали и история интеграций."
         actions={
           <div className="flex items-center gap-2">
             <div className="flex gap-1">
               <button
-                className={`px-3 py-1.5 text-sm rounded transition-colors ${view === 'cards' ? 'bg-primary text-primary-fg' : 'bg-muted text-muted-fg hover:bg-muted/80'}`}
+                className={`px-3 py-1.5 text-sm rounded transition-colors ${view === 'cards' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-fg hover:bg-muted/80'}`}
                 onClick={() =>
                   setSearchParams((prev) => {
                     prev.set('view', 'cards');
@@ -69,7 +74,7 @@ export function BloggersPage() {
                 Карточки
               </button>
               <button
-                className={`px-3 py-1.5 text-sm rounded transition-colors ${view === 'table' ? 'bg-primary text-primary-fg' : 'bg-muted text-muted-fg hover:bg-muted/80'}`}
+                className={`px-3 py-1.5 text-sm rounded transition-colors ${view === 'table' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-fg hover:bg-muted/80'}`}
                 onClick={() =>
                   setSearchParams((prev) => {
                     prev.set('view', 'table');
@@ -101,7 +106,7 @@ export function BloggersPage() {
             onClick={() => setPlatformFilter(platformFilter === ch ? undefined : ch)}
             className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
               platformFilter === ch
-                ? 'bg-primary text-primary-fg border-primary'
+                ? 'bg-primary text-primary-foreground border-primary'
                 : 'border-border text-muted-fg hover:border-primary/50'
             }`}
           >

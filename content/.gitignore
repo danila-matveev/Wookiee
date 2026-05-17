@@ -1,0 +1,14 @@
+node_modules
+node_modules.nosync
+dist
+dist.nosync
+.env
+.env.local
+*.local
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+playwright-report
+test-results
+supabase/.branches
+supabase/.temp

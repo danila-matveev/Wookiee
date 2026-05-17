@@ -5,7 +5,7 @@ import { useSearchParams } from 'react-router-dom';
 import type { Channel, IntegrationOut, Marketplace, Stage } from '@/api/crm/integrations';
 import { STAGES } from '@/api/crm/integrations';
 import { useIntegrations, useUpdateIntegrationStage } from '@/hooks/crm/use-integrations';
-import { PageHeader } from '@/components/crm/layout/PageHeader';
+import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/crm/ui/Button';
 import { QueryStatusBoundary } from '@/components/crm/ui/QueryStatusBoundary';
 import { IntegrationEditDrawer } from './IntegrationEditDrawer';
@@ -75,22 +75,27 @@ export function IntegrationsKanbanPage() {
   return (
     <>
       <PageHeader
+        kicker="ИНФЛЮЕНС"
         title="Интеграции"
-        sub="8 стадий — перетащи карточку для смены стадии. Клик откроет детали."
+        breadcrumbs={[
+          { label: 'Инфлюенс', to: '/influence/bloggers' },
+          { label: 'Интеграции', to: '/influence/integrations' },
+        ]}
+        description="8 стадий — перетащи карточку для смены стадии. Клик откроет детали."
         actions={
           <div className="flex items-center gap-2">
             {/* View toggle */}
             <div className="flex gap-1">
               <button
                 type="button"
-                className={`px-3 py-1.5 text-sm rounded ${view === 'kanban' ? 'bg-primary text-primary-fg' : 'bg-muted text-muted-fg hover:bg-muted/80'}`}
+                className={`px-3 py-1.5 text-sm rounded ${view === 'kanban' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-fg hover:bg-muted/80'}`}
                 onClick={() => setSearchParams({ view: 'kanban' })}
               >
                 Канбан
               </button>
               <button
                 type="button"
-                className={`px-3 py-1.5 text-sm rounded ${view === 'table' ? 'bg-primary text-primary-fg' : 'bg-muted text-muted-fg hover:bg-muted/80'}`}
+                className={`px-3 py-1.5 text-sm rounded ${view === 'table' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-fg hover:bg-muted/80'}`}
                 onClick={() => setSearchParams({ view: 'table' })}
               >
                 Таблица

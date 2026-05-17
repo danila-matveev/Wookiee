@@ -15,6 +15,7 @@ function SubSidebar() {
 
   return (
     <aside
+      id="sub-sidebar"
       data-slot="sub-sidebar"
       className={cn(
         "fixed left-14 top-0 bottom-0 bg-sub-sidebar border-r border-border z-40",

@@ -11,11 +11,11 @@ import { cn } from "@/lib/utils"
 import { commsRatingDistribution } from "@/data/community-mock"
 
 const ratingColors: Record<number, string> = {
-  5: "#22c55e",
-  4: "#86efac",
-  3: "#facc15",
-  2: "#fb923c",
-  1: "#ef4444",
+  5: "var(--rating-5)",
+  4: "var(--rating-4)",
+  3: "var(--rating-3)",
+  2: "var(--rating-2)",
+  1: "var(--rating-1)",
 }
 
 const chartData = commsRatingDistribution.map((d) => ({

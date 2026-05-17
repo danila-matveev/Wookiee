@@ -25,10 +25,7 @@ export function ReviewListItem({ review, isSelected, onClick }: ReviewListItemPr
       )}
     >
       <div className="flex items-center gap-2 mb-1.5">
-        <span
-          className="w-5 h-5 rounded flex items-center justify-center text-[9px] font-bold text-white shrink-0"
-          style={{ backgroundColor: def.color }}
-        >
+        <span className="w-5 h-5 rounded flex items-center justify-center text-[9px] font-bold bg-muted text-foreground shrink-0">
           {def.label.slice(0, 2).toUpperCase()}
         </span>
         <span className="text-[11px] text-muted-foreground">{dateStr}</span>

@@ -27,8 +27,7 @@ export function CommsAnalyticsHeader({
   const connections = useMemo(() => allConnections.filter((c) => c.status === "active"), [allConnections])
 
   return (
-    <div className="flex items-center justify-between flex-wrap gap-3">
-      <h1 className="text-lg font-bold">Аналитика коммуникаций</h1>
+    <div className="flex items-center justify-end flex-wrap gap-3">
       <div className="flex items-center gap-2">
         <div className="bg-bg-soft border border-border rounded-md p-0.5 flex gap-0.5">
           {periods.map((p) => (
@@ -39,7 +38,7 @@ export function CommsAnalyticsHeader({
               className={cn(
                 "px-2.5 py-1 rounded text-[12px] font-medium transition-colors",
                 p.id === activePeriod
-                  ? "bg-accent text-white"
+                  ? "bg-accent text-accent-foreground"
                   : "bg-transparent text-muted-foreground hover:text-foreground",
               )}
             >
