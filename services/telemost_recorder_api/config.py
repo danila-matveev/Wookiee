@@ -79,10 +79,15 @@ SUPABASE_STORAGE_TIMEOUT_SECONDS: float = float(
 )
 
 # Bitrix calendar scheduler — auto-queues a recording when a Telemost meeting
-# is about to start. Both vars must be set for the worker to activate; leaving
-# either empty disables it silently (dev / single-user mode).
-#   TELEMOST_SCHEDULER_BITRIX_USER_ID — whose Bitrix calendar to poll
-#   TELEMOST_SCHEDULER_TELEGRAM_ID    — who gets the result DM
+# is about to start.
+#
+#   TELEMOST_SCHEDULER_ENABLED        — master on/off switch (default false).
+#                                       Set to "true" on prod when ready to activate.
+#   TELEMOST_SCHEDULER_BITRIX_USER_ID — legacy single-user mode: poll only this
+#                                       Bitrix user. Leave empty to use multi-user
+#                                       mode (iterates telemost.users WHERE is_active).
+#   TELEMOST_SCHEDULER_TELEGRAM_ID    — legacy single-user mode: triggered_by value.
+SCHEDULER_ENABLED: bool = os.getenv("TELEMOST_SCHEDULER_ENABLED", "false").lower() == "true"
 SCHEDULER_BITRIX_USER_ID: str = os.getenv("TELEMOST_SCHEDULER_BITRIX_USER_ID", "").strip()
 _raw_scheduler_tg = os.getenv("TELEMOST_SCHEDULER_TELEGRAM_ID", "").strip()
 SCHEDULER_TELEGRAM_ID: int | None = int(_raw_scheduler_tg) if _raw_scheduler_tg else None
