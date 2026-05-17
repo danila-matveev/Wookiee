@@ -30,7 +30,7 @@ from shared.config import (
 # ---------------------------------------------------------------------------
 
 _BASE_URL = "https://cloud-api.yandex.net/v1/telemost-api"
-_OAUTH_TOKEN_URL = "https://oauth.yandex.ru/token"
+_OAUTH_REFRESH_URL = "https://oauth.yandex.ru/token"
 _TIMEOUT = httpx.Timeout(15.0)
 
 
@@ -198,7 +198,7 @@ async def refresh_oauth_token() -> tuple[str, str]:
     """
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         response = await client.post(
-            _OAUTH_TOKEN_URL,
+            _OAUTH_REFRESH_URL,
             data={
                 "grant_type": "refresh_token",
                 "refresh_token": TELEMOST_REFRESH_TOKEN,
