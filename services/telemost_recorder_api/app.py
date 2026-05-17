@@ -41,6 +41,9 @@ from services.telemost_recorder_api.workers.postprocess_worker import (
 from services.telemost_recorder_api.workers.recorder_worker import (
     run_forever as recorder_loop,
 )
+from services.telemost_recorder_api.workers.morning_digest import (
+    morning_digest_loop,
+)
 from services.telemost_recorder_api.workers.scheduler_worker import (
     run_forever as scheduler_loop,
 )
@@ -181,11 +184,14 @@ async def _lifespan(app: FastAPI):
     scheduler_task = asyncio.create_task(
         _supervised("scheduler_worker", scheduler_loop), name="scheduler_worker"
     )
+    digest_task = asyncio.create_task(
+        _supervised("morning_digest", morning_digest_loop), name="morning_digest"
+    )
     try:
         yield
     finally:
         logger.info("telemost-recorder-api shutting down")
-        for task in (recorder_task, postprocess_task, cleanup_task, scheduler_task):
+        for task in (recorder_task, postprocess_task, cleanup_task, scheduler_task, digest_task):
             task.cancel()
             try:
                 await task
