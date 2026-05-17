@@ -35,24 +35,14 @@ export function PromoCodesPage() {
   }
 
   return (
-    <div className="flex flex-1 overflow-hidden">
-      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        <div className="px-6 pt-6 pb-0">
-          <PageHeader
-            kicker="МАРКЕТИНГ"
-            title="Промокоды"
-            description="Статистика по кодам скидок"
-            breadcrumbs={[
-              { label: "Маркетинг", to: "/marketing" },
-              { label: "Промокоды", to: "/marketing/promo-codes" },
-            ]}
-            actions={<Button onClick={openAdd}>+ Добавить</Button>}
-          />
-        </div>
-        <PromoCodesTable />
-      </div>
-
+    <>
+      <PageHeader
+        title="Промокоды"
+        description="Статистика по кодам скидок"
+        actions={<Button onClick={openAdd}>+ Добавить</Button>}
+      />
+      <PromoCodesTable />
       {renderPanel()}
-    </div>
+    </>
   )
 }
