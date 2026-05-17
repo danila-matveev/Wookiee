@@ -19,6 +19,15 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - TZ=Europe/Moscow
+      # Telemost OAuth credentials for daily OAuth health-check (Трек E / T3).
+      # Passed explicitly because wookiee-cron is a separate container from
+      # telemost-recorder-api and must receive its own copy of these vars.
+      # After rotating tokens (refresh alert from the health-check), recreate
+      # the container: docker compose up -d wookiee-cron
+      - YANDEX_TELEMOST_CLIENT_ID=${YANDEX_TELEMOST_CLIENT_ID}
+      - YANDEX_TELEMOST_CLIENT_SECRET=${YANDEX_TELEMOST_CLIENT_SECRET}
+      - YANDEX_TELEMOST_OAUTH_TOKEN=${YANDEX_TELEMOST_OAUTH_TOKEN}
+      - YANDEX_TELEMOST_REFRESH_TOKEN=${YANDEX_TELEMOST_REFRESH_TOKEN}
 
     volumes:
       - ../.env:/app/.env:ro
