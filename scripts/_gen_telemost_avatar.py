@@ -1,4 +1,4 @@
-"""One-shot generator for Wookiee Recorder bot avatar.
+"""One-shot generator for Саймон bot avatar.
 
 Pillow only — generates a 512x512 PNG with brand colors and a microphone glyph.
 Run: .venv/bin/python scripts/_gen_telemost_avatar.py

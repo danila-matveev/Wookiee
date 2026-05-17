@@ -66,7 +66,8 @@ def resolve_speakers(
         return {}
 
     speaker_labels = sorted({s.speaker for s in segments})
-    participant_names = [p for p in participants if p != "Wookiee Recorder"]
+    from services.telemost_recorder.config import KNOWN_BOT_NAMES  # local import to avoid circular
+    participant_names = [p for p in participants if p.lower() not in KNOWN_BOT_NAMES]
     if not participant_names:
         return {}
 

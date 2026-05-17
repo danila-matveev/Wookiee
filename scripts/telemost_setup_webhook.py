@@ -37,8 +37,8 @@ _COMMANDS = [
 ]
 
 _DESCRIPTION = (
-    "Wookiee Recorder — записываю встречи Я.Телемоста, "
-    "присылаю summary и transcript в DM. Доступ через Bitrix24-roster."
+    "Саймон — хожу на ваши Telemost-встречи и записываю их. "
+    "Расшифровка, саммари в DM, экспорт в Notion. Доступ через Bitrix24-roster."
 )
 
 

@@ -188,6 +188,10 @@ test-results/
 !wookiee-hub/src/data/
 !wookiee-hub/src/data/**
 
+# Whitelist: brand assets (PNG avatars) committed by operator after T1 merge
+!data/branding/
+!data/branding/**
+
 # ============================================================================
 # Large reference files (ingested into KB vector DB)
 # ============================================================================

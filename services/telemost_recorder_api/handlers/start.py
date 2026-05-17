@@ -50,16 +50,24 @@ def _format_welcome(name: str, active: list[dict[str, Any]]) -> str:
     parts.append(f"Привет, {name_safe}! 👋")
     parts.append("")
     parts.append(
-        "Я *Wookiee Recorder* — записываю встречи Я.Телемоста, "
-        "расшифровываю и присылаю summary с темами, решениями и задачами."
+        "Я *Саймон* — хожу на ваши Telemost-встречи и записываю их: "
+        "расшифровка, саммари в DM, экспорт в Notion по кнопке."
     )
     parts.append("")
-    parts.append("📌 *Как работать:*")
-    parts.append("1. Пришли мне ссылку на встречу (или `/record <url>`)")
-    parts.append("2. Я зайду в неё через ~30 сек как «Wookiee Recorder»")
-    parts.append("3. Через ~5 мин после конца получишь summary в DM")
+    parts.append("📌 *Команды:*")
+    parts.append("• `/record <url>` — записать конкретную встречу прямо сейчас")
+    parts.append("• `/status` — что я сейчас пишу")
+    parts.append("• `/list` — мои последние записи (10 шт)")
+    parts.append("• `/help` — подсказка")
     parts.append("")
-    parts.append("Поехали? Пришли мне ссылку 👇")
+    parts.append(
+        "Если у вас в Bitrix-календаре есть встречи с Telemost-ссылкой — "
+        "я приду сам, ничего делать не надо."
+    )
+    parts.append("")
+    parts.append(
+        "Чтобы я *не* приходил на встречу — поставьте `#nobot` в название встречи в Bitrix."
+    )
     return "\n".join(parts)
 
 

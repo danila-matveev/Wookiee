@@ -552,7 +552,7 @@ async def _execute_join(
         _emit({
             "status": "WAITING_ROOM",
             "meeting_id": meeting.meeting_id,
-            "message": "Wookiee Recorder в зале ожидания — впустите его в интерфейсе Телемоста",
+            "message": "Саймон в зале ожидания — впустите его в интерфейсе Телемоста",
         })
         # Caller (run_session) handles the admission wait. join_meeting returns here.
         return

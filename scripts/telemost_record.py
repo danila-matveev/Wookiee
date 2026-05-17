@@ -21,7 +21,7 @@ from services.telemost_recorder.join import run_session  # noqa: E402
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="telemost_record",
-        description="Join a Yandex Telemost meeting as Wookiee Recorder bot",
+        description="Join a Yandex Telemost meeting as Саймон bot",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
