@@ -1,0 +1,54 @@
+name: Cleanup Stale Branches
+
+# Two-tier branch hygiene:
+#   1. Aggressive (7 days) for agent-generated branches that are pure noise.
+#   2. Conservative (60 days) for everything else (only catches truly forgotten work).
+#
+# Both jobs run dry-run for the first week so the action only logs what it would
+# delete. Flip dry-run to false after reviewing logs.
+#
+# Built-in safety (cbrgm/cleanup-stale-branches-action):
+#   - Never touches the default branch.
+#   - Never touches protected branches / branches under rulesets.
+#   - Never touches branches that are the head OR base of an open PR.
+#   - Never exceeds 95% GitHub API rate limit.
+#
+# See docs/superpowers/specs/2026-05-17-branch-cleanup.md for design rationale.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 5 * * *"  # 05:30 UTC — после ночной цепочки
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup-agent-branches:
+    name: Aggressive cleanup (agent-generated, 7 days)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete stale agent branches
+        uses: cbrgm/cleanup-stale-branches-action@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          allowed-prefixes: "worktree-agent-,chore/hygiene-,feature/nighttime-devops-wave-"
+          last-commit-age-days: 7
+          dry-run: true
+          rate-limit: true
+
+  cleanup-stale-branches:
+    name: Conservative cleanup (other stale, 60 days)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete stale branches
+        uses: cbrgm/cleanup-stale-branches-action@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          ignored-prefixes: "worktree-agent-,chore/hygiene-,feature/nighttime-devops-wave-"
+          ignore-branches: "main"
+          last-commit-age-days: 60
+          dry-run: true
+          rate-limit: true
