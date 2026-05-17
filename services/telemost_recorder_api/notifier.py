@@ -362,22 +362,37 @@ async def notify_meeting_result(meeting_id: UUID) -> None:
 
     # Send a separate message with real inline keyboard for each task/meeting candidate.
     # Note/attention/reminder are info-only and stay in the summary text only.
+    #
+    # Phase 2 (T7): when the candidate has a persisted UUID (cand.id), we
+    # pass intent + uuid so voice_trigger_keyboard wires real action callbacks.
+    # When persistence failed (cand.id is None) we fall back to the legacy
+    # `voice:<placeholder>:disabled` keyboard so the message still renders.
     voice_candidates = meeting.get("voice_triggers") or []
     task_idx = 0
     meeting_idx = 0
     for cand in voice_candidates:
         if cand.intent == "task":
-            cid = f"task{task_idx}"
-            task_idx += 1
             f = cand.extracted_fields
             title = f.get("title") or cand.raw_text[:60]
             text = f"📌 {title}\n\nПодтверди действие:"
+            if cand.id is not None:
+                cid = str(cand.id)
+                kb_intent: str | None = "task"
+            else:
+                cid = f"task{task_idx}"
+                kb_intent = None
+            task_idx += 1
         elif cand.intent == "meeting":
-            cid = f"meeting{meeting_idx}"
-            meeting_idx += 1
             f = cand.extracted_fields
             name = f.get("name") or cand.raw_text[:60]
             text = f"📅 {name}\n\nПодтверди действие:"
+            if cand.id is not None:
+                cid = str(cand.id)
+                kb_intent = "meeting"
+            else:
+                cid = f"meeting{meeting_idx}"
+                kb_intent = None
+            meeting_idx += 1
         else:
             continue
 
@@ -385,7 +400,7 @@ async def notify_meeting_result(meeting_id: UUID) -> None:
             await tg_send_message(
                 triggered_by,
                 text,
-                reply_markup=voice_trigger_keyboard(cid),
+                reply_markup=voice_trigger_keyboard(cid, kb_intent),
             )
         except TelegramAPIError as e:
             if e.error_code in (400, 403):

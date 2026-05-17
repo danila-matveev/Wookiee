@@ -78,19 +78,42 @@ def confirm_delete(short_id: str) -> dict:
     }
 
 
-def voice_trigger_keyboard(candidate_id: str) -> dict:
-    """Three Phase 1 placeholder buttons for a voice-trigger candidate.
+def voice_trigger_keyboard(candidate_id: str, intent: str | None = None) -> dict:
+    """Three action buttons for a voice-trigger candidate.
 
-    All three buttons share the same ``voice:<id>:disabled`` callback_data in
-    Phase 1. The handler responds with a placeholder message until Phase 2
-    activates real Bitrix writes.
+    Phase 2 (T7): when ``intent`` is one of 'task' or 'meeting' AND the
+    ``candidate_id`` looks like a UUID, callbacks are wired to the live
+    handlers:
+
+      ✅ Создать  → ``{intent}_create:<uuid>``
+      ✏️ Поправить → ``{intent}_edit:<uuid>``
+      ❌ Игнор    → ``{intent}_ignore:<uuid>``
+
+    Legacy fallback (Phase 1 / tests / persistence failure): when ``intent``
+    is missing or unsupported, all three buttons share ``voice:<id>:disabled``
+    and the placeholder handler explains Phase 2 isn't active for this row.
 
     Args:
-        candidate_id: Short identifier for the candidate (e.g. intent + index).
+        candidate_id: UUID of the persisted candidate (Phase 2) or a short
+            placeholder like ``task0`` (Phase 1).
+        intent: 'task', 'meeting' — anything else degrades to placeholder.
 
     Returns:
         Telegram inline_keyboard dict with exactly 3 buttons on one row.
     """
+    if intent in ("task", "meeting"):
+        prefix = intent  # task_create / meeting_create
+        return {
+            "inline_keyboard": [
+                [
+                    {"text": "✅ Создать", "callback_data": f"{prefix}_create:{candidate_id}"},
+                    {"text": "✏️ Поправить", "callback_data": f"{prefix}_edit:{candidate_id}"},
+                    {"text": "❌ Игнор", "callback_data": f"{prefix}_ignore:{candidate_id}"},
+                ]
+            ]
+        }
+
+    # Phase 1 placeholder — all three buttons share the disabled callback.
     disabled_data = f"voice:{candidate_id}:disabled"
     return {
         "inline_keyboard": [
