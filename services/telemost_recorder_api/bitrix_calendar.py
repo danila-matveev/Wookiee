@@ -1,8 +1,9 @@
-"""Bitrix24 calendar lookup — find a calendar event by meeting URL.
+"""Bitrix24 calendar read/write client — lookup events by URL and update event fields.
 
 Used at /record-time to enrich telemost.meetings.title + invitees so the DM
 shows a real subject and Bitrix-mapped participant list (rather than the
-generic "(без названия)" + Speaker 0/1/2).
+generic "(без названия)" + Speaker 0/1/2). Also used by add_telemost to write
+a Telemost conference URL back into the LOCATION field of a Bitrix event.
 """
 from __future__ import annotations
 

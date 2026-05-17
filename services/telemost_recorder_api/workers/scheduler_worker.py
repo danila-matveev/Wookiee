@@ -259,13 +259,15 @@ async def _tick(*, telegram_id: int, bitrix_user_id: str) -> int:
 async def fetch_active_users() -> list[Any]:
     """Return all active users from telemost.users WHERE is_active=true.
 
-    Each returned record has `.telegram_id` (int) and `.bitrix_id` (str).
+    Each returned record has `.telegram_id` (int), `.bitrix_id` (str),
+    `.name` (str), and `.short_name` (str | None).
     Uses the existing asyncpg pool pattern from auth.py.
     """
     pool = await get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            "SELECT telegram_id, bitrix_id FROM telemost.users WHERE is_active = true",
+            "SELECT telegram_id, bitrix_id, name, short_name"
+            " FROM telemost.users WHERE is_active = true",
         )
     return list(rows)
 

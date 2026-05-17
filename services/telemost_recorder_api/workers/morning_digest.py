@@ -183,15 +183,11 @@ def _render_digest(
     personal: list[dict],
 ) -> str:
     """Build the morning digest message text."""
-    short_name = (
-        user.get("short_name") if hasattr(user, "get") else getattr(user, "short_name", None)
-    ) or (
-        user.get("name") if hasattr(user, "get") else getattr(user, "name", "")
-    ) or ""
+    short = user.get("short_name") or user.get("name") or ""
 
     total = len(has_link) + len(needs_link)
     lines: list[str] = [
-        f"Доброе утро, {short_name}.",
+        f"Доброе утро, {short}.",
         "",
         f"Сегодня у тебя {total} {'встреча' if total == 1 else 'встречи' if 2 <= total <= 4 else 'встреч'}:",
         "",

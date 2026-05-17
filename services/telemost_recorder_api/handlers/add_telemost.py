@@ -17,7 +17,7 @@ import logging
 
 from services.telemost_recorder_api.bitrix_calendar import event_get_one, event_update
 from services.telemost_recorder_api.telegram_client import tg_send_message
-from shared.yandex_telemost import TelemostTokenExpired, create_conference
+from shared.yandex_telemost import create_conference
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ async def handle_add_telemost(
     # --- Step 1: create Telemost conference ---
     try:
         conference = await create_conference(host_email=_HOST_EMAIL)
-    except (TelemostTokenExpired, RuntimeError, Exception) as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.warning(
             "add_telemost: Telemost API error for event_id=%s user=%d: %s",
             event_id, user_telegram_id, exc,
