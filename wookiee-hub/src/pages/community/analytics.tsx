@@ -15,12 +15,7 @@ export function AnalyticsPage() {
   return (
     <div className="space-y-4">
       <PageHeader
-        kicker="Сообщество"
         title="Аналитика коммуникаций"
-        breadcrumbs={[
-          { label: "Сообщество", to: "/community/reviews" },
-          { label: "Аналитика", to: "/community/analytics" },
-        ]}
       />
       <CommsAnalyticsHeader
         activePeriod={period}

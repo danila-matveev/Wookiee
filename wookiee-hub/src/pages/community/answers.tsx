@@ -8,10 +8,6 @@ export function AnswersPage() {
       initialTab="processed"
       initialProcessedSubTab="answered"
       pageTitle="Ответы"
-      pageBreadcrumbs={[
-        { label: "Сообщество", to: "/community/reviews" },
-        { label: "Ответы", to: "/community/answers" },
-      ]}
     />
   )
 }

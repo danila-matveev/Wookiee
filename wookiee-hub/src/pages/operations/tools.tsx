@@ -72,12 +72,7 @@ export function ToolsPage() {
   return (
     <div className="space-y-5">
       <PageHeader
-        kicker="ОПЕРАЦИИ"
         title="Каталог инструментов"
-        breadcrumbs={[
-          { label: 'Операции', to: '/operations' },
-          { label: 'Каталог инструментов', to: '/operations/tools' },
-        ]}
         description="Все инструменты системы Wookiee — агенты, сервисы, скиллы, cron-задачи"
       />
 

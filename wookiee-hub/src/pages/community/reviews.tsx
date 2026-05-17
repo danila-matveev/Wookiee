@@ -4,7 +4,7 @@ import { ReviewsHeader } from "@/components/community/reviews-header"
 import { ReviewsStatusTabs } from "@/components/community/reviews-status-tabs"
 import { ReviewListItem } from "@/components/community/review-list-item"
 import { ReviewDetail } from "@/components/community/review-detail"
-import { PageHeader, type Crumb } from "@/components/layout/page-header"
+import { PageHeader } from "@/components/layout/page-header"
 import { useDocumentTitle } from "@/hooks/use-document-title"
 import { useCommsStore } from "@/stores/community"
 import type { Review, ReviewSource } from "@/types/community"
@@ -83,8 +83,6 @@ export interface ReviewsPageProps {
   initialProcessedSubTab?: "pending" | "answered" | "archived"
   /** Page title shown in DS v2 PageHeader. */
   pageTitle?: string
-  /** Breadcrumbs for DS v2 PageHeader. */
-  pageBreadcrumbs?: Crumb[]
 }
 
 export function ReviewsPage({
@@ -93,10 +91,6 @@ export function ReviewsPage({
   initialTab,
   initialProcessedSubTab,
   pageTitle = "Отзывы",
-  pageBreadcrumbs = [
-    { label: "Сообщество", to: "/community/reviews" },
-    { label: "Отзывы", to: "/community/reviews" },
-  ],
 }: ReviewsPageProps = {}) {
   const copy = KIND_COPY[kind]
   useDocumentTitle(pageTitle)
@@ -186,9 +180,7 @@ export function ReviewsPage({
   return (
     <div className="space-y-3">
       <PageHeader
-        kicker="Сообщество"
         title={pageTitle}
-        breadcrumbs={pageBreadcrumbs}
       />
       <ReviewsHeader
         activeSource={activeSource}
