@@ -12,6 +12,7 @@ returns [] immediately without any LLM calls.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from dataclasses import dataclass, field
@@ -334,10 +335,12 @@ async def extract(
         )
         return []
 
-    # Stage 2 — slot-fill each passing candidate
+    # Stage 2 — slot-fill each passing candidate in parallel (gather)
+    stage2_tasks = [_run_stage2(raw, team_users, transcript) for raw in passing]
+    stage2_results = await asyncio.gather(*stage2_tasks)
+
     results: list[VoiceCandidate] = []
-    for raw in passing:
-        fields = await _run_stage2(raw, team_users, transcript)
+    for raw, fields in zip(passing, stage2_results):
         if fields is None:
             # Stage 2 failed for this candidate — skip it
             continue
