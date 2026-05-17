@@ -1,8 +1,9 @@
-"""Bitrix24 calendar lookup — find a calendar event by meeting URL.
+"""Bitrix24 calendar read/write client — lookup events by URL and update event fields.
 
 Used at /record-time to enrich telemost.meetings.title + invitees so the DM
 shows a real subject and Bitrix-mapped participant list (rather than the
-generic "(без названия)" + Speaker 0/1/2).
+generic "(без названия)" + Speaker 0/1/2). Also used by add_telemost to write
+a Telemost conference URL back into the LOCATION field of a Bitrix event.
 """
 from __future__ import annotations
 
@@ -186,6 +187,88 @@ async def find_event_by_url(
         return _normalize_event(fallback)
 
     return None
+
+
+async def event_get_one(event_id: str) -> dict[str, Any] | None:
+    """Fetch a single Bitrix calendar event by its ID.
+
+    Used by the add_telemost callback to read the current LOCATION field
+    before appending the Telemost join URL.
+
+    Args:
+        event_id: Bitrix event ID string (e.g. "42").
+
+    Returns:
+        Raw Bitrix event dict with keys ID, NAME, LOCATION, OWNER_ID, etc.,
+        or None if the event was not found or the request failed.
+    """
+    base = BITRIX24_WEBHOOK_URL.rstrip("/")
+    params = {"id": event_id}
+    try:
+        async with httpx.AsyncClient(timeout=BITRIX_TIMEOUT_SECONDS) as c:
+            resp = await c.get(f"{base}/calendar.event.get.json", params=params)
+    except httpx.HTTPError as e:
+        logger.warning("event_get_one network error for event %s: %s", event_id, e)
+        return None
+    if not resp.is_success:
+        logger.warning(
+            "event_get_one failed %d for event %s: %s",
+            resp.status_code, event_id, resp.text[:200],
+        )
+        return None
+    try:
+        payload = resp.json()
+    except (ValueError, json.JSONDecodeError) as e:
+        logger.warning("event_get_one non-JSON response: %s", e)
+        return None
+    result = payload.get("result")
+    if isinstance(result, list) and result:
+        return result[0]
+    if isinstance(result, dict):
+        return result
+    return None
+
+
+async def event_update(
+    *,
+    event_id: str,
+    owner_id: str,
+    fields: dict[str, Any],
+) -> bool:
+    """Update a Bitrix calendar event (write operation).
+
+    Sends a POST to ``calendar.event.update.json`` with the provided fields.
+    Used by the add_telemost callback to write the Telemost join URL into
+    the LOCATION field.
+
+    Args:
+        event_id: Bitrix event ID string.
+        owner_id: Bitrix user ID that owns the event (required by the API).
+        fields: Dict of fields to update, e.g. ``{"LOCATION": "..."}``.
+
+    Returns:
+        True on success, False on error.
+    """
+    base = BITRIX24_WEBHOOK_URL.rstrip("/")
+    body: dict[str, Any] = {
+        "id": event_id,
+        "ownerId": owner_id,
+        "type": "user",
+        **fields,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=BITRIX_TIMEOUT_SECONDS) as c:
+            resp = await c.post(f"{base}/calendar.event.update.json", json=body)
+    except httpx.HTTPError as e:
+        logger.warning("event_update network error for event %s: %s", event_id, e)
+        return False
+    if not resp.is_success:
+        logger.warning(
+            "event_update failed %d for event %s: %s",
+            resp.status_code, event_id, resp.text[:200],
+        )
+        return False
+    return True
 
 
 async def enrich_meeting_from_bitrix(

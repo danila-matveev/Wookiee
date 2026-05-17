@@ -244,8 +244,13 @@ async def test_fetch_bitrix_events_returns_empty_on_http_error(monkeypatch):
 class _FakeUser:
     """Mimics an asyncpg Record — supports both attribute and item access."""
 
-    def __init__(self, telegram_id: int, bitrix_id: str) -> None:
-        self._data = {"telegram_id": telegram_id, "bitrix_id": bitrix_id}
+    def __init__(self, telegram_id: int, bitrix_id: str, name: str = "Test", short_name: str | None = None) -> None:
+        self._data = {
+            "telegram_id": telegram_id,
+            "bitrix_id": bitrix_id,
+            "name": name,
+            "short_name": short_name,
+        }
 
     def __getitem__(self, key: str):  # type: ignore[override]
         return self._data[key]
@@ -256,10 +261,13 @@ class _FakeUser:
         except KeyError:
             raise AttributeError(name) from None
 
+    def get(self, key: str, default=None):  # type: ignore[override]
+        return self._data.get(key, default)
 
-def _make_user(telegram_id: int, bitrix_id: str) -> _FakeUser:
-    """Helper: creates a minimal active user record as returned by fetch_active_users."""
-    return _FakeUser(telegram_id=telegram_id, bitrix_id=bitrix_id)
+
+def _make_user(telegram_id: int, bitrix_id: str, name: str = "Test", short_name: str | None = None) -> _FakeUser:
+    """Helper: creates an active user record as returned by fetch_active_users."""
+    return _FakeUser(telegram_id=telegram_id, bitrix_id=bitrix_id, name=name, short_name=short_name)
 
 
 def _bitrix_event_in_window(**overrides):

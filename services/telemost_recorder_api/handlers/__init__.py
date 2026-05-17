@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 
 from services.telemost_recorder_api.auth import get_user_by_telegram_id
+from services.telemost_recorder_api.handlers.add_telemost import handle_add_telemost
 from services.telemost_recorder_api.handlers.help import handle_help
 from services.telemost_recorder_api.handlers.list_meetings import handle_list
 from services.telemost_recorder_api.handlers.meeting_actions import handle_meet
@@ -123,5 +124,16 @@ async def _handle_callback_query(cq: dict) -> None:
             )
         else:
             logger.info("Malformed meet callback: %s", data)
+    elif data.startswith("add_telemost:"):
+        parts = data.split(":", 1)
+        if len(parts) == 2:
+            event_id = parts[1]
+            await handle_add_telemost(
+                chat_id=chat_id,
+                user_telegram_id=user_id,
+                event_id=event_id,
+            )
+        else:
+            logger.info("Malformed add_telemost callback: %s", data)
     else:
         logger.info("Unknown callback data: %s", data)
