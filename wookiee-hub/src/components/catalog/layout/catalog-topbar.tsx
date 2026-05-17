@@ -1,5 +1,5 @@
-import { useLocation, useSearchParams } from "react-router-dom"
-import { ChevronRight, Search } from "lucide-react"
+import { Link, useLocation, useSearchParams } from "react-router-dom"
+import { ArrowLeft, ChevronRight, Search } from "lucide-react"
 
 import { getRouteLabel } from "@/lib/catalog/route-labels"
 
@@ -33,6 +33,14 @@ export function CatalogTopBar({ onOpenSearch }: CatalogTopBarProps) {
 
   return (
     <div className="h-14 border-b border-stone-200 bg-white flex items-center px-6 gap-4 shrink-0 sticky top-0 z-20">
+      <Link
+        to="/"
+        aria-label="Назад в Hub"
+        className="flex items-center gap-1.5 px-2 py-1 rounded-md text-sm text-stone-500 hover:text-stone-900 hover:bg-stone-100 transition-colors shrink-0"
+      >
+        <ArrowLeft size={14} aria-hidden />
+        <span className="hidden sm:inline">В Hub</span>
+      </Link>
       <div className="flex items-center gap-2 text-sm text-stone-500 min-w-0 flex-1">
         {crumbs.map((c, i) => (
           <span key={`${c}-${i}`} className="flex items-center gap-2 min-w-0">
