@@ -50,3 +50,56 @@ jobs:
               status=$(docker inspect "$container" --format='{{.State.Health.Status}}' 2>/dev/null || echo "no-healthcheck")
               echo "$container: $status"
             done
+
+  deploy-hub:
+    # Frontend hub builds on the GHA runner (server is deploy-only, no node).
+    # Result is rsync'ed to /home/danila/projects/wookiee/wookiee-hub/dist/
+    # which is mounted into the Caddy container as /srv/hub.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: wookiee-hub
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: wookiee-hub/package-lock.json
+
+      - name: Install deps
+        run: npm ci --no-audit --no-fund
+
+      - name: Build hub
+        run: npm run build
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Rsync dist to server
+        run: |
+          rsync -az --delete \
+            -e "ssh -i ~/.ssh/id_deploy -o StrictHostKeyChecking=accept-new" \
+            dist/ \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/home/danila/projects/wookiee/wookiee-hub/dist/"
+
+      - name: Verify deployment
+        run: |
+          ASSET_HASH=$(grep -o 'index-[A-Za-z0-9_-]*\.js' dist/index.html | head -1)
+          echo "Built asset: $ASSET_HASH"
+          REMOTE_HASH=$(curl -s https://hub.os.wookiee.shop/ | grep -o 'index-[A-Za-z0-9_-]*\.js' | head -1)
+          echo "Remote asset: $REMOTE_HASH"
+          if [ "$ASSET_HASH" = "$REMOTE_HASH" ]; then
+            echo "✅ Production matches built artifact"
+          else
+            echo "⚠️ Hash mismatch — Caddy may be serving stale content"
+            exit 1
+          fi
