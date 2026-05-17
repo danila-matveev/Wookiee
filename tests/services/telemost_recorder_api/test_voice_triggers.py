@@ -447,3 +447,122 @@ async def test_handler_disabled_responds_placeholder() -> None:
     # Message must mention Phase 2
     sent_text: str = call_args[0][1]
     assert "Phase 2" in sent_text or "недоступно" in sent_text.lower()
+
+
+# ---------------------------------------------------------------------------
+# Tests — notify_meeting_result sends separate inline keyboard per task/meeting
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_notify_meeting_sends_keyboard_per_candidate() -> None:
+    """notify_meeting_result sends one separate message with reply_markup per task/meeting candidate."""
+    from uuid import UUID
+
+    from services.telemost_recorder_api.notifier import notify_meeting_result
+
+    task_cand = VoiceCandidate(
+        speaker="Данила",
+        timestamp="00:45",
+        raw_text="Саймон, поставь задачу...",
+        intent="task",
+        confidence=0.92,
+        extracted_fields={
+            "title": "Собрать выкупаемость по бомберам",
+            "responsible": "Алина",
+            "created_by": "Данила",
+            "deadline": "2026-05-22T18:00:00",
+            "auditors": [],
+            "accomplices": [],
+        },
+    )
+    meeting_cand = VoiceCandidate(
+        speaker="Данила",
+        timestamp="00:40",
+        raw_text="Саймон, запланируй встречу с Леной",
+        intent="meeting",
+        confidence=0.88,
+        extracted_fields={
+            "name": "Встреча с Леной",
+            "from": "2026-05-25T14:00:00",
+            "attendees": ["Лена", "Данила"],
+        },
+    )
+    note_cand = VoiceCandidate(
+        speaker="Данила",
+        timestamp="01:15",
+        raw_text="Саймон, запомни: цена Wendy...",
+        intent="note",
+        confidence=0.95,
+        extracted_fields={"quote": "цена на Wendy — не ниже 4500 рублей"},
+    )
+
+    meeting_id = UUID("aaaabbbb-0000-0000-0000-000000000001")
+    fake_meeting = {
+        "id": meeting_id,
+        "title": "Тест встречи",
+        "triggered_by": 42,
+        "started_at": None,
+        "duration_seconds": None,
+        "status": "done",
+        "summary": {
+            "title": "Тестовая встреча",
+            "participants": [],
+            "topics": [],
+            "decisions": [],
+            "tasks": [],
+        },
+        "tags": [],
+        "processed_paragraphs": [],
+        "voice_triggers": [task_cand, meeting_cand, note_cand],
+    }
+
+    with (
+        patch(
+            "services.telemost_recorder_api.notifier._claim_notification",
+            new_callable=AsyncMock,
+            return_value=object(),  # non-None → claim succeeded
+        ),
+        patch(
+            "services.telemost_recorder_api.notifier._load_meeting",
+            new_callable=AsyncMock,
+            return_value=fake_meeting,
+        ),
+        patch(
+            "services.telemost_recorder_api.notifier.tg_send_message",
+            new_callable=AsyncMock,
+        ) as mock_send,
+    ):
+        await notify_meeting_result(meeting_id)
+
+    # At least 3 calls: 1 summary + 1 per task/meeting candidate (not note)
+    assert mock_send.call_count >= 3, (
+        f"Expected ≥3 tg_send_message calls (1 summary + 2 keyboards), got {mock_send.call_count}"
+    )
+
+    # Collect all calls that carry a reply_markup with voice:*:disabled
+    keyboard_calls = []
+    for call in mock_send.call_args_list:
+        kwargs = call.kwargs if call.kwargs else {}
+        rm = kwargs.get("reply_markup") or (call.args[2] if len(call.args) > 2 else None)
+        if rm and "inline_keyboard" in rm:
+            rows = rm["inline_keyboard"]
+            all_btns = [b for row in rows for b in row]
+            if any("voice:" in b.get("callback_data", "") and ":disabled" in b.get("callback_data", "") for b in all_btns):
+                keyboard_calls.append((call, rm))
+
+    assert len(keyboard_calls) == 2, (
+        f"Expected 2 keyboard messages (task + meeting), got {len(keyboard_calls)}: {keyboard_calls}"
+    )
+
+    # Verify each keyboard call targets the correct chat_id
+    for call, rm in keyboard_calls:
+        sent_chat_id = call.args[0] if call.args else call.kwargs.get("chat_id")
+        assert sent_chat_id == 42, f"Wrong chat_id: {sent_chat_id}"
+
+    # Note candidate must NOT generate a keyboard message
+    note_keyboard_calls = []
+    for call, rm in keyboard_calls:
+        sent_text = call.args[1] if len(call.args) > 1 else call.kwargs.get("text", "")
+        if "Wendy" in sent_text or "note" in sent_text.lower():
+            note_keyboard_calls.append(call)
+    assert len(note_keyboard_calls) == 0, "Note candidate should not have an inline keyboard message"

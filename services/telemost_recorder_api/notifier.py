@@ -15,6 +15,7 @@ from services.telemost_recorder_api.db import get_pool
 from services.telemost_recorder_api.keyboards import (
     empty_meeting_actions,
     meeting_actions,
+    voice_trigger_keyboard,
 )
 from services.telemost_recorder_api.meetings_repo import (
     build_transcript_text,  # re-export for back-compat
@@ -195,10 +196,9 @@ def _append_voice_sections(lines: list[str], candidates: list) -> None:  # type:
       🔔 Напоминания (reminder)
       📝 Заметки (note)
 
-    In Phase 1 each task/meeting item ends with a disabled 3-button keyboard
-    placeholder rendered inline as text. The actual inline_keyboard is attached
-    to the Telegram message via voice_trigger_keyboard() calls from the
-    notify_meeting_result flow (see below).
+    Sections render as inline markdown only. Per-candidate keyboards are
+    attached separately by notify_meeting_result() for task/meeting intents via
+    individual tg_send_message calls with voice_trigger_keyboard().
     """
     _SEP = "─────────────────────────────────────────────"
 
@@ -227,27 +227,23 @@ def _append_voice_sections(lines: list[str], candidates: list) -> None:  # type:
             deadline = _fmt_deadline(f.get("deadline"))
             auditors = ", ".join(f.get("auditors") or []) or "—"
             accomplices = ", ".join(f.get("accomplices") or []) or "—"
-            cid = f"task{idx}"
             lines.append(f"• {title}")
             lines.append(f"  Постановщик: {created_by} → Исполнитель: {responsible}")
             lines.append(f"  Наблюдатели: {_md_escape(auditors)}")
             lines.append(f"  Соисполнители: {_md_escape(accomplices)}")
             lines.append(f"  Дедлайн: {deadline}")
-            lines.append(f"  \\[✅ Создать\\]  \\[✏️ Поправить\\]  \\[❌ Игнор\\]  `voice:{cid}:disabled`")
 
     # ── 📅 Предлагаемые встречи (meeting) ──────────────────────────────────
     meetings_v = _by_intent("meeting")
     if meetings_v:
         lines.append(f"\n📅 *Предлагаемые встречи*\n{_SEP}")
-        for idx, c in enumerate(meetings_v):
+        for _idx, c in enumerate(meetings_v):
             f = c.extracted_fields
             name = _md_escape(f.get("name") or c.raw_text[:60])
             from_dt = _fmt_deadline(f.get("from"))
             attendees = ", ".join(f.get("attendees") or []) or "—"
-            cid = f"meeting{idx}"
             lines.append(f"• {name}, {from_dt}")
             lines.append(f"  Участники: {_md_escape(attendees)}")
-            lines.append(f"  \\[✅ Создать\\]  \\[✏️ Поправить\\]  \\[❌ Игнор\\]  `voice:{cid}:disabled`")
 
     # ── 🔔 Напоминания (reminder) ───────────────────────────────────────────
     reminders = _by_intent("reminder")
@@ -363,6 +359,44 @@ async def notify_meeting_result(meeting_id: UUID) -> None:
         else:
             logger.exception("Failed to send summary for %s", meeting_id)
         return
+
+    # Send a separate message with real inline keyboard for each task/meeting candidate.
+    # Note/attention/reminder are info-only and stay in the summary text only.
+    voice_candidates = meeting.get("voice_triggers") or []
+    task_idx = 0
+    meeting_idx = 0
+    for cand in voice_candidates:
+        if cand.intent == "task":
+            cid = f"task{task_idx}"
+            task_idx += 1
+            f = cand.extracted_fields
+            title = f.get("title") or cand.raw_text[:60]
+            text = f"📌 {title}\n\nПодтверди действие:"
+        elif cand.intent == "meeting":
+            cid = f"meeting{meeting_idx}"
+            meeting_idx += 1
+            f = cand.extracted_fields
+            name = f.get("name") or cand.raw_text[:60]
+            text = f"📅 {name}\n\nПодтверди действие:"
+        else:
+            continue
+
+        try:
+            await tg_send_message(
+                triggered_by,
+                text,
+                reply_markup=voice_trigger_keyboard(cid),
+            )
+        except TelegramAPIError as e:
+            if e.error_code in (400, 403):
+                logger.error(
+                    "Cannot send voice-trigger keyboard for %s cid=%s — user unreachable (Telegram %d): %s",
+                    meeting_id, cid, e.error_code, e,
+                )
+            else:
+                logger.exception(
+                    "Failed to send voice-trigger keyboard for %s cid=%s", meeting_id, cid
+                )
 
     paragraphs = meeting.get("processed_paragraphs") or []
     if (

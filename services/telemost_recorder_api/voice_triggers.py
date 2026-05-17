@@ -38,7 +38,7 @@ _CONFIDENCE_THRESHOLD = 0.5
 # ============================================================================
 
 
-@dataclass(frozen=True)
+@dataclass
 class VoiceCandidate:
     """Single detected 'Саймон, ...' command with extracted slot data."""
 
