@@ -2,23 +2,36 @@
 Telemost meeting starts.
 
 How it works:
-1. Once per `SCHEDULER_TICK_SECONDS`, pull the configured Bitrix user's
-   calendar events for now → now + 24h.
+1. Once per `SCHEDULER_TICK_SECONDS`, pull calendar events for all active
+   users in telemost.users (or a single legacy user from env if configured).
 2. For each event, parse `DATE_FROM` *with `TZ_FROM`* (Bitrix returns wall
    time in the event's own timezone, not the owner's). Convert to UTC.
 3. Extract a Telemost URL from LOCATION first, then DESCRIPTION. Skip
    Bitrix-Видеоконференция events whose LOCATION is `calendar_<n>` —
    the actual Telemost URL is generated lazily on the Bitrix UI side and
    isn't returned by `calendar.event.get`.
-4. If now is in [start − LEAD, start + GRACE], insert a `meetings` row
+4. Skip events whose name contains `#nobot` (case-insensitive opt-out).
+5. If now is in [start − LEAD, start + GRACE], insert a `meetings` row
    with `source='calendar'`, `source_event_id=<Bitrix event ID>`,
    `scheduled_at=<UTC start>`, `status='queued'`. The recorder worker
    picks it up just like a Telegram-triggered recording.
 
-Idempotency: partial unique index on
-(source, source_event_id, scheduled_at) where source='calendar' — so
-the same Bitrix occurrence can't be queued twice, but a daily recurring
-meeting (same source_event_id, different scheduled_at) is still allowed.
+Idempotency:
+- In-memory dedup: (meeting_url, scheduled_at) within a single tick — so the
+  same team meeting seen in 12 calendars only produces 1 INSERT attempt.
+- DB-level: partial unique index on (source, source_event_id, scheduled_at)
+  where source='calendar' — ON CONFLICT DO NOTHING handles the rest.
+
+Multi-user mode (default when TELEMOST_SCHEDULER_BITRIX_USER_ID is unset):
+  Iterates over telemost.users WHERE is_active=true, polling each user's
+  Bitrix calendar. triggered_by is set to the telegram_id of the first user
+  in whose calendar the meeting URL was found.
+
+Legacy single-user mode (when TELEMOST_SCHEDULER_BITRIX_USER_ID is set):
+  Polls only that user — same behaviour as before T4.
+
+Master switch: TELEMOST_SCHEDULER_ENABLED=false (default) → worker returns
+immediately without starting the loop. Operator sets to true to activate.
 """
 from __future__ import annotations
 
@@ -26,6 +39,7 @@ import asyncio
 import json
 import logging
 import re
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -36,6 +50,7 @@ from services.telemost_recorder_api.config import (
     BITRIX24_WEBHOOK_URL,
     BITRIX_TIMEOUT_SECONDS,
     SCHEDULER_BITRIX_USER_ID,
+    SCHEDULER_ENABLED,
     SCHEDULER_GRACE_SECONDS,
     SCHEDULER_LEAD_SECONDS,
     SCHEDULER_TELEGRAM_ID,
@@ -57,6 +72,17 @@ _TELEMOST_URL_RE = re.compile(
 # When the scheduler can't activate (env unset), idle this long between
 # "still disabled" log lines so we don't flood the log.
 _DISABLED_IDLE_SECONDS = 3600
+
+
+@dataclass
+class _Candidate:
+    """In-memory record of a deduplicated meeting candidate within one tick."""
+
+    url: str
+    title: str | None
+    scheduled_at: datetime
+    triggered_by: int
+    source_event_id: str
 
 
 def _parse_event_start(ev: dict[str, Any]) -> datetime | None:
@@ -230,33 +256,144 @@ async def _tick(*, telegram_id: int, bitrix_user_id: str) -> int:
     return inserted
 
 
+async def fetch_active_users() -> list[Any]:
+    """Return all active users from telemost.users WHERE is_active=true.
+
+    Each returned record has `.telegram_id` (int) and `.bitrix_id` (str).
+    Uses the existing asyncpg pool pattern from auth.py.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT telegram_id, bitrix_id FROM telemost.users WHERE is_active = true",
+        )
+    return list(rows)
+
+
+async def _tick_all_users() -> int:
+    """Multi-user tick: poll every active user's Bitrix calendar, deduplicate
+    by (meeting_url, scheduled_at) in memory, then INSERT candidates.
+
+    Returns the total number of new meetings queued in this tick.
+    """
+    users = await fetch_active_users()
+    if not users:
+        logger.debug("Scheduler: no active users in telemost.users, skipping tick")
+        return 0
+
+    now_utc = datetime.now(timezone.utc)
+    lead = SCHEDULER_LEAD_SECONDS
+    grace = SCHEDULER_GRACE_SECONDS
+
+    # In-memory dedup: (url, scheduled_at) → first-winner _Candidate
+    candidates: dict[tuple[str, datetime], _Candidate] = {}
+
+    for u in users:
+        bitrix_id: str = u["bitrix_id"]
+        telegram_id: int = u["telegram_id"]
+        try:
+            events = await _fetch_bitrix_events(bitrix_id)
+        except Exception:  # noqa: BLE001
+            logger.exception("Scheduler: Bitrix fetch failed for user bitrix_id=%s", bitrix_id)
+            continue
+
+        for ev in events:
+            # #nobot opt-out
+            name = (ev.get("NAME") or "").strip()
+            if "#nobot" in name.lower():
+                logger.debug("Scheduler: skipping #nobot event %s", ev.get("ID"))
+                continue
+
+            url = _extract_telemost_url(ev)
+            if not url:
+                continue
+
+            start_utc = _parse_event_start(ev)
+            if start_utc is None:
+                continue
+
+            delta = (start_utc - now_utc).total_seconds()
+            if delta > lead or delta < -grace:
+                continue
+
+            key = (url, start_utc)
+            if key not in candidates:
+                candidates[key] = _Candidate(
+                    url=url,
+                    title=name or None,
+                    scheduled_at=start_utc,
+                    triggered_by=telegram_id,
+                    source_event_id=str(ev.get("ID") or "").strip(),
+                )
+
+    queued = 0
+    for c in candidates.values():
+        if not c.source_event_id:
+            continue
+        try:
+            inserted = await _queue_meeting(
+                bitrix_event_id=c.source_event_id,
+                title=c.title,
+                meeting_url=c.url,
+                scheduled_at_utc=c.scheduled_at,
+                triggered_by=c.triggered_by,
+            )
+            if inserted:
+                logger.info(
+                    "Scheduler queued (multi-user): %r -> %s @ %s (triggered_by=%d)",
+                    c.title, c.url, c.scheduled_at.isoformat(), c.triggered_by,
+                )
+                queued += 1
+        except Exception:  # noqa: BLE001
+            logger.exception("Scheduler: failed to queue meeting %s", c.url)
+
+    return queued
+
+
 async def run_forever() -> None:
     """Bitrix calendar scheduler — auto-queues a recording for each calendar
     Telemost meeting just before it starts.
 
-    Activates only when both `SCHEDULER_BITRIX_USER_ID` and
-    `SCHEDULER_TELEGRAM_ID` are set in env. Otherwise idles indefinitely
-    (no work, no crash) so the API stays single-user-safe in dev.
+    Modes:
+    - TELEMOST_SCHEDULER_ENABLED=false (default) → returns immediately.
+    - TELEMOST_SCHEDULER_ENABLED=true + legacy env set → single-user mode.
+    - TELEMOST_SCHEDULER_ENABLED=true + legacy env empty → multi-user mode:
+        iterates telemost.users WHERE is_active=true each tick.
     """
+    if not SCHEDULER_ENABLED:
+        logger.info(
+            "Scheduler disabled (TELEMOST_SCHEDULER_ENABLED=false). "
+            "Set to 'true' to activate."
+        )
+        return
+
     bitrix_user_id = SCHEDULER_BITRIX_USER_ID
     telegram_id = SCHEDULER_TELEGRAM_ID
-    if not bitrix_user_id or telegram_id is None:
+
+    if bitrix_user_id and telegram_id is not None:
+        # Legacy single-user mode — preserved for dev / testing.
         logger.info(
-            "Scheduler disabled: set TELEMOST_SCHEDULER_BITRIX_USER_ID and "
-            "TELEMOST_SCHEDULER_TELEGRAM_ID to enable."
+            "Scheduler starting in LEGACY single-user mode "
+            "(bitrix_user_id=%s, telegram_id=%d, tick=%ds, lead=%ds, grace=%ds)",
+            bitrix_user_id, telegram_id,
+            SCHEDULER_TICK_SECONDS, SCHEDULER_LEAD_SECONDS, SCHEDULER_GRACE_SECONDS,
         )
         while True:
-            await asyncio.sleep(_DISABLED_IDLE_SECONDS)
-
-    logger.info(
-        "Scheduler worker starting (bitrix_user_id=%s, telegram_id=%d, "
-        "tick=%ds, lead=%ds, grace=%ds)",
-        bitrix_user_id, telegram_id,
-        SCHEDULER_TICK_SECONDS, SCHEDULER_LEAD_SECONDS, SCHEDULER_GRACE_SECONDS,
-    )
-    while True:
-        try:
-            await _tick(telegram_id=telegram_id, bitrix_user_id=bitrix_user_id)
-        except Exception:  # noqa: BLE001
-            logger.exception("Scheduler tick crashed")
-        await asyncio.sleep(SCHEDULER_TICK_SECONDS)
+            try:
+                await _tick(telegram_id=telegram_id, bitrix_user_id=bitrix_user_id)
+            except Exception:  # noqa: BLE001
+                logger.exception("Scheduler tick crashed (legacy)")
+            await asyncio.sleep(SCHEDULER_TICK_SECONDS)
+    else:
+        # Multi-user mode — iterate all active users from telemost.users.
+        logger.info(
+            "Scheduler starting in MULTI-USER mode "
+            "(tick=%ds, lead=%ds, grace=%ds)",
+            SCHEDULER_TICK_SECONDS, SCHEDULER_LEAD_SECONDS, SCHEDULER_GRACE_SECONDS,
+        )
+        while True:
+            try:
+                await _tick_all_users()
+            except Exception:  # noqa: BLE001
+                logger.exception("Scheduler tick failed (multi-user)")
+            await asyncio.sleep(SCHEDULER_TICK_SECONDS)
