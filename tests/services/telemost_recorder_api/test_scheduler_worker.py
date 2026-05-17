@@ -1,8 +1,18 @@
-"""scheduler_worker — Bitrix calendar polling, TZ handling, idempotent enqueue."""
+"""scheduler_worker — Bitrix calendar polling, TZ handling, idempotent enqueue.
+
+Extended in T4 to cover multi-user expansion:
+- TELEMOST_SCHEDULER_ENABLED=false → loop doesn't start
+- Legacy single-user mode (env vars set) → polls only that user
+- Multi-user: fetches active users from DB, deduplicates by (url, scheduled_at)
+- #nobot filter
+- Bitrix failure on one user → loop continues for the rest
+- triggered_by = first user's telegram_id where URL was found
+"""
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from zoneinfo import ZoneInfo
@@ -225,3 +235,298 @@ async def test_fetch_bitrix_events_returns_empty_on_http_error(monkeypatch):
     )
     out = await scheduler_worker._fetch_bitrix_events("1")
     assert out == []
+
+
+# ---------------------------------------------------------------------------
+# T4 — Multi-user expansion tests
+# ---------------------------------------------------------------------------
+
+class _FakeUser:
+    """Mimics an asyncpg Record — supports both attribute and item access."""
+
+    def __init__(self, telegram_id: int, bitrix_id: str) -> None:
+        self._data = {"telegram_id": telegram_id, "bitrix_id": bitrix_id}
+
+    def __getitem__(self, key: str):  # type: ignore[override]
+        return self._data[key]
+
+    def __getattr__(self, name: str):
+        try:
+            return self._data[name]
+        except KeyError:
+            raise AttributeError(name) from None
+
+
+def _make_user(telegram_id: int, bitrix_id: str) -> _FakeUser:
+    """Helper: creates a minimal active user record as returned by fetch_active_users."""
+    return _FakeUser(telegram_id=telegram_id, bitrix_id=bitrix_id)
+
+
+def _bitrix_event_in_window(**overrides):
+    """A Bitrix event that lands inside the scheduling window (30s from now)."""
+    now = datetime.now(timezone.utc)
+    start = now + timedelta(seconds=30)
+    base = {
+        "ID": 1,
+        "NAME": "Daily standup",
+        "DATE_FROM": start.astimezone(ZoneInfo("Europe/Moscow")).strftime("%d.%m.%Y %H:%M:%S"),
+        "DATE_TO": "",
+        "TZ_FROM": "Europe/Moscow",
+        "TZ_TO": "Europe/Moscow",
+        "LOCATION": "https://telemost.yandex.ru/j/99999",
+        "DESCRIPTION": "",
+        "IS_MEETING": True,
+    }
+    base.update(overrides)
+    return base
+
+
+@pytest.mark.asyncio
+async def test_disabled_by_env():
+    """TELEMOST_SCHEDULER_ENABLED=false → run_forever returns immediately without looping."""
+    with patch.dict(
+        "os.environ",
+        {"TELEMOST_SCHEDULER_ENABLED": "false"},
+        clear=False,
+    ):
+        # Reload config constant inside the module
+        with patch.object(scheduler_worker, "SCHEDULER_ENABLED", False):
+            # run_forever should return (not block in while True)
+            task = asyncio.create_task(scheduler_worker.run_forever())
+            await asyncio.sleep(0.05)
+            assert task.done(), "run_forever should have returned when SCHEDULER_ENABLED=false"
+
+
+@pytest.mark.asyncio
+async def test_legacy_single_user_mode():
+    """If SCHEDULER_BITRIX_USER_ID is set, only that single user is polled
+    (legacy mode) and fetch_active_users is never called."""
+    with (
+        patch.object(scheduler_worker, "SCHEDULER_ENABLED", True),
+        patch.object(scheduler_worker, "SCHEDULER_BITRIX_USER_ID", "42"),
+        patch.object(scheduler_worker, "SCHEDULER_TELEGRAM_ID", 100),
+        patch.object(scheduler_worker, "SCHEDULER_TICK_SECONDS", 10000),
+        patch(
+            "services.telemost_recorder_api.workers.scheduler_worker._tick",
+            new=AsyncMock(return_value=0),
+        ) as mock_tick,
+        patch(
+            "services.telemost_recorder_api.workers.scheduler_worker.fetch_active_users",
+            new=AsyncMock(return_value=[]),
+        ) as mock_fetch_users,
+        patch("asyncio.sleep", new=AsyncMock(side_effect=asyncio.CancelledError)),
+    ):
+        with pytest.raises(asyncio.CancelledError):
+            await scheduler_worker.run_forever()
+
+    # legacy path calls _tick, not fetch_active_users
+    mock_tick.assert_awaited_once_with(telegram_id=100, bitrix_user_id="42")
+    mock_fetch_users.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_multi_user_all_active():
+    """3 active users → 3 Bitrix calendar requests (_tick_all_users runs per-user)."""
+    users = [
+        _make_user(101, "1"),
+        _make_user(102, "2"),
+        _make_user(103, "3"),
+    ]
+    with (
+        patch.object(scheduler_worker, "SCHEDULER_ENABLED", True),
+        patch.object(scheduler_worker, "SCHEDULER_BITRIX_USER_ID", ""),
+        patch.object(scheduler_worker, "SCHEDULER_TELEGRAM_ID", None),
+        patch.object(scheduler_worker, "SCHEDULER_TICK_SECONDS", 10000),
+        patch(
+            "services.telemost_recorder_api.workers.scheduler_worker.fetch_active_users",
+            new=AsyncMock(return_value=users),
+        ),
+        patch(
+            "services.telemost_recorder_api.workers.scheduler_worker._fetch_bitrix_events",
+            new=AsyncMock(return_value=[]),
+        ) as mock_fetch,
+        patch(
+            "services.telemost_recorder_api.workers.scheduler_worker._queue_meeting",
+            new=AsyncMock(return_value=False),
+        ),
+        patch("asyncio.sleep", new=AsyncMock(side_effect=asyncio.CancelledError)),
+    ):
+        with pytest.raises(asyncio.CancelledError):
+            await scheduler_worker.run_forever()
+
+    assert mock_fetch.await_count == 3
+    called_ids = {c.args[0] for c in mock_fetch.await_args_list}
+    assert called_ids == {"1", "2", "3"}
+
+
+@pytest.mark.asyncio
+async def test_dedup_same_url_across_users():
+    """Same meeting URL in N users' calendars → exactly 1 INSERT (in-memory dedup)."""
+    users = [_make_user(100 + i, str(i + 1)) for i in range(12)]
+    ev = _bitrix_event_in_window(ID=77, NAME="Big standup")
+
+    with (
+        patch.object(scheduler_worker, "SCHEDULER_ENABLED", True),
+        patch.object(scheduler_worker, "SCHEDULER_BITRIX_USER_ID", ""),
+        patch.object(scheduler_worker, "SCHEDULER_TELEGRAM_ID", None),
+        patch.object(scheduler_worker, "SCHEDULER_TICK_SECONDS", 10000),
+        patch(
+            "services.telemost_recorder_api.workers.scheduler_worker.fetch_active_users",
+            new=AsyncMock(return_value=users),
+        ),
+        patch(
+            "services.telemost_recorder_api.workers.scheduler_worker._fetch_bitrix_events",
+            new=AsyncMock(return_value=[ev]),
+        ),
+        patch(
+            "services.telemost_recorder_api.workers.scheduler_worker._queue_meeting",
+            new=AsyncMock(return_value=True),
+        ) as mock_queue,
+        patch("asyncio.sleep", new=AsyncMock(side_effect=asyncio.CancelledError)),
+    ):
+        with pytest.raises(asyncio.CancelledError):
+            await scheduler_worker.run_forever()
+
+    # Despite 12 users all seeing the same event, only 1 INSERT should happen
+    assert mock_queue.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_nobot_filter():
+    """Event with '#nobot' in name is skipped — no INSERT."""
+    user = _make_user(101, "1")
+    ev = _bitrix_event_in_window(ID=55, NAME="Secret meeting #nobot")
+
+    with (
+        patch.object(scheduler_worker, "SCHEDULER_ENABLED", True),
+        patch.object(scheduler_worker, "SCHEDULER_BITRIX_USER_ID", ""),
+        patch.object(scheduler_worker, "SCHEDULER_TELEGRAM_ID", None),
+        patch.object(scheduler_worker, "SCHEDULER_TICK_SECONDS", 10000),
+        patch(
+            "services.telemost_recorder_api.workers.scheduler_worker.fetch_active_users",
+            new=AsyncMock(return_value=[user]),
+        ),
+        patch(
+            "services.telemost_recorder_api.workers.scheduler_worker._fetch_bitrix_events",
+            new=AsyncMock(return_value=[ev]),
+        ),
+        patch(
+            "services.telemost_recorder_api.workers.scheduler_worker._queue_meeting",
+            new=AsyncMock(return_value=True),
+        ) as mock_queue,
+        patch("asyncio.sleep", new=AsyncMock(side_effect=asyncio.CancelledError)),
+    ):
+        with pytest.raises(asyncio.CancelledError):
+            await scheduler_worker.run_forever()
+
+    mock_queue.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_event_without_telemost_url():
+    """Event with no Telemost URL (e.g. calendar_NN) is skipped."""
+    user = _make_user(101, "1")
+    ev = _bitrix_event_in_window(ID=88, LOCATION="calendar_357", DESCRIPTION="")
+
+    with (
+        patch.object(scheduler_worker, "SCHEDULER_ENABLED", True),
+        patch.object(scheduler_worker, "SCHEDULER_BITRIX_USER_ID", ""),
+        patch.object(scheduler_worker, "SCHEDULER_TELEGRAM_ID", None),
+        patch.object(scheduler_worker, "SCHEDULER_TICK_SECONDS", 10000),
+        patch(
+            "services.telemost_recorder_api.workers.scheduler_worker.fetch_active_users",
+            new=AsyncMock(return_value=[user]),
+        ),
+        patch(
+            "services.telemost_recorder_api.workers.scheduler_worker._fetch_bitrix_events",
+            new=AsyncMock(return_value=[ev]),
+        ),
+        patch(
+            "services.telemost_recorder_api.workers.scheduler_worker._queue_meeting",
+            new=AsyncMock(return_value=True),
+        ) as mock_queue,
+        patch("asyncio.sleep", new=AsyncMock(side_effect=asyncio.CancelledError)),
+    ):
+        with pytest.raises(asyncio.CancelledError):
+            await scheduler_worker.run_forever()
+
+    mock_queue.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_bitrix_fails_for_one_user():
+    """If Bitrix raises for user #2, users #1 and #3 are still processed."""
+    users = [
+        _make_user(101, "1"),
+        _make_user(102, "2"),  # will raise
+        _make_user(103, "3"),
+    ]
+    ev = _bitrix_event_in_window(ID=10)
+
+    async def _fetch_side_effect(bitrix_id: str):
+        if bitrix_id == "2":
+            raise RuntimeError("Bitrix down for user 2")
+        return [ev]
+
+    with (
+        patch.object(scheduler_worker, "SCHEDULER_ENABLED", True),
+        patch.object(scheduler_worker, "SCHEDULER_BITRIX_USER_ID", ""),
+        patch.object(scheduler_worker, "SCHEDULER_TELEGRAM_ID", None),
+        patch.object(scheduler_worker, "SCHEDULER_TICK_SECONDS", 10000),
+        patch(
+            "services.telemost_recorder_api.workers.scheduler_worker.fetch_active_users",
+            new=AsyncMock(return_value=users),
+        ),
+        patch(
+            "services.telemost_recorder_api.workers.scheduler_worker._fetch_bitrix_events",
+            side_effect=_fetch_side_effect,
+        ),
+        patch(
+            "services.telemost_recorder_api.workers.scheduler_worker._queue_meeting",
+            new=AsyncMock(return_value=True),
+        ) as mock_queue,
+        patch("asyncio.sleep", new=AsyncMock(side_effect=asyncio.CancelledError)),
+    ):
+        with pytest.raises(asyncio.CancelledError):
+            await scheduler_worker.run_forever()
+
+    # Users 1 and 3 each have the same event URL → dedup → 1 unique insert
+    assert mock_queue.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_triggered_by_first_owner():
+    """triggered_by is set to telegram_id of the FIRST user where the URL appeared."""
+    users = [
+        _make_user(201, "1"),  # first — should be triggered_by
+        _make_user(202, "2"),
+        _make_user(203, "3"),
+    ]
+    ev = _bitrix_event_in_window(ID=20)
+
+    with (
+        patch.object(scheduler_worker, "SCHEDULER_ENABLED", True),
+        patch.object(scheduler_worker, "SCHEDULER_BITRIX_USER_ID", ""),
+        patch.object(scheduler_worker, "SCHEDULER_TELEGRAM_ID", None),
+        patch.object(scheduler_worker, "SCHEDULER_TICK_SECONDS", 10000),
+        patch(
+            "services.telemost_recorder_api.workers.scheduler_worker.fetch_active_users",
+            new=AsyncMock(return_value=users),
+        ),
+        patch(
+            "services.telemost_recorder_api.workers.scheduler_worker._fetch_bitrix_events",
+            new=AsyncMock(return_value=[ev]),
+        ),
+        patch(
+            "services.telemost_recorder_api.workers.scheduler_worker._queue_meeting",
+            new=AsyncMock(return_value=True),
+        ) as mock_queue,
+        patch("asyncio.sleep", new=AsyncMock(side_effect=asyncio.CancelledError)),
+    ):
+        with pytest.raises(asyncio.CancelledError):
+            await scheduler_worker.run_forever()
+
+    mock_queue.assert_awaited_once()
+    kwargs = mock_queue.await_args.kwargs
+    # triggered_by must be the FIRST user's telegram_id (201), not 202 or 203
+    assert kwargs["triggered_by"] == 201
