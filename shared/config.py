@@ -116,6 +116,14 @@ SMM_SHEET_ID: str = os.getenv(
 )
 
 # ============================================================================
+# Yandex Telemost API (Саймон — трек T2)
+# ============================================================================
+YANDEX_TELEMOST_CLIENT_ID: str = os.getenv('YANDEX_TELEMOST_CLIENT_ID', '')
+YANDEX_TELEMOST_CLIENT_SECRET: str = os.getenv('YANDEX_TELEMOST_CLIENT_SECRET', '')
+YANDEX_TELEMOST_OAUTH_TOKEN: str = os.getenv('YANDEX_TELEMOST_OAUTH_TOKEN', '')
+YANDEX_TELEMOST_REFRESH_TOKEN: str = os.getenv('YANDEX_TELEMOST_REFRESH_TOKEN', '')
+
+# ============================================================================
 # Timezone
 # ============================================================================
 TIMEZONE: str = 'Europe/Moscow'
