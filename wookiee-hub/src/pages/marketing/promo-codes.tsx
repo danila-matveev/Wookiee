@@ -35,28 +35,23 @@ export function PromoCodesPage() {
   }
 
   return (
-    <div className="flex flex-1 overflow-hidden">
-      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        <div className="px-6 pt-6 pb-0">
-          <div className="flex items-end justify-between mb-6">
-            <div>
-              <h1
-                className="text-stone-900"
-                style={{ fontFamily: "'Instrument Serif', serif", fontSize: 24, fontStyle: "italic" }}
-              >
-                Промокоды
-              </h1>
-              <p className="text-sm text-stone-500 mt-0.5">Статистика по кодам скидок</p>
-            </div>
-            <Button variant="primary" onClick={openAdd}>
-              + Добавить
-            </Button>
-          </div>
+    <>
+      <div className="flex items-end justify-between mb-6">
+        <div>
+          <h1
+            className="text-stone-900"
+            style={{ fontFamily: "'Instrument Serif', serif", fontSize: 24, fontStyle: "italic" }}
+          >
+            Промокоды
+          </h1>
+          <p className="text-sm text-stone-500 mt-0.5">Статистика по кодам скидок</p>
         </div>
-        <PromoCodesTable />
+        <Button variant="primary" onClick={openAdd}>
+          + Добавить
+        </Button>
       </div>
-
+      <PromoCodesTable />
       {renderPanel()}
-    </div>
+    </>
   )
 }

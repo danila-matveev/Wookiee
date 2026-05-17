@@ -98,26 +98,21 @@ export function SearchQueriesPage() {
   }
 
   return (
-    <div className="flex flex-1 overflow-hidden">
-      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        <div className="px-6 pt-6 pb-0">
-          <div className="flex items-end justify-between mb-6">
-            <div>
-              <h1
-                className="text-stone-900"
-                style={{ fontFamily: "'Instrument Serif', serif", fontSize: 24, fontStyle: "italic" }}
-              >
-                Поисковые запросы
-              </h1>
-              <p className="text-sm text-stone-500 mt-0.5">Брендовые, артикулы и подменные WW-коды</p>
-            </div>
-            <AddMenu />
-          </div>
+    <>
+      <div className="flex items-end justify-between mb-6">
+        <div>
+          <h1
+            className="text-stone-900"
+            style={{ fontFamily: "'Instrument Serif', serif", fontSize: 24, fontStyle: "italic" }}
+          >
+            Поисковые запросы
+          </h1>
+          <p className="text-sm text-stone-500 mt-0.5">Брендовые, артикулы и подменные WW-коды</p>
         </div>
-        <SearchQueriesTable />
+        <AddMenu />
       </div>
-
+      <SearchQueriesTable />
       {renderPanel()}
-    </div>
+    </>
   )
 }
