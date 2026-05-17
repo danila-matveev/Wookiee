@@ -78,6 +78,31 @@ def confirm_delete(short_id: str) -> dict:
     }
 
 
+def voice_trigger_keyboard(candidate_id: str) -> dict:
+    """Three Phase 1 placeholder buttons for a voice-trigger candidate.
+
+    All three buttons share the same ``voice:<id>:disabled`` callback_data in
+    Phase 1. The handler responds with a placeholder message until Phase 2
+    activates real Bitrix writes.
+
+    Args:
+        candidate_id: Short identifier for the candidate (e.g. intent + index).
+
+    Returns:
+        Telegram inline_keyboard dict with exactly 3 buttons on one row.
+    """
+    disabled_data = f"voice:{candidate_id}:disabled"
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "✅ Создать", "callback_data": disabled_data},
+                {"text": "✏️ Поправить", "callback_data": disabled_data},
+                {"text": "❌ Игнор", "callback_data": disabled_data},
+            ]
+        ]
+    }
+
+
 def digest_keyboard(needs_link_events: list[dict]) -> dict:
     """Inline keyboard for morning digest — one button per needs-link event.
 

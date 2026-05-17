@@ -9,6 +9,7 @@ import logging
 
 from services.telemost_recorder_api.auth import get_user_by_telegram_id
 from services.telemost_recorder_api.handlers.add_telemost import handle_add_telemost
+from services.telemost_recorder_api.handlers.voice_trigger_disabled import handle_voice_disabled
 from services.telemost_recorder_api.handlers.help import handle_help
 from services.telemost_recorder_api.handlers.list_meetings import handle_list
 from services.telemost_recorder_api.handlers.meeting_actions import handle_meet
@@ -135,5 +136,11 @@ async def _handle_callback_query(cq: dict) -> None:
             )
         else:
             logger.info("Malformed add_telemost callback: %s", data)
+    elif data.startswith("voice:") and data.endswith(":disabled"):
+        # Phase 1 placeholder — all three voice-trigger buttons land here.
+        # Phase 2 will replace these with real task/meeting/note handlers.
+        parts = data.split(":")
+        candidate_id = parts[1] if len(parts) >= 3 else "unknown"
+        await handle_voice_disabled(chat_id=chat_id, candidate_id=candidate_id)
     else:
         logger.info("Unknown callback data: %s", data)

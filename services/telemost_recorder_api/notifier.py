@@ -15,6 +15,7 @@ from services.telemost_recorder_api.db import get_pool
 from services.telemost_recorder_api.keyboards import (
     empty_meeting_actions,
     meeting_actions,
+    voice_trigger_keyboard,
 )
 from services.telemost_recorder_api.meetings_repo import (
     build_transcript_text,  # re-export for back-compat
@@ -162,7 +163,107 @@ def format_summary_message(meeting: dict[str, Any]) -> str:
         joined_tags = ", ".join(_md_escape(t) for t in tags)
         lines.append(f"\n🏷 {joined_tags}")
 
+    # Voice-trigger sections (Phase 1: buttons rendered but disabled).
+    voice_candidates = meeting.get("voice_triggers") or []
+    if voice_candidates:
+        _append_voice_sections(lines, voice_candidates)
+
     return "\n".join(lines)
+
+
+def _fmt_deadline(deadline: str | None) -> str:
+    """Format an ISO datetime string into a short human-readable form."""
+    if not deadline:
+        return "—"
+    try:
+        from datetime import datetime
+
+        dt = datetime.fromisoformat(deadline)
+        day_names = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"]
+        dow = day_names[dt.weekday()]
+        return f"{dow} {dt.strftime('%d.%m')} {dt.strftime('%H:%M')} МСК"
+    except (ValueError, AttributeError):
+        return _md_escape(str(deadline))
+
+
+def _append_voice_sections(lines: list[str], candidates: list) -> None:  # type: ignore[type-arg]
+    """Append up to 5 voice-trigger sections to the message lines list.
+
+    Sections rendered (only those with at least one candidate):
+      🔖 Важные моменты (attention)
+      📌 Задачи (task)
+      📅 Предлагаемые встречи (meeting)
+      🔔 Напоминания (reminder)
+      📝 Заметки (note)
+
+    Sections render as inline markdown only. Per-candidate keyboards are
+    attached separately by notify_meeting_result() for task/meeting intents via
+    individual tg_send_message calls with voice_trigger_keyboard().
+    """
+    _SEP = "─────────────────────────────────────────────"
+
+    def _by_intent(intent: str) -> list:  # type: ignore[type-arg]
+        return [c for c in candidates if c.intent == intent]
+
+    # ── 🔖 Важные моменты (attention) ──────────────────────────────────────
+    attention = _by_intent("attention")
+    if attention:
+        lines.append(f"\n🔖 *Важные моменты (Саймон обратил внимание)*\n{_SEP}")
+        for c in attention:
+            quote = _md_escape(
+                c.extracted_fields.get("quote") or c.raw_text
+            )
+            lines.append(f"• {_md_escape(c.timestamp)} ({_md_escape(c.speaker)}) \"{quote}\"")
+
+    # ── 📌 Задачи (task) ────────────────────────────────────────────────────
+    tasks_v = _by_intent("task")
+    if tasks_v:
+        lines.append(f"\n📌 *Задачи (готовы к постановке в Битрикс)*\n{_SEP}")
+        for idx, c in enumerate(tasks_v):
+            f = c.extracted_fields
+            title = _md_escape(f.get("title") or c.raw_text[:60])
+            responsible = _md_escape(f.get("responsible") or "—")
+            created_by = _md_escape(f.get("created_by") or c.speaker)
+            deadline = _fmt_deadline(f.get("deadline"))
+            auditors = ", ".join(f.get("auditors") or []) or "—"
+            accomplices = ", ".join(f.get("accomplices") or []) or "—"
+            lines.append(f"• {title}")
+            lines.append(f"  Постановщик: {created_by} → Исполнитель: {responsible}")
+            lines.append(f"  Наблюдатели: {_md_escape(auditors)}")
+            lines.append(f"  Соисполнители: {_md_escape(accomplices)}")
+            lines.append(f"  Дедлайн: {deadline}")
+
+    # ── 📅 Предлагаемые встречи (meeting) ──────────────────────────────────
+    meetings_v = _by_intent("meeting")
+    if meetings_v:
+        lines.append(f"\n📅 *Предлагаемые встречи*\n{_SEP}")
+        for _idx, c in enumerate(meetings_v):
+            f = c.extracted_fields
+            name = _md_escape(f.get("name") or c.raw_text[:60])
+            from_dt = _fmt_deadline(f.get("from"))
+            attendees = ", ".join(f.get("attendees") or []) or "—"
+            lines.append(f"• {name}, {from_dt}")
+            lines.append(f"  Участники: {_md_escape(attendees)}")
+
+    # ── 🔔 Напоминания (reminder) ───────────────────────────────────────────
+    reminders = _by_intent("reminder")
+    if reminders:
+        lines.append(f"\n🔔 *Напоминания*\n{_SEP}")
+        for c in reminders:
+            f = c.extracted_fields
+            recipient = _md_escape(f.get("recipient") or c.speaker)
+            remind_at = _fmt_deadline(f.get("remind_at"))
+            text = _md_escape(f.get("text") or c.raw_text[:80])
+            lines.append(f"• Напомнить {recipient} в {remind_at} — {text}")
+
+    # ── 📝 Заметки (note) ────────────────────────────────────────────────────
+    notes = _by_intent("note")
+    if notes:
+        lines.append(f"\n📝 *Заметки*\n{_SEP}")
+        for c in notes:
+            f = c.extracted_fields
+            quote = _md_escape(f.get("quote") or c.raw_text[:120])
+            lines.append(f"• {_md_escape(c.timestamp)} ({_md_escape(c.speaker)}) \"{quote}\"")
 
 
 async def _claim_notification(meeting_id: UUID) -> datetime | None:
@@ -258,6 +359,44 @@ async def notify_meeting_result(meeting_id: UUID) -> None:
         else:
             logger.exception("Failed to send summary for %s", meeting_id)
         return
+
+    # Send a separate message with real inline keyboard for each task/meeting candidate.
+    # Note/attention/reminder are info-only and stay in the summary text only.
+    voice_candidates = meeting.get("voice_triggers") or []
+    task_idx = 0
+    meeting_idx = 0
+    for cand in voice_candidates:
+        if cand.intent == "task":
+            cid = f"task{task_idx}"
+            task_idx += 1
+            f = cand.extracted_fields
+            title = f.get("title") or cand.raw_text[:60]
+            text = f"📌 {title}\n\nПодтверди действие:"
+        elif cand.intent == "meeting":
+            cid = f"meeting{meeting_idx}"
+            meeting_idx += 1
+            f = cand.extracted_fields
+            name = f.get("name") or cand.raw_text[:60]
+            text = f"📅 {name}\n\nПодтверди действие:"
+        else:
+            continue
+
+        try:
+            await tg_send_message(
+                triggered_by,
+                text,
+                reply_markup=voice_trigger_keyboard(cid),
+            )
+        except TelegramAPIError as e:
+            if e.error_code in (400, 403):
+                logger.error(
+                    "Cannot send voice-trigger keyboard for %s cid=%s — user unreachable (Telegram %d): %s",
+                    meeting_id, cid, e.error_code, e,
+                )
+            else:
+                logger.exception(
+                    "Failed to send voice-trigger keyboard for %s cid=%s", meeting_id, cid
+                )
 
     paragraphs = meeting.get("processed_paragraphs") or []
     if (

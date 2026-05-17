@@ -110,6 +110,21 @@ MORNING_DIGEST_ENABLED: bool = (
 )
 MORNING_DIGEST_HOUR_MSK: int = int(os.getenv("MORNING_DIGEST_HOUR_MSK", "9"))
 
+# Voice-triggers pipeline (Phase 1 — detection only, no Bitrix writes).
+#
+#   VOICE_TRIGGERS_ENABLED  — master on/off switch (default false).
+#                             Set to "true" on prod when ready to evaluate
+#                             precision/recall on real meetings.
+VOICE_TRIGGERS_ENABLED: bool = (
+    os.getenv("VOICE_TRIGGERS_ENABLED", "false").lower() == "true"
+)
+
+# OpenRouter model tiers used by voice_triggers pipeline.
+# LIGHT  — Stage 1: candidate detection (cheap, fast).
+# HEAVY  — Stage 2: slot-filling per intent (accurate, $3/$15 per M tokens).
+MODEL_LIGHT: str = os.getenv("VOICE_TRIGGERS_MODEL_LIGHT", "google/gemini-3-flash-preview")
+MODEL_HEAVY: str = os.getenv("VOICE_TRIGGERS_MODEL_HEAVY", "anthropic/claude-sonnet-4-6")
+
 # Paths
 DATA_DIR: Path = _PROJECT_ROOT / "data" / "telemost"
 # When the API runs inside a container that talks to the host docker.sock,
