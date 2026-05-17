@@ -17,6 +17,7 @@ import json
 import logging
 from dataclasses import dataclass, field
 from typing import Any
+from uuid import UUID
 
 from services.telemost_recorder_api.config import (
     MODEL_HEAVY,
@@ -41,7 +42,14 @@ _CONFIDENCE_THRESHOLD = 0.5
 
 @dataclass
 class VoiceCandidate:
-    """Single detected 'Саймон, ...' command with extracted slot data."""
+    """Single detected 'Саймон, ...' command with extracted slot data.
+
+    Phase 2 (T7): ``id`` is the UUID assigned after the candidate is INSERT-ed
+    into ``telemost.voice_trigger_candidates``. Until persistence happens
+    it stays None — the notifier uses it as ``callback_data`` when present
+    and falls back to a legacy placeholder otherwise (kept for tests that
+    construct VoiceCandidate directly without going through extract()).
+    """
 
     speaker: str
     timestamp: str
@@ -49,6 +57,7 @@ class VoiceCandidate:
     intent: str  # 'task' | 'meeting' | 'note' | 'attention' | 'reminder'
     confidence: float
     extracted_fields: dict[str, Any] = field(default_factory=dict)
+    id: UUID | None = None
 
     def __hash__(self) -> int:
         return hash((self.speaker, self.timestamp, self.raw_text, self.intent))
@@ -312,11 +321,20 @@ async def _run_stage2(
 async def extract(
     transcript: str,
     team_users: list[dict[str, Any]],
+    meeting_id: UUID | None = None,
 ) -> list[VoiceCandidate]:
     """Two-stage detection of 'Саймон, ...' voice-trigger commands.
 
     Returns an empty list when VOICE_TRIGGERS_ENABLED is false.
     Never raises — all errors are logged and the empty/partial list is returned.
+
+    Phase 2 (T7): when meeting_id is provided, each extracted candidate is
+    persisted to ``telemost.voice_trigger_candidates`` and the resulting
+    UUID is set on ``VoiceCandidate.id`` so downstream notifier code can use
+    it as callback_data for the action buttons.
+
+    When meeting_id is None (legacy tests, dry-runs), no DB write happens
+    and ``id`` stays None.
     """
     if not VOICE_TRIGGERS_ENABLED:
         return []
@@ -355,8 +373,46 @@ async def extract(
             )
         )
 
+    # Phase 2: persist each candidate when we have a meeting context.
+    # Failures here are logged but do not break the pipeline — the notifier
+    # will fall back to the legacy `voice:<placeholder>:disabled` callbacks
+    # so the user still sees the summary.
+    if meeting_id is not None and results:
+        await _persist_candidates(results, meeting_id)
+
     logger.info(
-        "voice_triggers: %d candidates → %d passed threshold → %d extracted",
-        len(raw_candidates), len(passing), len(results),
+        "voice_triggers: %d candidates → %d passed threshold → %d extracted (meeting_id=%s)",
+        len(raw_candidates), len(passing), len(results), meeting_id,
     )
     return results
+
+
+async def _persist_candidates(
+    candidates: list[VoiceCandidate],
+    meeting_id: UUID,
+) -> None:
+    """INSERT each candidate, mutate ``candidate.id`` in place.
+
+    Sequential (not gather) so a single failure does not silently skip the
+    rest; we want every successful row to be reachable from the notifier.
+    """
+    # Late import: voice_candidates_repo imports db which initialises an
+    # asyncpg pool — keeping it out of module import keeps unit tests fast.
+    from services.telemost_recorder_api import voice_candidates_repo  # noqa: PLC0415
+
+    for cand in candidates:
+        try:
+            cand.id = await voice_candidates_repo.insert_candidate(
+                meeting_id=meeting_id,
+                intent=cand.intent,
+                speaker=cand.speaker,
+                raw_text=cand.raw_text,
+                extracted_fields=cand.extracted_fields,
+            )
+        except Exception:
+            logger.exception(
+                "voice_triggers: failed to persist candidate "
+                "(meeting_id=%s, intent=%s, speaker=%s) — keyboard will be disabled",
+                meeting_id, cand.intent, cand.speaker,
+            )
+            # Leave cand.id = None — notifier falls back to legacy disabled buttons.
