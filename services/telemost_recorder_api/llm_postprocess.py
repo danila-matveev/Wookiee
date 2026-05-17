@@ -13,6 +13,7 @@ from services.telemost_recorder_api.config import (
     LLM_POSTPROCESS_MODEL,
     LLM_POSTPROCESS_TIMEOUT_SECONDS,
     OPENROUTER_API_KEY,
+    VOICE_TRIGGERS_ENABLED,
 )
 
 logger = logging.getLogger(__name__)
@@ -363,6 +364,7 @@ async def postprocess_meeting(
     participants: list[dict],
     *,
     model: Optional[str] = None,
+    team_users: Optional[list[dict]] = None,
 ) -> dict:
     """Run LLM postprocessing.
 
@@ -387,6 +389,7 @@ async def postprocess_meeting(
             logger.error("LLM returned non-JSON: %r", cleaned[:500])
             raise LLMPostprocessError(f"invalid JSON: {e}") from e
         _validate_shape(data)
+        await _enrich_voice_triggers(data, segments, team_users)
         return data
 
     # Chunked path
@@ -427,4 +430,36 @@ async def postprocess_meeting(
         "summary": summary_block,
     }
     _validate_shape(merged)
+    await _enrich_voice_triggers(merged, segments, team_users)
     return merged
+
+
+async def _enrich_voice_triggers(
+    data: dict,
+    segments: list[dict],
+    team_users: Optional[list[dict]],
+) -> None:
+    """Run voice-trigger extraction and attach results to data['voice_triggers'].
+
+    Operates in-place. Never raises — failures are logged and
+    data['voice_triggers'] is set to [] on any error.
+    """
+    if not VOICE_TRIGGERS_ENABLED:
+        data["voice_triggers"] = []
+        return
+
+    # Late import to avoid circular dependency during module load.
+    from services.telemost_recorder_api import voice_triggers  # noqa: PLC0415
+
+    transcript = "\n".join(
+        f"[{s.get('start_ms', 0) // 1000}s {s.get('speaker', '?')}] {s.get('text', '')}"
+        for s in segments
+    )
+    users = team_users or []
+
+    try:
+        candidates = await voice_triggers.extract(transcript, users)
+        data["voice_triggers"] = candidates
+    except Exception:
+        logger.exception("voice_triggers extraction failed — skipping sections")
+        data["voice_triggers"] = []
